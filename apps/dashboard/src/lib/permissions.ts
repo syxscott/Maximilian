@@ -51,6 +51,11 @@ const answerSchema = z.object({
   requestId: z.string(),
   decision: z.union([z.literal("allow"), z.literal("deny")]),
 });
+const approvalAnswerSchema = z.object({
+  requestId: z.string(),
+  decision: z.union([z.literal("approve"), z.literal("reject")]),
+  comment: z.string().optional(),
+});
 
 export const permissionsApi = {
   get: (signal?: AbortSignal): Promise<Permissions> =>
@@ -98,6 +103,18 @@ export const permissionsApi = {
       },
       answerSchema,
     ) as Promise<{ requestId: string; decision: "allow" | "deny" }>,
+
+  answerApproval: (requestId: string, decision: "approve" | "reject", comment?: string, signal?: AbortSignal): Promise<{ requestId: string; decision: "approve" | "reject"; comment?: string }> =>
+    fetchJson(
+      `${BASE}/approvals/answer`,
+      {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, decision, comment }),
+        signal,
+      },
+      approvalAnswerSchema,
+    ) as Promise<{ requestId: string; decision: "approve" | "reject"; comment?: string }>,
 };
 
 // ── Hooks ────────────────────────────────────────────────────────────────
@@ -164,11 +181,15 @@ export function usePermissions(): UsePermissionsResult {
  * cost of a second connection and the races between two replay buffers.
  */
 export interface PendingPermission {
+  kind: "permission" | "approval";
   requestId: string;
   workspaceId: string;
   taskId: string;
-  tool: string;
-  target: string;
+  tool?: string;
+  target?: string;
+  prompt?: string;
+  reason?: string;
+  requireComment?: boolean;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────

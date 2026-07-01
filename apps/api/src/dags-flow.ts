@@ -34,6 +34,12 @@ export interface DagsFlowDeps {
   telemetry?: {
     recordExecution(input: Record<string, unknown>): Promise<unknown>;
   };
+  approvalRuntimes?: {
+    register(runtime: {
+      resolveApproval(requestId: string, response: { decision: "approve" | "reject"; comment?: string }): boolean;
+    }): () => void;
+  };
+  onEvent?: (event: RuntimeEvent) => void;
 }
 
 /**
@@ -56,10 +62,20 @@ export async function buildDagsWorkspace(
   const nodeIds = composed.graph.nodes.map((n) => n.id);
   const tasks: Task[] = composed.graph.nodes.map((n) => ({
     id: n.id,
-    agentRole: n.role as unknown as Task["agentRole"],
-    description: n.displayName ?? n.role,
+    agentRole: (n.kind === "approval" ? "general" : n.role) as unknown as Task["agentRole"],
+    description: n.kind === "approval" ? n.approvalConfig?.prompt ?? n.displayName : n.displayName ?? n.role,
     status: "pending" as const,
     dependsOn: n.dependsOn.filter((d) => nodeIds.includes(d)),
+    metadata: n.kind === "approval"
+      ? {
+          kind: "approval",
+          approval: {
+            prompt: n.approvalConfig?.prompt ?? n.displayName,
+            requireComment: n.approvalConfig?.requireComment ?? false,
+            reason: n.approvalConfig?.reason,
+          },
+        }
+      : {},
   }));
 
   // Add a final review task (matches the legacy Commander convention).
@@ -104,6 +120,7 @@ export async function runDagsFlow(
   eventLog: Map<string, RuntimeEvent[]>
 ): Promise<void> {
   let executionTrace: Record<string, unknown> | undefined;
+  let unregisterApprovalRuntime: (() => void) | undefined;
 
   try {
     const composed = await deps.dags.compose(workspace.userRequest);
@@ -150,6 +167,7 @@ export async function runDagsFlow(
     };
 
     const runtime = new AgentRuntime(factory as never, sink);
+    unregisterApprovalRuntime = deps.approvalRuntimes?.register(runtime);
 
   // Wire into event log so UI polling still works.
   // Phase 10 — also append steps to execution trace.
@@ -158,6 +176,7 @@ export async function runDagsFlow(
     arr.push(event);
     eventLog.set(event.workspaceId, arr);
     if (arr.length > 500) arr.splice(0, arr.length - 500);
+    deps.onEvent?.(event);
 
     // Append to execution trace steps.
     if (executionTrace) {
@@ -218,5 +237,7 @@ export async function runDagsFlow(
     const failedTenantId = (workspace.metadata?.tenantId as string | null | undefined) ?? undefined;
     const failed = { ...workspace, status: "failed" as const, error: String(err) };
     await deps.store.saveWorkspace(failed, failedTenantId ?? undefined).catch(() => {});
+  } finally {
+    unregisterApprovalRuntime?.();
   }
 }

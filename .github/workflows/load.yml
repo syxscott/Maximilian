@@ -59,7 +59,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -77,7 +77,8 @@ jobs:
       - name: Start API in background
         run: |
           pnpm --filter @max/api build
-          nohup node apps/api/dist/index.js > api.log 2>&1 &
+          : > api.log
+          nohup pnpm --filter @max/api start > api.log 2>&1 &
           echo $! > api.pid
 
       - name: Wait for /api/ready
@@ -96,7 +97,7 @@ jobs:
           fi
 
       - name: Run read load test (50 VUs, 30s)
-        run: node benchmarks/load/load-test.mjs --url http://localhost:3001 --vu 50 --duration 30
+        run: node benchmarks/load/load-test.mjs --url http://localhost:3001 --vu 50 --duration 30 --auto-register --output benchmarks/load/load-report.json
 
       - name: Upload load report
         if: always()

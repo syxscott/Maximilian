@@ -56,6 +56,7 @@ export const TaskSchema = z.object({
   error: z.string().optional(),
   startedAt: z.string().optional(),
   completedAt: z.string().optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 export type Task = z.infer<typeof TaskSchema>;
 

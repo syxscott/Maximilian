@@ -9,11 +9,17 @@ import type { DAGS } from "@max/dags";
 import type { AutonomyOrchestrator } from "@max/autonomy";
 import type { Queue } from "bullmq";
 import { runDagsFlow, buildDagsWorkspace } from "../dags-flow.js";
-import { readWorkerHeartbeat, HEARTBEAT_MAX_AGE_MS } from "@max/queue";
+import { readWorkerHeartbeat, HEARTBEAT_MAX_AGE_MS, type ResourceBudget } from "@max/queue";
 import { getConfig } from "@max/config";
 
 const ChatRequestSchema = z.object({
   message: z.string().min(1).max(8000),
+  resourceBudget: z
+    .object({
+      vramMb: z.number().int().positive().optional(),
+      exclusive: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 const ErrorSchema = z.object({ error: z.string() });
@@ -45,6 +51,12 @@ interface ChatDeps {
   telemetry?: { recordExecution(input: Record<string, unknown>): Promise<unknown> };
   /** Phase 6 — BullMQ queue for background execution. When set, POST /api/chat enqueues instead of running in-process. */
   queue?: Queue;
+  dagsApprovalRuntimes?: {
+    register(runtime: {
+      resolveApproval(requestId: string, response: { decision: "approve" | "reject"; comment?: string }): boolean;
+    }): () => void;
+  };
+  onDagsRuntimeEvent?: (event: RuntimeEvent) => void;
 }
 
 const log = getLogger("chat");
@@ -57,7 +69,8 @@ export function postChat(deps: ChatDeps) {
     if (!parsed.success) {
       return c.json({ error: "Invalid body", details: parsed.error.flatten() }, 400);
     }
-    const { message } = parsed.data;
+    const { message, resourceBudget } = parsed.data;
+    const effectiveResourceBudget = resourceBudget ?? inferResourceBudget(message);
     const tenantId = c.get("tenantId") as string | undefined;
 
     // Phase 5.8 — DAGS_MODE bypasses Commander and uses DAGS.compose()
@@ -78,7 +91,14 @@ export function postChat(deps: ChatDeps) {
       }
 
       runDagsFlow(
-        { dags: deps.dags, store: deps.store, orchestrator: deps.orchestrator, telemetry: deps.telemetry },
+        {
+          dags: deps.dags,
+          store: deps.store,
+          orchestrator: deps.orchestrator,
+          telemetry: deps.telemetry,
+          approvalRuntimes: deps.dagsApprovalRuntimes,
+          onEvent: deps.onDagsRuntimeEvent,
+        },
         workspace,
         deps.eventLog
       ).catch(async (err) => {
@@ -146,11 +166,12 @@ export function postChat(deps: ChatDeps) {
       // Only attach tenantId to the payload when defined — keeps the
       // shape stable for legacy consumers and tests that don't care
       // about tenancy.
-      const jobData: { workspaceId: string; mode: "commander"; tenantId?: string } = {
+      const jobData: { workspaceId: string; mode: "commander"; tenantId?: string; resourceBudget?: ResourceBudget } = {
         workspaceId: workspace.id,
         mode: "commander",
       };
       if (tenantId !== undefined) jobData.tenantId = tenantId;
+      if (effectiveResourceBudget) jobData.resourceBudget = effectiveResourceBudget;
       await deps.queue.add("execute", jobData);
       log.info({ workspaceId: workspace.id, tenantId: tenantId ?? "dev" }, "enqueued workspace for execution");
     } else {
@@ -236,6 +257,13 @@ async function saveArtifactsFromResults(
       );
     }
   }
+}
+
+function inferResourceBudget(message: string): ResourceBudget | undefined {
+  if (/\b(vision|image|video|ocr|vlm|multimodal)\b/i.test(message)) {
+    return { vramMb: 16_000, exclusive: true };
+  }
+  return undefined;
 }
 
 interface CodeBlock {

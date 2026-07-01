@@ -60,6 +60,12 @@ export const ToolSpecSchema = z.object({
   name: z.string(),
   description: z.string(),
   parameters: z.record(z.unknown()).optional(),
+  resourceBudget: z
+    .object({
+      vramMb: z.number().int().positive().optional(),
+      exclusive: z.boolean().optional(),
+    })
+    .optional(),
 });
 export type ToolSpec = z.infer<typeof ToolSpecSchema>;
 
@@ -119,10 +125,18 @@ export type AgentBlueprint = z.infer<typeof AgentBlueprintSchema>;
 
 export const TeamNodeSchema = z.object({
   id: z.string(),
-  blueprintId: z.string(),
+  kind: z.enum(["agent", "approval"]).default("agent"),
+  blueprintId: z.string().optional(),
   role: z.string(),
   displayName: z.string(),
   dependsOn: z.array(z.string()).default([]),
+  approvalConfig: z
+    .object({
+      prompt: z.string(),
+      requireComment: z.boolean().default(false),
+      reason: z.string().optional(),
+    })
+    .optional(),
   modelAssignment: z
     .object({
       provider: z.string(),

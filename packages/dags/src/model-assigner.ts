@@ -24,6 +24,7 @@ export class ModelAssigner {
    */
   async assign(graph: TeamGraph): Promise<TeamGraph> {
     for (const node of graph.nodes) {
+      if (node.kind === "approval") continue;
       const selection = this.facade.selectForRole(node.role as Parameters<typeof this.facade.selectForRole>[0]);
       node.modelAssignment = {
         provider: selection.provider,
@@ -61,11 +62,12 @@ export class ModelAssigner {
     blueprints: AgentBlueprint[]
   ): Array<{ node: TeamNode; blueprint: AgentBlueprint; provider: Provider; model: string }> {
     const byBlueprintId = new Map(blueprints.map((b) => [b.id, b]));
-    return graph.nodes.map((node) => {
-      const blueprint = byBlueprintId.get(node.blueprintId);
+    return graph.nodes.flatMap((node) => {
+      if (node.kind === "approval") return [];
+      const blueprint = node.blueprintId ? byBlueprintId.get(node.blueprintId) : undefined;
       if (!blueprint) throw new Error(`Blueprint ${node.blueprintId} not found`);
       const { provider, model } = this.resolveProvider(node, candidates);
-      return { node, blueprint, provider, model };
+      return [{ node, blueprint, provider, model }];
     });
   }
 }

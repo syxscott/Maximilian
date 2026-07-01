@@ -177,6 +177,7 @@ export function snapshotToSimulationInput(
       retiredAt?: string;
     };
     return {
+      kind: "agent" as const,
       id: bb.id ?? `n-${i}`,
       blueprintId: bb.id ?? `bp-${i}`,
       role: bb.role ?? "unknown",

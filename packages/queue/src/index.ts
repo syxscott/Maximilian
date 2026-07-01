@@ -6,6 +6,8 @@
  *   Worker side: const w = createWorker(redisUrl, processor); // processor(workspaceId)
  */
 
+export * from "./resource-lease.js";
+
 import { Queue, Worker, type JobsOptions } from "bullmq";
 import { Redis } from "ioredis";
 
@@ -27,6 +29,11 @@ const HEARTBEAT_TTL_SECONDS = 30;
 /** Maximum allowed age of the latest heartbeat. */
 export const HEARTBEAT_MAX_AGE_MS = HEARTBEAT_TTL_SECONDS * 1000;
 
+export interface ResourceBudget {
+  vramMb?: number;
+  exclusive?: boolean;
+}
+
 /** Data persisted in each BullMQ job. */
 export interface WorkspaceJobData {
   workspaceId: string;
@@ -39,6 +46,7 @@ export interface WorkspaceJobData {
    * dev-mode (no-tenant) worker. May be undefined for dev/no-tenant jobs.
    */
   tenantId?: string;
+  resourceBudget?: ResourceBudget;
 }
 
 /** Default retry policy: 3 attempts, exponential back-off starting at 2 s. */
@@ -63,6 +71,7 @@ export type WorkspaceProcessor = (
   workspaceId: string,
   mode: "commander" | "dags",
   tenantId: string | undefined,
+  resourceBudget: ResourceBudget | undefined,
 ) => Promise<void>;
 
 /**
@@ -85,8 +94,8 @@ export function createWorker(
   const worker = new Worker<WorkspaceJobData>(
     WORKSPACE_QUEUE,
     async (job) => {
-      const { workspaceId, mode, tenantId } = job.data;
-      await processor(workspaceId, mode, tenantId);
+      const { workspaceId, mode, tenantId, resourceBudget } = job.data;
+      await processor(workspaceId, mode, tenantId, resourceBudget);
     },
     {
       connection: { url: redisUrl },

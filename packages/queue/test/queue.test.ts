@@ -21,7 +21,7 @@ import {
   DEFAULT_JOB_OPTIONS,
   createQueue,
   createWorker,
-  readWorkerHeartbeat,
+  acquireResourceLease,
   type WorkspaceJobData,
 } from "../src/index.js";
 
@@ -40,6 +40,11 @@ describe("queue constants & defaults", () => {
     expect(DEFAULT_JOB_OPTIONS.removeOnComplete).toEqual({ age: 3600 });
     expect(DEFAULT_JOB_OPTIONS.removeOnFail).toEqual({ age: 86400 });
   });
+
+  it("acquireResourceLease is a no-op without a resource budget", async () => {
+    const lease = await acquireResourceLease("redis://unused", undefined);
+    await expect(lease.release()).resolves.toBeUndefined();
+  });
 });
 
 // ── Live tests (require REDIS_URL) ─────────────────────────────────────────
@@ -56,9 +61,9 @@ d("live redis (REDIS_URL set)", () => {
   });
 
   it("createWorker writes a heartbeat that readWorkerHeartbeat can see", async () => {
-    const received: Array<{ workspaceId: string; mode: string; tenantId?: string }> = [];
-    const worker = createWorker(redisUrl!, async (workspaceId, mode, tenantId) => {
-      received.push({ workspaceId, mode, tenantId });
+    const received: Array<{ workspaceId: string; mode: string; tenantId?: string; resourceBudget?: WorkspaceJobData["resourceBudget"] }> = [];
+    const worker = createWorker(redisUrl!, async (workspaceId, mode, tenantId, resourceBudget) => {
+      received.push({ workspaceId, mode, tenantId, resourceBudget });
     }, 1);
 
     // Heartbeat fires synchronously on createWorker. Give it a tick to land.
@@ -73,13 +78,14 @@ d("live redis (REDIS_URL set)", () => {
       workspaceId: "ws-test-1",
       mode: "commander",
       tenantId: "tenant-test",
+      resourceBudget: { vramMb: 16000, exclusive: true },
     } satisfies WorkspaceJobData);
 
     await job.waitUntilFinished(queue, 5_000).catch(() => {});
     // Give the worker a moment in case waitUntilFinished raced.
     await new Promise((r) => setTimeout(r, 250));
     expect(received).toEqual([
-      { workspaceId: "ws-test-1", mode: "commander", tenantId: "tenant-test" },
+      { workspaceId: "ws-test-1", mode: "commander", tenantId: "tenant-test", resourceBudget: { vramMb: 16000, exclusive: true } },
     ]);
 
     await queue.close();

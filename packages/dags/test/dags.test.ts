@@ -208,7 +208,7 @@ describe("Stage 3 — DynamicAgentFactory", () => {
 // ============================================================================
 
 describe("Stage 4 — TeamGraphBuilder", () => {
-  it("builds a DAG with reviewer depending on all workers", () => {
+  it("builds a DAG with reviewer gated by human approval", () => {
     const bps: AgentBlueprint[] = [
       mkBp("frontend", ["frontend"]),
       mkBp("backend", ["backend"]),
@@ -216,8 +216,10 @@ describe("Stage 4 — TeamGraphBuilder", () => {
     ];
     const builder = new TeamGraphBuilder();
     const graph = builder.build(bps, "test", ["frontend", "backend", "review"]);
+    const approval = graph.nodes.find((n) => n.kind === "approval")!;
     const reviewer = graph.nodes.find((n) => n.role === "reviewer")!;
-    expect(reviewer.dependsOn).toHaveLength(2);
+    expect(approval.dependsOn.length).toBeGreaterThan(0);
+    expect(reviewer.dependsOn).toEqual([approval.id]);
   });
 
   it("computes parallel layers", () => {
@@ -230,6 +232,7 @@ describe("Stage 4 — TeamGraphBuilder", () => {
     expect(graph.layers[0]?.nodeIds).toHaveLength(1);
     expect(graph.layers[1]?.nodeIds).toHaveLength(1);
     expect(graph.layers[2]?.nodeIds).toHaveLength(1);
+    expect(graph.layers[3]?.nodeIds).toHaveLength(1);
   });
 
   it("topoLayers detects cycle via direct dependsOn override", () => {

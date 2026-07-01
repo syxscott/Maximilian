@@ -32,6 +32,8 @@ import {
 import { postChat } from "../src/routes/chat.js";
 import { learningRoutes } from "../src/routes/learning.js";
 import { executionRoutes } from "../src/routes/executions.js";
+import { approvalRoutes } from "../src/routes/approvals.js";
+import type { RuntimeEvent } from "@max/core";
 
 function makeProvider(id: string, model: string): Provider {
   return {
@@ -50,6 +52,7 @@ function makeProvider(id: string, model: string): Provider {
 describe("E2E: DAGS_MODE=true /api/chat + autonomy loop", () => {
   let tmp: string;
   let app: Hono;
+  let eventLog: Map<string, RuntimeEvent[]>;
 
   beforeEach(async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), "max-e2e-"));
@@ -97,7 +100,8 @@ describe("E2E: DAGS_MODE=true /api/chat + autonomy loop", () => {
 
     // 3. Build Hono app (mirrors apps/api/src/index.ts but with mocks).
     app = new Hono();
-    const eventLog = new Map();
+    eventLog = new Map<string, RuntimeEvent[]>();
+    const approvalRuntimes = new Set<{ resolveApproval(requestId: string, response: { decision: "approve" | "reject"; comment?: string }): boolean }>();
     app.post(
       "/api/chat",
       postChat({
@@ -128,8 +132,25 @@ describe("E2E: DAGS_MODE=true /api/chat + autonomy loop", () => {
         dagsMode: true,
         dags,
         orchestrator,
+        dagsApprovalRuntimes: {
+          register(runtime) {
+            approvalRuntimes.add(runtime);
+            return () => approvalRuntimes.delete(runtime);
+          },
+        },
       })
     );
+    const approvals = approvalRoutes({
+      runtime: {
+        resolveApproval: (requestId, response) => {
+          for (const runtime of [...approvalRuntimes]) {
+            if (runtime.resolveApproval(requestId, response)) return true;
+          }
+          return false;
+        },
+      },
+    });
+    app.post("/api/approvals/answer", approvals.answer);
     const lr = learningRoutes({ api: learning });
     app.get("/api/learning/status", lr.status);
     app.get("/api/learning/agents", lr.agents);
@@ -175,11 +196,25 @@ describe("E2E: DAGS_MODE=true /api/chat + autonomy loop", () => {
     expect(chatBody.workspaceId).toMatch(/^ws-/);
     expect(chatBody.teamSize).toBeGreaterThan(0);
 
-    // 2. Wait briefly for the async flow to settle.
+    // 2. DAGS now gates review behind a human approval checkpoint.
+    await waitFor(async () => {
+      const events = eventLog.get(chatBody.workspaceId) ?? [];
+      return events.some((event) => event.type === "approval-request");
+    }, 4000);
+    const approvalRequest = (eventLog.get(chatBody.workspaceId) ?? [])
+      .find((event) => event.type === "approval-request") as Extract<RuntimeEvent, { type: "approval-request" }> | undefined;
+    expect(approvalRequest).toBeDefined();
+    const approvalRes = await app.request("/api/approvals/answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId: approvalRequest!.requestId, decision: "approve" }),
+    });
+    expect(approvalRes.status).toBe(200);
+
     await waitFor(async () => {
       const res = await app.request("/api/executions");
-      const body = (await res.json()) as { count: number };
-      return body.count > 0;
+      const body = (await res.json()) as { count?: number; total?: number };
+      return (body.count ?? body.total ?? 0) > 0;
     }, 4000);
 
     // 3. GET /api/executions → at least one execution record.

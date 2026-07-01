@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { executions } from "../schema.js";
+import { executions, executionsArchive } from "../schema.js";
 
 interface ExecutionRecord {
   id: string;
@@ -19,6 +19,20 @@ interface ExecutionRecord {
   durationMs?: number;
   status: "pending" | "running" | "completed" | "failed";
   error?: string;
+  archivedAt?: string;
+  archiveBucket?: string;
+}
+
+interface ExecutionListOptions {
+  includeArchived?: boolean;
+}
+
+interface ArchiveResult {
+  archived: number;
+}
+
+interface RetentionOptions {
+  retainDays: number;
 }
 
 /**
@@ -48,6 +62,7 @@ export class PgExecutionStore {
         durationMs: record.durationMs != null ? String(record.durationMs) : null,
         status: record.status,
         error: record.error ?? null,
+        archivedAt: record.archivedAt ? new Date(record.archivedAt) : null,
       })
       .onConflictDoUpdate({
         target: executions.id,
@@ -66,47 +81,124 @@ export class PgExecutionStore {
           durationMs: record.durationMs != null ? String(record.durationMs) : null,
           status: record.status,
           error: record.error ?? null,
+          archivedAt: record.archivedAt ? new Date(record.archivedAt) : null,
         },
       });
   }
 
-  async get(id: string): Promise<ExecutionRecord | undefined> {
+  async get(id: string, options: ExecutionListOptions = {}): Promise<ExecutionRecord | undefined> {
     const rows = await this.db
       .select()
       .from(executions)
-      .where(eq(executions.id, id))
+      .where(and(eq(executions.id, id), isNull(executions.archivedAt)))
       .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToExecution(rows[0]);
+    if (rows.length > 0) return rowToExecution(rows[0]);
+    if (!options.includeArchived) return undefined;
+
+    const archived = await this.db
+      .select()
+      .from(executionsArchive)
+      .where(eq(executionsArchive.id, id))
+      .limit(1);
+    return archived[0] ? rowToExecution(archived[0]) : undefined;
   }
 
-  async listAll(): Promise<ExecutionRecord[]> {
-    const rows = await this.db.select().from(executions);
-    return rows.map(rowToExecution);
-  }
-
-  async listForWorkspace(workspaceId: string): Promise<ExecutionRecord[]> {
+  async listAll(options: ExecutionListOptions = {}): Promise<ExecutionRecord[]> {
     const rows = await this.db
       .select()
       .from(executions)
-      .where(eq(executions.workspaceId, workspaceId));
-    return rows.map(rowToExecution);
+      .where(isNull(executions.archivedAt));
+    const out = rows.map(rowToExecution);
+    if (!options.includeArchived) return out;
+
+    const archived = await this.db.select().from(executionsArchive);
+    return [...out, ...archived.map(rowToExecution)];
   }
 
-  async listForRole(role: string): Promise<ExecutionRecord[]> {
+  async listForWorkspace(workspaceId: string, options: ExecutionListOptions = {}): Promise<ExecutionRecord[]> {
     const rows = await this.db
       .select()
       .from(executions)
-      .where(eq(executions.agentRole, role));
-    return rows.map(rowToExecution);
+      .where(and(eq(executions.workspaceId, workspaceId), isNull(executions.archivedAt)));
+    const out = rows.map(rowToExecution);
+    if (!options.includeArchived) return out;
+
+    const archived = await this.db
+      .select()
+      .from(executionsArchive)
+      .where(eq(executionsArchive.workspaceId, workspaceId));
+    return [...out, ...archived.map(rowToExecution)];
   }
 
-  async listForBlueprint(blueprintId: string): Promise<ExecutionRecord[]> {
+  async listForRole(role: string, options: ExecutionListOptions = {}): Promise<ExecutionRecord[]> {
     const rows = await this.db
       .select()
       .from(executions)
-      .where(eq(executions.blueprintId, blueprintId));
-    return rows.map(rowToExecution);
+      .where(and(eq(executions.agentRole, role), isNull(executions.archivedAt)));
+    const out = rows.map(rowToExecution);
+    if (!options.includeArchived) return out;
+
+    const archived = await this.db
+      .select()
+      .from(executionsArchive)
+      .where(eq(executionsArchive.agentRole, role));
+    return [...out, ...archived.map(rowToExecution)];
+  }
+
+  async listForBlueprint(blueprintId: string, options: ExecutionListOptions = {}): Promise<ExecutionRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(executions)
+      .where(and(eq(executions.blueprintId, blueprintId), isNull(executions.archivedAt)));
+    const out = rows.map(rowToExecution);
+    if (!options.includeArchived) return out;
+
+    const archived = await this.db
+      .select()
+      .from(executionsArchive)
+      .where(eq(executionsArchive.blueprintId, blueprintId));
+    return [...out, ...archived.map(rowToExecution)];
+  }
+
+  async archiveOlderThan(cutoff: Date): Promise<ArchiveResult> {
+    const rows = await this.db
+      .select()
+      .from(executions)
+      .where(and(lt(executions.startedAt, cutoff), isNull(executions.archivedAt)));
+    if (rows.length === 0) return { archived: 0 };
+
+    const archivedAt = new Date();
+    await this.db.insert(executionsArchive).values(rows.map((row) => ({
+      id: row.id,
+      tenantId: row.tenantId,
+      taskId: row.taskId,
+      workspaceId: row.workspaceId,
+      agentRole: row.agentRole,
+      blueprintId: row.blueprintId,
+      blueprintVersion: row.blueprintVersion,
+      graphId: row.graphId,
+      modelAssignment: row.modelAssignment,
+      artifacts: row.artifacts,
+      review: row.review,
+      userFeedback: row.userFeedback,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      durationMs: row.durationMs,
+      status: row.status,
+      error: row.error,
+      archivedAt,
+      archiveBucket: bucketFor(row.startedAt),
+    }))).onConflictDoNothing();
+
+    await this.db
+      .delete(executions)
+      .where(and(lt(executions.startedAt, cutoff), isNull(executions.archivedAt)));
+
+    return { archived: rows.length };
+  }
+
+  async archiveByRetention(options: RetentionOptions): Promise<ArchiveResult> {
+    return this.archiveOlderThan(cutoffForRetention(options.retainDays));
   }
 
   async appendUserFeedback(
@@ -125,7 +217,7 @@ export class PgExecutionStore {
   }
 }
 
-function rowToExecution(row: typeof executions.$inferSelect): ExecutionRecord {
+function rowToExecution(row: typeof executions.$inferSelect | typeof executionsArchive.$inferSelect): ExecutionRecord {
   return {
     id: row.id,
     taskId: row.taskId,
@@ -143,5 +235,15 @@ function rowToExecution(row: typeof executions.$inferSelect): ExecutionRecord {
     durationMs: row.durationMs != null ? Number(row.durationMs) : undefined,
     status: row.status as ExecutionRecord["status"],
     error: row.error ?? undefined,
+    archivedAt: row.archivedAt?.toISOString(),
+    archiveBucket: "archiveBucket" in row ? row.archiveBucket : undefined,
   };
+}
+
+function cutoffForRetention(retainDays: number): Date {
+  return new Date(Date.now() - retainDays * 24 * 60 * 60 * 1000);
+}
+
+function bucketFor(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }

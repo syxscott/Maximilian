@@ -18,7 +18,7 @@ export function DialogTag(props) {
         let cancelled = false;
         setLoaded(false);
         void sdk.client.find
-            .files({ query: filter, workspace: project.workspace.current() ?? undefined })
+            ?.files?.({ query: filter, workspace: project.workspace.current() ?? undefined })
             .then((result) => {
             if (cancelled)
                 return;

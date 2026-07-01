@@ -33,6 +33,7 @@ export class TeamGraphBuilder {
     // Step 1: nodes.
     const nodes: TeamNode[] = blueprints.map((bp) => ({
       id: `node-${bp.id}`,
+      kind: "agent",
       blueprintId: bp.id,
       role: bp.role,
       displayName: bp.displayName,
@@ -42,11 +43,35 @@ export class TeamGraphBuilder {
     const byNodeId = new Map(nodes.map((n) => [n.id, n]));
     const byRole = new Map(nodes.map((n) => [n.role, n]));
     const byBlueprintId = new Map(blueprints.map((b) => [b.id, b]));
+    const reviewerNodes = nodes.filter((node) => {
+      const bp = node.blueprintId ? byBlueprintId.get(node.blueprintId) : undefined;
+      return bp?.capabilities.includes("review") ?? false;
+    });
+    const implementationNodes = nodes.filter((node) => !reviewerNodes.some((reviewer) => reviewer.id === node.id));
+    const approvalNode: TeamNode | undefined = implementationNodes.length > 0 && reviewerNodes.length > 0
+      ? {
+          id: `approval-${randomUUID().slice(0, 8)}`,
+          kind: "approval",
+          role: "approval",
+          displayName: "Human approval checkpoint",
+          dependsOn: implementationNodes.map((node) => node.id),
+          approvalConfig: {
+            prompt: "Review generated feature outputs before final review continues.",
+            requireComment: false,
+            reason: "Key feature annotation completed",
+          },
+        }
+      : undefined;
+    if (approvalNode) {
+      nodes.push(approvalNode);
+      byNodeId.set(approvalNode.id, approvalNode);
+    }
 
     // Step 2: dependsOn.
     const edges: TeamEdge[] = [];
     for (const node of nodes) {
-      const bp = byBlueprintId.get(node.blueprintId)!;
+      const bp = node.blueprintId ? byBlueprintId.get(node.blueprintId) : undefined;
+      if (!bp) continue;
 
       // 2a. Capability dependencies: for each capability the blueprint
       // covers, find any other node that is the "source" of that
@@ -72,12 +97,23 @@ export class TeamGraphBuilder {
         }
       }
 
-      // 2b. Reviewer depends on all non-reviewer nodes.
+      // 2b. Reviewer waits for the human approval checkpoint when present;
+      // otherwise it depends on all non-reviewer nodes.
       if (bp.capabilities.includes("review")) {
+        if (approvalNode && !node.dependsOn.includes(approvalNode.id)) {
+          node.dependsOn.push(approvalNode.id);
+          edges.push({
+            from: approvalNode.id,
+            to: node.id,
+            type: "validation",
+            description: `${approvalNode.displayName} → ${node.displayName}`,
+          });
+          continue;
+        }
         for (const other of nodes) {
-          if (other.id === node.id) continue;
-          const otherBp = byBlueprintId.get(other.blueprintId)!;
-          if (otherBp.capabilities.includes("review")) continue;
+          if (other.id === node.id || other.kind === "approval") continue;
+          const otherBp = other.blueprintId ? byBlueprintId.get(other.blueprintId) : undefined;
+          if (!otherBp || otherBp.capabilities.includes("review")) continue;
           if (!node.dependsOn.includes(other.id)) {
             node.dependsOn.push(other.id);
             edges.push({
@@ -88,6 +124,19 @@ export class TeamGraphBuilder {
             });
           }
         }
+      }
+    }
+
+    if (approvalNode) {
+      for (const dep of approvalNode.dependsOn) {
+        const from = byNodeId.get(dep);
+        if (!from) continue;
+        edges.push({
+          from: from.id,
+          to: approvalNode.id,
+          type: "validation",
+          description: `${from.displayName} → ${approvalNode.displayName}`,
+        });
       }
     }
 

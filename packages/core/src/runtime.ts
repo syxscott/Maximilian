@@ -69,6 +69,13 @@ export interface ModelSelectorPort {
   select(role: AgentRole): { provider: string; model: string; score: number; reason: string } | null;
 }
 
+export type ApprovalDecision = "approve" | "reject";
+
+export interface ApprovalResponse {
+  decision: ApprovalDecision;
+  comment?: string;
+}
+
 export type RuntimeEvent =
   | { type: "plan"; workspaceId: string; plan: Plan }
   | { type: "task-start"; workspaceId: string; taskId: string; agentRole: AgentRole }
@@ -96,6 +103,23 @@ export type RuntimeEvent =
       taskId: string
       requestId: string
       decision: "allow" | "deny"
+    }
+  | {
+      type: "approval-request"
+      workspaceId: string
+      taskId: string
+      requestId: string
+      prompt: string
+      requireComment: boolean
+      reason?: string
+    }
+  | {
+      type: "approval-resolved"
+      workspaceId: string
+      taskId: string
+      requestId: string
+      decision: ApprovalDecision
+      comment?: string
     };
 
 export type RuntimeListener = (event: RuntimeEvent) => void;
@@ -219,6 +243,7 @@ export class AgentRuntime {
    * Keyed by the requestId minted in `@max/tools/with-permission`.
    */
   private permissionResolvers = new Map<string, { resolve: (decision: "allow" | "deny") => void; reject: (err: Error) => void; meta: { workspaceId: string; taskId: string; tool: string; target: string; promptedAt: string } }>();
+  private approvalResolvers = new Map<string, { resolve: (response: ApprovalResponse) => void; reject: (err: Error) => void; meta: { workspaceId: string; taskId: string; prompt: string; requireComment: boolean; reason?: string; promptedAt: string } }>();
   private permissionAudit = new PermissionAuditLog();
 
   constructor(
@@ -312,6 +337,52 @@ export class AgentRuntime {
       decision,
     });
     return true;
+  }
+
+  awaitApproval(
+    requestId: string,
+    meta: { workspaceId: string; taskId: string; prompt: string; requireComment: boolean; reason?: string },
+  ): Promise<ApprovalResponse> {
+    const existing = this.approvalResolvers.get(requestId);
+    if (existing) {
+      return new Promise<ApprovalResponse>((resolve, reject) => {
+        const prevResolve = existing.resolve;
+        const prevReject = existing.reject;
+        existing.resolve = (response) => {
+          prevResolve(response);
+          resolve(response);
+        };
+        existing.reject = (err) => {
+          prevReject(err);
+          reject(err);
+        };
+      });
+    }
+    const promptedAt = new Date().toISOString();
+    return new Promise<ApprovalResponse>((resolve, reject) => {
+      this.approvalResolvers.set(requestId, { resolve, reject, meta: { ...meta, promptedAt } });
+    });
+  }
+
+  resolveApproval(requestId: string, response: ApprovalResponse): boolean {
+    const entry = this.approvalResolvers.get(requestId);
+    if (!entry) return false;
+    if (entry.meta.requireComment && !response.comment?.trim()) return false;
+    this.approvalResolvers.delete(requestId);
+    entry.resolve(response);
+    this.emit({
+      type: "approval-resolved",
+      workspaceId: entry.meta.workspaceId,
+      taskId: entry.meta.taskId,
+      requestId,
+      decision: response.decision,
+      comment: response.comment,
+    });
+    return true;
+  }
+
+  pendingApprovalCount(): number {
+    return this.approvalResolvers.size;
   }
 
   /**
@@ -630,6 +701,12 @@ export class AgentRuntime {
       agentRole: task.agentRole,
     });
 
+    if (task.metadata?.kind === "approval") {
+      await this.runApprovalTask(workspace, task, roundRef.value);
+      messagesRef.value += 1;
+      return;
+    }
+
     // Append an action entry to the ledger for the orchestrator record.
     const actionEntry: LedgerEntry = {
       kind: "action",
@@ -815,6 +892,78 @@ export class AgentRuntime {
       },
       { "task.id": task.id, "task.agentRole": task.agentRole, "workspace.id": workspace.id },
     );
+  }
+
+  private async runApprovalTask(workspace: Workspace, task: Task, round: number): Promise<void> {
+    const approval = (task.metadata?.approval ?? {}) as {
+      prompt?: string;
+      requireComment?: boolean;
+      reason?: string;
+    };
+    const prompt = approval.prompt ?? task.description;
+    const requireComment = approval.requireComment ?? false;
+    const requestId = `approval-${randomUUID().slice(0, 8)}`;
+
+    const actionEntry: LedgerEntry = {
+      kind: "action",
+      round,
+      agent: task.agentRole,
+      input: { description: prompt.slice(0, 200), approval: true },
+      at: task.startedAt ?? new Date().toISOString(),
+    };
+    const afterAction = appendLedger(this.ledgers.get(workspace.id) ?? freshLedger(workspace.id), actionEntry);
+    this.ledgers.set(workspace.id, afterAction);
+    this.emit({ type: "ledger", workspaceId: workspace.id, ledger: afterAction });
+    const responsePromise = this.awaitApproval(requestId, {
+      workspaceId: workspace.id,
+      taskId: task.id,
+      prompt,
+      requireComment,
+      reason: approval.reason,
+    });
+
+    this.emit({
+      type: "approval-request",
+      workspaceId: workspace.id,
+      taskId: task.id,
+      requestId,
+      prompt,
+      requireComment,
+      reason: approval.reason,
+    });
+
+    const response = await responsePromise;
+
+    if (response.decision === "reject") {
+      throw new Error(response.comment?.trim() ? `approval rejected: ${response.comment}` : "approval rejected");
+    }
+
+    const result: Result = {
+      id: `r-${randomUUID().slice(0, 8)}`,
+      taskId: task.id,
+      agentRole: task.agentRole,
+      agentId: "human-approval",
+      output: response.comment?.trim() ? `Approved: ${response.comment}` : "Approved by human",
+      metadata: { approval: { decision: response.decision, comment: response.comment } },
+      createdAt: new Date().toISOString(),
+    };
+    task.resultId = result.id;
+    task.status = "completed";
+    task.completedAt = new Date().toISOString();
+    workspace.results.push(result);
+    this.emit({ type: "task-complete", workspaceId: workspace.id, taskId: task.id, result });
+
+    const observation: LedgerEntry = {
+      kind: "observation",
+      round,
+      agent: task.agentRole,
+      ok: true,
+      output: result.output.slice(0, 200),
+      at: new Date().toISOString(),
+    };
+    const afterObs = appendLedger(this.ledgers.get(workspace.id) ?? freshLedger(workspace.id), observation);
+    this.ledgers.set(workspace.id, afterObs);
+    this.emit({ type: "ledger", workspaceId: workspace.id, ledger: afterObs });
   }
 
   abort(workspaceId: string): void {

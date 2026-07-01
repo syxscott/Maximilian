@@ -22,9 +22,10 @@ import { useLocale, t } from "@max/i18n";
 export interface PermissionDialogProps {
   pending: PendingPermission | null;
   onAnswer: (decision: "allow" | "deny") => Promise<void>;
+  onApprovalAnswer?: (decision: "approve" | "reject") => Promise<void>;
 }
 
-export function PermissionDialog({ pending, onAnswer }: PermissionDialogProps) {
+export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: PermissionDialogProps) {
   useLocale();
   const open = pending !== null;
   return (
@@ -42,39 +43,56 @@ export function PermissionDialog({ pending, onAnswer }: PermissionDialogProps) {
 
         {pending && (
           <div className="space-y-2 text-sm">
-            <div className="flex gap-2">
-              <span className="text-muted-foreground w-20">{t("permissions.tool")}</span>
-              <code className="font-mono bg-background/60 px-2 py-0.5 rounded" data-testid="perm-dialog-tool">
-                {pending.tool}
-              </code>
-            </div>
-            <div className="flex gap-2">
-              <span className="text-muted-foreground w-20">{t("permissions.target")}</span>
-              <code className="font-mono bg-background/60 px-2 py-0.5 rounded break-all" data-testid="perm-dialog-target">
-                {pending.target || t("permissions.targetEmpty")}
-              </code>
-            </div>
+            {pending.kind === "approval" ? (
+              <>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground w-20">Approval</span>
+                  <code className="font-mono bg-background/60 px-2 py-0.5 rounded break-all" data-testid="perm-dialog-target">
+                    {pending.prompt}
+                  </code>
+                </div>
+                {pending.reason ? (
+                  <div className="text-xs text-muted-foreground">{pending.reason}</div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground w-20">{t("permissions.tool")}</span>
+                  <code className="font-mono bg-background/60 px-2 py-0.5 rounded" data-testid="perm-dialog-tool">
+                    {pending.tool}
+                  </code>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground w-20">{t("permissions.target")}</span>
+                  <code className="font-mono bg-background/60 px-2 py-0.5 rounded break-all" data-testid="perm-dialog-target">
+                    {pending.target || t("permissions.targetEmpty")}
+                  </code>
+                </div>
+              </>
+            )}
             <div className="text-xs text-muted-foreground">
               {t("permissions.workspace")} <code>{pending.workspaceId}</code> · {t("permissions.task")} <code>{pending.taskId}</code>
             </div>
           </div>
         )}
 
+
         <DialogFooter className="gap-2">
           <Button
             variant="destructive"
-            onClick={() => pending && onAnswer("deny")}
+            onClick={() => pending && (pending.kind === "approval" ? onApprovalAnswer?.("reject") : onAnswer("deny"))}
             data-testid="perm-dialog-deny"
           >
             <ShieldX className="h-4 w-4 mr-1" />
-            {t("permissions.deny")}
+            {pending?.kind === "approval" ? "Reject" : t("permissions.deny")}
           </Button>
           <Button
-            onClick={() => pending && onAnswer("allow")}
+            onClick={() => pending && (pending.kind === "approval" ? onApprovalAnswer?.("approve") : onAnswer("allow"))}
             data-testid="perm-dialog-allow"
           >
             <ShieldCheck className="h-4 w-4 mr-1" />
-            {t("permissions.allow")}
+            {pending?.kind === "approval" ? "Approve" : t("permissions.allow")}
           </Button>
         </DialogFooter>
       </DialogContent>

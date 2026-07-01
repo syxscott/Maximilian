@@ -13,4 +13,5 @@ export { Flow, type FlowResult, type FlowStatus, type StepFn, type StepContext, 
 export { StallDetector, type StallDetectorOptions, type ProgressSnapshot, type StallInfo, type ReplanStrategy } from "./stall-detection.js";
 export { EventStore, type StoredEvent, type EventReducer, workspaceStatusReducer } from "./event-sourcing.js";
 export { PluginManager, type Plugin, type HookName, type HookFn, type PluginContext } from "./plugin-system.js";
+export { createGeologicalEngineeringPlugin, type DomainToolCollection, type DomainToolSpec } from "./domain-plugins.js";
 export { PermissionAuditLog, type PermissionAuditEntry, type PermissionAuditQuery, type PermissionAuditDecision } from "./permission-audit.js";

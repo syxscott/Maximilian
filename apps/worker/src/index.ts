@@ -20,7 +20,7 @@ import { defaultAgentFactory } from "@max/agents";
 import { EvolutionFacade, evolutionAwareFactory } from "@max/evolution";
 import { createDb, closeDb, PgWorkspaceStore, getProviderConfigsFromDb } from "@max/database";
 import { FileWorkspaceStore } from "@max/workspace";
-import { createWorker, type WorkspaceProcessor } from "@max/queue";
+import { createWorker, acquireResourceLease, type WorkspaceProcessor } from "@max/queue";
 import { bootstrapModelRouting } from "@max/core";
 import type { Job } from "bullmq";
 import type { WorkspaceJobData } from "@max/queue";
@@ -140,8 +140,9 @@ async function main() {
     workspaceId: string,
     mode: "commander" | "dags",
     tenantId: string | undefined,
+    resourceBudget,
   ) => {
-    log.info({ workspaceId, mode, tenantId: tenantId ?? "dev" }, "processing workspace job");
+    log.info({ workspaceId, mode, tenantId: tenantId ?? "dev", resourceBudget }, "processing workspace job");
 
     // Load with the job's tenant scope. Without this, a dev-mode worker
     // would refuse to surface tenant-owned workspaces and execution
@@ -161,7 +162,13 @@ async function main() {
     // sink (above) can persist intermediate saves with the right scope.
     workspace.metadata = { ...(workspace.metadata ?? {}), tenantId: tenantId ?? null };
 
-    const final = await runtime.execute(workspace);
+    const lease = await acquireResourceLease(redisUrl, resourceBudget);
+    let final: Workspace;
+    try {
+      final = await runtime.execute(workspace);
+    } finally {
+      await lease.release();
+    }
 
     // Persist review if present. The runtime already wrote the final
     // state via the sink — we just need to attach the review verdict

@@ -91,7 +91,7 @@ import {
 } from "./routes/workspace.js";
 import { listProviders } from "./routes/providers.js";
 import { listProvidersRoute, healthRoute, readyRoute, setDefaultProviderRoute, setProviderModelRoute } from "./routes/system.js";
-import { SseReplayBuffer, parseLastEventId, encodeSseFrame } from "./lib/sse-replay.js";
+import { SseReplayBuffer, parseLastEventId, encodeSseFrame, type SseEvent } from "./lib/sse-replay.js";
 import {
   evolutionRoutes,
   listMetricsRoute,
@@ -140,6 +140,7 @@ import { obsRoutes, listObsExecutionsRoute, listObsEvolutionsRoute, lineageByRol
 import { usageRoutes, usageSummaryRoute, usageDailyRoute, usageLatencyRoute } from "./routes/usage.js";
 import { govRoutes, listPendingProposalsRoute, resolveProposalRoute } from "./routes/gov.js";
 import { permissionsRoutes, getPermissionsRoute, putPermissionsRoute, resolvePermissionRoute, testPermissionRoute, resetPermissionsRoute, answerPermissionRoute, auditPermissionsRoute } from "./routes/permissions.js";
+import { approvalRoutes, answerApprovalRoute, type ApprovalAnswerPort } from "./routes/approvals.js";
 import {
   createDb, closeDb,
   PgWorkspaceStore, PgExecutionStore,
@@ -147,7 +148,7 @@ import {
   PgInsightsStore, PgBlueprintStore,
   PgCapabilityStore, PgGovernanceConfigStore,
   PgPendingProposalStore, PgTelemetryStore,
-  PgGovernanceEngine,
+  PgGovernanceEngine, PgOrgMemory,
 } from "@max/database";
 import { sql } from "drizzle-orm";
 import { authMiddleware, requireRole } from "./auth/middleware.js";
@@ -280,6 +281,43 @@ const factory = defaultAgentFactory(getDefaultProvider, providerRegistry);
 
 const eventLog = new Map<string, RuntimeEvent[]>();
 const workspaceTouchedAt = new Map<string, number>();
+const sseReplay = new SseReplayBuffer(64);
+const sseSubscribers = new Map<string, Set<(event: SseEvent) => void>>();
+
+function recordRuntimeEvent(event: RuntimeEvent): void {
+  const arr = eventLog.get(event.workspaceId) ?? [];
+  arr.push(event);
+  eventLog.set(event.workspaceId, arr);
+  if (arr.length > 500) arr.splice(0, arr.length - 500);
+  workspaceTouchedAt.set(event.workspaceId, Date.now());
+  publishRuntimeEvent(event);
+}
+
+function publishRuntimeEvent(event: RuntimeEvent): void {
+  const frame = sseReplay.append(event.workspaceId, { type: "event", event });
+  const subs = sseSubscribers.get(event.workspaceId);
+  if (subs) {
+    for (const send of [...subs]) {
+      try { send(frame); } catch (err) { log.error({ err }, "sse subscriber error"); }
+    }
+  }
+  busEmit<RuntimeEvent>("workspace", event.workspaceId, event);
+}
+
+function subscribeWorkspaceStream(workspaceId: string, handler: (event: SseEvent) => void): () => void {
+  let subs = sseSubscribers.get(workspaceId);
+  if (!subs) {
+    subs = new Set();
+    sseSubscribers.set(workspaceId, subs);
+  }
+  subs.add(handler);
+  return () => {
+    const current = sseSubscribers.get(workspaceId);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) sseSubscribers.delete(workspaceId);
+  };
+}
 
 // Phase 10 — Telemetry collector (in-memory ring-buffer + optional JSONL persistence).
 const telemetryEnabled = config.TELEMETRY_ENABLED;
@@ -359,6 +397,23 @@ const runtime = new AgentRuntime(finalFactory, sink, {
   modelSelector: modelSelectorPort,
   modelRouter: modelRouterPort,
 });
+const dagsApprovalRuntimes = new Set<ApprovalAnswerPort>();
+const approvalRuntimeRegistry = {
+  register(runtimePort: ApprovalAnswerPort): () => void {
+    dagsApprovalRuntimes.add(runtimePort);
+    return () => dagsApprovalRuntimes.delete(runtimePort);
+  },
+};
+function resolveApprovalAcrossRuntimes(
+  requestId: string,
+  response: { decision: "approve" | "reject"; comment?: string },
+): boolean {
+  if (runtime.resolveApproval(requestId, response)) return true;
+  for (const runtimePort of [...dagsApprovalRuntimes]) {
+    if (runtimePort.resolveApproval(requestId, response)) return true;
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // Task Queue (BullMQ) — optional, gated by TASK_QUEUE_ENABLED + REDIS_URL
@@ -404,6 +459,8 @@ runtime.on(async (event) => {
       if (meta.usage.completionTokens) llmTokensTotal.labels(providerId, meta.model ?? defaultProvider.defaultModel, "output").inc(meta.usage.completionTokens);
     }
   }
+
+  recordRuntimeEvent(event);
 
   if (!evolution) return;
 
@@ -489,13 +546,6 @@ runtime.on(async (event) => {
     }
   }
 
-  // Also append to the in-memory event log for UI polling.
-  const arr = eventLog.get(event.workspaceId) ?? [];
-  arr.push(event);
-  eventLog.set(event.workspaceId, arr);
-  if (arr.length > 500) arr.splice(0, arr.length - 500);
-  // Track when each workspace last got an event so we can TTL-evict.
-  workspaceTouchedAt.set(event.workspaceId, Date.now());
 });
 
 // Periodic TTL eviction: drop workspaces idle for >1h, cap at 200 entries.
@@ -689,7 +739,12 @@ if (metaAgentEnabled) {
       return await applyHintToBlueprints(hint, blueprints, (bp) => blueprintStore.save(bp));
     },
   });
-  const orgMemory = new OrganizationMemory(metaRoot);
+  const orgMemory = (db ? new PgOrgMemory(db) : new OrganizationMemory(metaRoot)) as OrganizationMemory;
+  if (db && orgMemory instanceof PgOrgMemory) {
+    orgMemory.archiveByRetention({ retainDays: config.EVENT_RETENTION_DAYS })
+      .then((result) => log.info({ archived: result.archived }, "org event archive retention applied"))
+      .catch((err) => log.warn({ err }, "org event archive retention failed"));
+  }
   const governance = (db ? new PgGovernanceEngine(db) : new GovernanceEngine(metaRoot)) as GovernanceEngine;
   const simulation = new SimulationEngine();
   // Phase 8 — optional Digital Twin + Proposal Pipeline + Safe Rollout.
@@ -762,6 +817,11 @@ if (dagsMode) {
   log.info("DAGS_MODE: ON");
 
   executionStore = (db ? new PgExecutionStore(db) : new ExecutionStore(workspaceDir)) as ExecutionStore;
+  if (db && executionStore instanceof PgExecutionStore) {
+    executionStore.archiveByRetention({ retainDays: config.EVENT_RETENTION_DAYS })
+      .then((result) => log.info({ archived: result.archived }, "execution archive retention applied"))
+      .catch((err) => log.warn({ err }, "execution archive retention failed"));
+  }
   const insightsStore = (db ? new PgInsightsStore(db) : new InsightsStore(workspaceDir)) as InsightsStore;
   const failureAnalyzer = new FailurePatternAnalyzer(insightsStore);
   const planner = new EvolutionPlanner(workspaceDir);
@@ -975,6 +1035,8 @@ api.openapi(postChatRoute, requireAuthMiddleware(), postChat({
   orchestrator,
   telemetry,
   queue,
+  dagsApprovalRuntimes: approvalRuntimeRegistry,
+  onDagsRuntimeEvent: publishRuntimeEvent,
 }));
 
 api.openapi(listWorkspacesRoute, requireAuthMiddleware(), listWorkspaces(store));
@@ -1026,9 +1088,7 @@ function busSubscribe<T>(scope: BusScope, scopeKey: string, handler: (e: BusEven
 
 // Mirror runtime events into the bus so the SSE endpoint below can replay
 // and fan-out independently of the workspace-scoped stream route.
-runtime.on((event: RuntimeEvent) => {
-  busEmit<RuntimeEvent>("workspace", event.workspaceId, event);
-});
+// Runtime events are mirrored into the bus by publishRuntimeEvent().
 
 // SSE: replay-friendly bus stream. Query `?scope=workspace&key=<id>&replay=64`
 // to attach to a workspace; omit to listen globally.
@@ -1090,7 +1150,6 @@ api.get("/events/bus", requireAuthMiddleware(), async (c) => {
 // Workspace snapshots and the terminal `done` marker are ephemeral — they
 // are sent on every (re)connect but never buffered, so the buffer holds
 // only the high-signal runtime events the client might have missed.
-const sseReplay = new SseReplayBuffer(64);
 api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
   const id = c.req.param("id");
   // tenantId may be set by auth middleware; cast since AppEnv doesn't declare it
@@ -1110,12 +1169,8 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
 
   const stream = new ReadableStream({
     start(controller) {
-      // Buffered send: append to replay buffer + emit an `id:` frame so
-      // the browser tracks the last-seen id across reconnects. Use this
-      // for runtime events that the client must not lose.
-      const send = (data: Record<string, unknown>) => {
+      const sendFrame = (event: SseEvent) => {
         if (closed) return;
-        const event = sseReplay.append(id, data);
         try {
           controller.enqueue(encoder.encode(encodeSseFrame(event)));
         } catch { closed = true; }
@@ -1142,21 +1197,18 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
 
       // 2. Replay buffered runtime events the client hasn't seen yet.
       for (const event of sseReplay.since(id, lastEventId)) {
-        try { controller.enqueue(encoder.encode(encodeSseFrame(event))); } catch { closed = true; }
+        sendFrame(event);
       }
 
       // 3. Stream runtime events as they arrive.
-      unsub = runtime.on((event: RuntimeEvent) => {
-        if (event.workspaceId !== id) return;
-        send({ type: "event", event });
-        if (event.type === "task-complete" || event.type === "done") {
+      unsub = subscribeWorkspaceStream(id, (frame) => {
+        sendFrame(frame);
+        const runtimeEvent = (frame.data as { event?: RuntimeEvent }).event;
+        if (runtimeEvent?.type === "task-complete" || runtimeEvent?.type === "done") {
           store.loadWorkspace(id, tenantId).then((updated) => {
             if (updated) sendEphemeral({ type: "workspace", workspace: updated });
             if (updated?.status === "completed" || updated?.status === "failed") {
               sendEphemeral({ type: "done" });
-              // Unsubscribe BEFORE closing the controller — otherwise the
-              // runtime listener stays in `this.listeners` and leaks per
-              // SSE reconnect for the lifetime of the process.
               closed = true;
               try {
                 unsub?.();
@@ -1324,6 +1376,14 @@ api.openapi(resetPermissionsRoute, perm.reset);
 api.openapi(answerPermissionRoute, perm.answer);
 api.openapi(auditPermissionsRoute, perm.audit);
 
+const approvals = approvalRoutes({
+  runtime: {
+    resolveApproval: resolveApprovalAcrossRuntimes,
+  },
+});
+api.use("/approvals/*", requireAuthMiddleware());
+api.openapi(answerApprovalRoute, approvals.answer);
+
 // Mount the API routes under both /api/ and /api/v1/
 app.route("/api", api);
 app.route("/api/v1", api);
@@ -1357,6 +1417,7 @@ app.get("/api/openapi.json", (c) =>
         { name: "observability", description: "Execution traces, evolution timeline, lineage" },
         { name: "usage", description: "Token usage, cost, and latency aggregation" },
         { name: "governance", description: "HITL proposal approval/rejection" },
+        { name: "approvals", description: "Runtime human approval checkpoints" },
         { name: "permissions", description: "OpenCode-style tool permission configuration" },
         { name: "system", description: "Health, readiness, providers" },
       ],

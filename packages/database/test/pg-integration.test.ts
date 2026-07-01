@@ -32,7 +32,7 @@ d("Real PostgreSQL integration", () => {
     if (skipPg) return;
     const db = createDb(url!);
     // Run migrations — they should be idempotent on a fresh schema.
-    await runMigrations({ databaseUrl: url!, folder: "./drizzle" });
+    await runMigrations({ url: url!, migrationsFolder: "./drizzle" });
     store = new PgWorkspaceStore(db);
     // Clean any prior state from a previous test run.
     await db.delete(tenants);
@@ -50,8 +50,8 @@ d("Real PostgreSQL integration", () => {
     // field on the migrator's return value — drizzle's `migrate()` returns
     // void, so the count is a sentinel and a real second-run assertion needs
     // to query the migrations table directly.
-    await runMigrations({ databaseUrl: url!, folder: "./drizzle" });
-    const status = await getMigrationStatus({ databaseUrl: url!, folder: "./drizzle" });
+    await runMigrations({ url: url!, migrationsFolder: "./drizzle" });
+    const status = await getMigrationStatus({ url: url!, migrationsFolder: "./drizzle" });
     expect(status.pending).toEqual([]);
     expect(status.applied.length).toBeGreaterThan(0);
   });

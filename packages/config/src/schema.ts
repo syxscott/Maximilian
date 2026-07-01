@@ -93,6 +93,9 @@ export const ConfigSchema = z.object({
   // Meta-system
   META_ROOT_DIR: z.string().optional(),
 
+  // Event retention
+  EVENT_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+
   // Logging
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])

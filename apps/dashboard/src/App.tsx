@@ -105,6 +105,7 @@ export function App() {
             setEvents((prev) => [...prev, ev as RuntimeEvent]);
             if (ev.type === "permission-request") {
               setPendingPermission({
+                kind: "permission",
                 requestId: ev.requestId as string,
                 workspaceId: ev.workspaceId as string,
                 taskId: ev.taskId as string,
@@ -112,6 +113,20 @@ export function App() {
                 target: ev.target as string,
               });
             } else if (ev.type === "permission-resolved") {
+              setPendingPermission((p) =>
+                p && p.requestId === ev.requestId ? null : p,
+              );
+            } else if (ev.type === "approval-request") {
+              setPendingPermission({
+                kind: "approval",
+                requestId: ev.requestId as string,
+                workspaceId: ev.workspaceId as string,
+                taskId: ev.taskId as string,
+                prompt: ev.prompt as string,
+                reason: ev.reason as string | undefined,
+                requireComment: ev.requireComment as boolean | undefined,
+              });
+            } else if (ev.type === "approval-resolved") {
               setPendingPermission((p) =>
                 p && p.requestId === ev.requestId ? null : p,
               );
@@ -166,7 +181,7 @@ export function App() {
 
   const answerPermission = useCallback(
     async (decision: "allow" | "deny") => {
-      if (!pendingPermission) return;
+      if (!pendingPermission || pendingPermission.kind !== "permission") return;
       const id = pendingPermission.requestId;
       try {
         await permissionsApi.answer(id, decision);
@@ -182,10 +197,25 @@ export function App() {
     [pendingPermission],
   );
 
+  const answerApproval = useCallback(
+    async (decision: "approve" | "reject") => {
+      if (!pendingPermission || pendingPermission.kind !== "approval") return;
+      const id = pendingPermission.requestId;
+      try {
+        await permissionsApi.answerApproval(id, decision);
+      } catch (err) {
+        console.error("[approvals] answer failed", err);
+      } finally {
+        setPendingPermission(null);
+      }
+    },
+    [pendingPermission],
+  );
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Toaster />
-      <PermissionDialog pending={pendingPermission} onAnswer={answerPermission} />
+      <PermissionDialog pending={pendingPermission} onAnswer={answerPermission} onApprovalAnswer={answerApproval} />
 
       {/* Header */}
       <header className="border-b border-border px-6 py-3 flex items-center justify-between bg-muted/30">

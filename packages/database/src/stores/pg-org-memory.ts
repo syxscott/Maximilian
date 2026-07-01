@@ -1,7 +1,7 @@
-import { eq, desc } from "drizzle-orm";
+import { and, desc, eq, isNull, lt } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { orgEvents } from "../schema.js";
+import { orgEvents, orgEventsArchive } from "../schema.js";
 
 type OrgEventType =
   | "capability_proposed" | "capability_promoted" | "capability_deprecated" | "capability_retired"
@@ -15,6 +15,20 @@ interface OrganizationEvent {
   subject: string;
   payload: Record<string, unknown>;
   at: string;
+  archivedAt?: string;
+  archiveBucket?: string;
+}
+
+interface OrgEventListOptions {
+  includeArchived?: boolean;
+}
+
+interface ArchiveResult {
+  archived: number;
+}
+
+interface RetentionOptions {
+  retainDays: number;
 }
 
 /**
@@ -41,42 +55,98 @@ export class PgOrgMemory {
     return { id, type, subject, payload, at: now.toISOString() };
   }
 
-  async listAll(): Promise<OrganizationEvent[]> {
+  async listAll(options: OrgEventListOptions = {}): Promise<OrganizationEvent[]> {
     const rows = await this.db
       .select()
       .from(orgEvents)
+      .where(isNull(orgEvents.archivedAt))
       .orderBy(desc(orgEvents.at));
-    return rows.map(rowToEvent);
+    const out = rows.map(rowToEvent);
+    if (!options.includeArchived) return out;
+
+    const archived = await this.db
+      .select()
+      .from(orgEventsArchive)
+      .orderBy(desc(orgEventsArchive.at));
+    return [...out, ...archived.map(rowToEvent)].sort((a, b) => b.at.localeCompare(a.at));
   }
 
-  async timeline(subject?: string): Promise<OrganizationEvent[]> {
+  async timeline(subject?: string, options: OrgEventListOptions = {}): Promise<OrganizationEvent[]> {
     if (subject) {
       const rows = await this.db
         .select()
         .from(orgEvents)
-        .where(eq(orgEvents.subject, subject))
+        .where(and(eq(orgEvents.subject, subject), isNull(orgEvents.archivedAt)))
         .orderBy(desc(orgEvents.at));
-      return rows.map(rowToEvent);
+      const out = rows.map(rowToEvent);
+      if (!options.includeArchived) return out;
+
+      const archived = await this.db
+        .select()
+        .from(orgEventsArchive)
+        .where(eq(orgEventsArchive.subject, subject))
+        .orderBy(desc(orgEventsArchive.at));
+      return [...out, ...archived.map(rowToEvent)].sort((a, b) => b.at.localeCompare(a.at));
     }
-    return this.listAll();
+    return this.listAll(options);
   }
 
-  async countByType(): Promise<Record<string, number>> {
-    const rows = await this.db.select().from(orgEvents);
+  async countByType(options: OrgEventListOptions = {}): Promise<Record<string, number>> {
+    const rows = await this.listAll(options);
     const counts: Record<string, number> = {};
     for (const row of rows) {
       counts[row.type] = (counts[row.type] ?? 0) + 1;
     }
     return counts;
   }
+
+  async archiveOlderThan(cutoff: Date): Promise<ArchiveResult> {
+    const rows = await this.db
+      .select()
+      .from(orgEvents)
+      .where(and(lt(orgEvents.at, cutoff), isNull(orgEvents.archivedAt)));
+    if (rows.length === 0) return { archived: 0 };
+
+    const archivedAt = new Date();
+    await this.db.insert(orgEventsArchive).values(rows.map((row) => ({
+      id: row.id,
+      tenantId: row.tenantId,
+      type: row.type,
+      subject: row.subject,
+      payload: row.payload,
+      at: row.at,
+      archivedAt,
+      archiveBucket: bucketFor(row.at),
+    }))).onConflictDoNothing();
+
+    await this.db
+      .delete(orgEvents)
+      .where(and(lt(orgEvents.at, cutoff), isNull(orgEvents.archivedAt)));
+
+    return { archived: rows.length };
+  }
+
+  async archiveByRetention(options: RetentionOptions): Promise<ArchiveResult> {
+    return this.archiveOlderThan(cutoffForRetention(options.retainDays));
+  }
 }
 
-function rowToEvent(row: typeof orgEvents.$inferSelect): OrganizationEvent {
+function rowToEvent(row: typeof orgEvents.$inferSelect | typeof orgEventsArchive.$inferSelect): OrganizationEvent {
   return {
     id: row.id,
     type: row.type as OrgEventType,
     subject: row.subject,
     payload: (row.payload as Record<string, unknown>) ?? {},
     at: row.at.toISOString(),
+    archivedAt: row.archivedAt?.toISOString(),
+    archiveBucket: "archiveBucket" in row ? row.archiveBucket : undefined,
   };
+}
+
+function cutoffForRetention(retainDays: number): Date {
+  return new Date(Date.now() - retainDays * 24 * 60 * 60 * 1000);
+}
+
+function bucketFor(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }

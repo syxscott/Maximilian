@@ -36,7 +36,7 @@ d("API + PostgreSQL smoke (DATABASE_URL required)", () => {
   beforeAll(async () => {
     if (skipPg) return;
     db = createDb(url!);
-    await runMigrations({ databaseUrl: url!, folder: "../../packages/database/drizzle" });
+    await runMigrations({ url: url!, migrationsFolder: "../../packages/database/drizzle" });
     store = new PgWorkspaceStore(db);
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "max-pg-api-"));
     // Clean any prior state so the test is hermetic against reruns.

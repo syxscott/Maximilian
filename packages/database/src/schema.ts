@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, numeric, boolean, uniqueIndex, real } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, integer, numeric, boolean, uniqueIndex, real, index } from "drizzle-orm/pg-core";
 
 // ── Tenants ─────────────────────────────────────────────────────────────────
 
@@ -70,36 +70,101 @@ export const metrics = pgTable("metrics", {
 
 // ── Executions ──────────────────────────────────────────────────────────────
 
-export const executions = pgTable("executions", {
-  id: text("id").primaryKey(),
-  tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
-  taskId: text("task_id").notNull(),
-  workspaceId: text("workspace_id").notNull(),
-  agentRole: text("agent_role").notNull(),
-  blueprintId: text("blueprint_id"),
-  blueprintVersion: text("blueprint_version"),
-  graphId: text("graph_id"),
-  modelAssignment: jsonb("model_assignment"),
-  artifacts: jsonb("artifacts").default([]).notNull(),
-  review: jsonb("review"),
-  userFeedback: jsonb("user_feedback").default([]).notNull(),
-  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  durationMs: numeric("duration_ms"),
-  status: text("status").default("completed").notNull(), // pending | running | completed | failed
-  error: text("error"),
-});
+export const executions = pgTable(
+  "executions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+    taskId: text("task_id").notNull(),
+    workspaceId: text("workspace_id").notNull(),
+    agentRole: text("agent_role").notNull(),
+    blueprintId: text("blueprint_id"),
+    blueprintVersion: text("blueprint_version"),
+    graphId: text("graph_id"),
+    modelAssignment: jsonb("model_assignment"),
+    artifacts: jsonb("artifacts").default([]).notNull(),
+    review: jsonb("review"),
+    userFeedback: jsonb("user_feedback").default([]).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    durationMs: numeric("duration_ms"),
+    status: text("status").default("completed").notNull(), // pending | running | completed | failed
+    error: text("error"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (table) => ({
+    executionsWorkspaceHotIdx: index("idx_executions_workspace_hot").on(table.workspaceId, table.archivedAt),
+    executionsRoleHotIdx: index("idx_executions_role_hot").on(table.agentRole, table.archivedAt),
+    executionsBlueprintHotIdx: index("idx_executions_blueprint_hot").on(table.blueprintId, table.archivedAt),
+  }),
+);
+
+export const executionsArchive = pgTable(
+  "executions_archive",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+    taskId: text("task_id").notNull(),
+    workspaceId: text("workspace_id").notNull(),
+    agentRole: text("agent_role").notNull(),
+    blueprintId: text("blueprint_id"),
+    blueprintVersion: text("blueprint_version"),
+    graphId: text("graph_id"),
+    modelAssignment: jsonb("model_assignment"),
+    artifacts: jsonb("artifacts").default([]).notNull(),
+    review: jsonb("review"),
+    userFeedback: jsonb("user_feedback").default([]).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    durationMs: numeric("duration_ms"),
+    status: text("status").default("completed").notNull(),
+    error: text("error"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }).notNull(),
+    archiveBucket: text("archive_bucket").notNull(),
+  },
+  (table) => ({
+    executionsArchiveWorkspaceIdx: index("idx_executions_archive_workspace").on(table.workspaceId, table.archiveBucket),
+    executionsArchiveRoleIdx: index("idx_executions_archive_role").on(table.agentRole, table.archiveBucket),
+    executionsArchiveBlueprintIdx: index("idx_executions_archive_blueprint").on(table.blueprintId, table.archiveBucket),
+  }),
+);
 
 // ── Organization Events ─────────────────────────────────────────────────────
 
-export const orgEvents = pgTable("org_events", {
-  id: text("id").primaryKey(),
-  tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
-  type: text("type").notNull(),
-  subject: text("subject").notNull(),
-  payload: jsonb("payload").default({}).notNull(),
-  at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const orgEvents = pgTable(
+  "org_events",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    subject: text("subject").notNull(),
+    payload: jsonb("payload").default({}).notNull(),
+    at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (table) => ({
+    orgEventsSubjectHotIdx: index("idx_org_events_subject_hot").on(table.subject, table.archivedAt),
+    orgEventsTypeHotIdx: index("idx_org_events_type_hot").on(table.type, table.archivedAt),
+  }),
+);
+
+export const orgEventsArchive = pgTable(
+  "org_events_archive",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    subject: text("subject").notNull(),
+    payload: jsonb("payload").default({}).notNull(),
+    at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }).notNull(),
+    archiveBucket: text("archive_bucket").notNull(),
+  },
+  (table) => ({
+    orgEventsArchiveSubjectIdx: index("idx_org_events_archive_subject").on(table.subject, table.archiveBucket),
+    orgEventsArchiveTypeIdx: index("idx_org_events_archive_type").on(table.type, table.archiveBucket),
+  }),
+);
 
 // ── Users ───────────────────────────────────────────────────────────────────
 
