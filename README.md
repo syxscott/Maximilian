@@ -1,47 +1,18 @@
 <div align="center">
 
-<!-- ============== ANIMATED HERO ============== -->
-<br>
+<!-- ============== ASCII HERO (original style) ============== -->
 
-<svg width="100%" height="260" viewBox="0 0 900 260" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#7c3aed">
-        <animate attributeName="stop-color" values="#7c3aed;#ec4899;#06b6d4;#7c3aed" dur="8s" repeatCount="indefinite"/>
-      </stop>
-      <stop offset="50%" stop-color="#ec4899">
-        <animate attributeName="stop-color" values="#ec4899;#06b6d4;#7c3aed;#ec4899" dur="8s" repeatCount="indefinite"/>
-      </stop>
-      <stop offset="100%" stop-color="#06b6d4">
-        <animate attributeName="stop-color" values="#06b6d4;#7c3aed;#ec4899;#06b6d4" dur="8s" repeatCount="indefinite"/>
-      </stop>
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
-  <!-- ASCII art text -->
-  <text x="450" y="60" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">███╗   ███╗ █████╗ ██╗  ██╗██╗███╗   ███╗██╗██╗     ██╗ █████╗ ███╗   ██╗</text>
-  <text x="450" y="95" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">████╗ ████║██╔══██╗╚██╗██╔╝██║████╗ ████║██║██║     ██║██╔══██╗████╗  ██║</text>
-  <text x="450" y="130" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">██╔████╔██║███████║ ╚███╔╝ ██║██╔████╔██║██║██║     ██║███████║██╔██╗ ██║</text>
-  <text x="450" y="165" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">██║╚██╔╝██║██╔══██║ ██╔██╗ ██║██║╚██╔╝██║██║██║     ██║██╔══██║██║╚██╗██║</text>
-  <text x="450" y="200" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">██║ ╚═╝ ██║██║  ██║██╔╝ ██╗██║██║ ╚═╝ ██║██║███████╗██║██║  ██║██║ ╚████║</text>
-  <text x="450" y="232" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝</text>
-</svg>
+```
+███╗   ███╗ █████╗ ██╗  ██╗██╗███╗   ███╗██╗██╗     ██╗ █████╗ ███╗   ██╗
+████╗ ████║██╔══██╗╚██╗██╔╝██║████╗ ████║██║██║     ██║██╔══██╗████╗  ██║
+██╔████╔██║███████║ ╚███╔╝ ██║██╔████╔██║██║██║     ██║███████║██╔██╗ ██║
+██║╚██╔╝██║██╔══██║ ██╔██╗ ██║██║╚██╔╝██║██║██║     ██║██╔══██║██║╚██╗██║
+██║ ╚═╝ ██║██║  ██║██╔╝ ██╗██║██║ ╚═╝ ██║██║███████╗██║██║  ██║██║ ╚████║
+╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
+```
 
 <br>
 
-<!-- ============== SUBTITLE WITH PULSING DOT ============== -->
 <h2>
   <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=24&duration=3000&pause=1000&color=7C3AED&center=true&vCenter=true&multiline=true&repeat=false&width=800&height=80&lines=%E4%B8%80%E4%B8%AA%E4%BC%9A%E8%87%AA%E6%88%91%E8%BF%9B%E5%8C%96%E7%9A%84%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F;A%20self-evolving%20multi-agent%20OS" alt="Typing SVG" />
 </h2>
@@ -581,8 +552,6 @@ flowchart TB
 
 ## 📁 项目结构 / Project Structure
 
-<div align="center">
-
 ```
 Maximilian/
 ├── 🎯 apps/
@@ -627,8 +596,6 @@ Maximilian/
 ├── SECURITY.md         🔒 Vulnerability disclosure
 └── README.md           📖 You are here
 ```
-
-</div>
 
 ---
 
