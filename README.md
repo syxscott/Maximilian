@@ -26,29 +26,17 @@
   </defs>
   <!-- ASCII art text -->
   <text x="450" y="60" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
-    ███╗   ███╗ █████╗ ██╗  ██╗██╗███╗   ███╗██╗██╗     ██╗ █████╗ ███╗   ██╗
-  </text>
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">███╗   ███╗ █████╗ ██╗  ██╗██╗███╗   ███╗██╗██╗     ██╗ █████╗ ███╗   ██╗</text>
   <text x="450" y="95" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
-    ████╗ ████║██╔══██╗╚██╗██╔╝██║████╗ ████║██║██║     ██║██╔══██╗████╗  ██║
-  </text>
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">████╗ ████║██╔══██╗╚██╗██╔╝██║████╗ ████║██║██║     ██║██╔══██╗████╗  ██║</text>
   <text x="450" y="130" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
-    ██╔████╔██║███████║ ╚███╔╝ ██║██╔████╔██║██║██║     ██║███████║██╔██╗ ██║
-  </text>
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">██╔████╔██║███████║ ╚███╔╝ ██║██╔████╔██║██║██║     ██║███████║██╔██╗ ██║</text>
   <text x="450" y="165" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
-    ██║╚██╔╝██║██╔══██║ ██╔██╗ ██║██║╚██╔╝██║██║██║     ██║██╔══██║██║╚██╗██║
-  </text>
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">██║╚██╔╝██║██╔══██║ ██╔██╗ ██║██║╚██╔╝██║██║██║     ██║██╔══██║██║╚██╗██║</text>
   <text x="450" y="200" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
-    ██║ ╚═╝ ██║██║  ██║██╔╝ ██╗██║██║ ╚═╝ ██║██║███████╗██║██║  ██║██║ ╚████║
-  </text>
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">██║ ╚═╝ ██║██║  ██║██╔╝ ██╗██║██║ ╚═╝ ██║██║███████╗██║██║  ██║██║ ╚████║</text>
   <text x="450" y="232" font-family="monospace" font-size="28" font-weight="900"
-        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
-    ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
-  </text>
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)" xml:space="preserve">╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝</text>
 </svg>
 
 <br>
