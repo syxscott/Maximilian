@@ -1,51 +1,126 @@
 <div align="center">
 
-# ⚡ MAXIMILIAN
+<!-- ============== ANIMATED HERO ============== -->
+<br>
 
-### Self-Evolving Multi-Agent OS
-
-![Node](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=node.js&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.5%2B-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-9-F69220?style=flat-square&logo=pnpm&logoColor=white)
-![License](https://img.shields.io/badge/License-TBD-lightgrey?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-~970%20✓-4c1?style=flat-square)
-![Packages](https://img.shields.io/badge/Packages-21%20%2B%204%20apps-7B1FA2?style=flat-square)
+<svg width="100%" height="260" viewBox="0 0 900 260" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed">
+        <animate attributeName="stop-color" values="#7c3aed;#ec4899;#06b6d4;#7c3aed" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="50%" stop-color="#ec4899">
+        <animate attributeName="stop-color" values="#ec4899;#06b6d4;#7c3aed;#ec4899" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#06b6d4">
+        <animate attributeName="stop-color" values="#06b6d4;#7c3aed;#ec4899;#06b6d4" dur="8s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- ASCII art text -->
+  <text x="450" y="60" font-family="monospace" font-size="28" font-weight="900"
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
+    ███╗   ███╗ █████╗ ██╗  ██╗██╗███╗   ███╗██╗██╗     ██╗ █████╗ ███╗   ██╗
+  </text>
+  <text x="450" y="95" font-family="monospace" font-size="28" font-weight="900"
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
+    ████╗ ████║██╔══██╗╚██╗██╔╝██║████╗ ████║██║██║     ██║██╔══██╗████╗  ██║
+  </text>
+  <text x="450" y="130" font-family="monospace" font-size="28" font-weight="900"
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
+    ██╔████╔██║███████║ ╚███╔╝ ██║██╔████╔██║██║██║     ██║███████║██╔██╗ ██║
+  </text>
+  <text x="450" y="165" font-family="monospace" font-size="28" font-weight="900"
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
+    ██║╚██╔╝██║██╔══██║ ██╔██╗ ██║██║╚██╔╝██║██║██║     ██║██╔══██║██║╚██╗██║
+  </text>
+  <text x="450" y="200" font-family="monospace" font-size="28" font-weight="900"
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
+    ██║ ╚═╝ ██║██║  ██║██╔╝ ██╗██║██║ ╚═╝ ██║██║███████╗██║██║  ██║██║ ╚████║
+  </text>
+  <text x="450" y="232" font-family="monospace" font-size="28" font-weight="900"
+        text-anchor="middle" fill="url(#heroGrad)" filter="url(#glow)">
+    ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
+  </text>
+</svg>
 
 <br>
 
+<!-- ============== SUBTITLE WITH PULSING DOT ============== -->
+<h2>
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=24&duration=3000&pause=1000&color=7C3AED&center=true&vCenter=true&multiline=true&repeat=false&width=800&height=80&lines=%E4%B8%80%E4%B8%AA%E4%BC%9A%E8%87%AA%E6%88%91%E8%BF%9B%E5%8C%96%E7%9A%84%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F;A%20self-evolving%20multi-agent%20OS" alt="Typing SVG" />
+</h2>
+
+<!-- ============== ANIMATED BADGES ============== -->
+<p>
+  <img src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node"/>
+  <img src="https://img.shields.io/badge/TypeScript-5.5%2B-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"/>
+  <img src="https://img.shields.io/badge/pnpm-9-F69220?style=for-the-badge&logo=pnpm&logoColor=white" alt="pnpm"/>
+  <br>
+  <img src="https://img.shields.io/badge/License-TBD-lightgrey?style=for-the-badge" alt="License"/>
+  <img src="https://img.shields.io/badge/Tests-~970%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Packages-21%20%2B%204%20apps-7B1FA2?style=for-the-badge&logo=npm&logoColor=white" alt="Packages"/>
+  <img src="https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
+</p>
+
+<!-- ============== STATUS PILLS ============== -->
+<p>
+  <a href="#-5-分钟跑起来-quick-start-in-5-minutes"><img src="https://img.shields.io/badge/🚀-Quick_Start-7c3aed?style=flat-square" alt="Quick Start"/></a>
+  <a href="#-架构-architecture"><img src="https://img.shields.io/badge/🏗️-Architecture-ec4899?style=flat-square" alt="Architecture"/></a>
+  <a href="#-部署-deployment"><img src="https://img.shields.io/badge/🐳-Deploy-06b6d4?style=flat-square" alt="Deploy"/></a>
+  <a href="#-文档-documentation"><img src="https://img.shields.io/badge/📚-Docs-22c55e?style=flat-square" alt="Docs"/></a>
+</p>
+
+<br>
+
+<!-- ============== TYPING EFFECT TAGLINE ============== -->
+
+```diff
+! 用户提需求 ─→ Commander 拆任务 ─→ Agent 团队并发执行 ─→ Reviewer 打分 ─→ Meta-system 进化
+! User requests ─→ Commander decomposes ─→ Agent team parallel ─→ Reviewer scores ─→ Meta-system evolves
 ```
-███╗   ███╗ █████╗ ██╗  ██╗██╗███╗   ███╗██╗██╗     ██╗ █████╗ ███╗   ██╗
-████╗ ████║██╔══██╗╚██╗██╔╝██║████╗ ████║██║██║     ██║██╔══██╗████╗  ██║
-██╔████╔██║███████║ ╚███╔╝ ██║██╔████╔██║██║██║     ██║███████║██╔██╗ ██║
-██║╚██╔╝██║██╔══██║ ██╔██╗ ██║██║╚██╔╝██║██║██║     ██║██╔══██║██║╚██╗██║
-██║ ╚═╝ ██║██║  ██║██╔╝ ██╗██║██║ ╚═╝ ██║██║███████╗██║██║  ██║██║ ╚████║
-╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
-```
-
-<br>
-
-**🇨🇳 一个会自我进化的多智能体操作系统 — 用户提需求,Commander 拆任务,Agent 团队并发执行,Reviewer 打分,Meta-system 观察并进化。**
-<br>
-**🇺🇸 A self-evolving multi-agent OS — user requests, Commander decomposes, agent team executes in parallel, Reviewer scores, meta-system observes and evolves.**
 
 </div>
 
 ---
 
+<!-- ============== WAVE DIVIDER ============== -->
+<p align="center">
+  <svg width="100%" height="60" viewBox="0 0 1200 60" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+    <path d="M0,30 Q300,5 600,30 T1200,30 L1200,60 L0,60 Z" fill="url(#heroGrad)" opacity="0.4">
+      <animate attributeName="d" dur="6s" repeatCount="indefinite"
+        values="M0,30 Q300,5 600,30 T1200,30 L1200,60 L0,60 Z;
+                M0,30 Q300,55 600,30 T1200,30 L1200,60 L0,60 Z;
+                M0,30 Q300,5 600,30 T1200,30 L1200,60 L0,60 Z"/>
+    </path>
+  </svg>
+</p>
+
 ## 📑 目录 / Table of Contents
 
-- [🌟 这是什么? / What is this?](#-这是什么-what-is-this)
-- [✨ 核心特性 / Key Features](#-核心特性-key-features)
-- [🚀 5 分钟跑起来 / Quick Start in 5 Minutes](#-5-分钟跑起来-quick-start-in-5-minutes)
-- [🏗️ 架构 / Architecture](#-架构-architecture)
-- [🧰 技术栈 / Tech Stack](#-技术栈-tech-stack)
-- [📁 项目结构 / Project Structure](#-项目结构-project-structure)
-- [🔌 API 一览 / API at a Glance](#-api-一览-api-at-a-glance)
-- [🔐 认证模式 / Auth Modes](#-认证模式-auth-modes)
-- [🌍 平台支持 / Platform Support](#-平台支持-platform-support)
-- [📦 部署 / Deployment](#-部署-deployment)
-- [📚 文档 / Documentation](#-文档-documentation)
-- [🤝 贡献与许可 / Contributing & License](#-贡献与许可-contributing--license)
+| 🇨🇳 中文 | 🇺🇸 English |
+|---|---|
+| 🌟 [这是什么?](#-这是什么-what-is-this) | [What is this?](#-这是什么-what-is-this) |
+| 📊 [项目数据](#-项目数据-by-the-numbers) | [By the numbers](#-项目数据-by-the-numbers) |
+| ✨ [核心特性](#-核心特性-key-features) | [Key Features](#-核心特性-key-features) |
+| 🚀 [5 分钟跑起来](#-5-分钟跑起来-quick-start-in-5-minutes) | [Quick Start in 5 Minutes](#-5-分钟跑起来-quick-start-in-5-minutes) |
+| 🏗️ [架构](#-架构-architecture) | [Architecture](#-架构-architecture) |
+| 🧰 [技术栈](#-技术栈-tech-stack) | [Tech Stack](#-技术栈-tech-stack) |
+| 📁 [项目结构](#-项目结构-project-structure) | [Project Structure](#-项目结构-project-structure) |
+| 🔌 [API 一览](#-api-一览-api-at-a-glance) | [API at a Glance](#-api-一览-api-at-a-glance) |
+| 🔐 [认证模式](#-认证模式-auth-modes) | [Auth Modes](#-认证模式-auth-modes) |
+| 🌍 [平台支持](#-平台支持-platform-support) | [Platform Support](#-平台支持-platform-support) |
+| 📦 [部署](#-部署-deployment) | [Deployment](#-部署-deployment) |
+| 🧪 [跑测试](#-跑测试-running-tests) | [Running Tests](#-跑测试-running-tests) |
+| 📚 [文档](#-文档-documentation) | [Documentation](#-文档-documentation) |
+| 🤝 [贡献与许可](#-贡献与许可-contributing--license) | [Contributing & License](#-贡献与许可-contributing--license) |
 
 ---
 
@@ -54,11 +129,12 @@
 <div align="center">
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#7c3aed','primaryTextColor':'#fff','primaryBorderColor':'#7c3aed','lineColor':'#ec4899','secondaryColor':'#1f2937','tertiaryColor':'#06b6d4'}}}%%
 flowchart LR
     A[👤 User<br/>用户需求] --> B[🧭 Commander<br/>任务拆解]
-    B --> C[⚡ Agent Team<br/>frontend · backend · data · review]
+    B --> C[⚡ Agent Team<br/>frontend · backend<br/>data · review]
     C --> D[📊 Reviewer<br/>0-10 评分]
-    D --> E[📦 Workspace<br/>PostgreSQL / 文件]
+    D --> E[📦 Workspace<br/>PostgreSQL + 文件]
     E -.meta cycle.-> F[🔬 Discovery<br/>发现新能力]
     F --> G[👶 Birth<br/>出生新 agent]
     F --> H[⚰️ Retire<br/>淘汰弱者]
@@ -66,13 +142,129 @@ flowchart LR
     H --> I
     I --> J[🚀 Safe Rollout<br/>shadow · canary · full]
     J --> C
+
+    style A fill:#7c3aed,stroke:#fff,stroke-width:2px,color:#fff
+    style B fill:#ec4899,stroke:#fff,stroke-width:2px,color:#fff
+    style C fill:#06b6d4,stroke:#fff,stroke-width:2px,color:#fff
+    style D fill:#22c55e,stroke:#fff,stroke-width:2px,color:#fff
+    style E fill:#f59e0b,stroke:#fff,stroke-width:2px,color:#000
+    style F fill:#8b5cf6,stroke:#fff,stroke-width:2px,color:#fff
+    style G fill:#10b981,stroke:#fff,stroke-width:2px,color:#fff
+    style H fill:#ef4444,stroke:#fff,stroke-width:2px,color:#fff
+    style I fill:#3b82f6,stroke:#fff,stroke-width:2px,color:#fff
+    style J fill:#14b8a6,stroke:#fff,stroke-width:2px,color:#fff
 ```
 
 </div>
 
-| 🇨🇳 中文 | 🇺🇸 English |
-|---|---|
-| 用户输入一个需求,比如"做一个计算器 web app"。**Commander** 把需求拆成多个子任务,**Agent 团队** (前端 / 后端 / 数据 / 审查) 并发执行。**Reviewer** 给结果打分(0-10)。完成后 **Meta-system** 在后台观察,主动发现新能力、出生新 agent、淘汰表现差的,需要时叫人审批(HITL)。 | A user submits a request like "build a calculator web app." The **Commander** decomposes it into tasks. A **team of agents** (frontend, backend, data, review) executes them concurrently. The **Reviewer** scores the output (0-10). Afterward, the **Meta-system** observes in the background — discovering new capabilities, birthing new agents, retiring underperformers, and asking for human approval (HITL) when stakes are high. |
+<table>
+<tr>
+<th>🇨🇳 中文</th>
+<th>🇺🇸 English</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+用户输入一个需求,比如"做一个计算器 web app"。**Commander** 把需求拆成多个子任务,**Agent 团队** (前端 / 后端 / 数据 / 审查) 并发执行。**Reviewer** 给结果打分(0-10)。
+
+完成后 **Meta-system** 在后台观察,主动发现新能力、出生新 agent、淘汰表现差的,需要时叫人审批(HITL)。
+
+</td>
+<td width="50%" valign="top">
+
+A user submits a request like "build a calculator web app." The **Commander** decomposes it into tasks. A **team of agents** (frontend, backend, data, review) executes them concurrently. The **Reviewer** scores the output (0-10).
+
+Afterward, the **Meta-system** observes in the background — discovering new capabilities, birthing new agents, retiring underperformers, and asking for human approval (HITL) when stakes are high.
+
+</td>
+</tr>
+</table>
+
+---
+
+## 📊 项目数据 / By the numbers
+
+<div align="center">
+
+<table>
+<tr>
+<td align="center" width="14%">
+<svg width="100" height="100" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#7c3aed" stroke-width="6"
+          stroke-dasharray="283" stroke-dashoffset="14" transform="rotate(-90 50 50)" stroke-linecap="round"/>
+  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">970</text>
+</svg>
+<br><b>~970 Tests</b>
+<br><sub>✅ 全部通过 / all green</sub>
+</td>
+<td align="center" width="14%">
+<svg width="100" height="100" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#ec4899" stroke-width="6"
+          stroke-dasharray="283" stroke-dashoffset="0" transform="rotate(-90 50 50)" stroke-linecap="round"/>
+  <text x="50" y="48" text-anchor="middle" font-size="20" font-weight="900" fill="#ec4899">21</text>
+  <text x="50" y="64" text-anchor="middle" font-size="9" fill="#ec4899">+4 apps</text>
+</svg>
+<br><b>21 + 4</b>
+<br><sub>📦 包 + 应用 / packages + apps</sub>
+</td>
+<td align="center" width="14%">
+<svg width="100" height="100" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#06b6d4" stroke-width="6"
+          stroke-dasharray="283" stroke-dashoffset="28" transform="rotate(-90 50 50)" stroke-linecap="round"/>
+  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#06b6d4">86</text>
+</svg>
+<br><b>86 Routes</b>
+<br><sub>🔌 HTTP API 路由</sub>
+</td>
+<td align="center" width="14%">
+<svg width="100" height="100" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#22c55e" stroke-width="6"
+          stroke-dasharray="283" stroke-dashoffset="85" transform="rotate(-90 50 50)" stroke-linecap="round"/>
+  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#22c55e">6</text>
+</svg>
+<br><b>6 Phases</b>
+<br><sub>📜 完整开发阶段</sub>
+</td>
+<td align="center" width="14%">
+<svg width="100" height="100" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#f59e0b" stroke-width="6"
+          stroke-dasharray="283" stroke-dashoffset="0" transform="rotate(-90 50 50)" stroke-linecap="round"/>
+  <text x="50" y="48" text-anchor="middle" font-size="20" font-weight="900" fill="#f59e0b">3</text>
+  <text x="50" y="64" text-anchor="middle" font-size="9" fill="#f59e0b">DAGS</text>
+</svg>
+<br><b>DAGS Mode</b>
+<br><sub>🤖 动态组队</sub>
+</td>
+<td align="center" width="14%">
+<svg width="100" height="100" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#3b82f6" stroke-width="6"
+          stroke-dasharray="283" stroke-dashoffset="0" transform="rotate(-90 50 50)" stroke-linecap="round"/>
+  <text x="50" y="48" text-anchor="middle" font-size="18" font-weight="900" fill="#3b82f6">PG+FS</text>
+<text x="50" y="64" text-anchor="middle" font-size="9" fill="#3b82f6">dual</text>
+</svg>
+<br><b>PG + FS</b>
+<br><sub>🗄️ 双模存储</sub>
+</td>
+<td align="center" width="14%">
+<svg width="100" height="100" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#10b981" stroke-width="6"
+          stroke-dasharray="283" stroke-dashoffset="0" transform="rotate(-90 50 50)" stroke-linecap="round"/>
+  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#10b981">7</text>
+</svg>
+<br><b>7 Flags</b>
+<br><sub>🎛️ 可配置特性</sub>
+</td>
+</tr>
+</table>
+
+</div>
 
 ---
 
@@ -80,34 +272,109 @@ flowchart LR
 
 <div align="center">
 
-| 图标 | 特性 | Icon | Feature |
-|:---:|---|:---:|---|
-| 🧭 | **Commander** — LLM 驱动的需求拆解 | 🧭 | **Commander** — LLM-driven request decomposition |
-| ⚡ | **并发执行** — 多任务并行调度,semaphore 控制 LLM 频率 | ⚡ | **Concurrent execution** — parallel task scheduling with LLM-call semaphore |
-| 🤖 | **DAGS 动态组队** — 根据任务自动选 agent 组合 | 🤖 | **DAGS team composition** — dynamic agent team per task |
-| 📊 | **Review Agent** — 0-10 分质量评分,反馈学习 | 📊 | **Review Agent** — 0-10 quality scoring + feedback learning |
-| 🔁 | **LLM 重试 + 熔断** — 3 次指数退避,5 失败开熔断 | 🔁 | **LLM retry + circuit-breaker** — 3× exponential backoff, 5-fail opens |
-| 🔬 | **Meta-system 进化** — 发现 → 出生 / 淘汰 / 拆分 / 合并 | 🔬 | **Meta-system evolution** — discover → birth/retire/split/merge |
-| 🛡️ | **Governance HITL** — 高风险动作必走人工审批 | 🛡️ | **Governance HITL** — high-risk actions require human approval |
-| 🔄 | **Digital Twin** — 上线前先影子/金丝雀模拟 | 🔄 | **Digital Twin** — shadow/canary simulation before full rollout |
-| 🗄️ | **PostgreSQL + 文件双模** — 有 DB 用 PG,无 DB 自动落盘 | 🗄️ | **PostgreSQL + file dual-mode** — PG with `DATABASE_URL`, else file fallback |
-| 📨 | **BullMQ 任务队列** — API 接收,Worker 执行,可水平扩 | 📨 | **BullMQ task queue** — API enqueues, Worker executes, horizontal scale |
-| 🧪 | **970+ 测试** — 24 包覆盖,Vitest + CI 跑 PG 真实库 | 🧪 | **970+ tests** — 24 packages, Vitest + CI runs against real Postgres |
-| 📈 | **可观测性** — Pino + OpenTelemetry + Prometheus | 📈 | **Observability** — Pino + OpenTelemetry + Prometheus |
+<table>
+<tr>
+<th width="6%">🎨</th>
+<th width="44%">🇨🇳 中文</th>
+<th width="6%">🎨</th>
+<th width="44%">🇺🇸 English</th>
+</tr>
+<tr>
+<td align="center">🧭</td>
+<td><b>Commander</b> — LLM 驱动的需求拆解</td>
+<td align="center">🧭</td>
+<td><b>Commander</b> — LLM-driven request decomposition</td>
+</tr>
+<tr>
+<td align="center">⚡</td>
+<td><b>并发执行</b> — 多任务并行调度,semaphore 控制 LLM 频率</td>
+<td align="center">⚡</td>
+<td><b>Concurrent execution</b> — parallel task scheduling with LLM-call semaphore</td>
+</tr>
+<tr>
+<td align="center">🤖</td>
+<td><b>DAGS 动态组队</b> — 根据任务自动选 agent 组合</td>
+<td align="center">🤖</td>
+<td><b>DAGS team composition</b> — dynamic agent team per task</td>
+</tr>
+<tr>
+<td align="center">📊</td>
+<td><b>Review Agent</b> — 0-10 分质量评分,反馈学习</td>
+<td align="center">📊</td>
+<td><b>Review Agent</b> — 0-10 quality scoring + feedback learning</td>
+</tr>
+<tr>
+<td align="center">🔁</td>
+<td><b>LLM 重试 + 熔断</b> — 3× 指数退避,5 失败开熔断</td>
+<td align="center">🔁</td>
+<td><b>LLM retry + circuit-breaker</b> — 3× exponential backoff, 5-fail opens</td>
+</tr>
+<tr>
+<td align="center">🔬</td>
+<td><b>Meta-system 进化</b> — 发现 → 出生 / 淘汰 / 拆分 / 合并</td>
+<td align="center">🔬</td>
+<td><b>Meta-system evolution</b> — discover → birth/retire/split/merge</td>
+</tr>
+<tr>
+<td align="center">🛡️</td>
+<td><b>Governance HITL</b> — 高风险动作必走人工审批</td>
+<td align="center">🛡️</td>
+<td><b>Governance HITL</b> — high-risk actions require human approval</td>
+</tr>
+<tr>
+<td align="center">🔄</td>
+<td><b>Digital Twin</b> — 上线前先影子/金丝雀模拟</td>
+<td align="center">🔄</td>
+<td><b>Digital Twin</b> — shadow/canary simulation before full rollout</td>
+</tr>
+<tr>
+<td align="center">🗄️</td>
+<td><b>PostgreSQL + 文件双模</b> — 有 DB 用 PG,无 DB 自动落盘</td>
+<td align="center">🗄️</td>
+<td><b>PostgreSQL + file dual-mode</b> — PG with <code>DATABASE_URL</code>, else file fallback</td>
+</tr>
+<tr>
+<td align="center">📨</td>
+<td><b>BullMQ 任务队列</b> — API 接收,Worker 执行,可水平扩</td>
+<td align="center">📨</td>
+<td><b>BullMQ task queue</b> — API enqueues, Worker executes, horizontal scale</td>
+</tr>
+<tr>
+<td align="center">🧪</td>
+<td><b>970+ 测试</b> — 21 包覆盖,Vitest + CI 跑 PG 真实库</td>
+<td align="center">🧪</td>
+<td><b>970+ tests</b> — 21 packages, Vitest + CI runs against real Postgres</td>
+</tr>
+<tr>
+<td align="center">📈</td>
+<td><b>可观测性</b> — Pino + OpenTelemetry + Prometheus</td>
+<td align="center">📈</td>
+<td><b>Observability</b> — Pino + OpenTelemetry + Prometheus</td>
+</tr>
+</table>
 
 </div>
 
 ---
 
+<!-- ============== WAVE DIVIDER ============== -->
+<p align="center">
+  <svg width="100%" height="40" viewBox="0 0 1200 40" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+    <path d="M0,20 Q200,5 400,20 T800,20 T1200,20" stroke="#7c3aed" stroke-width="2" fill="none" opacity="0.5">
+      <animate attributeName="stroke-dasharray" values="0,2000;2000,0" dur="4s" repeatCount="indefinite"/>
+    </path>
+  </svg>
+</p>
+
 ## 🚀 5 分钟跑起来 / Quick Start in 5 Minutes
 
 <table>
 <tr>
-<th>🇨🇳 中文步骤</th>
-<th>🇺🇸 English Steps</th>
+<th width="50%">🇨🇳 中文步骤</th>
+<th width="50%">🇺🇸 English Steps</th>
 </tr>
 <tr>
-<td>
+<td valign="top">
 
 **前提**:Node.js 20+,pnpm 9+,至少一个 LLM 的 API key。
 
@@ -133,7 +400,7 @@ pnpm dev
 - 📚 Swagger UI: <http://localhost:3001/api/docs>
 
 </td>
-<td>
+<td valign="top">
 
 **Prereqs**: Node.js 20+, pnpm 9+, at least one LLM API key.
 
@@ -175,47 +442,48 @@ pnpm dev
 <div align="center">
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#7c3aed','primaryTextColor':'#fff','primaryBorderColor':'#a78bfa','lineColor':'#a78bfa','secondaryColor':'#1f2937','tertiaryColor':'#374151','clusterBkg':'#0f172a','clusterBorder':'#7c3aed'}}}%%
 flowchart TB
     subgraph Client["🖥️ 客户端 / Client Layer"]
-        UI[🎨 Dashboard<br/>React 19 + Vite]
-        TUI[⌨️ TUI<br/>Terminal UI]
-        SDK[📦 @max/sdk]
+        UI["🎨 Dashboard<br/><sub>React 19 + Vite</sub>"]
+        TUI["⌨️ TUI<br/><sub>Terminal UI</sub>"]
+        SDK["📦 @max/sdk<br/><sub>Client SDK</sub>"]
     end
 
     subgraph API["🔌 API 层 / API Layer"]
-        HONO[⚡ Hono + OpenAPI 3.1<br/>:3001]
-        AUTH[🔐 JWT + RBAC]
-        RATE[🚦 Rate Limiter]
+        HONO["⚡ Hono + OpenAPI 3.1<br/><sub>:3001 · 86 routes</sub>"]
+        AUTH["🔐 JWT + RBAC<br/><sub>3 roles</sub>"]
+        RATE["🚦 Rate Limiter<br/><sub>100 req/min</sub>"]
     end
 
     subgraph Worker["⚙️ 任务处理 / Worker Layer"]
-        BULL[📨 BullMQ Worker]
-        RUNTIME[🧠 AgentRuntime<br/>并发调度 + 重试 + 熔断]
+        BULL["📨 BullMQ Worker<br/><sub>horizontal scale</sub>"]
+        RUNTIME["🧠 AgentRuntime<br/><sub>并发 · 重试 · 熔断</sub>"]
     end
 
     subgraph Agent["🤖 Agent 团队 / Agent Team"]
-        CMD[🧭 Commander]
-        BE[🖥️ BackendAgent]
-        FE[🎨 FrontendAgent]
-        RV[📊 ReviewAgent]
+        CMD["🧭 Commander<br/><sub>decompose</sub>"]
+        BE["🖥️ BackendAgent<br/><sub>Node · SQL</sub>"]
+        FE["🎨 FrontendAgent<br/><sub>React · CSS</sub>"]
+        RV["📊 ReviewAgent<br/><sub>0-10 score</sub>"]
     end
 
     subgraph Meta["🔬 进化层 / Meta Layer"]
-        DISC[🔍 Discovery]
-        GOV[🛡️ Governance / HITL]
-        TWIN[🔄 Digital Twin]
+        DISC["🔍 Discovery"]
+        GOV["🛡️ Governance / HITL"]
+        TWIN["🔄 Digital Twin"]
     end
 
     subgraph Data["💾 数据层 / Data Layer"]
-        PG[(🐘 PostgreSQL<br/>via Drizzle)]
-        REDIS[(🔴 Redis<br/>BullMQ + Heartbeat)]
-        FS[📁 File Stores<br/>fallback]
+        PG[("🐘 PostgreSQL<br/><sub>via Drizzle</sub>")]
+        REDIS[("🔴 Redis<br/><sub>BullMQ + Heartbeat</sub>")]
+        FS["📁 File Stores<br/><sub>fallback</sub>"]
     end
 
     subgraph Obs["📈 可观测性 / Observability"]
-        LOGS[📝 Pino Logs]
-        TRACE[🔭 OpenTelemetry]
-        PROM[📊 Prometheus]
+        LOGS["📝 Pino Logs"]
+        TRACE["🔭 OpenTelemetry"]
+        PROM["📊 Prometheus"]
     end
 
     UI --> HONO
@@ -242,15 +510,54 @@ flowchart TB
     DISC --> GOV
     GOV --> TWIN
     TWIN --> RUNTIME
+
+    style UI fill:#7c3aed,stroke:#fff,color:#fff
+    style TUI fill:#7c3aed,stroke:#fff,color:#fff
+    style SDK fill:#7c3aed,stroke:#fff,color:#fff
+    style HONO fill:#ec4899,stroke:#fff,color:#fff
+    style AUTH fill:#ec4899,stroke:#fff,color:#fff
+    style RATE fill:#ec4899,stroke:#fff,color:#fff
+    style BULL fill:#06b6d4,stroke:#fff,color:#fff
+    style RUNTIME fill:#06b6d4,stroke:#fff,color:#fff
+    style CMD fill:#22c55e,stroke:#fff,color:#fff
+    style BE fill:#22c55e,stroke:#fff,color:#fff
+    style FE fill:#22c55e,stroke:#fff,color:#fff
+    style RV fill:#22c55e,stroke:#fff,color:#fff
+    style DISC fill:#8b5cf6,stroke:#fff,color:#fff
+    style GOV fill:#8b5cf6,stroke:#fff,color:#fff
+    style TWIN fill:#8b5cf6,stroke:#fff,color:#fff
+    style PG fill:#f59e0b,stroke:#000,color:#000
+    style REDIS fill:#ef4444,stroke:#fff,color:#fff
+    style FS fill:#f59e0b,stroke:#000,color:#000
+    style LOGS fill:#3b82f6,stroke:#fff,color:#fff
+    style TRACE fill:#3b82f6,stroke:#fff,color:#fff
+    style PROM fill:#3b82f6,stroke:#fff,color:#fff
 ```
 
 </div>
 
-| 🇨🇳 关键点 | 🇺🇸 Key points |
-|---|---|
-| **API + Worker 分离** — API 接收请求立即返回,真正的执行在 Worker 进程跑,水平扩展只需要加 Worker | **API + Worker split** — API accepts and returns immediately, real work runs in Worker, scale by adding Workers |
-| **心跳检测** — Worker 每 15s 写一次 Redis key(TTL 30s),API 入队前先看心跳,没心跳就 503 | **Heartbeat probe** — Worker writes Redis key every 15s (TTL 30s); API checks before enqueue, returns 503 if missing |
-| **存储双模** — 有 `DATABASE_URL` 走 PostgreSQL(11 个 PG store),无就走文件系统 | **Dual-mode storage** — with `DATABASE_URL` uses PostgreSQL (11 PG stores); without, falls back to file system |
+<table>
+<tr>
+<th>🇨🇳 关键点</th>
+<th>🇺🇸 Key points</th>
+</tr>
+<tr>
+<td valign="top">
+
+- **API + Worker 分离** — API 接收请求立即返回,真正的执行在 Worker 进程跑,水平扩展只需要加 Worker
+- **心跳检测** — Worker 每 15s 写一次 Redis key(TTL 30s),API 入队前先看心跳,没心跳就 503
+- **存储双模** — 有 `DATABASE_URL` 走 PostgreSQL(11 个 PG store),无就走文件系统
+
+</td>
+<td valign="top">
+
+- **API + Worker split** — API accepts and returns immediately, real work runs in Worker, scale by adding Workers
+- **Heartbeat probe** — Worker writes Redis key every 15s (TTL 30s); API checks before enqueue, returns 503 if missing
+- **Dual-mode storage** — with `DATABASE_URL` uses PostgreSQL (11 PG stores); without, falls back to file system
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -258,28 +565,35 @@ flowchart TB
 
 <div align="center">
 
-| 层 / Layer | 选型 / Choice | 图标 / Icon |
-|---|---|:---:|
-| **API server** | Hono + OpenAPI 3.1 | ⚡ |
-| **Frontend** | React 19 + Vite + Tailwind | 🎨 |
-| **Terminal UI** | Ink + React (OpenCode-port) | ⌨️ |
-| **Worker** | BullMQ + Redis | 📨 |
-| **LLM** | OpenAI · Anthropic · OpenRouter · DeepSeek via `@max/providers` | 🧠 |
-| **ORM** | Drizzle (typed schema-as-code) | 🗄️ |
-| **Database** | PostgreSQL 16 (file fallback for dev) | 🐘 |
-| **Auth** | JWT (jose) + bcryptjs + RBAC | 🔐 |
-| **Logging** | Pino (structured JSON) | 📝 |
-| **Tracing** | OpenTelemetry + OTLP | 🔭 |
-| **Metrics** | Prometheus + Grafana-ready | 📊 |
-| **Tests** | Vitest (~970 tests, 24 packages) | 🧪 |
-| **CI/CD** | GitHub Actions + Docker multi-stage | 🐳 |
-| **Load test** | k6 (nightly) | 📈 |
+<table>
+<tr>
+<th>层 / Layer</th>
+<th>选型 / Choice</th>
+<th width="5%">图标 / Icon</th>
+</tr>
+<tr><td><b>API server</b></td><td>Hono + OpenAPI 3.1</td><td align="center">⚡</td></tr>
+<tr><td><b>Frontend</b></td><td>React 19 + Vite + Tailwind</td><td align="center">🎨</td></tr>
+<tr><td><b>Terminal UI</b></td><td>Ink + React (OpenCode-port)</td><td align="center">⌨️</td></tr>
+<tr><td><b>Worker</b></td><td>BullMQ + Redis</td><td align="center">📨</td></tr>
+<tr><td><b>LLM</b></td><td>OpenAI · Anthropic · OpenRouter · DeepSeek via <code>@max/providers</code></td><td align="center">🧠</td></tr>
+<tr><td><b>ORM</b></td><td>Drizzle (typed schema-as-code)</td><td align="center">🗄️</td></tr>
+<tr><td><b>Database</b></td><td>PostgreSQL 16 (file fallback for dev)</td><td align="center">🐘</td></tr>
+<tr><td><b>Auth</b></td><td>JWT (jose) + bcryptjs + RBAC</td><td align="center">🔐</td></tr>
+<tr><td><b>Logging</b></td><td>Pino (structured JSON)</td><td align="center">📝</td></tr>
+<tr><td><b>Tracing</b></td><td>OpenTelemetry + OTLP</td><td align="center">🔭</td></tr>
+<tr><td><b>Metrics</b></td><td>prom-client + Prometheus</td><td align="center">📊</td></tr>
+<tr><td><b>Tests</b></td><td>Vitest (~970 tests, 21 packages)</td><td align="center">🧪</td></tr>
+<tr><td><b>CI/CD</b></td><td>GitHub Actions + Docker multi-stage</td><td align="center">🐳</td></tr>
+<tr><td><b>Load test</b></td><td>k6 (nightly)</td><td align="center">📈</td></tr>
+</table>
 
 </div>
 
 ---
 
 ## 📁 项目结构 / Project Structure
+
+<div align="center">
 
 ```
 Maximilian/
@@ -326,9 +640,13 @@ Maximilian/
 └── README.md           📖 You are here
 ```
 
+</div>
+
 ---
 
 ## 🔌 API 一览 / API at a Glance
+
+<div align="center">
 
 | 标签 / Tag | 路径前缀 / Path prefix | 用途 / Purpose |
 |---|---|---|
@@ -345,6 +663,8 @@ Maximilian/
 | 📊 `usage` | `/api/usage/*` | LLM token 用量、计费 |
 | 📈 `observability` | `/api/observability/*` | 指标 / 事件 / 健康检查 |
 | ⚙️ `system` | `/api/health`, `/api/metrics`, `/api/ready` | 健康 / Prometheus / K8s 就绪 |
+
+</div>
 
 > **共 86 个路由,分 13 个 tag 组**。完整 OpenAPI 3.1 spec 在运行时通过 <http://localhost:3001/api/openapi.json> 拉取,Swagger UI 在 <http://localhost:3001/api/docs>。
 
@@ -415,13 +735,20 @@ docker compose --profile queue --profile observability up -d
 ```
 
 启动的服务 / Services started:
-- 🐘 **postgres** — `localhost:5432`
-- 🔴 **redis** — `localhost:6379`
-- ⚡ **api** — `localhost:3001`
-- 🎨 **dashboard** — `localhost:5173` (nginx)
-- 📨 **worker** — 内连,无对外端口
-- 🔭 **otel-collector** — `localhost:4317` (gRPC) / `4318` (HTTP)
-- 📊 **prometheus** — `localhost:9090`
+
+<div align="center">
+
+| 服务 / Service | 端口 / Port | 图标 / Icon |
+|---|---|:---:|
+| 🐘 **postgres** | `localhost:5432` | 🐘 |
+| 🔴 **redis** | `localhost:6379` | 🔴 |
+| ⚡ **api** | `localhost:3001` | ⚡ |
+| 🎨 **dashboard** | `localhost:5173` (nginx) | 🎨 |
+| 📨 **worker** | 内连,无对外端口 | 📨 |
+| 🔭 **otel-collector** | `localhost:4317` / `4318` | 🔭 |
+| 📊 **prometheus** | `localhost:9090` | 📊 |
+
+</div>
 
 完整部署手册 / Full deployment runbook:[`docs/operations/deployment.md`](docs/operations/deployment.md)
 
@@ -437,6 +764,15 @@ docker compose --profile queue --profile observability up -d
 - 🆘 Troubleshooting
 
 ---
+
+<!-- ============== WAVE DIVIDER ============== -->
+<p align="center">
+  <svg width="100%" height="40" viewBox="0 0 1200 40" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+    <path d="M0,20 Q300,5 600,20 T1200,20" stroke="#ec4899" stroke-width="2" fill="none" opacity="0.5">
+      <animate attributeName="stroke-dasharray" values="0,2000;2000,0" dur="5s" repeatCount="indefinite"/>
+    </path>
+  </svg>
+</p>
 
 ## 🧪 跑测试 / Running Tests
 
@@ -486,7 +822,31 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 
 ---
 
-<sub align="center">
+<div align="center">
+
+<!-- ============== ANIMATED FOOTER ============== -->
+
+<svg width="600" height="60" viewBox="0 0 600 60" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="footGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="50%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <line x1="50" y1="30" x2="550" y2="30" stroke="url(#footGrad)" stroke-width="2">
+    <animate attributeName="x2" values="50;550" dur="2s" fill="freeze"/>
+  </line>
+  <circle cx="300" cy="30" r="6" fill="#ec4899">
+    <animate attributeName="cx" values="50;550" dur="2s" fill="freeze"/>
+  </circle>
+</svg>
+
+<br>
+
+<sub>
 Built with ❤️ by syxscott · Powered by 21 packages · 4 apps · ~970 tests<br>
-<sub>Meta-agent OS · 2026</sub>
+<sub>⚡ Meta-agent OS · 2026</sub>
 </sub>
+
+</div>
