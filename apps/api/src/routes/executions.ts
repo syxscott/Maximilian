@@ -1,0 +1,149 @@
+/**
+ * Phase 5.1 — Execution History HTTP routes.
+ *
+ *   GET  /api/executions              List all execution records
+ *   GET  /api/executions/:id          Fetch one execution record
+ *   GET  /api/executions/workspace/:workspaceId  Filter by workspace
+ *   GET  /api/executions/role/:role   Filter by agent role
+ *   POST /api/executions/:id/feedback Append user feedback to a record
+ */
+
+import { createRoute } from "@hono/zod-openapi";
+import type { Context } from "hono";
+import { z } from "zod";
+import type { ExecutionStore } from "@max/autonomy";
+import { ErrorSchema } from "../schemas.js";
+
+interface Deps {
+  store: ExecutionStore;
+}
+
+const FeedbackSchema = z.object({
+  text: z.string().min(1).max(2000),
+  rating: z.number().min(1).max(5).optional(),
+});
+
+const IdParamsSchema = z.object({ id: z.string().min(1) });
+const WorkspaceIdParamsSchema = z.object({ workspaceId: z.string().min(1) });
+const RoleParamsSchema = z.object({ role: z.string().min(1) });
+
+// ── OpenAPI route definitions ─────────────────────────────────────────────
+
+export const listExecutionsRoute = createRoute({
+  method: "get",
+  path: "/executions",
+  tags: ["executions"],
+  responses: {
+    200: { content: { "application/json": { schema: z.object({ items: z.array(z.unknown()), nextCursor: z.string().optional(), total: z.number() }) } }, description: "Paginated executions" },
+  },
+});
+
+export const getExecutionRoute = createRoute({
+  method: "get",
+  path: "/executions/{id}",
+  tags: ["executions"],
+  request: { params: IdParamsSchema },
+  responses: {
+    200: { content: { "application/json": { schema: z.unknown() } }, description: "Execution" },
+    400: { content: { "application/json": { schema: ErrorSchema } }, description: "Missing id" },
+    404: { content: { "application/json": { schema: ErrorSchema } }, description: "Not found" },
+  },
+});
+
+export const listExecutionsForWorkspaceRoute = createRoute({
+  method: "get",
+  path: "/executions/workspace/{workspaceId}",
+  tags: ["executions"],
+  request: { params: WorkspaceIdParamsSchema },
+  responses: {
+    200: { content: { "application/json": { schema: z.unknown() } }, description: "Executions for workspace" },
+    400: { content: { "application/json": { schema: ErrorSchema } }, description: "Missing workspaceId" },
+  },
+});
+
+export const listExecutionsForRoleRoute = createRoute({
+  method: "get",
+  path: "/executions/role/{role}",
+  tags: ["executions"],
+  request: { params: RoleParamsSchema },
+  responses: {
+    200: { content: { "application/json": { schema: z.unknown() } }, description: "Executions for role" },
+    400: { content: { "application/json": { schema: ErrorSchema } }, description: "Missing role" },
+  },
+});
+
+export const appendExecutionFeedbackRoute = createRoute({
+  method: "post",
+  path: "/executions/{id}/feedback",
+  tags: ["executions"],
+  request: {
+    params: IdParamsSchema,
+    body: { content: { "application/json": { schema: FeedbackSchema } } },
+  },
+  responses: {
+    200: { content: { "application/json": { schema: z.object({ ok: z.boolean(), execution: z.unknown() }) } }, description: "Feedback appended" },
+    400: { content: { "application/json": { schema: ErrorSchema } }, description: "Invalid body or id" },
+    404: { content: { "application/json": { schema: ErrorSchema } }, description: "Execution not found" },
+  },
+});
+
+export function executionRoutes(deps: Deps) {
+  const { store } = deps;
+
+  return {
+    listAll: async (c: Context) => {
+      const all = await store.listAll();
+      const cursor = c.req.query("cursor");
+      const limit = Math.min(Math.max(Number(c.req.query("limit")) || 20, 1), 100);
+
+      let startIdx = 0;
+      if (cursor) {
+        const cursorIdx = all.findIndex((e) => e.id === cursor);
+        if (cursorIdx < 0) {
+          return c.json({ error: "invalid_cursor", message: "Cursor not found" }, 400);
+        }
+        startIdx = cursorIdx + 1;
+      }
+
+      const items = all.slice(startIdx, startIdx + limit);
+      const nextCursor = startIdx + limit < all.length ? items[items.length - 1]?.id : undefined;
+
+      return c.json({ items, nextCursor, total: all.length });
+    },
+
+    get: async (c: Context) => {
+      const id = c.req.param("id");
+      if (!id) return c.json({ error: "Missing id" }, 400);
+      const exec = await store.get(id);
+      if (!exec) return c.json({ error: "Execution not found" }, 404);
+      return c.json(exec);
+    },
+
+    listForWorkspace: async (c: Context) => {
+      const workspaceId = c.req.param("workspaceId");
+      if (!workspaceId) return c.json({ error: "Missing workspaceId" }, 400);
+      const execs = await store.listForWorkspace(workspaceId);
+      return c.json({ workspaceId, count: execs.length, executions: execs });
+    },
+
+    listForRole: async (c: Context) => {
+      const role = c.req.param("role");
+      if (!role) return c.json({ error: "Missing role" }, 400);
+      const execs = await store.listForRole(role);
+      return c.json({ role, count: execs.length, executions: execs });
+    },
+
+    appendFeedback: async (c: Context) => {
+      const id = c.req.param("id");
+      if (!id) return c.json({ error: "Missing id" }, 400);
+      const body = c.req.valid("json" as never) as { text: string; rating?: number };
+      try {
+        const updated = await store.appendUserFeedback(id, body.text, body.rating);
+        return c.json({ ok: true, execution: updated });
+      } catch (err) {
+        const msg = (err as Error).message ?? "Unknown error";
+        return c.json({ error: msg }, 400);
+      }
+    },
+  };
+}

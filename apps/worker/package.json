@@ -1,0 +1,35 @@
+{
+  "name": "@max/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@max/agents": "workspace:*",
+    "@max/autonomy": "workspace:*",
+    "@max/commander": "workspace:*",
+    "@max/config": "workspace:*",
+    "@max/core": "workspace:*",
+    "@max/dags": "workspace:*",
+    "@max/database": "workspace:*",
+    "@max/evolution": "workspace:*",
+    "@max/meta-system": "workspace:*",
+    "@max/providers": "workspace:*",
+    "@max/queue": "workspace:*",
+    "@max/telemetry": "workspace:*",
+    "@max/workspace": "workspace:*",
+    "bullmq": "^5.30.0",
+    "ioredis": "^5.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  }
+}

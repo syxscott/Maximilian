@@ -1,0 +1,46 @@
+# Ingress — single host routing for API and dashboard.
+#
+# /api/* → api:3001
+# /*     → dashboard:80 (the SPA, with nginx inside the dashboard
+#          container serving /api/* proxied back to api:3001)
+#
+# TLS via cert-manager (configure your own ClusterIssuer; see
+# https://cert-manager.io/docs/). The Secret 'maximilian-tls' is
+# expected to exist with the certificate for maximilian.example.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: maximilian
+  namespace: maximilian
+  annotations:
+    # cert-manager: replace with your issuer name.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx-specific: force HTTPS, larger request body for chat uploads.
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - maximilian.example
+      secretName: maximilian-tls
+  rules:
+    - host: maximilian.example
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 3001
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard
+                port:
+                  number: 80

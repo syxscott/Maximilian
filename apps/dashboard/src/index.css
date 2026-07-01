@@ -1,0 +1,489 @@
+@import "tailwindcss";
+@import "./theme.css";
+@plugin "tailwindcss-animate";
+
+/* ─── shadcn/ui Theme Variables (Tailwind v4) ───────────────────── */
+
+@theme {
+  --color-background: var(--shadcn-background);
+  --color-foreground: var(--shadcn-foreground);
+  --color-card: var(--shadcn-card);
+  --color-card-foreground: var(--shadcn-card-foreground);
+  --color-popover: var(--shadcn-popover);
+  --color-popover-foreground: var(--shadcn-popover-foreground);
+  --color-primary: var(--shadcn-primary);
+  --color-primary-foreground: var(--shadcn-primary-foreground);
+  --color-secondary: var(--shadcn-secondary);
+  --color-secondary-foreground: var(--shadcn-secondary-foreground);
+  --color-muted: var(--shadcn-muted);
+  --color-muted-foreground: var(--shadcn-muted-foreground);
+  --color-accent: var(--shadcn-accent);
+  --color-accent-foreground: var(--shadcn-accent-foreground);
+  --color-destructive: var(--shadcn-destructive);
+  --color-destructive-foreground: var(--shadcn-destructive-foreground);
+  --color-border: var(--shadcn-border);
+  --color-input: var(--shadcn-input);
+  --color-ring: var(--shadcn-ring);
+
+  --color-blue-400: #409CFF;
+  --color-blue-500: #0A84FF;
+  --color-blue-600: #0060DF;
+  --color-blue-700: #004BA8;
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f4f4f5;
+  --color-gray-200: #e4e4e7;
+  --color-gray-300: #d4d4d8;
+  --color-gray-400: #a1a1aa;
+  --color-gray-500: #71717a;
+  --color-gray-600: #636366;
+  --color-gray-700: #48484A;
+  --color-gray-800: #3A3A3C;
+  --color-gray-900: #2C2C2E;
+  --color-gray-950: #1C1C1E;
+  --color-green-100: #d1fae5;
+  --color-green-500: #10b981;
+  --color-red-100: #fee2e2;
+  --color-red-500: #ef4444;
+  --color-amber-100: #fef3c7;
+  --color-amber-500: #f59e0b;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  --animate-fade-in: fadeIn 0.5s ease-out;
+  --animate-slide-up: slideUp 0.5s ease-out;
+  --animate-slide-down: slideDown 0.3s ease-out;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes slideUp {
+    0% { transform: translateY(20px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes slideDown {
+    0% { transform: translateY(-100%); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
+}
+
+:root {
+  --shadcn-background: #0a0a0c;
+  --shadcn-foreground: #e8e8ec;
+  --shadcn-card: #141418;
+  --shadcn-card-foreground: #e8e8ec;
+  --shadcn-popover: #1a1a1f;
+  --shadcn-popover-foreground: #e8e8ec;
+  --shadcn-primary: #0A84FF;
+  --shadcn-primary-foreground: #ffffff;
+  --shadcn-secondary: #2C2C2E;
+  --shadcn-secondary-foreground: #a1a1aa;
+  --shadcn-muted: #1C1C1E;
+  --shadcn-muted-foreground: #71717a;
+  --shadcn-accent: #0A84FF;
+  --shadcn-accent-foreground: #ffffff;
+  --shadcn-destructive: #ef4444;
+  --shadcn-destructive-foreground: #ffffff;
+  --shadcn-border: #2C2C2E;
+  --shadcn-input: #2C2C2E;
+  --shadcn-ring: #0A84FF;
+}
+
+/* ─── CCSwitch custom border utilities ──────────────────────────── */
+
+@utility border-border-default {
+  border-color: var(--shadcn-border);
+}
+
+@utility border-border-hover {
+  border-color: color-mix(in srgb, var(--shadcn-border) 80%, white);
+}
+
+@utility border-border-active {
+  border-color: var(--shadcn-ring);
+}
+
+/* ─── Design System Typography Utilities ──────────────────────────── */
+
+.text-11-medium {
+  font-size: var(--mx-text-xs);
+  font-weight: var(--mx-font-semibold);
+  letter-spacing: 0.05px;
+}
+
+.text-12-regular,
+.text-13-regular {
+  font-size: var(--mx-text-sm);
+  font-weight: var(--mx-font-regular);
+}
+
+.text-12-medium,
+.text-13-medium {
+  font-size: var(--mx-text-sm);
+  font-weight: var(--mx-font-medium);
+  letter-spacing: var(--mx-tracking-tight);
+}
+
+.text-13-mono {
+  font-size: var(--mx-text-sm);
+  font-weight: var(--mx-font-regular);
+  font-family: var(--mx-font-mono);
+}
+
+.text-14-regular {
+  font-size: var(--mx-text-base);
+  font-weight: var(--mx-font-regular);
+}
+
+.text-14-medium {
+  font-size: var(--mx-text-base);
+  font-weight: var(--mx-font-medium);
+  letter-spacing: var(--mx-tracking-tight);
+}
+
+.text-15-medium {
+  font-size: var(--mx-text-md);
+  font-weight: var(--mx-font-semibold);
+  letter-spacing: var(--mx-tracking-tight);
+}
+
+.text-16-medium {
+  font-size: var(--mx-text-lg);
+  font-weight: var(--mx-font-medium);
+  letter-spacing: var(--mx-tracking-tighter);
+}
+
+.text-20-medium {
+  font-size: var(--mx-text-xl);
+  font-weight: var(--mx-font-medium);
+  letter-spacing: var(--mx-tracking-tighter);
+}
+
+/* ─── Semantic Surface Utilities ───────────────────────────────────── */
+
+.surface-base {
+  background-color: var(--mx-bg-base);
+  color: var(--mx-text-base);
+}
+
+.surface-deep {
+  background-color: var(--mx-bg-deep);
+  color: var(--mx-text-base);
+}
+
+.surface-layer-01 {
+  background-color: var(--mx-bg-layer-01);
+  color: var(--mx-text-base);
+  border: 0.5px solid var(--mx-border-muted);
+  box-shadow: var(--mx-elevation-raised);
+  border-radius: var(--mx-radius-md);
+}
+
+.surface-card {
+  background-color: var(--mx-bg-layer-01);
+  color: var(--mx-text-base);
+  border: 0.5px solid var(--mx-border-muted);
+  border-radius: var(--mx-radius-md);
+  padding: 16px;
+}
+
+.text-muted {
+  color: var(--mx-text-muted);
+}
+
+.text-faint {
+  color: var(--mx-text-faint);
+}
+
+.text-accent {
+  color: var(--mx-text-accent);
+}
+
+/* ─── Button Variants ─────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--mx-button-height-md);
+  padding: 0 11px;
+  border-radius: var(--mx-radius-md);
+  font-size: var(--mx-text-sm);
+  font-weight: var(--mx-font-medium);
+  letter-spacing: var(--mx-tracking-tight);
+  border: none;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-neutral {
+  background-color: var(--mx-bg-button-neutral);
+  color: var(--mx-text-base);
+  box-shadow: var(--mx-elevation-button-neutral);
+}
+
+.btn-neutral:hover:not(:disabled) {
+  background-color: var(--mx-bg-button-neutral);
+  box-shadow:
+    var(--mx-elevation-button-neutral),
+    inset 0 0 0 1px var(--mx-border-strong);
+}
+
+.btn-contrast {
+  background-color: var(--mx-bg-contrast);
+  color: var(--mx-text-contrast);
+  box-shadow: var(--mx-elevation-button-contrast);
+}
+
+.btn-accent {
+  background-color: var(--mx-bg-accent);
+  color: white;
+}
+
+.btn-accent:hover:not(:disabled) {
+  background-color: var(--mx-blue-700);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--mx-text-base);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--mx-alpha-light-8);
+}
+
+.btn-danger {
+  background-color: var(--mx-red-600);
+  color: white;
+}
+
+.btn-success {
+  background-color: var(--mx-green-600);
+  color: white;
+}
+
+.btn-sm {
+  height: var(--mx-button-height-sm);
+  padding: 0 9px;
+  font-size: var(--mx-text-xs);
+}
+
+.btn-lg {
+  height: var(--mx-button-height-lg);
+  padding: 0 15px;
+}
+
+/* ─── Tag/Badge ────────────────────────────────────────────────────── */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: var(--mx-tag-height);
+  padding: 0 4px;
+  border-radius: var(--mx-radius-xs);
+  border: 0.5px solid var(--mx-border-base);
+  background-color: var(--mx-bg-layer-02);
+  font-size: var(--mx-text-xs);
+  font-weight: var(--mx-font-semibold);
+  letter-spacing: 0.05px;
+  color: var(--mx-text-muted);
+}
+
+.tag-success {
+  background-color: var(--mx-state-success-bg);
+  color: var(--mx-state-success-fg);
+  border-color: transparent;
+}
+
+.tag-warning {
+  background-color: var(--mx-state-warning-bg);
+  color: var(--mx-state-warning-fg);
+  border-color: transparent;
+}
+
+.tag-danger {
+  background-color: var(--mx-state-danger-bg);
+  color: var(--mx-state-danger-fg);
+  border-color: transparent;
+}
+
+.tag-info {
+  background-color: var(--mx-state-info-bg);
+  color: var(--mx-state-info-fg);
+  border-color: transparent;
+}
+
+/* ─── Tabs ─────────────────────────────────────────────────────────── */
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  height: var(--mx-tab-height);
+  padding: 0 12px;
+  font-size: var(--mx-text-sm);
+  font-weight: var(--mx-font-medium);
+  letter-spacing: var(--mx-tracking-tight);
+  color: var(--mx-text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--mx-text-base);
+}
+
+.tab[data-active="true"] {
+  color: var(--mx-text-base);
+  border-bottom-color: var(--mx-text-faint);
+}
+
+/* ─── Input ────────────────────────────────────────────────────────── */
+
+.input {
+  background-color: var(--mx-bg-deep);
+  color: var(--mx-text-base);
+  border: 0.5px solid var(--mx-border-base);
+  border-radius: var(--mx-radius-md);
+  padding: 8px 12px;
+  font-size: var(--mx-text-sm);
+  font-family: var(--mx-font-sans);
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.input:focus {
+  border-color: var(--mx-border-focus);
+}
+
+.input::placeholder {
+  color: var(--mx-text-faint);
+}
+
+/* ─── Dialog/Modal ─────────────────────────────────────────────────── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: var(--mx-alpha-dark-40);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  background-color: var(--mx-bg-layer-01);
+  box-shadow: var(--mx-elevation-overlay);
+  border-radius: var(--mx-radius-md);
+  width: 480px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-header {
+  padding: 16px;
+  border-bottom: 0.5px solid var(--mx-border-muted);
+}
+
+.dialog-body {
+  padding: 16px;
+  flex: 1;
+  overflow: auto;
+}
+
+.dialog-footer {
+  padding: 16px;
+  border-top: 0.5px solid var(--mx-border-muted);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ─── Scrollbar (subtle dark) ──────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--mx-alpha-light-12);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--mx-alpha-light-20);
+}
+
+/* ─── Performance tier ────────────────────────────────────────────────
+ *
+ * The lib/perf-tier controller adds `.perf-low` or `.perf-high` to <html>.
+ * Low tier: drop shadows, blur, and entrance animations so phones / weak
+ * GPUs don't jank. High tier: nothing extra — Tailwind defaults stay.
+ * No `.perf-low` selector → it's the explicit disable.
+ */
+
+.perf-low *,
+.perf-low *::before,
+.perf-low *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+.perf-low .shadow-sm,
+.perf-low .shadow,
+.perf-low .shadow-md,
+.perf-low .shadow-lg,
+.perf-low .shadow-xl,
+.perf-low .shadow-2xl {
+  box-shadow: none !important;
+}
+
+.perf-low .backdrop-blur,
+.perf-low .backdrop-blur-sm,
+.perf-low .backdrop-blur-md,
+.perf-low .backdrop-blur-lg {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

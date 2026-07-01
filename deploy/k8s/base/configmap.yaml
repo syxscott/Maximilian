@@ -1,0 +1,37 @@
+# Non-secret configuration. Override per environment with kustomize
+# or by editing this file's keys.
+#
+# DATABASE_URL is built in the Deployment env spec from the Secret —
+# embedding $(POSTGRES_PASSWORD) here would not be substituted by
+# Kubernetes. The Deployment patches the URL together via env vars.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maximilian-config
+  namespace: maximilian
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  WORKSPACE_DIR: "/app/workspaces"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "maximilian"
+  POSTGRES_USER: "maximilian"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  CORS_ORIGIN: "https://maximilian.example"
+  LOG_LEVEL: "info"
+  WORKER_CONCURRENCY: "3"
+  DAGS_MODE: "false"
+  EVOLUTION_ENABLED: "true"
+  META_AGENT_ENABLED: "true"
+  DIGITAL_TWIN_ENABLED: "true"
+  TELEMETRY_ENABLED: "true"
+  TASK_QUEUE_ENABLED: "true"
+  MULTI_TENANT_ENABLED: "true"
+  OTEL_SERVICE_NAME: "maximilian-api"
+  OTEL_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+  OPENAI_MODEL: "gpt-4o-mini"
+  ANTHROPIC_MODEL: "claude-3-5-haiku-20241022"
+  OPENROUTER_MODEL: "anthropic/claude-3.5-haiku"

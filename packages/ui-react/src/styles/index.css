@@ -1,0 +1,16 @@
+/* Main CSS bundle for @max/ui-react.
+   Ported from OpenCode's packages/ui/src/styles/index.css.
+   Aggregates theme, base, component and utility layers.
+   SolidJS-specific selectors are removed; everything else is unchanged. */
+
+@layer theme, base, components, utilities;
+
+@import "./colors.css" layer(theme);
+@import "./theme.css" layer(theme);
+
+@import "./base.css" layer(base);
+
+@import "./components.css" layer(components);
+
+@import "./utilities.css" layer(utilities);
+@import "./animations.css" layer(utilities);

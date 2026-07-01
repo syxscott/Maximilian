@@ -1,0 +1,161 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: maximilian-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: maximilian
+      POSTGRES_PASSWORD: maximilian
+      POSTGRES_DB: maximilian
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maximilian"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [maximilian]
+
+  redis:
+    image: redis:7-alpine
+    container_name: maximilian-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [maximilian]
+    profiles: ["queue"]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: maximilian-api
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    volumes:
+      - ./workspaces:/app/workspaces
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://maximilian:maximilian@postgres:5432/maximilian
+      # API WORKDIR is /app/apps/api (see Dockerfile); the host-mounted
+      # workspaces volume lives at /app/workspaces, so override the
+      # WORKSPACE_DIR default (./workspaces) which would otherwise
+      # resolve to /app/apps/api/workspaces and miss the mount.
+      - WORKSPACE_DIR=/app/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks: [maximilian]
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    container_name: maximilian-dashboard
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [maximilian]
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: maximilian-worker
+    env_file:
+      - .env
+    volumes:
+      - ./workspaces:/app/workspaces
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://maximilian:maximilian@postgres:5432/maximilian
+      - REDIS_URL=redis://redis:6379
+      - TASK_QUEUE_ENABLED=true
+      # Same path override as the api service — the worker runs at
+      # WORKDIR /app/apps/worker (see Dockerfile), so the relative
+      # default would miss the host-mounted workspaces volume.
+      - WORKSPACE_DIR=/app/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Checks the queue heartbeat Redis key the worker writes every
+      # few seconds (TTL 30s). Key missing → worker is wedged or
+      # crashed → orchestrator should restart. See
+      # apps/worker/src/healthcheck.ts.
+      test: ["CMD", "node", "dist/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks: [maximilian]
+    profiles: ["queue"]
+
+  # Optional: OTel collector for trace export
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    container_name: maximilian-otel
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks: [maximilian]
+    profiles: ["observability"]
+
+  # Optional: Prometheus scraping
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: maximilian-prometheus
+    volumes:
+      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks: [maximilian]
+    profiles: ["observability"]
+
+volumes:
+  pgdata:
+  redisdata:
+  promdata:
+
+networks:
+  maximilian:
+    driver: bridge

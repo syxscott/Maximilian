@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Self-hosted baseline. Apply with:
+#   kubectl apply -k deploy/k8s/base
+#
+# Before applying, replace the REPLACE_ME_* values in secret.yaml (or
+# better, source them from your secret manager and remove the stringData
+# field from the secret manifest entirely).
+#
+# Required pre-reqs:
+#   - nginx ingress controller installed (for the Ingress)
+#   - cert-manager with a ClusterIssuer named 'letsencrypt-prod' (or
+#     edit the Ingress annotation to match your issuer name)
+#   - images maximilian/api, maximilian/worker, maximilian/dashboard
+#     built and pushed to a registry your cluster can pull from. See
+#     deploy/README.md for the build commands.
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - secret.yaml
+  - postgres.yaml
+  - redis.yaml
+  - api.yaml
+  - worker.yaml
+  - dashboard.yaml
+  - ingress.yaml
+
+# commonLabels propagate to all resources, useful for kubectl selectors.
+commonLabels:
+  app.kubernetes.io/part-of: maximilian
+  app.kubernetes.io/managed-by: kustomize

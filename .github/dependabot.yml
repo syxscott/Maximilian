@@ -1,0 +1,95 @@
+# Dependabot configuration for Maximilian.
+#
+# Goal: keep non-breaking dependency updates flowing automatically, while
+# surfacing major bumps for manual review through the compat-shims upgrade
+# path. See packages/compat-shims/ for the abstraction layer that absorbs
+# upstream API drift.
+#
+# Schedule: weekly Monday morning, to spread load across the team and avoid
+# pile-ups. Grouping ensures a single PR per ecosystem + update kind, so
+# review burden stays bounded.
+
+version: 2
+
+# Disable auto-merge: every PR should get a human eyeball because even
+# "safe" updates can shift runtime behavior in agent/LLM pipelines.
+# (Leave the auto-merge settings to the team once they've established trust
+# in the upgrade workflow.)
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "automated"
+    # Group patch + minor updates per package so we get one PR per package
+    # rather than one PR per version bump. Major bumps are intentionally
+    # excluded from the group — they need the compat-shims review.
+    groups:
+      patch-and-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Major updates still produce PRs, but separate from the grouped PR so
+    # they get full review attention.
+    ignore:
+      - dependency-name: "*"
+        # Only ignore updates that don't have a release in our support window;
+        # this is left empty by default — major bumps are surfaced, not hidden.
+    # Commit message conventions make the upgrade-CI workflow easy to identify.
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Rebase strategy: rebase silent updates so they don't merge conflicts
+    # with main, but let interactive PRs (with failing CI) sit for review.
+    rebase-strategy: "auto"
+
+  # GitHub Actions ecosystem (separate so a broken upstream action doesn't
+  # block dependency updates).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+      - "automated"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Docker base images — bump the API and dashboard Dockerfiles weekly.
+  - package-ecosystem: "docker"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Shanghai"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+  - package-ecosystem: "docker"
+    directory: "/apps/dashboard"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Shanghai"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"

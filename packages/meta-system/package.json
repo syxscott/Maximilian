@@ -1,0 +1,25 @@
+{
+  "name": "@max/meta-system",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "./src/index.ts",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@max/autonomy": "workspace:*",
+    "@max/core": "workspace:*",
+    "@max/telemetry": "workspace:*",
+    "@max/dags": "workspace:*",
+    "@max/evolution": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

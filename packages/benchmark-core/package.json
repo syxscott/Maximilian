@@ -1,0 +1,30 @@
+{
+  "name": "@max/benchmark-core",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "./src/index.ts",
+  "bin": {
+    "max-bench": "./src/cli.ts"
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc",
+    "benchmark": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@max/core": "workspace:*",
+    "@max/dags": "workspace:*",
+    "@max/providers": "workspace:*",
+    "better-sqlite3": "^11.7.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

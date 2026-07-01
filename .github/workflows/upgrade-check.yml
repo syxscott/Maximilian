@@ -1,0 +1,149 @@
+name: Upgrade Check
+
+# Targeted CI for Dependabot PRs. Mirrors the main CI workflow but skips
+# the docker-build job (Dependabot PRs rarely touch Dockerfiles, and the
+# docker build is slow). When the upgrade touches a Dockerfile we still
+# rely on the main CI workflow, which Dependabot also triggers.
+#
+# What this workflow adds on top of CI:
+#   - Posts a comment on the PR with a summary of which packages changed
+#     and whether compat-shims is likely affected.
+#   - Re-runs the upgrade test path so a passing main-CI doesn't hide a
+#     regression introduced by the upgrade.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, master]
+
+concurrency:
+  group: upgrade-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  upgrade-verify:
+    name: type-check + test on upgrade PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Only run for Dependabot PRs (skip for human PRs — main CI covers them).
+    if: github.actor == 'dependabot[bot]' || github.event.pull_request.user.login == 'dependabot[bot]'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maximilian
+          POSTGRES_PASSWORD: maximilian
+          POSTGRES_DB: maximilian_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maximilian"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://maximilian:maximilian@localhost:5432/maximilian_test
+      JWT_SECRET: upgrade-test-secret-do-not-use-in-prod
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check (full workspace)
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run type-check
+
+      - name: Test (full workspace)
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run test
+
+      - name: Build (full workspace)
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run build
+
+      # Diff summary — useful for reviewers to know at a glance whether this
+      # PR touches anything the compat-shims layer would absorb.
+      - name: Summarize lockfile diff
+        if: always()
+        run: |
+          echo "### Upgrade summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Package | Old | New | Affects compat-shims? |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "pnpm-lock.yaml" ]; then
+            # Naive: just list packages whose version changed in the lockfile.
+            # We rely on git diff for the actual list.
+            git diff origin/main -- pnpm-lock.yaml | grep -E '^\+.*version' | head -20 || true
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "If any shimmed package (\`ink\`, \`hono\`, \`drizzle-orm\`, \`openai\`, \`@anthropic-ai/sdk\`) bumped a major, request review on \`packages/compat-shims/\`." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on PR with upgrade report
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: upgrade-check
+          path: ${{ github.workspace }}/.upgrade-report.md
+
+  compat-shim-review-flag:
+    name: Flag if a shimmed package bumped a major
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect major bumps in shimmed packages
+        id: detect
+        run: |
+          SHIMMED="ink hono drizzle-orm openai @anthropic-ai/sdk"
+          FLAGGED=""
+          for pkg in $SHIMMED; do
+            # Compare lockfile entries between HEAD and origin/main. Look
+            # for the package's resolved version line.
+            OLD=$(git show origin/main:pnpm-lock.yaml 2>/dev/null | grep -A1 "^  /$pkg:" | tail -1 | awk '{print $2}' | tr -d ':' || true)
+            NEW=$(grep -A1 "^  /$pkg:" pnpm-lock.yaml | tail -1 | awk '{print $2}' | tr -d ':' || true)
+            if [ -n "$OLD" ] && [ -n "$NEW" ] && [ "$OLD" != "$NEW" ]; then
+              OLD_MAJOR=$(echo "$OLD" | cut -d. -f1 | tr -d '"')
+              NEW_MAJOR=$(echo "$NEW" | cut -d. -f1 | tr -d '"')
+              if [ "$OLD_MAJOR" != "$NEW_MAJOR" ]; then
+                FLAGGED="$FLAGGED $pkg($OLD→$NEW)"
+              fi
+            fi
+          done
+          if [ -n "$FLAGGED" ]; then
+            echo "flagged=$FLAGGED" >> "$GITHUB_OUTPUT"
+            echo "⚠️ Major bump detected in:$FLAGGED" >> "$GITHUB_STEP_SUMMARY"
+            echo "Review \`packages/compat-shims/\` before merging." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "flagged=" >> "$GITHUB_OUTPUT"
+            echo "✅ No shimmed package had a major bump." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Apply 'compat-review-needed' label when flagged
+        if: steps.detect.outputs.flagged != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['compat-review-needed'],
+            });

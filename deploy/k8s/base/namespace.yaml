@@ -1,0 +1,10 @@
+# Namespace — isolated environment for the Maximilian stack.
+# Resource quotas are set conservatively; tune per cluster capacity.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: maximilian
+  labels:
+    app.kubernetes.io/part-of: maximilian
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted

@@ -1,0 +1,35 @@
+{
+  "name": "@max/compat-shims",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ink": "./src/ink.ts",
+    "./drizzle": "./src/drizzle.ts",
+    "./hono": "./src/hono.ts",
+    "./llm": "./src/llm.ts"
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "peerDependencies": {
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.0.0",
+    "ink": "^5.0.0",
+    "@opentui/core": "*"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-orm": { "optional": true },
+    "hono": { "optional": true },
+    "ink": { "optional": true },
+    "@opentui/core": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}

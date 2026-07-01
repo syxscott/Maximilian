@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1c1c1e" />
+    <title>Maximilian — Control Panel</title>
+    <script>
+      // Theme bootstrap — runs synchronously before any CSS paints, so the
+      // page renders with the right scheme and we never flash the wrong
+      // theme. See src/lib/theme.ts for the matching setTheme() and the
+      // document.documentElement.classList contract (`.light` / `.dark`).
+      (function () {
+        try {
+          var raw = localStorage.getItem("maximilian-theme");
+          var mode = "system";
+          if (raw === '"light"' || raw === '"dark"' || raw === '"system"') {
+            mode = raw.slice(1, -1);
+          }
+          var isLight =
+            mode === "light" ||
+            (mode === "system" &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: light)").matches);
+          var root = document.documentElement;
+          root.classList.remove("light", "dark");
+          root.classList.add(isLight ? "light" : "dark");
+          root.style.colorScheme = isLight ? "light" : "dark";
+          // Hardcoded fallback so the page never flashes white while CSS is
+          // being fetched. Must match theme.css dark/light base colors.
+          root.style.backgroundColor = isLight ? "#ffffff" : "#242424";
+          root.style.color = isLight ? "#1a1a1a" : "#ededed";
+        } catch (_) {
+          /* localStorage / matchMedia unavailable — leave defaults */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "name": "@max/api",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --import tsx/esm src/index.ts",
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "demo": "tsx src/demo.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@hono/swagger-ui": "^0.6.1",
+    "@hono/zod-openapi": "0.18.0",
+    "@max/agents": "workspace:*",
+    "@max/autonomy": "workspace:*",
+    "@max/commander": "workspace:*",
+    "@max/config": "workspace:*",
+    "@max/core": "workspace:*",
+    "@max/dags": "workspace:*",
+    "@max/database": "workspace:*",
+    "@max/evolution": "workspace:*",
+    "@max/meta-system": "workspace:*",
+    "@max/providers": "workspace:*",
+    "@max/queue": "workspace:*",
+    "@max/telemetry": "workspace:*",
+    "@max/tools": "workspace:*",
+    "@max/workspace": "workspace:*",
+    "bcryptjs": "^3.0.3",
+    "bullmq": "^5.30.0",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.6.10",
+    "hono-rate-limiter": "^0.5.3",
+    "jose": "^6.2.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

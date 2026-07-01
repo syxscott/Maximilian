@@ -1,0 +1,205 @@
+/**
+ * Maximilian Design System — adapted from OpenCode's V2 design tokens.
+ *
+ * Color philosophy: Oklch-based hue ramps with 12 lightness steps.
+ * Semantic tokens map to primitives via light-dark() CSS function.
+ *
+ * Naming convention:
+ *   --mx-<category>-<role>[-<state>]
+ *
+ * Inspired by OpenCode's --v2-* system but simplified for a dashboard context.
+ */
+
+:root {
+  /* ─── Color Primitives (12-step hue ramps) ─────────────────────────── */
+
+  --mx-grey-100: #ffffff;
+  --mx-grey-200: #fafafa;
+  --mx-grey-300: #f2f2f2;
+  --mx-grey-400: #dbdbdb;
+  --mx-grey-500: #aeaeae;
+  --mx-grey-600: #808080;
+  --mx-grey-700: #5c5c5c;
+  --mx-grey-800: #3a3a3a;
+  --mx-grey-900: #2e2e2e;
+  --mx-grey-1000: #242424;
+  --mx-grey-1100: #161616;
+  --mx-grey-1200: #080808;
+
+  --mx-blue-400: #a2bcff;
+  --mx-blue-500: #7698fd;
+  --mx-blue-600: #3b5cf6;
+  --mx-blue-700: #3250df;
+
+  --mx-green-400: #96e3a6;
+  --mx-green-500: #6bd586;
+  --mx-green-600: #49c970;
+  --mx-green-700: #2eaf5a;
+
+  --mx-red-400: #f29b96;
+  --mx-red-500: #f17471;
+  --mx-red-600: #f1484f;
+  --mx-red-700: #d92e3c;
+
+  --mx-yellow-400: #f3da9b;
+  --mx-yellow-500: #f2cf76;
+  --mx-yellow-600: #f6c251;
+  --mx-yellow-700: #e7af36;
+
+  --mx-purple-500: #a78bfa;
+  --mx-purple-600: #8b5cf6;
+
+  --mx-blue-1200: #0d142e;
+  --mx-green-1200: #0d1f12;
+  --mx-yellow-1200: #2a1f0a;
+  --mx-red-1200: #2a0e10;
+  --mx-purple-1200: #1f0e2e;
+
+  /* ─── Alpha Primitives ─────────────────────────────────────────────── */
+
+  --mx-alpha-dark-2: #00000005;
+  --mx-alpha-dark-4: #0000000a;
+  --mx-alpha-dark-8: #00000014;
+  --mx-alpha-dark-10: #0000001a;
+  --mx-alpha-dark-12: #0000001f;
+  --mx-alpha-dark-20: #00000033;
+  --mx-alpha-dark-40: #00000066;
+
+  --mx-alpha-light-2: #ffffff05;
+  --mx-alpha-light-4: #ffffff0a;
+  --mx-alpha-light-8: #ffffff14;
+  --mx-alpha-light-10: #ffffff1a;
+  --mx-alpha-light-12: #ffffff1f;
+  --mx-alpha-light-20: #ffffff33;
+  --mx-alpha-light-40: #ffffff66;
+
+  /* ─── Typography ───────────────────────────────────────────────────── */
+
+  --mx-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mx-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --mx-text-xs: 11px;
+  --mx-text-sm: 13px;
+  --mx-text-base: 14px;
+  --mx-text-md: 15px;
+  --mx-text-lg: 16px;
+  --mx-text-xl: 20px;
+
+  --mx-font-regular: 400;
+  --mx-font-medium: 500;
+  --mx-font-semibold: 530;
+
+  --mx-tracking-normal: 0;
+  --mx-tracking-tight: -0.04px;
+  --mx-tracking-tighter: -0.16px;
+
+  /* ─── Spacing & Sizing ─────────────────────────────────────────────── */
+
+  --mx-spacing: 0.25rem; /* 4px base */
+
+  --mx-radius-xs: 2px;
+  --mx-radius-sm: 4px;
+  --mx-radius-md: 6px;
+  --mx-radius-lg: 8px;
+  --mx-radius-xl: 10px;
+
+  --mx-button-height-sm: 24px;
+  --mx-button-height-md: 28px;
+  --mx-button-height-lg: 32px;
+
+  --mx-tag-height: 16px;
+  --mx-tab-height: 32px;
+  --mx-pill-tab-height: 24px;
+
+  /* ─── Semantic Backgrounds (dark mode default) ─────────────────────── */
+
+  --mx-bg-base: var(--mx-grey-1000);
+  --mx-bg-deep: var(--mx-grey-1100);
+  --mx-bg-layer-01: var(--mx-grey-800);
+  --mx-bg-layer-02: var(--mx-grey-700);
+  --mx-bg-layer-03: var(--mx-grey-600);
+  --mx-bg-layer-04: var(--mx-grey-500);
+  --mx-bg-inverse: var(--mx-grey-100);
+  --mx-bg-contrast: var(--mx-grey-700);
+  --mx-bg-accent: var(--mx-blue-600);
+  --mx-bg-button-neutral: var(--mx-alpha-light-8);
+
+  /* ─── Semantic Text (dark mode) ────────────────────────────────────── */
+
+  --mx-text-base: #ededed;
+  --mx-text-muted: #b4b4b4;
+  --mx-text-faint: #808080;
+  --mx-text-inverse: var(--mx-grey-1000);
+  --mx-text-contrast: var(--mx-grey-100);
+  --mx-text-accent: var(--mx-blue-400);
+  --mx-text-accent-hover: var(--mx-blue-500);
+
+  /* ─── Semantic Borders (dark mode) ─────────────────────────────────── */
+
+  --mx-border-muted: var(--mx-alpha-light-8);
+  --mx-border-base: var(--mx-alpha-light-10);
+  --mx-border-strong: var(--mx-alpha-light-20);
+  --mx-border-focus: var(--mx-blue-500);
+
+  /* ─── State Colors (dark mode) ─────────────────────────────────────── */
+
+  --mx-state-success-bg: var(--mx-green-1200);
+  --mx-state-success-fg: var(--mx-green-500);
+  --mx-state-warning-bg: var(--mx-yellow-1200);
+  --mx-state-warning-fg: var(--mx-yellow-500);
+  --mx-state-danger-bg: var(--mx-red-1200);
+  --mx-state-danger-fg: var(--mx-red-500);
+  --mx-state-info-bg: var(--mx-blue-1200);
+  --mx-state-info-fg: var(--mx-blue-500);
+
+  /* ─── Elevation ────────────────────────────────────────────────────── */
+
+  --mx-elevation-raised:
+    0px 2px 4px 0px var(--mx-alpha-dark-4),
+    0px 1px 2px -1px var(--mx-alpha-dark-8),
+    0px 0px 0px 0.5px var(--mx-alpha-dark-12);
+
+  --mx-elevation-floating:
+    0px 8px 16px 0px var(--mx-alpha-dark-4),
+    0px 4px 8px 0px var(--mx-alpha-dark-8),
+    0px 0px 0px 0.5px var(--mx-alpha-dark-12);
+
+  --mx-elevation-overlay:
+    0px 16px 32px 0px var(--mx-alpha-dark-4),
+    0px 8px 16px 0px var(--mx-alpha-dark-8),
+    0px 0px 0px 0.5px var(--mx-alpha-dark-12);
+
+  --mx-elevation-button-neutral:
+    0px 1px 1.5px 0px var(--mx-alpha-dark-10),
+    0px 0px 0px 0.5px var(--mx-alpha-dark-14);
+
+  --mx-elevation-button-contrast:
+    0px 1px 1.5px 0px var(--mx-alpha-dark-20),
+    0px 0px 0px 0.5px var(--mx-grey-800),
+    inset 0px 1px 2px 0px var(--mx-alpha-light-14),
+    inset 0px -1px 2px 0px var(--mx-alpha-dark-6);
+}
+
+/* ─── Light mode override ─────────────────────────────────────────── */
+
+:root.light {
+  --mx-bg-base: var(--mx-grey-100);
+  --mx-bg-deep: var(--mx-grey-200);
+  --mx-bg-layer-01: var(--mx-grey-300);
+  --mx-bg-layer-02: var(--mx-grey-400);
+  --mx-bg-layer-03: var(--mx-grey-500);
+  --mx-bg-layer-04: var(--mx-grey-600);
+  --mx-bg-inverse: var(--mx-grey-1000);
+  --mx-bg-contrast: var(--mx-grey-900);
+
+  --mx-text-base: #1a1a1a;
+  --mx-text-muted: #5c5c5c;
+  --mx-text-faint: #808080;
+  --mx-text-inverse: var(--mx-grey-100);
+  --mx-text-accent: var(--mx-blue-600);
+  --mx-text-accent-hover: var(--mx-blue-700);
+
+  --mx-border-muted: var(--mx-alpha-dark-8);
+  --mx-border-base: var(--mx-alpha-dark-10);
+  --mx-border-strong: var(--mx-alpha-dark-20);
+}

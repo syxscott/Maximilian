@@ -1,0 +1,5 @@
+/* Tailwind v4 bundle (v2 theme) for @max/ui-react
+   Ported from OpenCode's packages/ui/src/v2/styles/tailwind.css. */
+
+@import "./v2-colors.css";
+@import "./v2-theme.css";

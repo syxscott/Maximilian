@@ -1,0 +1,116 @@
+name: Load test (nightly)
+
+# Scheduled load test against a full docker-compose stack. Runs nightly
+# to catch latency regressions that don't show up in unit/integration tests.
+# On push-to-main runs at full rigor; PRs are skipped (load tests are
+# time-consuming and noisy on every change).
+#
+# Uses the Node-native `benchmarks/load/load-test.mjs` so we don't have
+# to install k6 inside CI. k6 scripts under `benchmarks/load/k6-*.js`
+# are still useful for local deep dives — see `benchmarks/load/README.md`.
+
+on:
+  schedule:
+    # Runs 02:30 UTC daily. After-hours for most timezones; cheap on the
+    # GH free runner minutes budget.
+    - cron: "30 2 * * *"
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    name: Docker stack smoke + read load test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maximilian
+          POSTGRES_PASSWORD: maximilian
+          POSTGRES_DB: maximilian_load
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maximilian"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://maximilian:maximilian@localhost:5432/maximilian_load
+      JWT_SECRET: load-test-secret
+      # At least one provider key has to be present for /api/ready to
+      # turn green. Use a fake — the load test only hits /api/workspaces.
+      OPENAI_API_KEY: sk-fake-for-readiness
+      OPENAI_MODEL: gpt-4o-mini
+      NODE_ENV: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Boot the API directly (not via docker-compose — GH Actions service
+      # containers can't share networking). Seeding the test DB first so
+      # /api/auth/register has a clean schema.
+      - name: Build database migrator
+        run: pnpm --filter @max/database build
+
+      - name: Run migrations against the test DB
+        run: node scripts/migrate.mjs
+
+      - name: Start API in background
+        run: |
+          pnpm --filter @max/api build
+          nohup node apps/api/dist/index.js > api.log 2>&1 &
+          echo $! > api.pid
+
+      - name: Wait for /api/ready
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3001/api/ready > /dev/null; then
+              echo "API ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -sf http://localhost:3001/api/ready > /dev/null; then
+            echo "::error::API never became ready"
+            cat api.log
+            exit 1
+          fi
+
+      - name: Run read load test (50 VUs, 30s)
+        run: node benchmarks/load/load-test.mjs --url http://localhost:3001 --vu 50 --duration 30
+
+      - name: Upload load report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-report
+          path: |
+            benchmarks/load/*.json
+            api.log
+          retention-days: 14
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f api.pid ]; then
+            kill "$(cat api.pid)" 2>/dev/null || true
+          fi
