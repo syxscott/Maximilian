@@ -37,14 +37,30 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<{ ap
   const folder = options.migrationsFolder ?? DEFAULT_MIGRATIONS_FOLDER;
   const sql = postgres(options.url, { max: options.max ?? 1, onnotice: () => {} });
   try {
+    // Snapshot the applied-migration count *before* running drizzle's migrate
+    // so we can return a real count instead of the prior `-1` placeholder.
+    // The pg-integration test re-runs migrations on an already-applied schema
+    // and asserts `applied === 0`; the placeholder would have falsely failed.
+    const before = await countAppliedMigrations(sql);
     const db = drizzle(sql);
-    // drizzle's `migrate` returns void; we track by querying the journal before & after
-    // but for simplicity we just report 0 here and let the caller inspect via `migrationsTable`.
     await migrate(db, { migrationsFolder: folder });
-    return { applied: -1 }; // -1 = "ran successfully" (drizzle doesn't return count)
+    const after = await countAppliedMigrations(sql);
+    return { applied: after - before };
   } finally {
     await sql.end();
   }
+}
+
+async function countAppliedMigrations(sql: ReturnType<typeof postgres>): Promise<number> {
+  // The `__drizzle_migrations` table is created lazily by `migrate()` itself,
+  // so on a brand-new DB the first probe returns 0 (table absent is fine).
+  const rows = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = '__drizzle_migrations'
+  `;
+  if (!rows[0]?.count) return 0;
+  const applied = await sql<{ id: number }[]>`SELECT id FROM "__drizzle_migrations"`;
+  return applied.length;
 }
 
 /** Migration status — used by health checks. */

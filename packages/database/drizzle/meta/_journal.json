@@ -15,6 +15,13 @@
       "when": 1782562876405,
       "tag": "0001_loud_lady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782924000000,
+      "tag": "0003_multi_tenant",
+      "breakpoints": true
     }
   ]
 }
