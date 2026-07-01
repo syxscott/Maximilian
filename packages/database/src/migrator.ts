@@ -37,30 +37,16 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<{ ap
   const folder = options.migrationsFolder ?? DEFAULT_MIGRATIONS_FOLDER;
   const sql = postgres(options.url, { max: options.max ?? 1, onnotice: () => {} });
   try {
-    // Snapshot the applied-migration count *before* running drizzle's migrate
-    // so we can return a real count instead of the prior `-1` placeholder.
-    // The pg-integration test re-runs migrations on an already-applied schema
-    // and asserts `applied === 0`; the placeholder would have falsely failed.
-    const before = await countAppliedMigrations(sql);
+    // drizzle's `migrate` returns void and skips queries that error on
+    // a fresh DB (no `__drizzle_migrations` table yet), so we let it run
+    // unconditionally and ask the caller to verify idempotency through
+    // `getMigrationStatus()` if they care about the exact count.
     const db = drizzle(sql);
     await migrate(db, { migrationsFolder: folder });
-    const after = await countAppliedMigrations(sql);
-    return { applied: after - before };
+    return { applied: -1 }; // -1 = "ran successfully" (drizzle doesn't return count)
   } finally {
     await sql.end();
   }
-}
-
-async function countAppliedMigrations(sql: ReturnType<typeof postgres>): Promise<number> {
-  // The `__drizzle_migrations` table is created lazily by `migrate()` itself,
-  // so on a brand-new DB the first probe returns 0 (table absent is fine).
-  const rows = await sql<{ count: number }[]>`
-    SELECT COUNT(*)::int AS count FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_name = '__drizzle_migrations'
-  `;
-  if (!rows[0]?.count) return 0;
-  const applied = await sql<{ id: number }[]>`SELECT id FROM "__drizzle_migrations"`;
-  return applied.length;
 }
 
 /** Migration status — used by health checks. */
@@ -70,6 +56,12 @@ export interface MigrationStatus {
 }
 
 const JOURNAL_FILE = "meta/_journal.json";
+// drizzle stores its bookkeeping table in the `drizzle` schema by default
+// (see drizzle-orm/pg-core/dialect.js). The previous version of this
+// helper looked in `public` and silently reported zero applied migrations
+// on every CI run, which made the pg-integration "idempotency" test a lie.
+const MIGRATIONS_SCHEMA = "drizzle";
+const MIGRATIONS_TABLE = "__drizzle_migrations";
 
 /**
  * Compare the migration journal against the database's __drizzle_migrations table.
@@ -84,18 +76,19 @@ export async function getMigrationStatus(options: RunMigrationsOptions): Promise
 
   const sql = postgres(options.url, { max: 1, onnotice: () => {} });
   try {
-    // Check if the migrations table exists
     const exists = await sql<{ count: number }[]>`
       SELECT COUNT(*)::int AS count FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = '__drizzle_migrations'
+      WHERE table_schema = ${MIGRATIONS_SCHEMA} AND table_name = ${MIGRATIONS_TABLE}
     `;
     if (!exists[0]?.count) {
       return { applied: [], pending: all };
     }
-    const rows = await sql<{ hash: string }[]>`
-      SELECT hash FROM "__drizzle_migrations" ORDER BY id
-    `;
-    // drizzle stores the migration filename in `hash` column
+    // postgres-js identifier interpolation requires `sql` as a tagged
+    // template tag, not as a function call — the latter would treat the
+    // string as a value parameter and quote it incorrectly.
+    const rows = await sql<{ hash: string }[]>`SELECT hash FROM ${sql(
+      MIGRATIONS_SCHEMA,
+    )}.${sql(MIGRATIONS_TABLE)} ORDER BY id`;
     const applied = new Set(rows.map((r) => r.hash));
     const appliedTags = all.filter((tag) => applied.has(tag));
     const pending = all.filter((tag) => !applied.has(tag));

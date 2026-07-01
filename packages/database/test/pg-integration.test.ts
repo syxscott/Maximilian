@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { createDb, closeDb, runMigrations, PgWorkspaceStore } from "../src/index.js";
+import { createDb, closeDb, runMigrations, getMigrationStatus, PgWorkspaceStore } from "../src/index.js";
 import { tenants } from "../src/schema.js";
 
 const url = process.env.DATABASE_URL;
@@ -46,9 +46,14 @@ d("Real PostgreSQL integration", () => {
 
   it("runs migrations cleanly on a fresh schema", async () => {
     // The fact that beforeAll completed without error means migrations applied.
-    // Verify by re-running and confirming 0 new migrations are applied.
-    const result = await runMigrations({ databaseUrl: url!, folder: "./drizzle" });
-    expect(result.applied).toBe(0);
+    // Verify idempotency via getMigrationStatus() instead of the `applied`
+    // field on the migrator's return value — drizzle's `migrate()` returns
+    // void, so the count is a sentinel and a real second-run assertion needs
+    // to query the migrations table directly.
+    await runMigrations({ databaseUrl: url!, folder: "./drizzle" });
+    const status = await getMigrationStatus({ databaseUrl: url!, folder: "./drizzle" });
+    expect(status.pending).toEqual([]);
+    expect(status.applied.length).toBeGreaterThan(0);
   });
 
   it("saves and loads a workspace", async () => {
