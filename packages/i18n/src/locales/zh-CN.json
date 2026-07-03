@@ -22,7 +22,6 @@
   "common.yes": "是",
   "common.no": "否",
   "common.unknown": "未知",
-
   "nav.workspace": "工作区",
   "nav.executions": "执行记录",
   "nav.governance": "治理 (Governance)",
@@ -30,12 +29,10 @@
   "nav.usage": "用量 (Usage)",
   "nav.providers": "模型服务商",
   "nav.settings": "设置",
-
   "app.title": "Maximilian 控制台",
   "app.subtitle": "控制台",
   "app.backendUnreachable": "后端无法连接",
   "app.tabLoading": "正在加载 {label}…",
-
   "chat.title": "对话",
   "chat.inputPlaceholder": "输入你的请求…",
   "chat.messageRequired": "消息不能为空",
@@ -48,11 +45,9 @@
   "chat.sendHint": "按 Ctrl/⌘ + Enter 发送",
   "chat.empty": "发送一条请求，指挥官会规划任务并调度代理执行。",
   "chat.processing": "正在处理你的请求…",
-
   "preset.todo": "开发一个简单的 Todo Web App",
   "preset.scraper": "写一个 Python 爬虫，抓取 Hacker News 首页标题",
   "preset.blog": "用 React + Express 实现一个简单的博客系统",
-
   "provider.title": "模型服务商管理",
   "provider.description": "API 密钥从环境变量读取（OPENAI_API_KEY、ANTHROPIC_API_KEY 等），不会存入数据库。下面可以切换默认服务商及每个服务商的模型。修改通过 PUT 立即生效，并持久化到 provider_configs 表。",
   "provider.loading": "正在加载服务商…",
@@ -70,29 +65,23 @@
   "provider.saving": "保存中…",
   "provider.id": "ID",
   "provider.status": "状态",
-
   "agent.title": "代理",
   "agent.empty": "还没有代理。发送一条请求以触发代理创建。",
-
   "task.title": "任务",
   "task.empty": "暂无任务。",
   "task.dependsOn": "依赖",
-
   "output.title": "输出",
   "output.empty": "暂无输出。",
-
   "review.title": "评审",
   "review.empty": "等待评审…",
   "review.scoreLabel": "质量评分",
   "review.summary": "摘要",
   "review.reviewedAt": "评审时间 {time}",
-
   "execution.title": "执行记录",
   "execution.loading": "正在加载执行记录…",
   "execution.failedToLoad": "加载执行记录失败",
   "execution.empty": "暂无执行记录。",
   "execution.graphLabel": "代理执行图",
-
   "evolution.title": "进化时间线",
   "evolution.loading": "正在加载时间线…",
   "evolution.failedToLoad": "加载进化时间线失败",
@@ -104,7 +93,6 @@
   "evolution.rejected": "已拒绝",
   "evolution.more": "+ {count} 项更多变更",
   "evolution.nested": "… {count} 项嵌套变更",
-
   "governance.title": "治理",
   "governance.proposals.loading": "正在加载提案…",
   "governance.proposals.failedToLoad": "加载待审提案失败",
@@ -132,7 +120,6 @@
   "governance.proposals.approveMutation": "通过变更",
   "governance.proposals.denyMutation": "拒绝变更",
   "governance.proposals.reasonPlaceholder": "请说明通过/拒绝的原因",
-
   "usage.title": "用量",
   "usage.summary.loading": "正在加载汇总…",
   "usage.daily.loading": "正在加载日趋势…",
@@ -155,7 +142,6 @@
   "usage.range.14d": "近 14 天",
   "usage.range.30d": "近 30 天",
   "usage.range.all": "全部",
-
   "permissions.title": "工具权限",
   "permissions.tool": "工具",
   "permissions.target": "目标",
@@ -183,7 +169,6 @@
   "permissions.allow": "允许",
   "permissions.deny": "拒绝",
   "permissions.targetEmpty": "（空）",
-
   "settings.title": "设置",
   "settings.appearance.title": "外观",
   "settings.appearance.description": "选择 Maximilian 的外观。<em>跟随系统</em> 自动适配操作系统；<em>浅色</em> 和 <em>深色</em> 强制使用对应模式。",
@@ -201,16 +186,13 @@
   "settings.language.title": "语言",
   "settings.language.description": "选择界面语言。新选项立即生效，并会记住你的偏好。",
   "settings.language.followSystem": "跟随系统",
-
   "error.internal": "内部错误",
   "error.network": "网络错误",
   "error.unauthorized": "未授权",
   "error.notFound": "未找到",
   "error.timeout": "请求超时",
-
   "footer.workspace": "工作区",
   "footer.workspaceNone": "—",
-
   "tui.loadingAdapters": "正在加载适配器…",
   "tui.warp": "新建",
   "tui.existingWorkspace": "已有工作区",
@@ -282,5 +264,13 @@
   "tui.selectAgent": "选择 agent",
   "tui.workspaces": "工作区",
   "tui.copiedSuccessfully": "已复制到剪贴板",
-  "tui.resetTui": "重置 TUI"
+  "tui.resetTui": "重置 TUI",
+  "approvals.required.title": "需要审批",
+  "approvals.required.description": "Maximilian 在继续之前需要你确认这一步。",
+  "approvals.prompt": "请求",
+  "approvals.reason": "原因",
+  "approvals.commentPlaceholder": "可选评论（如标注必填则需填写）",
+  "approvals.commentRequired": "请填写评论。",
+  "approvals.approve": "通过",
+  "approvals.reject": "拒绝"
 }

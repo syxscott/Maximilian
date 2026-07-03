@@ -22,7 +22,6 @@
   "common.yes": "Yes",
   "common.no": "No",
   "common.unknown": "Unknown",
-
   "nav.workspace": "Workspace",
   "nav.executions": "Executions",
   "nav.governance": "Governance",
@@ -30,12 +29,10 @@
   "nav.usage": "Usage",
   "nav.providers": "Providers",
   "nav.settings": "Settings",
-
   "app.title": "Maximilian Control Panel",
   "app.subtitle": "Control Panel",
   "app.backendUnreachable": "Backend unreachable",
   "app.tabLoading": "Loading {label}…",
-
   "chat.title": "Chat",
   "chat.inputPlaceholder": "Enter your request...",
   "chat.messageRequired": "Message is required",
@@ -48,11 +45,9 @@
   "chat.sendHint": "Press Ctrl/⌘ + Enter to send",
   "chat.empty": "Send a request. Commander will plan tasks and dispatch agents.",
   "chat.processing": "Processing your request…",
-
   "preset.todo": "Build a simple Todo web app",
   "preset.scraper": "Write a Python scraper for Hacker News headlines",
   "preset.blog": "Build a simple blog with React + Express",
-
   "provider.title": "Provider Management",
   "provider.description": "API keys are read from environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.) — never stored in the database. Below you can change which provider is the default and which model each provider uses. Changes take effect immediately for new agent runs; in-memory state is updated on PUT and persisted to provider_configs.",
   "provider.loading": "Loading providers...",
@@ -70,29 +65,23 @@
   "provider.saving": "Saving...",
   "provider.id": "ID",
   "provider.status": "Status",
-
   "agent.title": "Agents",
   "agent.empty": "No agents yet. Send a request to spawn them.",
-
   "task.title": "Tasks",
   "task.empty": "No tasks yet.",
   "task.dependsOn": "Depends on",
-
   "output.title": "Output",
   "output.empty": "No outputs yet.",
-
   "review.title": "Review",
   "review.empty": "Waiting for review...",
   "review.scoreLabel": "Quality Score",
   "review.summary": "Summary",
   "review.reviewedAt": "Reviewed at {time}",
-
   "execution.title": "Executions",
   "execution.loading": "Loading executions...",
   "execution.failedToLoad": "Failed to load executions.",
   "execution.empty": "No executions recorded yet.",
   "execution.graphLabel": "Agent execution graph",
-
   "evolution.title": "Evolution Timeline",
   "evolution.loading": "Loading timeline...",
   "evolution.failedToLoad": "Failed to load evolution timeline.",
@@ -104,7 +93,6 @@
   "evolution.rejected": "rejected",
   "evolution.more": "+ {count} more mutations",
   "evolution.nested": "… {count} nested mutations",
-
   "governance.title": "Governance",
   "governance.proposals.loading": "Loading proposals...",
   "governance.proposals.failedToLoad": "Failed to load pending proposals.",
@@ -132,7 +120,6 @@
   "governance.proposals.approveMutation": "Approve Mutation",
   "governance.proposals.denyMutation": "Deny Mutation",
   "governance.proposals.reasonPlaceholder": "Why are you approving/rejecting this?",
-
   "usage.title": "Usage",
   "usage.summary.loading": "Loading summary...",
   "usage.daily.loading": "Loading daily trend...",
@@ -155,7 +142,6 @@
   "usage.range.14d": "14d",
   "usage.range.30d": "30d",
   "usage.range.all": "All",
-
   "permissions.title": "Tool permissions",
   "permissions.tool": "Tool",
   "permissions.target": "Target",
@@ -183,7 +169,6 @@
   "permissions.allow": "Allow",
   "permissions.deny": "Deny",
   "permissions.targetEmpty": "(empty)",
-
   "settings.title": "Settings",
   "settings.appearance.title": "Appearance",
   "settings.appearance.description": "Choose how Maximilian should look. <em>System</em> follows your OS preference; <em>Light</em> and <em>Dark</em> force a specific mode.",
@@ -201,16 +186,13 @@
   "settings.language.title": "Language",
   "settings.language.description": "Choose the interface language. The new option takes effect immediately and your preference is remembered.",
   "settings.language.followSystem": "Follow system",
-
   "error.internal": "Internal error",
   "error.network": "Network error",
   "error.unauthorized": "Unauthorized",
   "error.notFound": "Not found",
   "error.timeout": "Request timeout",
-
   "footer.workspace": "Workspace",
   "footer.workspaceNone": "—",
-
   "tui.loadingAdapters": "Loading adapters...",
   "tui.warp": "Warp",
   "tui.existingWorkspace": "Existing Workspace",
@@ -282,5 +264,13 @@
   "tui.selectAgent": "Select agent",
   "tui.workspaces": "Workspaces",
   "tui.copiedSuccessfully": "Successfully copied",
-  "tui.resetTui": "Reset TUI"
+  "tui.resetTui": "Reset TUI",
+  "approvals.required.title": "Approval required",
+  "approvals.required.description": "A workflow step needs human review before Maximilian can continue.",
+  "approvals.prompt": "Prompt",
+  "approvals.reason": "Reason",
+  "approvals.commentPlaceholder": "Optional comment (required if marked)",
+  "approvals.commentRequired": "A comment is required.",
+  "approvals.approve": "Approve",
+  "approvals.reject": "Reject"
 }

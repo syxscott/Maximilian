@@ -198,11 +198,11 @@ export function App() {
   );
 
   const answerApproval = useCallback(
-    async (decision: "approve" | "reject") => {
+    async (decision: "approve" | "reject", comment?: string) => {
       if (!pendingPermission || pendingPermission.kind !== "approval") return;
       const id = pendingPermission.requestId;
       try {
-        await permissionsApi.answerApproval(id, decision);
+        await permissionsApi.answerApproval(id, decision, comment);
       } catch (err) {
         console.error("[approvals] answer failed", err);
       } finally {

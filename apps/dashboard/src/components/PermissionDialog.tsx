@@ -6,8 +6,10 @@
  * multiple instances won't double-listen.
  */
 
+import { useState } from "react";
 import { ShieldCheck, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -22,22 +24,55 @@ import { useLocale, t } from "@max/i18n";
 export interface PermissionDialogProps {
   pending: PendingPermission | null;
   onAnswer: (decision: "allow" | "deny") => Promise<void>;
-  onApprovalAnswer?: (decision: "approve" | "reject") => Promise<void>;
+  onApprovalAnswer?: (
+    decision: "approve" | "reject",
+    comment: string | undefined,
+  ) => Promise<void>;
 }
 
 export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: PermissionDialogProps) {
   useLocale();
   const open = pending !== null;
+  const isApproval = pending?.kind === "approval";
+  const requireComment = pending?.kind === "approval" && pending.requireComment === true;
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmedComment = comment.trim();
+  const commentMissing = requireComment && trimmedComment.length === 0;
+
+  async function submit(decision: "approve" | "reject") {
+    if (!pending || pending.kind !== "approval") return;
+    if (submitting) return;
+    if (commentMissing) {
+      setError(t("approvals.commentRequired"));
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onApprovalAnswer?.(decision, trimmedComment.length > 0 ? trimmedComment : undefined);
+      setComment("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={() => { /* read-only: only buttons dismiss */ }}>
       <DialogContent data-testid="permission-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4" />
-            {t("permissions.required.title")}
+            {isApproval ? t("approvals.required.title") : t("permissions.required.title")}
           </DialogTitle>
           <DialogDescription>
-            {t("permissions.required.description")}
+            {isApproval
+              ? t("approvals.required.description")
+              : t("permissions.required.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -46,26 +81,55 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
             {pending.kind === "approval" ? (
               <>
                 <div className="flex gap-2">
-                  <span className="text-muted-foreground w-20">Approval</span>
-                  <code className="font-mono bg-background/60 px-2 py-0.5 rounded break-all" data-testid="perm-dialog-target">
+                  <span className="text-muted-foreground w-20">{t("approvals.prompt")}</span>
+                  <code
+                    className="font-mono bg-background/60 px-2 py-0.5 rounded break-all"
+                    data-testid="perm-dialog-target"
+                  >
                     {pending.prompt}
                   </code>
                 </div>
                 {pending.reason ? (
-                  <div className="text-xs text-muted-foreground">{pending.reason}</div>
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-medium">{t("approvals.reason")}:</span> {pending.reason}
+                  </div>
                 ) : null}
+                <div className="space-y-1 pt-1">
+                  <Textarea
+                    value={comment}
+                    onChange={(e) => {
+                      setComment(e.target.value);
+                      if (error) setError(null);
+                    }}
+                    placeholder={t("approvals.commentPlaceholder")}
+                    data-testid="perm-dialog-comment"
+                    rows={3}
+                    disabled={submitting}
+                  />
+                  {error ? (
+                    <div className="text-xs text-destructive" data-testid="perm-dialog-error">
+                      {error}
+                    </div>
+                  ) : null}
+                </div>
               </>
             ) : (
               <>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground w-20">{t("permissions.tool")}</span>
-                  <code className="font-mono bg-background/60 px-2 py-0.5 rounded" data-testid="perm-dialog-tool">
+                  <code
+                    className="font-mono bg-background/60 px-2 py-0.5 rounded"
+                    data-testid="perm-dialog-tool"
+                  >
                     {pending.tool}
                   </code>
                 </div>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground w-20">{t("permissions.target")}</span>
-                  <code className="font-mono bg-background/60 px-2 py-0.5 rounded break-all" data-testid="perm-dialog-target">
+                  <code
+                    className="font-mono bg-background/60 px-2 py-0.5 rounded break-all"
+                    data-testid="perm-dialog-target"
+                  >
                     {pending.target || t("permissions.targetEmpty")}
                   </code>
                 </div>
@@ -79,21 +143,45 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
 
 
         <DialogFooter className="gap-2">
-          <Button
-            variant="destructive"
-            onClick={() => pending && (pending.kind === "approval" ? onApprovalAnswer?.("reject") : onAnswer("deny"))}
-            data-testid="perm-dialog-deny"
-          >
-            <ShieldX className="h-4 w-4 mr-1" />
-            {pending?.kind === "approval" ? "Reject" : t("permissions.deny")}
-          </Button>
-          <Button
-            onClick={() => pending && (pending.kind === "approval" ? onApprovalAnswer?.("approve") : onAnswer("allow"))}
-            data-testid="perm-dialog-allow"
-          >
-            <ShieldCheck className="h-4 w-4 mr-1" />
-            {pending?.kind === "approval" ? "Approve" : t("permissions.allow")}
-          </Button>
+          {isApproval ? (
+            <>
+              <Button
+                variant="destructive"
+                onClick={() => void submit("reject")}
+                disabled={submitting || commentMissing}
+                data-testid="perm-dialog-deny"
+              >
+                <ShieldX className="h-4 w-4 mr-1" />
+                {t("approvals.reject")}
+              </Button>
+              <Button
+                onClick={() => void submit("approve")}
+                disabled={submitting || commentMissing}
+                data-testid="perm-dialog-allow"
+              >
+                <ShieldCheck className="h-4 w-4 mr-1" />
+                {t("approvals.approve")}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="destructive"
+                onClick={() => void onAnswer("deny")}
+                data-testid="perm-dialog-deny"
+              >
+                <ShieldX className="h-4 w-4 mr-1" />
+                {t("permissions.deny")}
+              </Button>
+              <Button
+                onClick={() => void onAnswer("allow")}
+                data-testid="perm-dialog-allow"
+              >
+                <ShieldCheck className="h-4 w-4 mr-1" />
+                {t("permissions.allow")}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
