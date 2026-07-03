@@ -144,9 +144,10 @@ describe("E2E: DAGS_MODE=true /api/chat + autonomy loop", () => {
       runtime: {
         resolveApproval: (requestId, response) => {
           for (const runtime of [...approvalRuntimes]) {
-            if (runtime.resolveApproval(requestId, response)) return true;
+            const outcome = runtime.resolveApproval(requestId, response);
+            if (outcome.ok) return outcome;
           }
-          return false;
+          return { ok: false, reason: "unknown" };
         },
       },
     });

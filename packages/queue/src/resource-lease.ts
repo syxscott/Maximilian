@@ -37,9 +37,38 @@ export async function acquireResourceLease(
   const deadline = Date.now() + waitMs;
 
   try {
+    let gpuProbe: { available: boolean } | undefined;
     while (Date.now() <= deadline) {
-      const enoughVram = budget.vramMb ? (await freeVramMb()) >= budget.vramMb : true;
-      if (enoughVram) {
+      if (budget.vramMb) {
+        // Probe nvidia-smi once per loop; if the binary is missing or
+        // errors out, fail fast instead of busy-waiting until the
+        // deadline — the operator asked for VRAM but the box has no GPU.
+        if (!gpuProbe) {
+          gpuProbe = await probeGpu();
+          if (!gpuProbe.available) {
+            conn.disconnect();
+            throw new Error(
+              `resource budget requires ${budget.vramMb}MB of VRAM but nvidia-smi is unavailable on this host`,
+            );
+          }
+        }
+        const enoughVram = (await freeVramMb()) >= budget.vramMb;
+        if (enoughVram) {
+          const acquired = await conn.set(GPU_LOCK_KEY, token, "PX", leaseMs, "NX");
+          if (acquired === "OK") {
+            return {
+              release: async () => {
+                try {
+                  const current = await conn.get(GPU_LOCK_KEY);
+                  if (current === token) await conn.del(GPU_LOCK_KEY);
+                } finally {
+                  conn.disconnect();
+                }
+              },
+            };
+          }
+        }
+      } else if (budget.exclusive) {
         const acquired = await conn.set(GPU_LOCK_KEY, token, "PX", leaseMs, "NX");
         if (acquired === "OK") {
           return {
@@ -78,6 +107,15 @@ async function freeVramMb(): Promise<number> {
     return values.length > 0 ? Math.max(...values) : 0;
   } catch {
     return 0;
+  }
+}
+
+async function probeGpu(): Promise<{ available: boolean }> {
+  try {
+    await execFileAsync("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"]);
+    return { available: true };
+  } catch {
+    return { available: false };
   }
 }
 

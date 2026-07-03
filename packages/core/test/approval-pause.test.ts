@@ -64,12 +64,53 @@ describe("AgentRuntime approval pause/resume", () => {
     }
 
     expect(request.prompt).toBe("Review before final handoff");
-    expect(runtime.resolveApproval(request.requestId, { decision: "approve" })).toBe(true);
+    const outcome = runtime.resolveApproval(request.requestId, { decision: "approve" });
+    expect(outcome.ok).toBe(true);
 
     const final = await executing;
     expect(final.status).toBe("completed");
     expect(final.results[0]?.agentId).toBe("human-approval");
     expect(runtime.pendingApprovalCount()).toBe(0);
     expect(events.some((event) => event.type === "approval-resolved")).toBe(true);
+  });
+
+  function makeRequireCommentWorkspace(): Workspace {
+    return makeApprovalWorkspace(); // uses default metadata with requireComment=false
+  }
+
+  it("rejects an empty comment when requireComment is true", async () => {
+    const runtime = new AgentRuntime(() => undefined, makeSink());
+    const events: RuntimeEvent[] = [];
+    runtime.on((event) => events.push(event));
+
+    const ws = makeApprovalWorkspace();
+    const task = ws.plan!.tasks[0]!;
+    task.metadata = {
+      kind: "approval",
+      approval: { prompt: "Sign off", requireComment: true },
+    };
+    const executing = runtime.execute(ws);
+    await new Promise((r) => setTimeout(r, 5));
+    const request = events.find((event) => event.type === "approval-request")!;
+    if (!request || request.type !== "approval-request") throw new Error("missing approval request");
+
+    const outcome = runtime.resolveApproval(request.requestId, {
+      decision: "approve",
+      comment: "   ",
+    });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.reason).toBe("comment_required");
+    expect(runtime.pendingApprovalCount()).toBe(1);
+
+    const ok = runtime.resolveApproval(request.requestId, { decision: "approve", comment: "go" });
+    expect(ok.ok).toBe(true);
+    await executing;
+  });
+
+  it("returns unknown for a stale requestId", () => {
+    const runtime = new AgentRuntime(() => undefined, makeSink());
+    const outcome = runtime.resolveApproval("approval-missing", { decision: "approve" });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.reason).toBe("unknown");
   });
 });

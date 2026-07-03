@@ -53,7 +53,10 @@ interface ChatDeps {
   queue?: Queue;
   dagsApprovalRuntimes?: {
     register(runtime: {
-      resolveApproval(requestId: string, response: { decision: "approve" | "reject"; comment?: string }): boolean;
+      resolveApproval(
+        requestId: string,
+        response: { decision: "approve" | "reject"; comment?: string },
+      ): { ok: true } | { ok: false; reason: "unknown" | "comment_required" };
     }): () => void;
   };
   onDagsRuntimeEvent?: (event: RuntimeEvent) => void;

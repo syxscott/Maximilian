@@ -407,12 +407,19 @@ const approvalRuntimeRegistry = {
 function resolveApprovalAcrossRuntimes(
   requestId: string,
   response: { decision: "approve" | "reject"; comment?: string },
-): boolean {
-  if (runtime.resolveApproval(requestId, response)) return true;
+): { ok: true } | { ok: false; reason: "unknown" | "comment_required" } {
+  const primary = runtime.resolveApproval(requestId, response);
+  if (primary.ok) return primary;
+  if (primary.reason === "comment_required") return primary;
   for (const runtimePort of [...dagsApprovalRuntimes]) {
-    if (runtimePort.resolveApproval(requestId, response)) return true;
+    const next = runtimePort.resolveApproval(requestId, response);
+    if (next.ok) return next;
+    // If any runtime reports comment_required, surface it — even if a
+    // different runtime also has the request parked, the user-facing
+    // requirement (comment missing) is the most actionable signal.
+    if (next.reason === "comment_required") return next;
   }
-  return false;
+  return primary.ok ? primary : { ok: false, reason: primary.reason };
 }
 
 // ---------------------------------------------------------------------------

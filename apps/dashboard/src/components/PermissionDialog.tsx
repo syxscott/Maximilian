@@ -6,7 +6,7 @@
  * multiple instances won't double-listen.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldCheck, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +38,15 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset transient state whenever the pending prompt changes. Without
+  // this, a fresh approval after a previous one would inherit leftover
+  // comment text and the prior submit/error state.
+  useEffect(() => {
+    setComment("");
+    setSubmitting(false);
+    setError(null);
+  }, [pending?.requestId]);
 
   const trimmedComment = comment.trim();
   const commentMissing = requireComment && trimmedComment.length === 0;

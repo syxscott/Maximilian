@@ -36,7 +36,10 @@ export interface DagsFlowDeps {
   };
   approvalRuntimes?: {
     register(runtime: {
-      resolveApproval(requestId: string, response: { decision: "approve" | "reject"; comment?: string }): boolean;
+      resolveApproval(
+        requestId: string,
+        response: { decision: "approve" | "reject"; comment?: string },
+      ): { ok: true } | { ok: false; reason: "unknown" | "comment_required" };
     }): () => void;
   };
   onEvent?: (event: RuntimeEvent) => void;
@@ -62,7 +65,7 @@ export async function buildDagsWorkspace(
   const nodeIds = composed.graph.nodes.map((n) => n.id);
   const tasks: Task[] = composed.graph.nodes.map((n) => ({
     id: n.id,
-    agentRole: (n.kind === "approval" ? "general" : n.role) as unknown as Task["agentRole"],
+    agentRole: (n.kind === "approval" ? "approval" : n.role) as unknown as Task["agentRole"],
     description: n.kind === "approval" ? n.approvalConfig?.prompt ?? n.displayName : n.displayName ?? n.role,
     status: "pending" as const,
     dependsOn: n.dependsOn.filter((d) => nodeIds.includes(d)),

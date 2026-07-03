@@ -76,6 +76,13 @@ export interface ApprovalResponse {
   comment?: string;
 }
 
+/** Result of resolving a parked approval. The API translates `reason` into
+ *  a status code so the client can show a useful error instead of guessing
+ *  from a generic 404. */
+export type ApprovalResolveResult =
+  | { ok: true }
+  | { ok: false; reason: "unknown" | "comment_required" };
+
 export type RuntimeEvent =
   | { type: "plan"; workspaceId: string; plan: Plan }
   | { type: "task-start"; workspaceId: string; taskId: string; agentRole: AgentRole }
@@ -364,10 +371,12 @@ export class AgentRuntime {
     });
   }
 
-  resolveApproval(requestId: string, response: ApprovalResponse): boolean {
+  resolveApproval(requestId: string, response: ApprovalResponse): ApprovalResolveResult {
     const entry = this.approvalResolvers.get(requestId);
-    if (!entry) return false;
-    if (entry.meta.requireComment && !response.comment?.trim()) return false;
+    if (!entry) return { ok: false, reason: "unknown" };
+    if (entry.meta.requireComment && !response.comment?.trim()) {
+      return { ok: false, reason: "comment_required" };
+    }
     this.approvalResolvers.delete(requestId);
     entry.resolve(response);
     this.emit({
@@ -378,7 +387,7 @@ export class AgentRuntime {
       decision: response.decision,
       comment: response.comment,
     });
-    return true;
+    return { ok: true };
   }
 
   pendingApprovalCount(): number {
