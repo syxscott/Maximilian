@@ -64,6 +64,35 @@ describe("FileMemoryStore", () => {
     expect(store2.toPrelude("backend")).toContain("Persistent pattern");
   });
 
+  it("serialises concurrent same-role writes so no snippet is lost", async () => {
+    // Two parallel `coder` tasks finishing in the same wave must both
+    // see their snippets land. Without per-role locking the second
+    // `persist` overwrites the first because both load the same
+    // `MemoryFile` reference and the cache is updated post-write.
+    const snippets = Array.from({ length: 10 }, (_, i) => `snippet-${i}`);
+    await Promise.all(
+      snippets.map((s) => store.recordSuccess("backend", { taskId: s }, s)),
+    );
+    const mem = store.getMemory("backend");
+    for (const s of snippets) {
+      expect(mem.goodExamples).toContain(s);
+    }
+    expect(mem.totalEntries).toBe(snippets.length);
+  });
+
+  it("interleaves recordSuccess and recordFailure on the same role without losing writes", async () => {
+    const successes = Array.from({ length: 5 }, (_, i) => `good-${i}`);
+    const failures = Array.from({ length: 5 }, (_, i) => `bad-${i}`);
+    await Promise.all([
+      ...successes.map((s) => store.recordSuccess("backend", { taskId: s }, s)),
+      ...failures.map((f) => store.recordFailure("backend", { taskId: f, error: f })),
+    ]);
+    const mem = store.getMemory("backend");
+    for (const s of successes) expect(mem.goodExamples).toContain(s);
+    for (const f of failures) expect(mem.commonErrors).toContain(f);
+    expect(mem.totalEntries).toBe(successes.length + failures.length);
+  });
+
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
   });

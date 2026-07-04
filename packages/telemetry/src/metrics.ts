@@ -46,9 +46,9 @@ export const taskTotal = new Counter({
   labelNames: ["agentRole", "status"] as const,
 });
 
-export const activeWorkspaces = new Gauge({
-  name: "maximilian_active_workspaces",
-  help: "Currently executing workspaces",
+export const activeTasks = new Gauge({
+  name: "maximilian_active_tasks",
+  help: "Currently executing agent tasks (inc on task-start, dec on task-complete/task-failed)",
   registers: [registry],
 });
 

@@ -47,7 +47,7 @@ export {
   httpRequestDuration,
   taskDuration,
   taskTotal,
-  activeWorkspaces,
+  activeTasks,
   llmTokensTotal,
   llmCallDuration,
   llmErrorsTotal,

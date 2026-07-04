@@ -39,7 +39,7 @@ import {
   httpRequestDuration,
   taskDuration,
   taskTotal,
-  activeWorkspaces,
+  activeTasks,
   llmTokensTotal,
 } from "@max/telemetry";
 
@@ -443,10 +443,10 @@ const blueprintStore = (db ? new PgBlueprintStore(db) : new BlueprintStore(works
 runtime.on(async (event) => {
   // Prometheus metrics — always tracked, even without evolution.
   if (event.type === "task-start") {
-    activeWorkspaces.inc();
+    activeTasks.inc();
   }
   if (event.type === "task-complete" || event.type === "task-failed") {
-    activeWorkspaces.dec();
+    activeTasks.dec();
     const role = "result" in event ? (event as { result: { agentRole: string } }).result.agentRole : "general";
     const status = event.type === "task-complete" ? "completed" : "failed";
     taskTotal.labels(role, status).inc();

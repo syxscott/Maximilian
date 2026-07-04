@@ -700,7 +700,7 @@ export class AgentRuntime {
     const roundRef = counters.roundRef
     // Emit task-start BEFORE any preconditions that could throw, so listeners
     // that pair task-start with task-complete/task-failed (e.g. the Prometheus
-    // activeWorkspaces gauge) never see a task-failed without a matching start.
+    // activeTasks gauge) never see a task-failed without a matching start.
     task.status = "running";
     task.startedAt = new Date().toISOString();
     this.emit({
