@@ -40,15 +40,46 @@ export interface ToolEnabledResponse {
  */
 export class ToolEnabledProvider {
   private toolDefs: ToolDefinition[] = []
+  /**
+   * Per-agent tool allowlist (借鉴 cc-switch).
+   * When set, only tools in this set are returned by getToolDefinitions().
+   */
+  private allowedToolNames?: Set<string>
+  /**
+   * Per-agent tool denylist (借鉴 cc-switch, wins over allowlist).
+   */
+  private deniedToolNames?: Set<string>
 
   constructor(
     private provider: Provider,
     private registry: ToolRegistry,
   ) {}
 
-  /** Get tool definitions for the current scope. */
+  /**
+   * Restrict available tools to the given set of names (借鉴 cc-switch).
+   * Pass undefined to lift restriction.
+   */
+  setToolAllowlist(names: string[] | undefined): void {
+    this.allowedToolNames = names ? new Set(names) : undefined
+  }
+
+  /**
+   * Exclude specific tools from the available set (借鉴 cc-switch).
+   * Denylist wins over allowlist: if a tool is in both, it's denied.
+   */
+  setToolDenylist(names: string[] | undefined): void {
+    this.deniedToolNames = names ? new Set(names) : undefined
+  }
+
+  /** Get tool definitions for the current scope, filtered by allow/deny. */
   getToolDefinitions(): ToolDefinition[] {
-    return this.registry.materialize().definitions
+    const all = this.registry.materialize().definitions
+    if (!this.allowedToolNames && !this.deniedToolNames) return all
+    return all.filter((d) => {
+      if (this.deniedToolNames?.has(d.name)) return false
+      if (this.allowedToolNames && !this.allowedToolNames.has(d.name)) return false
+      return true
+    })
   }
 
   /** Execute a tool call through the registry. */

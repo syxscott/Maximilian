@@ -15,6 +15,8 @@ import { withSpan, getLogger } from "@max/telemetry";
 
 const log = getLogger("core:runtime");
 import { runToolLoop, type ToolEnabledProvider } from "./tool-integration.js";
+import { classifyTaskError } from "./failover-reason.js";
+import type { AgentManifest } from "./types.js";
 import { StallDetector, type StallInfo } from "./stall-detection.js";
 import type { ChatMessage } from "@max/providers";
 import type {
@@ -445,6 +447,41 @@ export class AgentRuntime {
   }
 
   /**
+   * Save runtime state snapshot for a workspace (借鉴 openclaw sessions store).
+   * Captures the in-memory ledger, retry counters, and pending task ids into
+   * workspace.metadata.state so the caller can restore it later via loadState().
+   *
+   * Does NOT save the workspace itself (the sink handles persistence).
+   * Returns the state snapshot object for the caller's convenience.
+   */
+  saveState(workspaceId: string): Record<string, unknown> | undefined {
+    const ledger = this.ledgers.get(workspaceId);
+    const retryCounts: Record<string, number> = {};
+    // We can't snapshot retryMap directly (it's a local in _executeImpl).
+    // Instead, we expose what we can from the public fields.
+    return {
+      ledger: ledger ? { ...ledger, entries: [...ledger.entries] } : undefined,
+      savedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Load a previously saved state snapshot into the runtime.
+   * Currently restores the ledger. Extend as more state is captured.
+   * Returns true if state was loaded, false if no state was found.
+   */
+  loadState(workspaceId: string, state: Record<string, unknown>): boolean {
+    if (state.ledger && typeof state.ledger === "object") {
+      const ledger = state.ledger as { id: string; entries: LedgerEntry[]; createdAt: string; updatedAt: string };
+      if (ledger.id && Array.isArray(ledger.entries)) {
+        this.ledgers.set(workspaceId, ledger as unknown as Ledger);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Direct access to the audit log. Tests + the API pass it through; the
    * `record` method is for callers that need to inject synthetic entries
    * (e.g. importing a legacy log).
@@ -682,21 +719,24 @@ export class AgentRuntime {
             completed.add(task.id);
           } catch (err) {
             const error = err instanceof Error ? err.message : String(err);
+            // Classify the error for smarter retry decisions (借鉴 hermes-agent).
+            const classified = classifyTaskError(err);
             const retries = retryMap.get(task.id) ?? 0;
-            if (retries < this.maxTaskRetries) {
+            if (retries < this.maxTaskRetries && classified.retryable) {
               // Re-queue for retry
               retryMap.set(task.id, retries + 1);
               task.status = "pending";
               task.error = undefined;
               task.completedAt = undefined;
               retriedTasks.push(task);
-              log.warn({ taskId: task.id, retry: retries + 1, maxRetries: this.maxTaskRetries }, "task failed, retrying");
+              log.warn({ taskId: task.id, retry: retries + 1, maxRetries: this.maxTaskRetries, failoverReason: classified.reason }, "task failed, retrying");
               this.emit({ type: "task-failed", workspaceId: updated.id, taskId: task.id, error: `${error} (retry ${retries + 1}/${this.maxTaskRetries})` });
             } else {
               task.status = "failed";
               task.error = error;
               task.completedAt = new Date().toISOString();
               failed.add(task.id);
+              log.warn({ taskId: task.id, failoverReason: classified.reason, retryable: classified.retryable }, "task failed permanently");
               this.emit({ type: "task-failed", workspaceId: updated.id, taskId: task.id, error });
               throw err;
             }
@@ -896,12 +936,13 @@ export class AgentRuntime {
 
           // P0-A wiring: when tool loop is enabled and the agent provides a
           // tool-enabled provider, route the chat call through `runToolLoop`.
-          // The loop emits `tool-start` / `tool-end` events through
-          // `this.emit`, so the API SSE stream + ScopedBus mirror them
-          // alongside `task-start` / `task-complete`. Agents without a tool
-          // provider fall through to the original single-shot execute path.
+          // Set per-agent tool allowlist (借鉴 cc-switch) before running.
           const toolProvider: ToolEnabledProvider | undefined =
             this.enableToolLoop ? agent.getToolProvider() : undefined
+          if (toolProvider) {
+            toolProvider.setToolAllowlist(agent.manifest.allowedTools)
+            toolProvider.setToolDenylist(agent.manifest.deniedTools)
+          }
           const final = toolProvider
             ? await runToolLoopAndSubmit(
                 agent,

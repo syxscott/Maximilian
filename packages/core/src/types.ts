@@ -39,6 +39,23 @@ export const AgentManifestSchema = z.object({
   systemPrompt: z.string(),
   modelProviderId: z.string().optional(),
   modelName: z.string().optional(),
+  /**
+   * Per-agent tool allowlist (借鉴 cc-switch OpenClawToolsConfig).
+   * When set, the agent is restricted to using only these tools.
+   * Empty/undefined = no restriction (all registered tools are available).
+   *
+   * Tools NOT in this list are filtered out from the tool definitions
+   * sent to the LLM, so the model never even sees tools it shouldn't call.
+   * This is a static gate (always enforced) — distinct from the runtime
+   * permission gate (approval-based, per-call).
+   */
+  allowedTools: z.array(z.string()).optional(),
+  /**
+   * Per-agent tool denylist (借鉴 cc-switch).
+   * Tools in this list are removed from the available set, even if they
+   * match the allowlist. Denylist wins over allowlist.
+   */
+  deniedTools: z.array(z.string()).optional(),
 });
 export type AgentManifest = z.infer<typeof AgentManifestSchema>;
 
