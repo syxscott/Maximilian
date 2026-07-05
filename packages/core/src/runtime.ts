@@ -270,11 +270,17 @@ export class AgentRuntime {
   private enableToolLoop: boolean;
   private getSkills?: RuntimeOptions["getSkills"];
   private maxTaskRetries: number;
+  private maxIdleRoundsBeforeStall: number;
   private onStall?: RuntimeOptions["onStall"];
-  private stallDetector: StallDetector;
   /**
    * Workspaces currently in the middle of a stall-triggered replan.
    * Used to prevent recursive `replacePendingTasks` calls during replan.
+   *
+   * Note: the actual `StallDetector` instance is created per-workspace
+   * inside `_executeImpl` rather than hoisted to this field. Sharing one
+   * detector across concurrent workspaces would let workspace A's stall
+   * (or its reset) leak into workspace B's counter and falsely trip —
+   * or worse, erase — B's progress tracking.
    */
   private replanningWorkspaces = new Set<string>();
   /**
@@ -300,10 +306,8 @@ export class AgentRuntime {
     this.enableToolLoop = options?.enableToolLoop ?? false;
     this.getSkills = options?.getSkills;
     this.maxTaskRetries = options?.maxTaskRetries ?? 0;
+    this.maxIdleRoundsBeforeStall = options?.maxIdleRoundsBeforeStall ?? 3;
     this.onStall = options?.onStall;
-    this.stallDetector = new StallDetector({
-      maxIdleRounds: options?.maxIdleRoundsBeforeStall ?? 3,
-    });
   }
 
   on(listener: RuntimeListener): () => void {
@@ -557,6 +561,13 @@ export class AgentRuntime {
     // Stall detection baselines — captured each wave so we can report
     // "tasks completed this round" / "results added this round" rather
     // than cumulative totals (StallDetector expects per-round deltas).
+    // The detector itself is per-workspace: shared instance across
+    // concurrent workspaces would let workspace A's stall (or its reset)
+    // leak into workspace B's counter and falsely trip — or erase —
+    // B's progress tracking.
+    const stallDetector = new StallDetector({
+      maxIdleRounds: this.maxIdleRoundsBeforeStall,
+    });
     let prevCompletedSize = completed.size;
     let prevResultsLen = updated.results.length;
     // Per-workspace counters. Wrapped in objects so the helper method
@@ -714,12 +725,12 @@ export class AgentRuntime {
       const resultsDelta = updated.results.length - prevResultsLen;
       prevCompletedSize = completed.size;
       prevResultsLen = updated.results.length;
-      const justStalled = this.stallDetector.observe({
+      const justStalled = stallDetector.observe({
         completedTasks: completedDelta,
         newResults: resultsDelta,
       });
       if (justStalled && this.onStall && !this.replanningWorkspaces.has(updated.id)) {
-        const stallInfo = this.stallDetector.getStallInfo();
+        const stallInfo = stallDetector.getStallInfo();
         if (stallInfo) {
           log.warn({
             workspaceId: updated.id,
@@ -739,7 +750,7 @@ export class AgentRuntime {
               remaining.push(...replan.tasks);
               log.info({ workspaceId: updated.id, newTaskCount: replan.tasks.length }, "replan accepted — pending replaced");
               // Reset the detector so a new stall window starts fresh.
-              this.stallDetector.reset();
+              stallDetector.reset();
             }
           } catch (err) {
             log.error({ err, workspaceId: updated.id }, "onStall replan hook threw — keeping original pending");
