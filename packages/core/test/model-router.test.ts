@@ -303,6 +303,47 @@ describe("deriveTaskCharacteristics", () => {
     });
     expect(chars.complexity).toBe("medium");
   });
+
+  it("prefers task.metadata.estimatedComplexity over keyword heuristic (simple wins over refactor keyword)", () => {
+    // The description contains a "complex" keyword ("refactor") but the
+    // planner LLM has marked this task as simple — trust the planner's
+    // explicit signal. Without the metadata branch the keyword heuristic
+    // would incorrectly return "complex".
+    const chars = deriveTaskCharacteristics({
+      agentRole: "backend",
+      description: "Refactor the auth middleware to use async/await",
+      metadata: { estimatedComplexity: "simple" },
+    });
+    expect(chars.complexity).toBe("simple");
+  });
+
+  it("prefers task.metadata.estimatedComplexity for plain descriptions", () => {
+    // No keyword signal at all in the description, but planner says complex.
+    const chars = deriveTaskCharacteristics({
+      agentRole: "backend",
+      description: "Add a new endpoint",
+      metadata: { estimatedComplexity: "complex" },
+    });
+    expect(chars.complexity).toBe("complex");
+  });
+
+  it("ignores invalid metadata.estimatedComplexity values", () => {
+    // Bogus string in metadata falls back to keyword heuristic.
+    const chars = deriveTaskCharacteristics({
+      agentRole: "backend",
+      description: "Refactor the database access layer for performance",
+      metadata: { estimatedComplexity: "very-hard" },
+    });
+    expect(chars.complexity).toBe("complex"); // from keyword
+  });
+
+  it("ignores missing metadata and falls back to heuristic", () => {
+    const chars = deriveTaskCharacteristics({
+      agentRole: "backend",
+      description: "Refactor the database access layer",
+    });
+    expect(chars.complexity).toBe("complex");
+  });
 });
 
 // ---------------------------------------------------------------------------

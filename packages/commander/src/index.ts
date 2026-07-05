@@ -18,6 +18,7 @@ import type { Provider, ChatMessage } from "@max/providers";
 import type {
   AgentRole,
   Plan,
+  Result,
   Task,
   Workspace,
 } from "@max/core";
@@ -35,36 +36,58 @@ export interface ModelSelectorPort {
 const PLANNER_SYSTEM_PROMPT = `You are the Commander (planner) of a multi-agent system.
 
 Given a user request, decompose it into a sequence of tasks. Each task must be
-assigned to one of these roles:
-- "backend": server-side code generation
-- "frontend": client-side code generation
-- "general": other code/text work
+assigned to one of these roles based on the agent's declared capabilities.
 
-Always end with a "review" task that depends on all prior tasks.
+## Available agents and their capabilities
+
+- "backend": server-side code generation.
+  Strengths: REST APIs, DB schemas, auth, business logic, migrations, integrations.
+  Use for: any server-side / API / database request.
+- "frontend": client-side code generation.
+  Strengths: HTML/CSS/JS, UI components, single-file demos, browser interaction.
+  Use for: any UI / page / user-facing request.
+- "general": anything else (configs, docs, scripts, plain text).
+  Default fallback when neither backend nor frontend clearly fits.
+- "review": critique-only; reviews all prior outputs and returns a JSON verdict.
+  ALWAYS last; depends on every prior task.
+
+## Task fields
+
+For each task, output:
+- "agentRole": one of "backend" | "frontend" | "general" (review is appended automatically if missing)
+- "description": self-contained task description (the agent sees only its own description + prior results)
+- "dependsOn": array of task-ids this task depends on (empty if no dependency)
+- "estimatedComplexity": "simple" | "medium" | "complex"
+  - simple: a one-line change, rename, trivial fix (< 80 chars description OR explicit keywords like "fix typo", "rename")
+  - complex: refactor, migration, performance, security, architecture (> 500 chars OR keywords like "refactor", "migrate", "design system")
+  - medium: anything in between
+- "preferredCapabilities": array of capability tags this task needs (free-form strings drawn from the agent's strength list above; e.g. ["api-design", "auth"], ["ui-rendering"], ["docs"])
+
+Always end with a "review" task that depends on all prior tasks (the runtime appends it automatically if missing).
 
 Output MUST be a single JSON object (no markdown fences) with this exact shape:
 {
-  "rationale": "<one paragraph explaining the plan>",
+  "rationale": "<one paragraph explaining the plan and why these capabilities/agents fit>",
   "tasks": [
     {
       "agentRole": "backend" | "frontend" | "general",
       "description": "<clear, actionable task description>",
-      "dependsOn": ["<task-id>"] // empty array if no dependency
+      "dependsOn": ["<task-id>"],
+      "estimatedComplexity": "simple" | "medium" | "complex",
+      "preferredCapabilities": ["<capability-tag>", ...]
     },
     ...
-    {
-      "agentRole": "review",  // ALWAYS last
-      "description": "Review all generated artifacts",
-      "dependsOn": ["<id-of-every-prior-task>"]
-    }
   ]
 }
 
 Rules:
 1. 1 to 5 production tasks maximum (excluding review).
-2. Each task description is self-contained (the agent sees only its own description + prior results).
-3. For a typical "build a Todo web app" request: 1 backend + 1 frontend + 1 review.
-4. For pure-doc requests: 1 general + 1 review.
+2. Each task description is self-contained.
+3. Match each task's agentRole to the agent whose declared capability best fits the task.
+4. The "preferredCapabilities" tags should describe what kind of work the task needs (drawn from the agent's strength list, e.g. ["api-design"], ["ui-rendering"]).
+5. The "estimatedComplexity" guides model selection — be honest about task difficulty.
+6. For a typical "build a Todo web app" request: 1 backend + 1 frontend + 1 review.
+7. For pure-doc requests: 1 general + 1 review.
 `;
 
 export interface PlannerOutput {
@@ -73,8 +96,66 @@ export interface PlannerOutput {
     agentRole: AgentRole;
     description: string;
     dependsOn: string[];
+    estimatedComplexity?: "simple" | "medium" | "complex";
+    preferredCapabilities?: string[];
   }>;
 }
+
+/**
+ * Output of `Commander.replan`. Same shape as `PlannerOutput` but
+ * `rationale` is optional (replans often have short justifications).
+ */
+export interface ReplanOutput {
+  rationale?: string;
+  tasks: Array<{
+    agentRole: AgentRole;
+    description: string;
+    dependsOn: string[];
+    estimatedComplexity?: "simple" | "medium" | "complex";
+    preferredCapabilities?: string[];
+  }>;
+}
+
+const REPLANNER_SYSTEM_PROMPT = `You are the Commander re-planner of a multi-agent system.
+
+The original plan has stalled — some tasks completed but the system has been
+idle for several rounds with no progress on the remaining tasks. Your job is
+to revise ONLY the remaining tasks so the system can move forward.
+
+Inputs:
+- The original user request
+- The list of completed results (each has agentRole + truncated output)
+- The list of remaining tasks that have NOT started or completed
+
+Output a JSON object with the new set of remaining tasks (replacement list,
+NOT a continuation — the runtime will replace the pending list with whatever
+you return). Keep the same task id scheme ("task-N") for tasks you're
+re-using, and use "task-N+" for new tasks if you want to add more.
+
+For each task, output:
+- "agentRole": "backend" | "frontend" | "general" | "review"
+- "description": self-contained task description
+- "dependsOn": array of existing task-ids (completed or other remaining) this task depends on
+- "estimatedComplexity": "simple" | "medium" | "complex"
+- "preferredCapabilities": array of capability tags
+
+Strategies for unblocking a stall:
+1. Break a stalled task into smaller sub-tasks (e.g. "implement X" → "design X interface" + "implement X function").
+2. Switch the agent role if the work doesn't match the original assignment.
+3. Add a clarifying intermediate task that produces a concrete artifact the next task can consume.
+4. If a task seems already-done by an earlier result, drop it.
+
+Output MUST be a single JSON object:
+{
+  "rationale": "<one paragraph explaining the replan>",
+  "tasks": [ { ... }, ... ]
+}
+
+Rules:
+1. Output ONLY remaining tasks (do not duplicate completed work).
+2. Keep the same set of agent capabilities as the original plan (don't invent new roles).
+3. If you can't see a clear path forward, return the original remaining tasks unchanged.
+`;
 
 export class Commander {
   private providerRegistry?: Map<string, Provider>;
@@ -129,13 +210,21 @@ export class Commander {
     }
 
     // Materialize task ids in deterministic order.
-    const tasks: Task[] = planner.tasks.map((t, i) => ({
-      id: `task-${i + 1}`,
-      agentRole: t.agentRole,
-      description: t.description,
-      status: "pending" as const,
-      dependsOn: t.dependsOn,
-    }));
+    const tasks: Task[] = planner.tasks.map((t, i) => {
+      const metadata: Record<string, unknown> = {};
+      if (t.estimatedComplexity) metadata.estimatedComplexity = t.estimatedComplexity;
+      if (t.preferredCapabilities && t.preferredCapabilities.length > 0) {
+        metadata.preferredCapabilities = t.preferredCapabilities;
+      }
+      return {
+        id: `task-${i + 1}`,
+        agentRole: t.agentRole,
+        description: t.description,
+        status: "pending" as const,
+        dependsOn: t.dependsOn,
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      };
+    });
 
     const plan: Plan = {
       id: planId,
@@ -195,6 +284,107 @@ export class Commander {
 
     return parsed;
   }
+
+  /**
+   * Re-plan the remaining tasks after a stall.
+   *
+   * Mirrors Magentic-One's outer-loop: when the Orchestrator observes that
+   * progress has stopped, it re-writes the Task Ledger. Here we ask an LLM
+   * to revise the remaining task list given the completed results so far.
+   *
+   * Returns:
+   * - `{ tasks: [...] }` if the replanner produced new tasks. Caller is
+   *   responsible for swapping them into the runtime's pending list.
+   * - `null` if the LLM failed, the response was malformed, or the replanner
+   *   explicitly returned the original remaining tasks unchanged. In all
+   *   failure cases the caller should keep executing the original plan.
+   *
+   * The replanner intentionally receives *only* the truncated output of
+   * completed results so it can't blow the context window on long-running
+   * workspaces.
+   */
+  async replan(
+    userRequest: string,
+    completedResults: Result[],
+    remainingTasks: Task[],
+  ): Promise<{ tasks: Task[] } | null> {
+    if (remainingTasks.length === 0) {
+      // Nothing to replan — no stall possible.
+      return null;
+    }
+
+    const summary = this.summariseResults(completedResults);
+    const remainingListing = remainingTasks
+      .map((t) => `- [${t.id}] (${t.agentRole}, status=${t.status}) ${t.description}`)
+      .join("\n");
+
+    const userMessage =
+      `Original user request: ${userRequest}\n\n` +
+      `Completed results (${completedResults.length}):\n${summary}\n\n` +
+      `Remaining tasks to replan (${remainingTasks.length}):\n${remainingListing}\n\n` +
+      `Return the revised remaining-task list as JSON.`;
+
+    try {
+      const provider = this.resolveProvider();
+      const messages: ChatMessage[] = [
+        { role: "system", content: REPLANNER_SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ];
+      const response = await provider.chat(messages, {
+        temperature: 0.3,
+        maxTokens: 1500,
+        jsonMode: true,
+      });
+      const json = extractJson(response.content);
+      if (!json) return null;
+      const parsed = JSON.parse(json) as ReplanOutput;
+      if (!parsed.tasks || !Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
+        return null;
+      }
+
+      // Materialize: assign sequential ids preserving the first remaining
+      // task's prefix so existing plan ids stay valid for dependsOn refs.
+      const startIdx = remainingTasks[0]?.id.match(/task-(\d+)/)?.[1];
+      const offset = startIdx ? Number(startIdx) - 1 : 0;
+      const tasks: Task[] = parsed.tasks.map((t, i) => {
+        const metadata: Record<string, unknown> = {};
+        if (t.estimatedComplexity) metadata.estimatedComplexity = t.estimatedComplexity;
+        if (t.preferredCapabilities && t.preferredCapabilities.length > 0) {
+          metadata.preferredCapabilities = t.preferredCapabilities;
+        }
+        return {
+          id: `task-${offset + i + 1}`,
+          agentRole: t.agentRole,
+          description: t.description,
+          status: "pending" as const,
+          dependsOn: t.dependsOn,
+          ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+        };
+      });
+
+      log.info({
+        userRequest: userRequest.slice(0, 80),
+        completedCount: completedResults.length,
+        originalRemaining: remainingTasks.length,
+        newRemaining: tasks.length,
+      }, "replan produced new task list");
+      return { tasks };
+    } catch (err) {
+      log.warn({ err }, "replan LLM failed — caller will keep original plan");
+      return null;
+    }
+  }
+
+  /** Build a compact summary of completed results for the replanner prompt. */
+  private summariseResults(results: Result[]): string {
+    if (results.length === 0) return "(none)";
+    return results
+      .map((r) => {
+        const snippet = r.output.length > 200 ? r.output.slice(0, 200) + "…" : r.output;
+        return `- [${r.taskId}] (${r.agentRole}): ${snippet}`;
+      })
+      .join("\n");
+  }
 }
 
 function defaultPlan(userRequest: string): PlannerOutput {
@@ -210,27 +400,37 @@ function defaultPlan(userRequest: string): PlannerOutput {
       agentRole: "backend",
       description: `Design and implement the backend service for: ${userRequest}. Expose REST endpoints with a clear JSON contract.`,
       dependsOn: [],
+      estimatedComplexity: "medium",
+      preferredCapabilities: ["api-design"],
     });
     tasks.push({
       agentRole: "frontend",
       description: `Implement the frontend (HTML/CSS/JS) for: ${userRequest}. Consume the backend API contract from the prior backend result.`,
       dependsOn: ["task-1"],
+      estimatedComplexity: "medium",
+      preferredCapabilities: ["ui-rendering"],
     });
     tasks.push({
       agentRole: "review",
       description: "Review all generated artifacts.",
       dependsOn: ["task-1", "task-2"],
+      estimatedComplexity: "simple",
+      preferredCapabilities: ["critique"],
     });
   } else {
     tasks.push({
       agentRole: "general",
       description: `Implement: ${userRequest}`,
       dependsOn: [],
+      estimatedComplexity: "medium",
+      preferredCapabilities: ["general"],
     });
     tasks.push({
       agentRole: "review",
       description: "Review the generated artifact.",
       dependsOn: ["task-1"],
+      estimatedComplexity: "simple",
+      preferredCapabilities: ["critique"],
     });
   }
 

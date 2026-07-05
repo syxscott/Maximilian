@@ -396,6 +396,33 @@ const runtime = new AgentRuntime(finalFactory, sink, {
   memoryStore: memoryStorePort,
   modelSelector: modelSelectorPort,
   modelRouter: modelRouterPort,
+  // Magentic-One style outer-loop replan: when the runtime observes N
+  // consecutive idle rounds with no progress, ask Commander to re-write the
+  // remaining task list given the completed results so far. If Commander
+  // returns a non-empty replacement set, the runtime swaps it in. If
+  // Commander fails (LLM error, malformed JSON, explicit "give up"), the
+  // original pending list stays and the stall counter resets on the next
+  // progress event.
+  onStall: async (info, pending, results, ctx) => {
+    if (!ctx) return undefined;
+    try {
+      const out = await commander.replan(ctx.userRequest, results, pending);
+      if (out && Array.isArray(out.tasks) && out.tasks.length > 0) {
+        log.info({
+          workspaceId: ctx.workspaceId,
+          idleRounds: info.idleRounds,
+          from: pending.length,
+          to: out.tasks.length,
+        }, "commander.replan produced replacement task list");
+        return out;
+      }
+      log.warn({ workspaceId: ctx.workspaceId, idleRounds: info.idleRounds }, "commander.replan returned no replacement — keeping original pending");
+      return undefined;
+    } catch (err) {
+      log.error({ err, workspaceId: ctx.workspaceId }, "commander.replan threw — keeping original pending");
+      return undefined;
+    }
+  },
 });
 const dagsApprovalRuntimes = new Set<ApprovalAnswerPort>();
 const approvalRuntimeRegistry = {

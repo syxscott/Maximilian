@@ -193,3 +193,159 @@ describe("defaultPlan heuristic", () => {
     expect(plan.tasks.map((t) => t.agentRole)).toContain("frontend");
   });
 });
+
+describe("Planner schema — estimatedComplexity + preferredCapabilities (借鉴 1+2)", () => {
+  it("propagates estimatedComplexity + preferredCapabilities from LLM JSON into task.metadata", async () => {
+    const provider = stubProvider("stub", () =>
+      JSON.stringify({
+        rationale: "Two tasks with planner-declared complexity.",
+        tasks: [
+          {
+            agentRole: "backend",
+            description: "Build REST API for users.",
+            dependsOn: [],
+            estimatedComplexity: "complex",
+            preferredCapabilities: ["api-design", "auth"],
+          },
+          {
+            agentRole: "review",
+            description: "Review the API.",
+            dependsOn: ["task-1"],
+            estimatedComplexity: "simple",
+            preferredCapabilities: ["critique"],
+          },
+        ],
+      }),
+    );
+    const commander = new Commander(() => provider);
+    const { plan } = await commander.plan("Build a users API");
+    expect(plan.tasks).toHaveLength(2);
+    expect(plan.tasks[0]!.metadata?.estimatedComplexity).toBe("complex");
+    expect(plan.tasks[0]!.metadata?.preferredCapabilities).toEqual(["api-design", "auth"]);
+    expect(plan.tasks[1]!.metadata?.estimatedComplexity).toBe("simple");
+    expect(plan.tasks[1]!.metadata?.preferredCapabilities).toEqual(["critique"]);
+  });
+
+  it("does not set task.metadata when planner omits the new fields", async () => {
+    const provider = stubProvider("stub", () =>
+      JSON.stringify({
+        rationale: "Legacy planner output without complexity hints.",
+        tasks: [
+          { agentRole: "backend", description: "Build X.", dependsOn: [] },
+          { agentRole: "review", description: "Review.", dependsOn: ["task-1"] },
+        ],
+      }),
+    );
+    const commander = new Commander(() => provider);
+    const { plan } = await commander.plan("anything");
+    expect(plan.tasks[0]!.metadata?.estimatedComplexity).toBeUndefined();
+    expect(plan.tasks[0]!.metadata?.preferredCapabilities).toBeUndefined();
+  });
+
+  it("defaultPlan fallback includes estimatedComplexity + preferredCapabilities", async () => {
+    const provider: Provider = {
+      id: "stub",
+      name: "Stub",
+      defaultModel: "m",
+      isConfigured: () => true,
+      async chat() { throw new Error("force fallback"); },
+      async stream() { throw new Error("nope"); },
+    };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const commander = new Commander(() => provider);
+    const { plan } = await commander.plan("做一个前端 UI");
+    // 3-task frontend branch: backend + frontend + review.
+    for (const t of plan.tasks) {
+      expect(t.metadata?.estimatedComplexity).toMatch(/^(simple|medium|complex)$/);
+      expect(Array.isArray(t.metadata?.preferredCapabilities)).toBe(true);
+    }
+  });
+});
+
+describe("Commander.replan (借鉴 3 — Magentic-One outer loop)", () => {
+  it("returns null when remainingTasks is empty (no stall possible)", async () => {
+    const provider = stubProvider("stub", () => "{}");
+    const commander = new Commander(() => provider);
+    const out = await commander.replan("original request", [], []);
+    expect(out).toBeNull();
+  });
+
+  it("returns replacement tasks when the LLM produces valid JSON", async () => {
+    const provider = stubProvider("stub", () =>
+      JSON.stringify({
+        rationale: "Replace the failing task with a focused sub-task.",
+        tasks: [
+          {
+            agentRole: "general",
+            description: "Diagnose why the original task is stuck.",
+            dependsOn: [],
+            estimatedComplexity: "simple",
+            preferredCapabilities: ["debugging"],
+          },
+          {
+            agentRole: "review",
+            description: "Verify the diagnosis.",
+            dependsOn: ["task-2"],
+            estimatedComplexity: "simple",
+            preferredCapabilities: ["critique"],
+          },
+        ],
+      }),
+    );
+    const commander = new Commander(() => provider);
+    const out = await commander.replan(
+      "build a thing",
+      [],
+      [{ id: "task-2", agentRole: "general", description: "stuck", status: "pending", dependsOn: [] }],
+    );
+    expect(out).not.toBeNull();
+    expect(out!.tasks).toHaveLength(2);
+    // Replan re-uses the original task-2 prefix so dependsOn refs stay valid.
+    expect(out!.tasks[0]!.id).toBe("task-2");
+    expect(out!.tasks[1]!.id).toBe("task-3");
+    expect(out!.tasks[0]!.metadata?.estimatedComplexity).toBe("simple");
+  });
+
+  it("returns null when the LLM response is malformed", async () => {
+    const provider = stubProvider("stub", () => "definitely not JSON");
+    const commander = new Commander(() => provider);
+    const out = await commander.replan(
+      "x",
+      [],
+      [{ id: "task-2", agentRole: "general", description: "x", status: "pending", dependsOn: [] }],
+    );
+    expect(out).toBeNull();
+  });
+
+  it("returns null when the LLM throws", async () => {
+    const provider: Provider = {
+      id: "stub",
+      name: "Stub",
+      defaultModel: "m",
+      isConfigured: () => true,
+      async chat() { throw new Error("replan LLM down"); },
+      async stream() { throw new Error("nope"); },
+    };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const commander = new Commander(() => provider);
+    const out = await commander.replan(
+      "x",
+      [],
+      [{ id: "task-2", agentRole: "general", description: "x", status: "pending", dependsOn: [] }],
+    );
+    expect(out).toBeNull();
+  });
+
+  it("returns null when the LLM JSON has no tasks array", async () => {
+    const provider = stubProvider("stub", () =>
+      JSON.stringify({ rationale: "no tasks here" }),
+    );
+    const commander = new Commander(() => provider);
+    const out = await commander.replan(
+      "x",
+      [],
+      [{ id: "task-2", agentRole: "general", description: "x", status: "pending", dependsOn: [] }],
+    );
+    expect(out).toBeNull();
+  });
+});

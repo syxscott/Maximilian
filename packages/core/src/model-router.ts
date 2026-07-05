@@ -220,37 +220,48 @@ function roleToTaskType(role: AgentRole): TaskType {
 /**
  * Derive TaskCharacteristics from a Task-like object.
  *
- * Uses simple heuristics for complexity (description length and keyword
- * matching). This can be replaced with an LLM-based classifier later.
+ * Priority for `complexity`:
+ *   1. `task.metadata.estimatedComplexity` — when set by the planner LLM
+ *      (or Commander fallback). Treats the LLM's signal as authoritative
+ *      because it has the full user-request context; keyword heuristics
+ *      can only see one task at a time.
+ *   2. Keyword + length heuristic — used as the fallback when the planner
+ *      didn't provide an estimate (e.g. legacy plans, untrusted input).
  */
 export function deriveTaskCharacteristics(task: {
   agentRole: AgentRole;
   description: string;
+  metadata?: Record<string, unknown>;
 }): TaskCharacteristics {
-  const desc = task.description.toLowerCase();
-
-  // Keyword-based complexity heuristic.
-  const complexKeywords = [
-    "refactor", "architect", "design system", "migration",
-    "performance", "security", "distributed", "scale",
-    "complex", "multi-step", "end-to-end",
-  ];
-  const simpleKeywords = [
-    "fix typo", "rename", "update readme", "change color",
-    "simple", "quick", "trivial", "bump version",
-  ];
-
+  // Trust the planner-provided complexity when it's a valid value.
+  const declared = task.metadata?.estimatedComplexity;
   let complexity: TaskComplexity;
-  if (complexKeywords.some((kw) => desc.includes(kw))) {
-    complexity = "complex";
-  } else if (simpleKeywords.some((kw) => desc.includes(kw))) {
-    complexity = "simple";
-  } else if (task.description.length > 500) {
-    complexity = "complex";
-  } else if (task.description.length < 80) {
-    complexity = "simple";
+  if (declared === "simple" || declared === "medium" || declared === "complex") {
+    complexity = declared;
   } else {
-    complexity = "medium";
+    // Keyword + length fallback.
+    const desc = task.description.toLowerCase();
+    const complexKeywords = [
+      "refactor", "architect", "design system", "migration",
+      "performance", "security", "distributed", "scale",
+      "complex", "multi-step", "end-to-end",
+    ];
+    const simpleKeywords = [
+      "fix typo", "rename", "update readme", "change color",
+      "simple", "quick", "trivial", "bump version",
+    ];
+
+    if (complexKeywords.some((kw) => desc.includes(kw))) {
+      complexity = "complex";
+    } else if (simpleKeywords.some((kw) => desc.includes(kw))) {
+      complexity = "simple";
+    } else if (task.description.length > 500) {
+      complexity = "complex";
+    } else if (task.description.length < 80) {
+      complexity = "simple";
+    } else {
+      complexity = "medium";
+    }
   }
 
   return {

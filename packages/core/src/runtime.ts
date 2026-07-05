@@ -15,6 +15,7 @@ import { withSpan, getLogger } from "@max/telemetry";
 
 const log = getLogger("core:runtime");
 import { runToolLoop, type ToolEnabledProvider } from "./tool-integration.js";
+import { StallDetector, type StallInfo } from "./stall-detection.js";
 import type { ChatMessage } from "@max/providers";
 import type {
   AgentRole,
@@ -190,6 +191,32 @@ export interface RuntimeOptions {
    * a permanently broken task doesn't loop forever.
    */
   maxTaskRetries?: number;
+  /**
+   * Stall detection — Mirrors Magentic-One's outer-loop self-reflection.
+   * When the runtime observes N consecutive idle rounds (no tasks completed,
+   * no new results produced), this hook fires with the current pending tasks
+   * and completed results. The hook may return a replacement set of pending
+   * tasks; the runtime swaps them in and resets the stall counter. Returning
+   * `null` (or undefined) leaves the existing pending list intact, so a
+   * transient stall doesn't block execution.
+   *
+   * Inspired by Magentic-One's Task Ledger → re-plan flow when progress stalls.
+   */
+  onStall?: (
+    info: StallInfo,
+    pending: Task[],
+    results: Result[],
+    /** Per-workspace context. Carries the user request so a Commander
+     *  replanner can re-plan with the original intent. Optional for back-compat
+     *  with callers that ignore it. */
+    ctx?: { workspaceId: string; userRequest: string },
+  ) => Promise<{ tasks: Task[] } | null | undefined>;
+  /**
+   * Number of consecutive idle rounds that count as a stall (default: 3).
+   * Tied to StallDetector's own threshold; exposed here so callers don't
+   * need to instantiate the detector themselves.
+   */
+  maxIdleRoundsBeforeStall?: number;
 }
 
 /**
@@ -243,6 +270,13 @@ export class AgentRuntime {
   private enableToolLoop: boolean;
   private getSkills?: RuntimeOptions["getSkills"];
   private maxTaskRetries: number;
+  private onStall?: RuntimeOptions["onStall"];
+  private stallDetector: StallDetector;
+  /**
+   * Workspaces currently in the middle of a stall-triggered replan.
+   * Used to prevent recursive `replacePendingTasks` calls during replan.
+   */
+  private replanningWorkspaces = new Set<string>();
   /**
    * Pending permission requests. When the tool loop hits a `PermissionRequestError`,
    * the loop calls `awaitPermission(requestId)` and parks until the user
@@ -266,6 +300,10 @@ export class AgentRuntime {
     this.enableToolLoop = options?.enableToolLoop ?? false;
     this.getSkills = options?.getSkills;
     this.maxTaskRetries = options?.maxTaskRetries ?? 0;
+    this.onStall = options?.onStall;
+    this.stallDetector = new StallDetector({
+      maxIdleRounds: options?.maxIdleRoundsBeforeStall ?? 3,
+    });
   }
 
   on(listener: RuntimeListener): () => void {
@@ -516,6 +554,11 @@ export class AgentRuntime {
     const startedAt = Date.now();
     // Task retry counter — persists across waves so retries are bounded.
     const retryMap = new Map<string, number>();
+    // Stall detection baselines — captured each wave so we can report
+    // "tasks completed this round" / "results added this round" rather
+    // than cumulative totals (StallDetector expects per-round deltas).
+    let prevCompletedSize = completed.size;
+    let prevResultsLen = updated.results.length;
     // Per-workspace counters. Wrapped in objects so the helper method
     // (`runTask`) can mutate them via reference without us having to
     // capture this whole closure. Do NOT hoist these to instance fields —
@@ -661,6 +704,49 @@ export class AgentRuntime {
         updated.status = "failed";
         updated.error = String(firstFailure.reason);
         break;
+      }
+
+      // Stall detection — observe per-round progress, and when the system
+      // has been idle for `maxIdleRounds`, ask the host for a replan.
+      // Mirrors Magentic-One's outer-loop self-reflection: when the
+      // Orchestrator sees no progress, it re-writes the Task Ledger.
+      const completedDelta = completed.size - prevCompletedSize;
+      const resultsDelta = updated.results.length - prevResultsLen;
+      prevCompletedSize = completed.size;
+      prevResultsLen = updated.results.length;
+      const justStalled = this.stallDetector.observe({
+        completedTasks: completedDelta,
+        newResults: resultsDelta,
+      });
+      if (justStalled && this.onStall && !this.replanningWorkspaces.has(updated.id)) {
+        const stallInfo = this.stallDetector.getStallInfo();
+        if (stallInfo) {
+          log.warn({
+            workspaceId: updated.id,
+            idleRounds: stallInfo.idleRounds,
+            totalRounds: stallInfo.totalRounds,
+          }, "workspace stalled — invoking onStall replan hook");
+          this.replanningWorkspaces.add(updated.id);
+          try {
+            const replan = await this.onStall(
+              stallInfo,
+              [...remaining],
+              [...updated.results],
+              { workspaceId: updated.id, userRequest: updated.userRequest },
+            );
+            if (replan && Array.isArray(replan.tasks) && replan.tasks.length > 0) {
+              remaining.length = 0;
+              remaining.push(...replan.tasks);
+              log.info({ workspaceId: updated.id, newTaskCount: replan.tasks.length }, "replan accepted — pending replaced");
+              // Reset the detector so a new stall window starts fresh.
+              this.stallDetector.reset();
+            }
+          } catch (err) {
+            log.error({ err, workspaceId: updated.id }, "onStall replan hook threw — keeping original pending");
+          } finally {
+            this.replanningWorkspaces.delete(updated.id);
+          }
+        }
       }
 
       pending.length = 0;
