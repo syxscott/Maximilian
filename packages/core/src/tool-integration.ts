@@ -262,6 +262,63 @@ export interface ToolLoopOptions {
     requestId: string,
     meta: { workspaceId: string; taskId: string; tool: string; target: string },
   ) => Promise<"allow" | "deny">
+  /**
+   * Tool result cache (借鉴 crewAI cache_handler.py).
+   *
+   * When provided, identical tool+input calls return the cached output
+   * without re-executing the tool. Key = `${tool.name}|${stableStringify(input)}`.
+   *
+   * Use cases:
+   *   - Idempotent tools (file reads, web fetches) skip repeat work
+   *   - Retries after a transient failure don't re-pay the cost
+   *   - "Why did the LLM get the same result twice?" becomes traceable
+   *
+   * The cache lives for the duration of a single `runToolLoop` call.
+   * Cross-loop caching belongs at a higher layer (e.g. an MCP server's
+   * own cache).
+   */
+  toolCache?: Map<string, unknown>
+  /**
+   * Steering messages (借鉴 openclaw agent-loop.ts:258-389 outer/inner loops).
+   *
+   * Called between iterations of the inner tool-calling loop. If it
+   * returns messages, the loop injects them as user-role messages into
+   * the current conversation and continues. Used to let the user (or
+   * another agent) inject new instructions WHILE the loop is running
+   * without aborting the current turn.
+   *
+   * The hook is invoked BEFORE each provider.chat() call. Return [] (or
+   * undefined) to indicate no steering is pending.
+   */
+  getSteeringMessages?: () => ChatMessage[]
+  /**
+   * Follow-up messages (借鉴 openclaw agent-loop.ts:376-382).
+   *
+   * Called after the tool-calling loop naturally exits (no more tool
+   * calls). If it returns messages, the loop performs another full turn
+   * with those messages injected at the end of the conversation. Used
+   * to let the user queue up follow-up work AFTER the agent stops.
+   *
+   * Invoked at most once per `runToolLoop` call (after the inner loop
+   * exits and before the final response is returned).
+   */
+  getFollowUpMessages?: () => ChatMessage[]
+  /**
+   * Per-turn preparation hook (借鉴 openclaw prepareNextTurn).
+   *
+   * Called before each `provider.chat()` call. Used by callers to push
+   * state, clear queues, or stage data. The hook receives no arguments;
+   * callers must close over any context they need.
+   */
+  prepareNextTurn?: () => void
+  /**
+   * Explicit stop hook (借鉴 openclaw shouldStopAfterTurn).
+   *
+   * Called after each tool-calling iteration. If it returns true, the
+   * loop exits early with the current accumulated state. Used by the
+   * caller to enforce external stop signals (e.g. user abort, deadline).
+   */
+  shouldStopAfterTurn?: () => boolean
 }
 
 /**
@@ -281,9 +338,35 @@ export async function runToolLoop(
   let currentMessages = [...messages]
 
   for (let round = 0; round < maxRounds; round++) {
+    // Steering injection (借鉴 openclaw): if external messages are pending,
+    // inject them BEFORE the next provider.chat() so the LLM sees them.
+    if (options.getSteeringMessages) {
+      const steering = options.getSteeringMessages()
+      if (steering && steering.length > 0) {
+        currentMessages.push(...steering)
+      }
+    }
+    // Per-turn prep hook (借鉴 openclaw prepareNextTurn).
+    options.prepareNextTurn?.()
+    // Explicit stop hook (借鉴 openclaw shouldStopAfterTurn).
+    if (options.shouldStopAfterTurn?.()) {
+      const finalResponse = await provider.chat(currentMessages, options)
+      return { response: finalResponse, allToolCalls }
+    }
+
     const response = await provider.chat(currentMessages, options)
 
     if (response.toolCalls.length === 0) {
+      // Follow-up injection (借鉴 openclaw): check for follow-up messages
+      // even on natural exit, not just after maxRounds exhaustion.
+      if (options.getFollowUpMessages) {
+        const followUps = options.getFollowUpMessages()
+        if (followUps && followUps.length > 0) {
+          const followUpMessages = [...currentMessages, { role: "assistant" as const, content: response.content }, ...followUps]
+          const followUpResponse = await provider.chat(followUpMessages, options)
+          return { response: followUpResponse, allToolCalls }
+        }
+      }
       return { response, allToolCalls }
     }
 
@@ -320,13 +403,27 @@ export async function runToolLoop(
       const startedAt = Date.now()
       let ok = true
       let errorMessage: string | undefined
-      let result: Awaited<ReturnType<typeof provider.executeTool>>
+      let result: Awaited<ReturnType<typeof provider.executeTool>> | undefined
+      // Tool cache lookup (借鉴 crewAI cache_handler): if the same
+      // tool+input has been called before in this loop, return the
+      // cached output without re-executing.
+      let cacheHit = false
+      if (options.toolCache) {
+        const cacheKey = `${call.name}|${stableStringify(call.input)}`
+        const cached = options.toolCache.get(cacheKey)
+        if (cached !== undefined) {
+          result = { result: cached } as typeof result
+          cacheHit = true
+        }
+      }
       try {
-        result = await provider.executeTool(call, {
-          sessionID: "default",
-          agent: "agent",
-          assistantMessageID: `msg-${round}`,
-        })
+        if (!cacheHit) {
+          result = await provider.executeTool(call, {
+            sessionID: "default",
+            agent: "agent",
+            assistantMessageID: `msg-${round}`,
+          })
+        }
       } catch (err) {
         // Permission gate: the user (or default policy) said "ask". Park the
         // call until the runtime's awaitPermission promise resolves. If no
@@ -348,24 +445,14 @@ export async function runToolLoop(
             tool: reqErr.tool,
             target: reqErr.target,
           })
-          if (decision === "deny") {
-            // Re-run through the gate once with the user's "deny" intent. The
-            // PermissionDeniedError will surface here, fall through to the
-            // generic catch and be reported as a tool error so the LLM sees
-            // the message in its tool-result stream.
-            result = await provider.executeTool(call, {
-              sessionID: "default",
-              agent: "agent",
-              assistantMessageID: `msg-${round}`,
-            })
-          } else {
-            // Re-execute with the new (presumably allow) config.
-            result = await provider.executeTool(call, {
-              sessionID: "default",
-              agent: "agent",
-              assistantMessageID: `msg-${round}`,
-            })
-          }
+          // Re-execute with the user's decision (allow or deny). The gate
+          // now has the new config; on "deny" the executor raises
+          // PermissionDeniedError which we surface below.
+          result = await provider.executeTool(call, {
+            sessionID: "default",
+            agent: "agent",
+            assistantMessageID: `msg-${round}`,
+          })
         } else {
           ok = false
           errorMessage = err instanceof Error ? err.message : String(err)
@@ -382,6 +469,21 @@ export async function runToolLoop(
           }
           throw err
         }
+      }
+
+      // Write successful results to the cache (after the gate so denied
+      // calls don't pollute it). Cache misses return undefined and are
+      // skipped by the read path.
+      if (ok && result && options.toolCache) {
+        const cacheKey = `${call.name}|${stableStringify(call.input)}`
+        options.toolCache.set(cacheKey, result.result)
+      }
+
+      if (!result) {
+        // Defensive: the catch block either re-throws or assigns result
+        // via the permission re-execute. Reaching here means we got
+        // neither — bail rather than dereference undefined.
+        break
       }
 
       options.onToolResult?.(call, result.result)
@@ -413,6 +515,20 @@ export async function runToolLoop(
 
   // If we exhausted rounds, return the last response
   const finalResponse = await provider.chat(currentMessages, options)
+
+  // Follow-up injection (借鉴 openclaw): if external follow-up messages
+  // are pending, do ONE more full turn with them appended. Bounded to a
+  // single follow-up so a chatty caller can't loop forever — if more
+  // messages accumulate during this turn, they wait for the next call.
+  if (options.getFollowUpMessages) {
+    const followUps = options.getFollowUpMessages()
+    if (followUps && followUps.length > 0) {
+      const followUpMessages = [...currentMessages, { role: "assistant" as const, content: finalResponse.content }, ...followUps]
+      const followUpResponse = await provider.chat(followUpMessages, options)
+      return { response: followUpResponse, allToolCalls }
+    }
+  }
+
   return { response: finalResponse, allToolCalls }
 }
 
@@ -449,4 +565,27 @@ function levenshtein(a: string, b: string): number {
     }
   }
   return dp[m]![n]!
+}
+
+/**
+ * Deterministic JSON.stringify — sorts object keys so that
+ * `{a: 1, b: 2}` and `{b: 2, a: 1}` produce the same string. Used as
+ * the tool-cache key suffix so two semantically identical inputs map to
+ * the same cache entry regardless of key order.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value)
+  }
+  if (Array.isArray(value)) {
+    return "[" + value.map(stableStringify).join(",") + "]"
+  }
+  const keys = Object.keys(value as Record<string, unknown>).sort()
+  return (
+    "{" +
+    keys
+      .map((k) => JSON.stringify(k) + ":" + stableStringify((value as Record<string, unknown>)[k]))
+      .join(",") +
+    "}"
+  )
 }
