@@ -52,15 +52,32 @@ class MemoryAugmentedAgent extends Agent {
     };
   }
 
+  /**
+   * Forward the long-term memory prelude into the wrapped inner agent.
+   *
+   * Without this forwarding, `inner.execute → inner.buildMessages` reads
+   * `this.memoryPrelude` on the inner agent (initial value: ""), so the
+   * prelude set by the runtime on the wrapper would never reach the LLM
+   * call. The previous implementation worked around this by mutating the
+   * inner's `manifest.systemPrompt` directly — a type-unsafe hack that
+   * also bypassed `buildMessages`'s `memoryPrelude + skillsPrelude` tail,
+   * dropping skills entirely.
+   */
+  override setMemoryPrelude(prelude: string): void {
+    this.inner.setMemoryPrelude(prelude);
+  }
+
+  /** Forward skills prelude to inner so its `buildMessages` sees it. */
+  override setSkillsPrelude(prelude: string): void {
+    this.inner.setSkillsPrelude(prelude);
+  }
+
   override async receiveTask(task: Task, _ctx: AgentContext): Promise<void> {
     const profile = await this.facade.activeProfile(task.agentRole);
     const prelude = AgentMemoryStore.toPrelude(profile.memory);
     if (prelude) {
-      const augmented = {
-        ...this.inner.manifest,
-        systemPrompt: this.inner.manifest.systemPrompt + prelude,
-      };
-      (this.inner as { manifest: typeof augmented }).manifest = augmented;
+      // Goes through the overridden setter, which forwards to inner.
+      this.setMemoryPrelude(prelude);
     }
   }
 

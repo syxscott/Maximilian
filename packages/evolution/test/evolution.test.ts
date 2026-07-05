@@ -325,6 +325,66 @@ describe("End-to-end: factory wrapper", () => {
     expect(agent?.manifest.role).toBe("backend");
     await fs.rm(tmp, { recursive: true, force: true });
   });
+
+  it("forwards memory + skills preludes into the wrapped inner agent so they reach the LLM", async () => {
+    // Spy provider: captures every chat() call so the test can assert on
+    // the system prompt actually sent to the model.
+    const captured: Array<{ role: string; content: string }[]> = [];
+    const spyProvider: Provider = {
+      id: "spy",
+      name: "spy",
+      defaultModel: "spy-model",
+      isConfigured: () => true,
+      chat: async (messages) => {
+        captured.push(messages as Array<{ role: string; content: string }>);
+        return { content: "ok", model: "spy-model" };
+      },
+      stream: async function* () { yield { delta: "ok", done: true }; },
+    };
+
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "max-evo-prelude-"));
+    // Seed the profile's memory so toPrelude() returns a non-empty string.
+    const facade = new EvolutionFacade({
+      rootDir: tmp,
+      candidates: [spyProvider],
+      fallbackProvider: spyProvider,
+      defaultManifests: { backend: makeManifest("backend", "ORIGINAL BACKEND PROMPT") },
+    });
+    await facade.initialize();
+    const profile = await facade.profiles.getOrCreate("backend", makeManifest("backend"));
+    const seeded = AgentMemoryStore.recordSuccess(
+      profile.memory,
+      makeRecord({ taskId: "seed", agentRole: "backend", provider: "spy", model: "spy-model", reviewScore: 9 }),
+      "Use composition over inheritance",
+    );
+    await facade.profiles.save({ ...profile, memory: seeded });
+
+    const factory = evolutionAwareFactory(facade);
+    const agent = factory("backend");
+    if (!agent) throw new Error("expected backend agent");
+
+    // Simulate what AgentRuntime.runTask does: set memory prelude (via
+    // receiveTask → facade profile) and skills prelude (via setSkillsPrelude).
+    await agent.receiveTask({ id: "t1", agentRole: "backend", description: "do it" } as never, { priorResults: [] });
+    agent.setSkillsPrelude("\n# Skills that may apply\n- **web-search**: Search the web\n");
+
+    await agent.execute({ id: "t1", agentRole: "backend", description: "do it" } as never, { priorResults: [] });
+
+    expect(captured.length).toBe(1);
+    const system = captured[0]?.find((m) => m.role === "system");
+    expect(system).toBeDefined();
+    // Memory prelude is injected (from facade profile → setMemoryPrelude path).
+    expect(system?.content).toContain("Patterns that worked well");
+    expect(system?.content).toContain("composition over inheritance");
+    // Skills prelude is injected. Before the fix, this was missing because
+    // setSkillsPrelude only set the wrapper's field, not the inner's.
+    expect(system?.content).toContain("Skills that may apply");
+    expect(system?.content).toContain("web-search");
+    // Original manifest prompt is preserved (BackendAgent's own constant).
+    expect(system?.content).toContain("Backend Agent");
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
 });
 
 // ----------------------------------------------------------------------------
