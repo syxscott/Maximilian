@@ -684,7 +684,15 @@ export class AgentRuntime {
           }
           remaining.push(t);
         } else if (t.dependsOn.every((d) => completed.has(d))) {
-          runnable.push(t);
+          // Check DiGraph-style condition (借鉴 autogen): if the task has a
+          // condition string in metadata, it must be satisfied by prior
+          // results before the task can run.
+          const cond = t.metadata?.condition as string | undefined;
+          if (cond && !conditionSatisfied(cond, updated.results)) {
+            remaining.push(t);
+          } else {
+            runnable.push(t);
+          }
         } else {
           remaining.push(t);
         }
@@ -1166,6 +1174,22 @@ async function runToolLoopAndSubmit(
     durationMs: undefined,
   }
   return agent.submitResult(result)
+}
+
+/**
+ * Check whether a task condition is satisfied by prior results
+ * (借鉴 autogen DiGraph condition / check_condition).
+ *
+ * The condition is a free-form string that must appear (case-insensitive)
+ * in at least one prior result's output. This is a deliberately simple
+ * heuristic — it mirrors autogen's substring-match in check_condition()
+ * without requiring a full predicate engine.
+ *
+ * Tasks with no condition are always runnable (allDepsCompleted gate).
+ */
+function conditionSatisfied(condition: string, results: Result[]): boolean {
+  const lower = condition.toLowerCase()
+  return results.some((r) => r.output.toLowerCase().includes(lower))
 }
 
 export function newId(prefix: string): string {

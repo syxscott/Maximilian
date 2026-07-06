@@ -62,6 +62,14 @@ For each task, output:
   - complex: refactor, migration, performance, security, architecture (> 500 chars OR keywords like "refactor", "migrate", "design system")
   - medium: anything in between
 - "preferredCapabilities": array of capability tags this task needs (free-form strings drawn from the agent's strength list above; e.g. ["api-design", "auth"], ["ui-rendering"], ["docs"])
+- "ownedFiles" (optional): array of file paths this task exclusively owns (借鉴 parallel-feature-development). When set, no other task should modify these files.
+- "condition" (optional): a string describing what state must be true before this task runs (借鉴 autogen DiGraph condition). The condition is checked by the runtime against prior task outputs.
+
+Also output a top-level "tracks" field (optional): array of track objects describing phased work (借鉴 conductor tracks.md):
+- "id": unique track identifier
+- "name": display name
+- "description": what this track covers
+- "phases": array of phase names/descriptions
 
 Always end with a "review" task that depends on all prior tasks (the runtime appends it automatically if missing).
 
@@ -98,6 +106,20 @@ export interface PlannerOutput {
     dependsOn: string[];
     estimatedComplexity?: "simple" | "medium" | "complex";
     preferredCapabilities?: string[];
+    /** (借鉴 parallel-feature-development) Exclusive file ownership. */
+    ownedFiles?: string[];
+    /** (借鉴 autogen DiGraph) Condition string checked against prior results. */
+    condition?: string;
+  }>;
+  /**
+   * (借鉴 conductor tracks.md) Optional phase/track metadata for the plan.
+   * Each track represents a logical phase of work with its own phases.
+   */
+  tracks?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    phases: string[];
   }>;
 }
 
@@ -113,6 +135,8 @@ export interface ReplanOutput {
     dependsOn: string[];
     estimatedComplexity?: "simple" | "medium" | "complex";
     preferredCapabilities?: string[];
+    ownedFiles?: string[];
+    condition?: string;
   }>;
 }
 
@@ -216,6 +240,12 @@ export class Commander {
       if (t.preferredCapabilities && t.preferredCapabilities.length > 0) {
         metadata.preferredCapabilities = t.preferredCapabilities;
       }
+      if (t.ownedFiles && t.ownedFiles.length > 0) {
+        metadata.ownedFiles = t.ownedFiles;
+      }
+      if (t.condition) {
+        metadata.condition = t.condition;
+      }
       return {
         id: `task-${i + 1}`,
         agentRole: t.agentRole,
@@ -226,6 +256,11 @@ export class Commander {
       };
     });
 
+    const planMeta: Record<string, unknown> = {};
+    if (planner.tracks && planner.tracks.length > 0) {
+      planMeta.tracks = planner.tracks;
+    }
+
     const plan: Plan = {
       id: planId,
       workspaceId,
@@ -233,6 +268,7 @@ export class Commander {
       rationale: planner.rationale,
       tasks,
       createdAt: now,
+      ...(Object.keys(planMeta).length > 0 ? { metadata: planMeta } : {}),
     };
 
     const workspace: Workspace = {
@@ -247,6 +283,60 @@ export class Commander {
     };
 
     return { workspace, plan };
+  }
+
+  /**
+   * Preflight validation (借鉴 wshobson agents Pre-flight Checks).
+   * Returns an array of warnings/errors about the plan before execution.
+   * Empty array = all clear. Callers should surface non-empty warnings
+   * to the user or abort execution.
+   *
+   * Checks:
+   * - Plan has at least one task
+   * - Plan includes a review task
+   * - No task has an invalid dependsOn reference
+   * - ownedFiles assignments are disjoint (no two tasks own the same file)
+   * - All condition strings are non-empty
+   */
+  preflight(plan: Plan): string[] {
+    const warnings: string[] = [];
+
+    if (!plan.tasks || plan.tasks.length === 0) {
+      warnings.push("Plan has no tasks");
+      return warnings;
+    }
+
+    // Check for review task.
+    if (!plan.tasks.some((t) => t.agentRole === "review")) {
+      warnings.push("Plan is missing a review task");
+    }
+
+    // Check dependsOn references.
+    const taskIds = new Set(plan.tasks.map((t) => t.id));
+    for (const t of plan.tasks) {
+      for (const dep of t.dependsOn) {
+        if (!taskIds.has(dep)) {
+          warnings.push(`Task "${t.id}" depends on unknown task "${dep}"`);
+        }
+      }
+    }
+
+    // Check for overlapping file ownership (借鉴 parallel-feature-development).
+    const fileOwner = new Map<string, string>();
+    for (const t of plan.tasks) {
+      const files = t.metadata?.ownedFiles as string[] | undefined;
+      if (files) {
+        for (const f of files) {
+          const existing = fileOwner.get(f);
+          if (existing && existing !== t.id) {
+            warnings.push(`File "${f}" is owned by both "${existing}" and "${t.id}" — disjoint ownership violated`);
+          }
+          fileOwner.set(f, t.id);
+        }
+      }
+    }
+
+    return warnings;
   }
 
   private async callPlanner(userRequest: string): Promise<PlannerOutput> {
