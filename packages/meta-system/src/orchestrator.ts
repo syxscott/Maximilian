@@ -61,6 +61,8 @@ import {
 } from "./proposal-pipeline.js";
 import { SafeRollout, type RolloutResult } from "./safe-rollout.js";
 import type { PendingProposalStore } from "./pending-proposal-store.js";
+import { TruthAudit, type TruthAuditDeps } from "./truth-audit.js";
+import type { TruthMeasurement, TruthVerification, TruthReport } from "./types.js";
 
 export interface MetaOrchestratorDeps {
   registry: CapabilityRegistry;
@@ -85,6 +87,8 @@ export interface MetaOrchestratorDeps {
   telemetry?: TelemetrySink;
   /** Phase 11 — store for proposals pending human approval. */
   pendingStore?: PendingProposalStore;
+  /** Phase 8.7 — optional TruthAudit for prediction-vs-reality verification. */
+  truthAudit?: TruthAudit;
 }
 
 export interface MetaCycleInput {
@@ -439,6 +443,35 @@ export class MetaOrchestrator {
       recorded: events.length,
       ...(usePhase8 ? { proposalsPhase8 } : {}),
     };
+  }
+
+  /**
+   * Phase 8.7 — record a prediction-vs-actual measurement against the
+   * orchestrator's TruthAudit (if wired). Returns the recorded measurement
+   * or null when no TruthAudit is configured.
+   */
+  recordTruthMeasurement(input: Omit<TruthMeasurement, "recordedAt">): TruthMeasurement | null {
+    if (!this.deps.truthAudit) return null;
+    return this.deps.truthAudit.recordMeasurement(input);
+  }
+
+  /**
+   * Phase 8.7 — verify a single proposal's prediction against the
+   * accumulated measurements. Returns null when TruthAudit is not wired
+   * or when no measurements exist yet for the proposal.
+   */
+  verifyTruth(proposalId: string): TruthVerification | null {
+    if (!this.deps.truthAudit) return null;
+    return this.deps.truthAudit.verify(proposalId);
+  }
+
+  /**
+   * Phase 8.7 — generate a global calibration report. Returns null when
+   * TruthAudit is not wired.
+   */
+  async truthReport(): Promise<TruthReport | null> {
+    if (!this.deps.truthAudit) return null;
+    return this.deps.truthAudit.report();
   }
 
   /**

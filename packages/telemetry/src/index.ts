@@ -33,7 +33,7 @@ export {
 export { TelemetryCollector } from "./collector.js";
 
 // Logger
-export { getLogger, resetLogger } from "./logger.js";
+export { getLogger, resetLogger, flushLogger } from "./logger.js";
 
 // OpenTelemetry
 export { initOtel, getTracer, withSpan, context, trace } from "./otel.js";

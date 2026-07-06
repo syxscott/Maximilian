@@ -24,7 +24,7 @@
   <img src="https://img.shields.io/badge/pnpm-9-F69220?style=for-the-badge&logo=pnpm&logoColor=white" alt="pnpm"/>
   <br>
   <img src="https://img.shields.io/badge/License-TBD-lightgrey?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/Tests-1265%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-1283%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
   <img src="https://img.shields.io/badge/Packages-21%20%2B%204%20apps-7B1FA2?style=for-the-badge&logo=npm&logoColor=white" alt="Packages"/>
   <img src="https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
 </p>
@@ -153,9 +153,9 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
   <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
   <circle cx="50" cy="50" r="45" fill="none" stroke="#7c3aed" stroke-width="6"
           stroke-dasharray="283" stroke-dashoffset="14" transform="rotate(-90 50 50)" stroke-linecap="round"/>
-  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">1265</text>
+  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">1283</text>
 </svg>
-<br><b>1265 Tests</b>
+<br><b>1283 Tests</b>
 <br><sub>✅ 全部通过 / all green</sub>
 </td>
 <td align="center" width="14%">
@@ -301,9 +301,9 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
 </tr>
 <tr>
 <td align="center">🧪</td>
-<td><b>1265+ 测试</b> — 21 包 + 4 app 覆盖,Vitest + CI 跑 PG 真实库</td>
+<td><b>1283+ 测试</b> — 21 包 + 4 app 覆盖,Vitest + CI 跑 PG 真实库</td>
 <td align="center">🧪</td>
-<td><b>1265+ tests</b> — 21 packages + 4 apps, Vitest + CI runs against real Postgres</td>
+<td><b>1283+ tests</b> — 21 packages + 4 apps, Vitest + CI runs against real Postgres</td>
 </tr>
 <tr>
 <td align="center">📈</td>
@@ -542,7 +542,7 @@ flowchart TB
 <tr><td><b>Logging</b></td><td>Pino (structured JSON)</td><td align="center">📝</td></tr>
 <tr><td><b>Tracing</b></td><td>OpenTelemetry + OTLP</td><td align="center">🔭</td></tr>
 <tr><td><b>Metrics</b></td><td>prom-client + Prometheus</td><td align="center">📊</td></tr>
-<tr><td><b>Tests</b></td><td>Vitest (1265 tests, 21 packages + 4 apps)</td><td align="center">🧪</td></tr>
+<tr><td><b>Tests</b></td><td>Vitest (1283 tests, 21 packages + 4 apps)</td><td align="center">🧪</td></tr>
 <tr><td><b>CI/CD</b></td><td>GitHub Actions + Docker multi-stage</td><td align="center">🐳</td></tr>
 <tr><td><b>Load test</b></td><td>k6 (nightly)</td><td align="center">📈</td></tr>
 </table>
@@ -733,7 +733,7 @@ docker compose --profile queue --profile observability up -d
 ## 🧪 跑测试 / Running Tests
 
 ```bash
-pnpm test                       # 全部 1265+ tests
+pnpm test                       # 全部 1283+ tests
 pnpm --filter @max/api test     # 只跑 API(170 tests)
 pnpm type-check                 # 只跑 TS 类型检查
 pnpm lint                       # 只跑 lint
@@ -961,7 +961,7 @@ Every borrowed module is annotated with `借鉴 <project>` in its source header 
 <br>
 
 <sub>
-Built with ❤️ by syxscott · Powered by 21 packages · 4 apps · 1265 tests<br>
+Built with ❤️ by syxscott · Powered by 21 packages · 4 apps · 1283 tests<br>
 <sub>⚡ Meta-agent OS · 2026</sub>
 </sub>
 

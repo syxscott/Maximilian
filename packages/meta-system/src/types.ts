@@ -433,3 +433,119 @@ export const PendingProposalSchema = z.object({
   resolutionReason: z.string().optional(),
 });
 export type PendingProposal = z.infer<typeof PendingProposalSchema>;
+
+// ============================================================================
+// Phase 8.7 — TruthAudit (prediction-vs-reality verification)
+// ============================================================================
+
+/**
+ * One recorded measurement: what the simulation/replay predicted, vs what
+ * actually happened after rollout. TruthAudit accumulates these and emits
+ * calibration reports + per-proposal verdicts.
+ */
+export const TruthMeasurementSchema = z.object({
+  proposalId: z.string(),
+  /** The Proposal action that was rolled out (birth/retire/promote/etc.). */
+  proposalAction: ProposalActionSchema,
+  /** SimulationDelta values from before rollout. */
+  predicted: z.object({
+    costDelta: z.number(),
+    latencyDeltaMs: z.number(),
+    qualityDelta: z.number(),
+    riskDelta: z.number(),
+  }),
+  /** Observed values from post-rollout telemetry. */
+  actual: z.object({
+    costDelta: z.number(),
+    latencyDeltaMs: z.number(),
+    qualityDelta: z.number(),
+    riskDelta: z.number(),
+  }),
+  /** Sample size behind the actual measurement. */
+  sampleSize: z.number().int().nonnegative().default(1),
+  recordedAt: z.string(),
+});
+export type TruthMeasurement = z.infer<typeof TruthMeasurementSchema>;
+
+export const TruthVerdictSchema = z.enum([
+  "accurate",      // |error| within tolerance
+  "under_predicted", // reality was better than predicted
+  "over_predicted",  // reality was worse than predicted
+  "insufficient_data",
+]);
+export type TruthVerdict = z.infer<typeof TruthVerdictSchema>;
+
+/** Per-proposal verdict emitted by TruthAudit.verify(). */
+export const TruthVerificationSchema = z.object({
+  proposalId: z.string(),
+  verdict: TruthVerdictSchema,
+  /** Largest absolute error across the four dimensions. */
+  maxAbsoluteError: z.number(),
+  /** Largest relative error (0-1 scale). */
+  maxRelativeError: z.number(),
+  /** Per-dimension signed drift (actual - predicted, positive = reality better). */
+  drifts: z.object({
+    costDelta: z.number(),
+    latencyDeltaMs: z.number(),
+    qualityDelta: z.number(),
+    riskDelta: z.number(),
+  }),
+  /** Number of samples behind this verdict. */
+  sampleSize: z.number().int().nonnegative(),
+  /** Whether the truth mismatch warrants a model adjustment. */
+  needsRecalibration: z.boolean(),
+  verifiedAt: z.string(),
+});
+export type TruthVerification = z.infer<typeof TruthVerificationSchema>;
+
+/** Global calibration report across all measured proposals. */
+export const TruthReportSchema = z.object({
+  windowStart: z.string(),
+  windowEnd: z.string(),
+  totalMeasurements: z.number().int().nonnegative(),
+  meanAbsoluteError: z.object({
+    costDelta: z.number(),
+    latencyDeltaMs: z.number(),
+    qualityDelta: z.number(),
+    riskDelta: z.number(),
+  }),
+  meanSignedError: z.object({
+    costDelta: z.number(),
+    latencyDeltaMs: z.number(),
+    qualityDelta: z.number(),
+    riskDelta: z.number(),
+  }),
+  /** Overall verdict distribution (counts). */
+  verdictCounts: z.object({
+    accurate: z.number().int().nonnegative(),
+    under_predicted: z.number().int().nonnegative(),
+    over_predicted: z.number().int().nonnegative(),
+    insufficient_data: z.number().int().nonnegative(),
+  }),
+  /** Proposals with the worst drift (top N). */
+  driftLeaders: z.array(z.object({
+    proposalId: z.string(),
+    maxAbsoluteError: z.number(),
+    verdict: TruthVerdictSchema,
+  })),
+  /** True if mean absolute error exceeds calibration threshold. */
+  recalibrationRecommended: z.boolean(),
+  generatedAt: z.string(),
+});
+export type TruthReport = z.infer<typeof TruthReportSchema>;
+
+export const TRUTH_AUDIT_CONFIG = {
+  /** Per-dimension tolerance (|error| below this counts as accurate). */
+  tolerance: {
+    costDelta: 0.05,
+    latencyDeltaMs: 100,
+    qualityDelta: 0.5,
+    riskDelta: 0.1,
+  },
+  /** Minimum sample size before we trust a measurement. */
+  minSampleSize: 3,
+  /** Drift threshold for needsRecalibration flag. */
+  recalibrationThreshold: 1.0,
+  /** Top N drift leaders included in TruthReport. */
+  driftLeaderCount: 5,
+};

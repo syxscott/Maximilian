@@ -25,6 +25,11 @@ export { SafeRollout, type RolloutApplyInput, type RolloutResult } from "./safe-
 export { ReplayEngine, type ReplayDeps, type ReplayInput } from "./replay-engine.js";
 export { PendingProposalStore } from "./pending-proposal-store.js";
 export {
+  TruthAudit,
+  buildMeasurement,
+  type TruthAuditDeps,
+} from "./truth-audit.js";
+export {
   VisualizerAdapter,
   UINodeSchema,
   UIEdgeSchema,
