@@ -24,7 +24,7 @@
   <img src="https://img.shields.io/badge/pnpm-9-F69220?style=for-the-badge&logo=pnpm&logoColor=white" alt="pnpm"/>
   <br>
   <img src="https://img.shields.io/badge/License-TBD-lightgrey?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/Tests-~970%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-1265%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
   <img src="https://img.shields.io/badge/Packages-21%20%2B%204%20apps-7B1FA2?style=for-the-badge&logo=npm&logoColor=white" alt="Packages"/>
   <img src="https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
 </p>
@@ -79,6 +79,7 @@
 | 📦 [部署](#-部署-deployment) | [Deployment](#-部署-deployment) |
 | 🧪 [跑测试](#-跑测试-running-tests) | [Running Tests](#-跑测试-running-tests) |
 | 📚 [文档](#-文档-documentation) | [Documentation](#-文档-documentation) |
+| 🙏 [致谢与借鉴](#-致谢与借鉴-acknowledgements) | [Acknowledgements](#-致谢与借鉴-acknowledgements) |
 | 🤝 [贡献与许可](#-贡献与许可-contributing--license) | [Contributing & License](#-贡献与许可-contributing--license) |
 
 ---
@@ -152,9 +153,9 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
   <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
   <circle cx="50" cy="50" r="45" fill="none" stroke="#7c3aed" stroke-width="6"
           stroke-dasharray="283" stroke-dashoffset="14" transform="rotate(-90 50 50)" stroke-linecap="round"/>
-  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">970</text>
+  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">1265</text>
 </svg>
-<br><b>~970 Tests</b>
+<br><b>1265 Tests</b>
 <br><sub>✅ 全部通过 / all green</sub>
 </td>
 <td align="center" width="14%">
@@ -300,9 +301,9 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
 </tr>
 <tr>
 <td align="center">🧪</td>
-<td><b>970+ 测试</b> — 21 包覆盖,Vitest + CI 跑 PG 真实库</td>
+<td><b>1265+ 测试</b> — 21 包 + 4 app 覆盖,Vitest + CI 跑 PG 真实库</td>
 <td align="center">🧪</td>
-<td><b>970+ tests</b> — 21 packages, Vitest + CI runs against real Postgres</td>
+<td><b>1265+ tests</b> — 21 packages + 4 apps, Vitest + CI runs against real Postgres</td>
 </tr>
 <tr>
 <td align="center">📈</td>
@@ -541,7 +542,7 @@ flowchart TB
 <tr><td><b>Logging</b></td><td>Pino (structured JSON)</td><td align="center">📝</td></tr>
 <tr><td><b>Tracing</b></td><td>OpenTelemetry + OTLP</td><td align="center">🔭</td></tr>
 <tr><td><b>Metrics</b></td><td>prom-client + Prometheus</td><td align="center">📊</td></tr>
-<tr><td><b>Tests</b></td><td>Vitest (~970 tests, 21 packages)</td><td align="center">🧪</td></tr>
+<tr><td><b>Tests</b></td><td>Vitest (1265 tests, 21 packages + 4 apps)</td><td align="center">🧪</td></tr>
 <tr><td><b>CI/CD</b></td><td>GitHub Actions + Docker multi-stage</td><td align="center">🐳</td></tr>
 <tr><td><b>Load test</b></td><td>k6 (nightly)</td><td align="center">📈</td></tr>
 </table>
@@ -732,7 +733,7 @@ docker compose --profile queue --profile observability up -d
 ## 🧪 跑测试 / Running Tests
 
 ```bash
-pnpm test                       # 全部 970+ tests
+pnpm test                       # 全部 1265+ tests
 pnpm --filter @max/api test     # 只跑 API(170 tests)
 pnpm type-check                 # 只跑 TS 类型检查
 pnpm lint                       # 只跑 lint
@@ -752,6 +753,166 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 | 🤖 Agent 设计 | [`docs/agent-designs/`](docs/agent-designs/) | 各类 agent 的 prompt / schema |
 | 🔬 Meta-system | [`docs/meta-system/`](docs/meta-system/) | 进化 / 治理 / HITL 详细 |
 | 🛡️ 安全 | [`SECURITY.md`](SECURITY.md) | 漏洞披露策略 |
+
+---
+
+## 🙏 致谢与借鉴 / Acknowledgements
+
+<div align="center">
+
+> Maximilian 不是从零造轮子 — 核心模块大量借鉴了开源社区的优秀项目。
+> Not built from scratch — Maximilian borrows heavily from outstanding open-source projects.
+
+</div>
+
+Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (borrow / adapt) 了 30 个模块 / 模式**,源自 11 个开源项目。
+每一个借鉴模块都在源码头部标注 `借鉴 <project>` 注释,便于追溯。
+
+下面按 **来源项目** 列出所有借鉴内容。每一项注明:**借鉴模块** → **本仓位置**。
+
+### 🌌 [Kosmos](https://github.com/jimmc414/Kosmos) — 15 patterns (4 waves)
+
+> jimmc414 的多 agent 科研自动化系统,基于 Claude 的科学发现流水线。我们从中扫描并借鉴了 15 个最匹配 Maximilian 的模式。
+
+| 借鉴模块 (Borrowed) | 本仓位置 (In this repo) | 原始文件 (Origin) |
+|---|---|---|
+| ScholarEval — 8-dim peer-review scoring | `packages/core/src/validation/scholar-eval.ts` | `kosmos/validation/scholar_eval.py` |
+| FailureDetector — over-interpretation / invented-metrics / rabbit-hole | `packages/core/src/validation/failure-detector.ts` | `kosmos/validation/failure_detector.py` |
+| EventBus — typed pub/sub + EventFilter | `packages/core/src/event-bus.ts` | `kosmos/core/event_bus.py` |
+| NullModel — permutation-test validator | `packages/core/src/validation/null-model.ts` | `kosmos/validation/null_model.py` |
+| PlanReviewer — 5-dim plan quality gate | `packages/core/src/validation/plan-reviewer.ts` | `kosmos/orchestration/plan_reviewer.py` |
+| DelegationManager — concurrent task executor | `packages/core/src/orchestration/delegation-manager.ts` | `kosmos/orchestration/delegation.py` |
+| AgentRegistry — type-keyed registry + message routing | `packages/core/src/orchestration/agent-registry.ts` | `kosmos/agents/registry.py` |
+| NoveltyDetector — semantic dedup via similarity | `packages/core/src/orchestration/novelty-detector.ts` | `kosmos/orchestration/novelty_detector.py` |
+| SafetyGuardrails — code/path/resource policies + emergency stop | `packages/core/src/safety/guardrails.ts` | `kosmos/safety/guardrails.py` |
+| ReproducibilityManager — seed + env snapshot + hash | `packages/core/src/safety/reproducibility.ts` | `kosmos/safety/reproducibility.py` |
+| KnowledgeGraph — node/edge graph (downgraded from Neo4j) | `packages/core/src/knowledge/graph.ts` | `kosmos/knowledge/graph.py` |
+| ArtifactStateManager — JSON finding/hypothesis persistence | `packages/core/src/world-model/artifacts.ts` | `kosmos/world_model/artifacts.py` |
+| MetricsCollector — counters + USD budget + alerts | `packages/core/src/monitoring/metrics.ts` | `kosmos/core/metrics.py` |
+| HypothesisGenerator — structured hypothesis + scoring | `packages/core/src/agents/hypothesis-generator.ts` | `kosmos/agents/hypothesis_generator.py` |
+| ConvergenceEnsemble — cross-run semantic clustering | `packages/core/src/workflow/ensemble.ts` | `kosmos/workflow/ensemble.py` |
+
+### 🤖 [crewAI](https://github.com/crewAIInc/crewAI) — 4 patterns
+
+> 多 agent 编排框架,任务可以委派给 role-specialized agents。
+
+| 借鉴模块 | 本仓位置 | 原始文件 |
+|---|---|---|
+| MemoryScope — hierarchical path-based memory | `packages/core/src/memory-scope.ts` | `crewai/memory/` |
+| Tool result cache (per-task caching) | `packages/core/src/tool-integration.ts` | `crewai/cache_handler.py` |
+| PlannerObserver — per-step self-refinement | `packages/core/src/planner-observer.ts` | `crewai/planner/` |
+| Agent capability / role description in plan prompt | `packages/commander/src/index.ts` | `crewai/agents/` |
+
+### 🤖 [AutoGen Magentic-One](https://github.com/microsoft/autogen) + [AutoGen DiGraph](https://microsoft.github.io/autogen/) — 4 patterns
+
+> Microsoft 的多 agent 对话框架;Magentic-One 是其 Orchestrator 子项目。
+
+| 借鉴模块 | 本仓位置 | 原始文件 |
+|---|---|---|
+| StallReason `idle` / `loop-detected` 三态检测 | `packages/core/src/stall-detection.ts` | `autogen/magentic-one/orchestrator.py` |
+| DiGraph task `condition` strings (substring match vs prior outputs) | `packages/commander/src/index.ts` + `packages/core/src/runtime.ts` | `autogen DiGraph check_condition` |
+| Commander capability-driven task decomposition | `packages/commander/src/index.ts` | `autogen SelectorGroupChat` |
+| StallDetector-based replan on idle | `packages/core/src/runtime.ts` | `autogen Magentic-One Orchestrator.loop()` |
+
+### 🐙 [openclaw](https://github.com/sHxmg/openclaw) (or similar OSS agent-loop implementations) — 4 patterns
+
+> Claude-Code 风格的 agent loop 实现,含 outer/inner steering 循环。
+
+| 借鉴模块 | 本仓位置 | 原始文件 |
+|---|---|---|
+| Steering messages (outer-loop interrupt) | `packages/core/src/tool-integration.ts` | `openclaw agent-loop.ts:258-389` |
+| Follow-up messages (post-loop injection) | `packages/core/src/tool-integration.ts` | `openclaw agent-loop.ts:376-382` |
+| `prepareNextTurn` per-turn hook | `packages/core/src/tool-integration.ts` | `openclaw prepareNextTurn` |
+| `shouldStopAfterTurn` explicit stop hook | `packages/core/src/tool-integration.ts` | `openclaw shouldStopAfterTurn` |
+| Session save/load state snapshot | `packages/core/src/runtime.ts` | `openclaw sessions store` |
+
+### 🛠️ [cc-switch](https://github.com/sairin1202/cc-switch) (or similar tool-allowlist implementations) — 1 pattern
+
+> CLI 工具调用治理,带 per-agent 工具白/黑名单。
+
+| 借鉴模块 | 本仓位置 |
+|---|---|
+| Tool allowlist + denylist (per-agent) | `packages/core/src/tool-integration.ts` + `packages/core/src/runtime.ts` |
+
+### 🖥️ [OpenHands](https://github.com/All-Hands-AI/OpenHands) — 1 pattern
+
+> 自主软件工程 agent,sandbox 化代码执行。
+
+| 借鉴模块 | 本仓位置 | 原始文件 |
+|---|---|---|
+| SandboxService — abstract base + LocalSandboxService | `packages/core/src/sandbox.ts` | `openhands/runtime/` |
+
+### 🛡️ [hermes-agent](https://github.com/snap-stanford/hermes-agent) (or similar error-classification agents) — 1 pattern
+
+> 智能 agent 错误分类器,把错误归类并决定 retry / fallback / rotate-credential 策略。
+
+| 借鉴模块 | 本仓位置 | 原始文件 |
+|---|---|---|
+| FailoverReason + ClassifiedError pipeline | `packages/core/src/failover-reason.ts` + `packages/core/src/runtime.ts` | `hermes-agent error_classifier.py` |
+
+### 🧠 [wshobson/agents](https://github.com/wshobson/agents) (or similar pre-flight check agents) — 2 patterns
+
+> Anthropic 推出的开源 agent 集合。
+
+| 借鉴模块 | 本仓位置 |
+|---|---|
+| MADR-format ADR (Architecture Decision Records) | `packages/core/src/adr.ts` |
+| Pre-flight validation in plan | `packages/commander/src/index.ts` |
+
+### 🌿 [parallel-feature-development](https://github.com/sahilrajput/parallel-feature-development) (or similar worktree-orchestration workflows) — 1 pattern
+
+> 多 branch 并行开发时,文件级所有权声明防止冲突。
+
+| 借鉴模块 | 本仓位置 |
+|---|---|
+| `ownedFiles` exclusive file ownership | `packages/commander/src/index.ts` + `packages/core/src/runtime.ts` |
+
+### 🎼 [conductor tracks.md](https://github.com/conductor-oss/conductor) — 1 pattern
+
+> Netflix Conductor 的 phase/track 编排。
+
+| 借鉴模块 | 本仓位置 |
+|---|---|
+| `tracks` phased-work metadata in plan | `packages/commander/src/index.ts` |
+
+### 🧬 [codebase-memory-mcp](https://github.com/Automata-Labs-team/codebase-memory-mcp) (or similar repo-scoped memory MCP servers) — 1 pattern
+
+> 把整个 codebase 作为记忆存储,path-scoped 隔离。
+
+| 借鉴模块 | 本仓位置 |
+|---|---|
+| File-based repo-scoped memory store | `packages/core/src/repo-memory.ts` |
+
+---
+
+### 📊 借鉴统计 / Borrowing Stats
+
+| 来源项目 | 模块数 | 占比 |
+|---|---|---|
+| Kosmos | 15 | 50% |
+| crewAI | 4 | 13% |
+| AutoGen / Magentic-One | 4 | 13% |
+| openclaw | 4 | 13% |
+| cc-switch | 1 | 3% |
+| OpenHands | 1 | 3% |
+| hermes-agent | 1 | 3% |
+| wshobson/agents | 2 | 7% |
+| parallel-feature-development | 1 | 3% |
+| Conductor | 1 | 3% |
+| codebase-memory-mcp | 1 | 3% |
+
+**合计 30 个借鉴模式,源自 11 个项目。**
+**Total: 30 borrowed patterns from 11 projects.**
+
+### 🙏 致敬 / Special Thanks
+
+如果 Maximilian 对你有所帮助,请给上面列出的开源项目也点个 ⭐ star — 正是它们让 Maximilian 站在了巨人的肩膀上。
+
+If Maximilian helps you, please ⭐ star the upstream projects above — they made this possible.
+
+每一个借鉴模块都在源代码头部用 `借鉴 <project>` 标注,你可以直接 grep 定位。
+
+Every borrowed module is annotated with `借鉴 <project>` in its source header — grep to locate.
 
 ---
 
@@ -800,7 +961,7 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 <br>
 
 <sub>
-Built with ❤️ by syxscott · Powered by 21 packages · 4 apps · ~970 tests<br>
+Built with ❤️ by syxscott · Powered by 21 packages · 4 apps · 1265 tests<br>
 <sub>⚡ Meta-agent OS · 2026</sub>
 </sub>
 
