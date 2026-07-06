@@ -124,6 +124,40 @@ describe("KnowledgeGraph (借鉴 Kosmos knowledge/graph.py)", () => {
     expect(g.nodeCount()).toBe(0)
     expect(g.edgeCount()).toBe(0)
   })
+
+  it("removeNode cleans both directions of edges (no stale incoming)", () => {
+    const g = new KnowledgeGraph()
+    g.addNode({ id: "a", type: "x", properties: {} })
+    g.addNode({ id: "b", type: "x", properties: {} })
+    g.addEdge({ from: "a", to: "b", type: "rel" })
+    g.removeNode("a")
+    // a→b edge was outgoing from a; after removing a, b's incoming must be empty.
+    expect(g.edgesTo("b")).toHaveLength(0)
+    expect(g.edgesFrom("a")).toHaveLength(0)
+  })
+
+  it("removeNode cleans both directions of edges (no stale outgoing)", () => {
+    const g = new KnowledgeGraph()
+    g.addNode({ id: "a", type: "x", properties: {} })
+    g.addNode({ id: "b", type: "x", properties: {} })
+    g.addEdge({ from: "a", to: "b", type: "rel" })
+    g.removeNode("b")
+    // a→b edge was incoming to b; after removing b, a's outgoing must be empty.
+    expect(g.edgesFrom("a")).toHaveLength(0)
+    expect(g.edgesTo("b")).toHaveLength(0)
+  })
+
+  it("LRU eviction leaves no dangling edges", () => {
+    const g = new KnowledgeGraph({ maxNodes: 2 })
+    g.addNode({ id: "a", type: "x", properties: {} })
+    g.addNode({ id: "b", type: "x", properties: {} })
+    g.addEdge({ from: "a", to: "b", type: "rel" })
+    g.addNode({ id: "c", type: "x", properties: {} }) // evicts a
+    expect(g.getNode("a")).toBeUndefined()
+    // b should have no stale incoming edges pointing to evicted a.
+    expect(g.edgesTo("b")).toHaveLength(0)
+    expect(g.edgesFrom("c")).toHaveLength(0)
+  })
 })
 
 describe("ArtifactStateManager (借鉴 Kosmos world_model/artifacts.py)", () => {

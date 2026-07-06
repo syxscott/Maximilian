@@ -190,11 +190,16 @@ export class SafetyGuardrails {
     return null
   }
 
-  /** Returns true if code + path checks all pass. */
-  isSafe(code: string, path?: string): boolean {
+  /** Returns true if code + path checks all pass. Resource policy is enforced
+   *  for the operations named in `operations` (default: all three). */
+  isSafe(code: string, path?: string, operations?: ReadonlyArray<"allowNetworkAccess" | "allowFileWrite" | "allowSubprocess">): boolean {
     if (this.isStopped()) return false
     if (this.checkCode(code)) return false
     if (path && this.checkPath(path)) return false
+    const ops = operations ?? ["allowNetworkAccess", "allowFileWrite", "allowSubprocess"]
+    for (const op of ops) {
+      if (this.checkResource(op)) return false
+    }
     return true
   }
 

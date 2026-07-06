@@ -294,10 +294,27 @@ describe("SafetyGuardrails (借鉴 Kosmos safety/guardrails.py)", () => {
 
   it("isSafe combines all checks", () => {
     const g = makeGuardrails()
+    g.updateLimits({ allowFileWrite: true, allowNetworkAccess: true, allowSubprocess: true })
     expect(g.isSafe("const x = 1")).toBe(true)
     expect(g.isSafe("rm -rf /")).toBe(false)
     g.triggerEmergencyStop("test")
     expect(g.isSafe("const x = 1")).toBe(false)
+  })
+
+  it("isSafe enforces resource policy by default", () => {
+    const g = makeGuardrails()
+    // Default limits: allowFileWrite=false, allowNetworkAccess=false, allowSubprocess=false.
+    expect(g.isSafe("const x = 1")).toBe(false) // blocked by resource policy
+    g.updateLimits({ allowFileWrite: true, allowNetworkAccess: true, allowSubprocess: true })
+    expect(g.isSafe("const x = 1")).toBe(true)
+  })
+
+  it("isSafe accepts an explicit operations list", () => {
+    const g = makeGuardrails()
+    // Only check file-write policy; network/subprocess unchecked.
+    expect(g.isSafe("const x = 1", undefined, ["allowFileWrite"])).toBe(false)
+    g.updateLimits({ allowFileWrite: true })
+    expect(g.isSafe("const x = 1", undefined, ["allowFileWrite"])).toBe(true)
   })
 
   it("getLimits returns readonly copy", () => {

@@ -81,12 +81,18 @@ export class KnowledgeGraph {
     return this.nodes.get(id)
   }
 
-  /** Remove a node and all edges touching it. */
+  /** Remove a node and all edges touching it (both directions). */
   removeNode(id: NodeId): boolean {
     if (!this.nodes.has(id)) return false
     this.nodes.delete(id)
+    // Drop outbound edges AND their entries in the destinations' incoming lists.
+    const outList = this.outgoing.get(id) ?? []
+    for (const e of outList) {
+      const ins = this.incoming.get(e.to)
+      if (ins) this.incoming.set(e.to, ins.filter((x) => x.from !== id))
+    }
     this.outgoing.delete(id)
-    // Drop inbound edges.
+    // Drop inbound edges AND their entries in the sources' outgoing lists.
     const inList = this.incoming.get(id) ?? []
     for (const e of inList) {
       const outs = this.outgoing.get(e.from)
