@@ -535,7 +535,7 @@ flowchart TB
 <tr><td><b>Frontend</b></td><td>React 19 + Vite + Tailwind</td><td align="center">🎨</td></tr>
 <tr><td><b>Terminal UI</b></td><td>Ink + React (OpenCode-port)</td><td align="center">⌨️</td></tr>
 <tr><td><b>Worker</b></td><td>BullMQ + Redis</td><td align="center">📨</td></tr>
-<tr><td><b>LLM</b></td><td>OpenAI · Anthropic · OpenRouter · DeepSeek via <code>@max/providers</code></td><td align="center">🧠</td></tr>
+<tr><td><b>LLM</b></td><td><b>60+ presets</b> (Anthropic · OpenAI · Gemini · DeepSeek · Zhipu · Qwen · Kimi · Doubao · Mistral · Groq · xAI · OpenRouter · Ollama · ...) via <code>@max/providers</code></td><td align="center">🧠</td></tr>
 <tr><td><b>ORM</b></td><td>Drizzle (typed schema-as-code)</td><td align="center">🗄️</td></tr>
 <tr><td><b>Database</b></td><td>PostgreSQL 16 (file fallback for dev)</td><td align="center">🐘</td></tr>
 <tr><td><b>Auth</b></td><td>JWT (jose) + bcryptjs + RBAC</td><td align="center">🔐</td></tr>
