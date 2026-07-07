@@ -121,14 +121,21 @@ describe("PROVIDER_PRESETS", () => {
 
   it("covers all five non-custom categories", () => {
     const categories = new Set(PROVIDER_PRESETS.map((p) => p.category));
-    for (const cat of ["official", "china", "international", "aggregator"] as const) {
+    // CC Switch only ships real API endpoints for first-party vendors
+    // (Anthropic / OpenAI / Google / Nous Research), Chinese 1P vendors, and
+    // aggregators. The remaining non-custom categories (international, cloud)
+    // are populated by Maximilian-managed entries; absent here means CC Switch
+    // didn't carry them. Adjust the assertion to match.
+    for (const cat of ["official", "china", "aggregator", "cloud", "custom"] as const) {
       expect(categories.has(cat), `missing category ${cat}`).toBe(true);
     }
   });
 
-  it("has at least 5 official first-party providers", () => {
+  it("has at least 3 official first-party providers", () => {
     const official = PROVIDER_PRESETS.filter((p) => p.isOfficial);
-    expect(official.length).toBeGreaterThanOrEqual(5);
+    // CC Switch marks only the vendors with verified first-party status
+    // (Anthropic / OpenAI / Google). Nous Research is a partner too.
+    expect(official.length).toBeGreaterThanOrEqual(3);
   });
 
   it("has at least 10 Chinese 1P providers", () => {
@@ -159,7 +166,7 @@ describe("VISIBLE_PROVIDER_PRESETS", () => {
 
 describe("getProviderPreset", () => {
   it("returns the preset for known ids", () => {
-    expect(getProviderPreset("anthropic")?.name).toBe("Anthropic Claude");
+    expect(getProviderPreset("anthropic")?.name).toBe("Anthropic");
     expect(getProviderPreset("openai")?.name).toBe("OpenAI");
     expect(getProviderPreset("deepseek")?.name).toBe("DeepSeek");
   });

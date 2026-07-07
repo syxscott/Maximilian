@@ -82,7 +82,9 @@ describe("createRegistry — preset-driven wiring", () => {
     });
     const ids = r.list().map((p) => p.id);
     expect(ids).toContain("zhipu");
-    expect(ids).toContain("dashscope");
+    // CC Switch names DashScope's Anthropic-compatible endpoint "Bailian";
+    // DASHSCOPE_API_KEY therefore activates the dashscope-bailian preset.
+    expect(ids).toContain("dashscope-bailian");
   });
 
   it("does NOT activate a preset when envKey is missing", () => {
