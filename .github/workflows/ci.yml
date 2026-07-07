@@ -69,11 +69,50 @@ jobs:
       - name: Type-check
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run type-check
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: License headers (new files)
+        run: pnpm license:check
+
+      - name: Validate commit messages
+        if: github.event_name == 'pull_request'
+        run: |
+          # Verify every commit in the PR follows Conventional Commits.
+          # Range: from merge-base to HEAD.
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          RANGE="${BASE}..${HEAD}"
+          git fetch --depth=50 origin "$BASE" || true
+          pnpm exec commitlint --from "$BASE" --to "$HEAD" --verbose
+        env:
+          NODE_OPTIONS: --max-old-space-size=2048
+
       - name: Test
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run test
 
       - name: Build
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run build
+
+      - name: Bundle size check
+        run: pnpm size
+        env:
+          # size-limit needs GitHub API access to read PR comment context.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Schema dry-run on every PR that touches packages/database or
+      # scripts/migrate*. Verifies the migration set applies cleanly
+      # to a throwaway DB and the resulting schema passes invariants.
+      - name: Migration dry-run
+        if: |
+          contains(github.event.pull_request.changed_files, 'packages/database/') ||
+          contains(github.event.pull_request.changed_files, 'scripts/migrate')
+        run: pnpm db:dry-run
+        env:
+          DATABASE_URL: postgresql://maximilian:maximilian@localhost:5432/maximilian_test
 
       - name: Upload coverage
         if: always()

@@ -28,7 +28,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { serve } from "@hono/node-server";
-import { getConfig } from "@max/config";
+import { getConfig, createFeatureFlags } from "@max/config";
 import {
   getLogger,
   initOtel,
@@ -970,6 +970,87 @@ api.openapi(readyRoute, async (c) => {
 
 api.openapi(listProvidersRoute, listProviders(registry));
 
+// Feature Flag SDK routes — read & override flags at runtime.
+import {
+  listFlagsRoute,
+  getFlagRoute,
+  setOverrideRoute,
+  clearOverrideRoute,
+  evaluateRoute,
+  getFlags,
+  __setFeatureFlagsForTests,
+} from "./routes/feature-flags.js";
+
+api.openapi(listFlagsRoute, (c) => {
+  const flags = getFlags();
+  const definitions = flags.listFlagNames();
+  const list = definitions.map((name) => {
+    const def = flags.getFlagDefinition(name);
+    return {
+      name,
+      enabled: flags.isEnabled(name),
+      defaultValue: def?.defaultValue ?? false,
+      rolloutPercentage: def?.rolloutPercentage,
+      description: def?.description,
+    };
+  });
+  return c.json({ flags: list });
+});
+
+api.openapi(getFlagRoute, (c) => {
+  const { name } = c.req.valid("param");
+  const flags = getFlags();
+  const def = flags.getFlagDefinition(name);
+  if (!def) return c.json({ error: `Unknown flag: ${name}` }, 404);
+  return c.json({
+    name,
+    enabled: flags.isEnabled(name),
+    defaultValue: def.defaultValue,
+    rolloutPercentage: def.rolloutPercentage,
+    description: def.description,
+  });
+});
+
+api.openapi(setOverrideRoute, (c) => {
+  const { name } = c.req.valid("param");
+  const { value, reason } = c.req.valid("json");
+  const flags = getFlags();
+  if (!flags.getFlagDefinition(name)) {
+    return c.json({ error: `Unknown flag: ${name}` }, 404);
+  }
+  flags.override(name, value);
+  const auth = c.get("auth" as never) as { userId?: string } | undefined;
+  return c.json({
+    flagName: name,
+    value,
+    overriddenBy: auth?.userId,
+    overriddenAt: new Date().toISOString(),
+  });
+});
+
+api.openapi(clearOverrideRoute, (c) => {
+  const { name } = c.req.valid("param");
+  const flags = getFlags();
+  if (!flags.getFlagDefinition(name)) {
+    return c.json({ error: `Unknown flag: ${name}` }, 404);
+  }
+  flags.clearOverride(name);
+  return c.body(null, 204);
+});
+
+api.openapi(evaluateRoute, (c) => {
+  const { flagNames, userId } = c.req.valid("json");
+  // Re-create with the requested userId for proper targeting.
+  const scoped = createFeatureFlags({ userId });
+  const values: Record<string, boolean> = {};
+  for (const name of flagNames) {
+    values[name] = scoped.isEnabled(name);
+  }
+  return c.json({ values });
+});
+
+void __setFeatureFlagsForTests;
+
 // Dynamic provider configuration — requires auth
 api.openapi(setDefaultProviderRoute, requireAuthMiddleware(), async (c) => {
   const { providerId } = c.req.valid("json" as never) as { providerId: string };
@@ -1282,6 +1363,100 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
 
 api.openapi(listArtifactsRoute, requireAuthMiddleware(), listArtifacts(store));
 api.openapi(getArtifactRoute, requireAuthMiddleware(), getArtifact(store));
+
+// ---------------------------------------------------------------------------
+// Webhook / SSE subscriptions — public customer-facing surface.
+// ---------------------------------------------------------------------------
+import {
+  createSubscriptionRoute,
+  listSubscriptionsRoute,
+  deleteSubscriptionRoute,
+  streamEventsRoute,
+  createSubscription,
+  listSubscriptions,
+  deleteSubscription,
+  registerSseClient,
+  unregisterSseClient,
+  publishEvent,
+} from "./routes/subscriptions.js";
+
+api.openapi(createSubscriptionRoute, requireAuthMiddleware(), async (c) => {
+  const { type, target, events } = c.req.valid("json");
+  const auth = c.get("auth" as never) as { userId?: string } | undefined;
+  const sub = createSubscription({ type, target, events, createdBy: auth?.userId });
+  return c.json(sub, 201);
+});
+
+api.openapi(listSubscriptionsRoute, requireAuthMiddleware(), async (c) => {
+  return c.json({ subscriptions: listSubscriptions() });
+});
+
+api.openapi(deleteSubscriptionRoute, requireAuthMiddleware(), async (c) => {
+  const { id } = c.req.valid("param");
+  const ok = deleteSubscription(id);
+  return ok ? c.body(null, 204) : c.json({ error: "Not found" }, 404);
+});
+
+// SSE stream for global events (webhook alternative — no setup, no HMAC).
+api.openapi(streamEventsRoute, async (c) => {
+  const eventsParam = c.req.query("events");
+  const events = eventsParam ? eventsParam.split(",").map((s) => s.trim()) : [];
+
+  const encoder = new TextEncoder();
+  const id = `sse_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  let closed = false;
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const client = {
+        id,
+        events,
+        send: (data: string) => {
+          if (closed) return;
+          controller.enqueue(encoder.encode(data));
+        },
+        close: () => {
+          closed = true;
+          controller.close();
+        },
+      };
+      registerSseClient(client);
+
+      // Heartbeat every 15s so proxies don't drop idle connections.
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`: heartbeat\n\n`));
+        } catch {
+          closed = true;
+        }
+      }, 15_000);
+
+      controller.enqueue(encoder.encode(`event: ready\ndata: ${JSON.stringify({ id })}\n\n`));
+
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(heartbeat);
+        unregisterSseClient(id);
+        try { controller.close(); } catch {}
+      };
+
+      c.req.raw.signal.addEventListener("abort", cleanup);
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+});
+
+void publishEvent;
 
 // Evolution routes
 if (evolution) {

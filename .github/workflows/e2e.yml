@@ -1,0 +1,83 @@
+name: e2e-visual
+
+# Visual regression tests for the dashboard. Uses Playwright's
+# screenshot comparison against checked-in baselines. Fails the
+# build when pixels change beyond the threshold.
+#
+# Runs only on PRs that touch apps/dashboard or e2e/**.
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'apps/dashboard/**'
+      - 'e2e/**'
+      - 'packages/ui-react/**'
+      - '.github/workflows/e2e.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: visual regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maximilian
+          POSTGRES_PASSWORD: maximilian
+          POSTGRES_DB: maximilian_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maximilian"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://maximilian:maximilian@localhost:5432/maximilian_e2e
+      JWT_SECRET: e2e-test-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium firefox
+
+      - name: Build dashboard
+        run: pnpm --filter @max/dashboard build
+
+      - name: Run e2e tests
+        run: pnpm e2e
+        env:
+          E2E_NO_SERVER: "true"  # preview server handled in config
+
+      - name: Upload diff on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/**
+            test-results/**
+          retention-days: 7

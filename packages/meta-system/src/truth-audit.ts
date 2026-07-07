@@ -37,10 +37,19 @@ import {
 export interface TruthAuditDeps {
   /** Source of historical measurements (e.g. orchestrator's outcome store). */
   getMeasurements?: () => Promise<TruthMeasurement[]> | TruthMeasurement[];
+  /**
+   * Persistence hooks. When provided, every recordMeasurement() and
+   * verify() call is mirrored to durable storage (e.g. PgTruthStore).
+   * Survives restarts so calibration drift is visible across cycles.
+   */
+  saveMeasurement?: (m: TruthMeasurement) => Promise<void> | void;
+  saveVerification?: (v: TruthVerification) => Promise<void> | void;
   /** Override tolerance / thresholds (mostly for testing). */
   config?: Partial<typeof TRUTH_AUDIT_CONFIG>;
   /** Override the current time (for deterministic tests). */
   now?: () => Date;
+  /** Source of id generator (defaults to randomUUID). */
+  idGenerator?: () => string;
 }
 
 export class TruthAudit {
@@ -51,12 +60,27 @@ export class TruthAudit {
   constructor(private deps: TruthAuditDeps = {}) {
     this.config = { ...TRUTH_AUDIT_CONFIG, ...(deps.config ?? {}) };
     this.now = deps.now ?? (() => new Date());
+    this.loadHistoricalMeasurements();
+  }
+
+  /** Load measurements from the persistence layer into memory. */
+  private async loadHistoricalMeasurements(): Promise<void> {
+    if (!this.deps.getMeasurements) return;
+    const historical = await this.deps.getMeasurements();
+    for (const m of historical) {
+      this.measurements.push(m);
+    }
   }
 
   /**
    * Record a single prediction-vs-actual measurement. The caller is
    * typically the orchestrator after a proposal reaches `applied` status
    * and enough post-rollout executions have been observed.
+   *
+   * When a saveMeasurement persistence hook is configured, the record
+   * is mirrored to durable storage asynchronously. Failures are logged
+   * but do not block the in-memory write — durability is best-effort
+   * because meta-system decisions should not halt on a transient DB blip.
    */
   recordMeasurement(input: Omit<TruthMeasurement, "recordedAt">): TruthMeasurement {
     const m = TruthMeasurementSchema.parse({
@@ -64,6 +88,13 @@ export class TruthAudit {
       recordedAt: this.now().toISOString(),
     });
     this.measurements.push(m);
+    if (this.deps.saveMeasurement) {
+      Promise.resolve(this.deps.saveMeasurement(m)).catch((err) => {
+        // Use console.warn — telemetry may not be initialized at this layer.
+        // Production should monitor this via the persistence layer's own metrics.
+        console.warn(`[TruthAudit] saveMeasurement failed: ${(err as Error).message}`);
+      });
+    }
     return m;
   }
 
@@ -118,7 +149,7 @@ export class TruthAudit {
       ? maxRelError >= 1.0
       : false;
 
-    return TruthVerificationSchema.parse({
+    const verification = TruthVerificationSchema.parse({
       proposalId,
       verdict,
       maxAbsoluteError: round2(maxAbsError),
@@ -133,6 +164,14 @@ export class TruthAudit {
       needsRecalibration,
       verifiedAt: this.now().toISOString(),
     });
+
+    if (this.deps.saveVerification) {
+      Promise.resolve(this.deps.saveVerification(verification)).catch((err) => {
+        console.warn(`[TruthAudit] saveVerification failed: ${(err as Error).message}`);
+      });
+    }
+
+    return verification;
   }
 
   /**

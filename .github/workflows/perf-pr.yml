@@ -1,0 +1,142 @@
+name: perf-pr
+
+# Lightweight performance regression check for PRs.
+# Runs only on labeled PRs (label: `perf-check`) so the default PR
+# experience stays fast. Uses k6 against a docker-compose stack spun
+# up fresh in the runner.
+#
+# Compares p95 latency against the most recent main-branch baseline
+# and fails the PR if it regresses by > 20%.
+
+on:
+  pull_request:
+    types: [labeled]
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: perf-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  perf-check:
+    if: contains(github.event.pull_request.labels.*.name, 'perf-check')
+    name: perf regression check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maximilian
+          POSTGRES_PASSWORD: maximilian
+          POSTGRES_DB: maximilian_perf
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maximilian"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://maximilian:maximilian@localhost:5432/maximilian_perf
+      JWT_SECRET: perf-test-secret
+      OPENAI_API_KEY: sk-fake
+      NODE_ENV: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build + migrate
+        run: |
+          pnpm --filter @max/database build
+          node scripts/migrate.mjs
+          pnpm --filter @max/api build
+
+      - name: Boot API
+        run: |
+          : > api.log
+          nohup pnpm --filter @max/api start > api.log 2>&1 &
+          echo $! > api.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3001/api/ready > /dev/null; then
+              echo "API ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Install k6
+        run: |
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run k6 perf check
+        id: k6
+        run: |
+          k6 run \
+            --vus 20 \
+            --duration 30s \
+            --summary-export=perf-summary.json \
+            benchmarks/load/k6-read.js
+
+      - name: Compare to baseline
+        id: compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch the most recent perf-summary.json from main
+          BASELINE_URL="https://raw.githubusercontent.com/${{ github.repository }}/main/benchmarks/load/baselines/p95-read-ms.json"
+          BASELINE=$(curl -sf "$BASELINE_URL" || echo '{"p95_ms": 200}')
+          BASELINE_P95=$(echo "$BASELINE" | jq -r '.p95_ms // 200')
+          CURRENT_P95=$(jq -r '.metrics.http_req_duration.values["p(95)"] // 99999' perf-summary.json)
+          DELTA=$(echo "scale=1; ($CURRENT_P95 - $BASELINE_P95) / $BASELINE_P95 * 100" | bc)
+          echo "baseline=${BASELINE_P95}ms current=${CURRENT_P95}ms delta=${DELTA}%"
+          echo "delta=${DELTA}" >> "$GITHUB_OUTPUT"
+          if (( $(echo "$DELTA > 20" | bc -l) )); then
+            echo "::error::perf regression > 20% (${DELTA}%)"
+            exit 1
+          fi
+
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-summary
+          path: perf-summary.json
+          retention-days: 14
+
+      - name: Comment on PR
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: perf-regression
+          message: |
+            **Performance check**
+            - Baseline p95: ${{ steps.compare.outputs.delta }}% change
+            - Current p95: see artifact `perf-summary`
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f api.pid ]; then
+            kill "$(cat api.pid)" 2>/dev/null || true
+          fi

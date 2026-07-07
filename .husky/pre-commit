@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+# .husky/pre-commit
+#
+# Runs lint-staged on the files being committed, then enforces
+# Conventional Commits via commitlint. Skipped during merge / revert
+# to avoid blocking legitimate maintenance commits.
+
+. "$(dirname -- "$0")/_/husky.sh"
+
+if [ -d .git ]; then
+  # Skip merge commits
+  if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+    exit 0
+  fi
+
+  # Run staged-file linters
+  pnpm exec lint-staged --no-stash
+
+  # Validate commit message (commitlint reads from .commitlintrc.json)
+  pnpm exec commitlint --edit "$1"
+fi

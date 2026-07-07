@@ -1,0 +1,37 @@
+{
+  "$schema": "https://stryker-mutator.io/schema/stryker-schema.json",
+  "_comment": "Run with: pnpm mutate:run (uses Vitest as the test runner)",
+  "packageManager": "pnpm",
+  "buildCommand": "pnpm --filter @max/meta-system build",
+  "testRunner": "vitest",
+  "testRunner_options": {
+    "configFile": "vitest.stryker.config.ts"
+  },
+  "coverageAnalysis": "perTest",
+  "reporters": ["html", "json", "progress", "dashboard"],
+  "dashboard": {
+    "project": "github.com/syxscott/Maximilian",
+    "version": "main",
+    "module": "meta-system"
+  },
+  "mutate": [
+    "packages/meta-system/src/truth-audit.ts",
+    "packages/meta-system/src/orchestrator.ts",
+    "packages/meta-system/src/proposal-pipeline.ts",
+    "packages/meta-system/src/governance.ts"
+  ],
+  "ignorePatterns": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/test/**",
+    "**/__tests__/**"
+  ],
+  "thresholds": {
+    "high": 80,
+    "low": 70,
+    "break": 60
+  },
+  "timeoutMS": 60_000,
+  "concurrency": 4,
+  "plugins": ["@stryker-mutator/vitest-runner"]
+}

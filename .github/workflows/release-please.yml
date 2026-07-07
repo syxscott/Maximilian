@@ -1,0 +1,39 @@
+name: release-please
+
+# Conventional Commits → CHANGELOG.md + GitHub Releases + version bumps.
+# Runs on every push to main; opens/updates a release PR.
+
+on:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Bump strategy derived from Conventional Commits.
+          # See https://www.conventionalcommits.org/
+          release-type: node
+
+      - name: Log release output
+        if: always()
+        run: |
+          echo "Release PR URL: ${{ steps.release.outputs.pr }}"
+          echo "Release URL:    ${{ steps.release.outputs.release_url }}"
+          echo "Tag:            ${{ steps.release.outputs.tag_name }}"
+          echo "Version:        ${{ steps.release.outputs.major_version }}.${{ steps.release.outputs.minor_version }}.${{ steps.release.outputs.patch_version }}"

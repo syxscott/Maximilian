@@ -1,0 +1,41 @@
+# CODEOWNERS — Maximilian
+# Each line is a file pattern followed by one or more owners.
+# Owners are auto-assigned as reviewers on any PR that touches matching files.
+# Order matters: later patterns override earlier ones.
+
+# Default: any change requires core team review.
+/                                       @syxscott
+
+# Core runtime (high-impact, must be reviewed by runtime owners)
+/packages/core/                         @syxscott
+/packages/agents/                       @syxscott
+/packages/commander/                    @syxscott
+/packages/runtime/                      @syxscott
+
+# Meta-system (org-self-evolution logic)
+/packages/meta-system/                  @syxscott
+/packages/evolution/                    @syxscott
+
+# Security-sensitive
+/packages/auth/                         @syxscott
+/apps/api/src/routes/auth.ts            @syxscott
+/apps/api/src/middleware/security.ts    @syxscott
+
+# Infrastructure
+/packages/database/                     @syxscott
+/packages/queue/                        @syxscott
+/deploy/                                @syxscott
+/observability/                         @syxscott
+/.github/workflows/                     @syxscott
+
+# Frontend
+/apps/dashboard/                        @syxscott
+/apps/tui/                              @syxscott
+/packages/ui-react/                     @syxscott
+
+# Telemetry / observability
+/packages/telemetry/                    @syxscott
+
+# Docs
+/docs/                                  @syxscott
+/README.md                              @syxscott

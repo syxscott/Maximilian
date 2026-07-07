@@ -1,0 +1,41 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Maximilian API Reference",
+  "includeVersion": true,
+  "entryPointStrategy": "packages",
+  "entryPoints": [
+    "packages/core",
+    "packages/agents",
+    "packages/commander",
+    "packages/llm",
+    "packages/config",
+    "packages/database",
+    "packages/queue",
+    "packages/workspace",
+    "packages/sdk",
+    "packages/dags",
+    "packages/evolution",
+    "packages/meta-system",
+    "packages/tools",
+    "packages/autonomy",
+    "packages/benchmark-core",
+    "packages/i18n",
+    "packages/ui-state",
+    "packages/telemetry"
+  ],
+  "out": "docs/api-ref",
+  "readme": "none",
+  "githubPages": false,
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeInternal": true,
+  "categorizeByGroup": true,
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  },
+  "sort": ["source-order"],
+  "treatWarningsAsErrors": false,
+  "skipErrorChecking": true,
+  "gitRevision": "main"
+}

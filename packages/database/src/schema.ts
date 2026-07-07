@@ -236,6 +236,29 @@ export const evolutionDecisions = pgTable("evolution_decisions", {
   reason: text("reason").notNull(),
 });
 
+// ── Truth Measurements (Phase 8.7 — TruthAudit persistence) ─────────────────
+
+export const truthMeasurements = pgTable("truth_measurements", {
+  id: text("id").primaryKey(),
+  proposalId: text("proposal_id").notNull(),
+  action: text("action").notNull(),
+  predicted: jsonb("predicted").notNull(),
+  actual: jsonb("actual").notNull(),
+  sampleSize: integer("sample_size").notNull(),
+  recordedAt: text("recorded_at").notNull(),
+});
+
+export const truthVerifications = pgTable("truth_verifications", {
+  id: text("id").primaryKey(),
+  proposalId: text("proposal_id").notNull(),
+  verdict: text("verdict").notNull(),
+  totalSamples: integer("total_samples").notNull(),
+  meanPredicted: jsonb("mean_predicted").notNull(),
+  meanActual: jsonb("mean_actual").notNull(),
+  calibrationError: real("calibration_error").notNull(),
+  generatedAt: text("generated_at").notNull(),
+});
+
 // ── Failure Insights (Phase 5 — Autonomy) ────────────────────────────────────
 
 export const failureInsights = pgTable("failure_insights", {
