@@ -35,7 +35,7 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/dashboard/package.json ./apps/dashboard/
 COPY packages ./packages
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --prod --filter=@max/api...
+    HUSKY=0 pnpm install --frozen-lockfile --prod --filter=@max/api...
 COPY --from=build /app/packages/*/dist ./packages/*/dist
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 WORKDIR /app/apps/api

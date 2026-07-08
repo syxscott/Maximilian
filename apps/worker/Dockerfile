@@ -29,7 +29,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/worker/package.json ./apps/worker/
 COPY packages ./packages
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --prod --filter=@max/worker...
+    HUSKY=0 pnpm install --frozen-lockfile --prod --filter=@max/worker...
 COPY --from=build /app/packages/*/dist ./packages/*/dist
 COPY --from=build /app/apps/worker/dist ./apps/worker/dist
 WORKDIR /app/apps/worker
