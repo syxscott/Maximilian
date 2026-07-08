@@ -2,6 +2,14 @@ name: release-please
 
 # Conventional Commits → CHANGELOG.md + GitHub Releases + version bumps.
 # Runs on every push to main; opens/updates a release PR.
+#
+# Auth note: GITHUB_TOKEN alone fails with
+#   "GitHub Actions is not permitted to create or approve pull requests"
+# unless the repo's "Allow GitHub Actions to create and approve pull
+# requests" toggle is on (Settings → Actions → General → Workflow
+# permissions). If you can't / don't want to flip that toggle, create a
+# PAT with `repo` scope and store it as `RELEASE_PLEASE_TOKEN` — the
+# workflow prefers it over GITHUB_TOKEN.
 
 on:
   push:
@@ -25,7 +33,7 @@ jobs:
         id: release
         with:
           config-file: release-please-config.json
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           # Bump strategy derived from Conventional Commits.
           # See https://www.conventionalcommits.org/
           release-type: node

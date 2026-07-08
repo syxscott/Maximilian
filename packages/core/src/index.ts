@@ -15,3 +15,4 @@ export { EventStore, type StoredEvent, type EventReducer, workspaceStatusReducer
 export { PluginManager, type Plugin, type HookName, type HookFn, type PluginContext } from "./plugin-system.js";
 export { createGeologicalEngineeringPlugin, type DomainToolCollection, type DomainToolSpec } from "./domain-plugins.js";
 export { PermissionAuditLog, type PermissionAuditEntry, type PermissionAuditQuery, type PermissionAuditDecision } from "./permission-audit.js";
+export { sanitizeDisplayLabel, DEFAULT_LABEL_MAX_LENGTH, type SanitizeLabelOptions } from "./validation/sanitize-label.js";
