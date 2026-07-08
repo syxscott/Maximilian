@@ -40,6 +40,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        # fetch-depth: 2 keeps the previous commit on the branch in the
+        # local clone so `git diff ${{ github.event.before }} ${{ github.sha }}`
+        # in the "Format check" step resolves both SHAs. The default of 1
+        # is too shallow for that diff range.
+        with:
+          fetch-depth: 2
 
       - uses: pnpm/action-setup@v4
         with:
