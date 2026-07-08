@@ -64,23 +64,23 @@
 
 ## 📑 目录 / Table of Contents
 
-| 🇨🇳 中文 | 🇺🇸 English |
-|---|---|
-| 🌟 [这是什么?](#-这是什么-what-is-this) | [What is this?](#-这是什么-what-is-this) |
-| 📊 [项目数据](#-项目数据-by-the-numbers) | [By the numbers](#-项目数据-by-the-numbers) |
-| ✨ [核心特性](#-核心特性-key-features) | [Key Features](#-核心特性-key-features) |
+| 🇨🇳 中文                                                    | 🇺🇸 English                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------------- |
+| 🌟 [这是什么?](#-这是什么-what-is-this)                    | [What is this?](#-这是什么-what-is-this)                            |
+| 📊 [项目数据](#-项目数据-by-the-numbers)                   | [By the numbers](#-项目数据-by-the-numbers)                         |
+| ✨ [核心特性](#-核心特性-key-features)                     | [Key Features](#-核心特性-key-features)                             |
 | 🚀 [5 分钟跑起来](#-5-分钟跑起来-quick-start-in-5-minutes) | [Quick Start in 5 Minutes](#-5-分钟跑起来-quick-start-in-5-minutes) |
-| 🏗️ [架构](#-架构-architecture) | [Architecture](#-架构-architecture) |
-| 🧰 [技术栈](#-技术栈-tech-stack) | [Tech Stack](#-技术栈-tech-stack) |
-| 📁 [项目结构](#-项目结构-project-structure) | [Project Structure](#-项目结构-project-structure) |
-| 🔌 [API 一览](#-api-一览-api-at-a-glance) | [API at a Glance](#-api-一览-api-at-a-glance) |
-| 🔐 [认证模式](#-认证模式-auth-modes) | [Auth Modes](#-认证模式-auth-modes) |
-| 🌍 [平台支持](#-平台支持-platform-support) | [Platform Support](#-平台支持-platform-support) |
-| 📦 [部署](#-部署-deployment) | [Deployment](#-部署-deployment) |
-| 🧪 [跑测试](#-跑测试-running-tests) | [Running Tests](#-跑测试-running-tests) |
-| 📚 [文档](#-文档-documentation) | [Documentation](#-文档-documentation) |
-| 🙏 [致谢与借鉴](#-致谢与借鉴-acknowledgements) | [Acknowledgements](#-致谢与借鉴-acknowledgements) |
-| 🤝 [贡献与许可](#-贡献与许可-contributing--license) | [Contributing & License](#-贡献与许可-contributing--license) |
+| 🏗️ [架构](#-架构-architecture)                             | [Architecture](#-架构-architecture)                                 |
+| 🧰 [技术栈](#-技术栈-tech-stack)                           | [Tech Stack](#-技术栈-tech-stack)                                   |
+| 📁 [项目结构](#-项目结构-project-structure)                | [Project Structure](#-项目结构-project-structure)                   |
+| 🔌 [API 一览](#-api-一览-api-at-a-glance)                  | [API at a Glance](#-api-一览-api-at-a-glance)                       |
+| 🔐 [认证模式](#-认证模式-auth-modes)                       | [Auth Modes](#-认证模式-auth-modes)                                 |
+| 🌍 [平台支持](#-平台支持-platform-support)                 | [Platform Support](#-平台支持-platform-support)                     |
+| 📦 [部署](#-部署-deployment)                               | [Deployment](#-部署-deployment)                                     |
+| 🧪 [跑测试](#-跑测试-running-tests)                        | [Running Tests](#-跑测试-running-tests)                             |
+| 📚 [文档](#-文档-documentation)                            | [Documentation](#-文档-documentation)                               |
+| 🙏 [致谢与借鉴](#-致谢与借鉴-acknowledgements)             | [Acknowledgements](#-致谢与借鉴-acknowledgements)                   |
+| 🤝 [贡献与许可](#-贡献与许可-contributing--license)        | [Contributing & License](#-贡献与许可-contributing--license)        |
 
 ---
 
@@ -328,72 +328,357 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
 
 ## 🚀 5 分钟跑起来 / Quick Start in 5 Minutes
 
+### 0. 前置依赖 / Prerequisites
+
 <table>
 <tr>
-<th width="50%">🇨🇳 中文步骤</th>
-<th width="50%">🇺🇸 English Steps</th>
+<th width="50%">🇨🇳 中文</th>
+<th width="50%">🇺🇸 English</th>
 </tr>
 <tr>
 <td valign="top">
 
-**前提**:Node.js 20+,pnpm 9+,至少一个 LLM 的 API key。
+**必需 / Required**
 
-```bash
-# 1. 装依赖
-pnpm install
+- **Node.js ≥ 20.0.0**(`node -v` 检查)
+- **pnpm ≥ 9.12.0**(用 corepack 自带,不建议全局 npm 装)
+- **Git**
+- **至少一个 LLM provider 的 API key**
 
-# 2. 复制环境变量模板
-cp .env.example .env
+**可选 / Optional**(按需)
 
-# 3. 填一个 API key 进 .env
-#    OPENAI_API_KEY=sk-...
-#    或者 ANTHROPIC_API_KEY=sk-ant-...
-#    或者 OPENROUTER_API_KEY=sk-or-...
-
-# 4. 启动(开发模式,文件存储)
-pnpm dev
-```
-
-**访问入口**:
-- 🎨 Dashboard: <http://localhost:5174>
-- 🔌 API: <http://localhost:3001/api/health>
-- 📚 Swagger UI: <http://localhost:3001/api/docs>
+- Docker + Docker Compose v2(全栈一键起)
+- PostgreSQL 16(本地有 DB 时才用)
+- Redis 7(开 BullMQ 队列时才用)
 
 </td>
 <td valign="top">
 
-**Prereqs**: Node.js 20+, pnpm 9+, at least one LLM API key.
+**Required**
 
-```bash
-# 1. Install deps
-pnpm install
+- **Node.js ≥ 20.0.0** (check with `node -v`)
+- **pnpm ≥ 9.12.0** (use corepack, don't `npm i -g pnpm`)
+- **Git**
+- **API key for at least one LLM provider**
 
-# 2. Copy env template
-cp .env.example .env
+**Optional** (as needed)
 
-# 3. Fill in an API key in .env
-#    OPENAI_API_KEY=sk-...
-#    or ANTHROPIC_API_KEY=sk-ant-...
-#    or OPENROUTER_API_KEY=sk-or-...
-
-# 4. Start (dev mode, file storage)
-pnpm dev
-```
-
-**Access points**:
-- 🎨 Dashboard: <http://localhost:5174>
-- 🔌 API: <http://localhost:3001/api/health>
-- 📚 Swagger UI: <http://localhost:3001/api/docs>
+- Docker + Docker Compose v2 (for full-stack one-liner)
+- PostgreSQL 16 (only if using local DB)
+- Redis 7 (only if enabling BullMQ queue)
 
 </td>
 </tr>
 </table>
 
-> 💡 **提示 / Tip**:Docker Compose 一键起全栈(Postgres + API + Worker + Redis + Dashboard):
-> ```bash
-> docker compose --profile queue --profile observability up -d
-> ```
-> Docker 把 Dashboard 映射到 **5173**(nginx),`pnpm dev` 是 **5174**(Vite)— 别搞混。
+**🛠️ 装 Node + pnpm / Install Node + pnpm**
+
+| 系统 / OS     | 推荐 / Recommended                                                           | 备选 / Alternative       |
+| ------------- | ---------------------------------------------------------------------------- | ------------------------ |
+| 🐧 Linux      | [fnm](https://github.com/Schniz/fnm) → `fnm install 20`                      | nvm / 系统包管理器装 20+ |
+| 🍎 macOS      | `brew install node@20` 或 fnm                                                | nvm                      |
+| 🪟 Windows 11 | [nvm-windows](https://github.com/coreybutler/nvm-windows) → `nvm install 20` | fnm / 官方 .msi          |
+
+启用 pnpm(任一系统,Node 16.13+ 自带 corepack):
+
+```bash
+corepack enable
+corepack prepare pnpm@9.12.0 --activate    # 锁版本,跟 package.json#packageManager 对齐
+pnpm -v                                    # 应该输出 9.12.0
+```
+
+> ⚠️ **坑 / Pitfall**:`engines.node>=20.0.0` + `packageManager: pnpm@9.12.0` 会让 `pnpm install` 在 Node 18 或 pnpm 10 上硬拒。装错版本 = `EBADENGINE`。
+
+---
+
+### 1. 拉代码 + 装依赖 / Clone & install
+
+<table>
+<tr>
+<th width="50%">🇨🇳 中文</th>
+<th width="50%">🇺🇸 English</th>
+</tr>
+<tr>
+<td valign="top">
+
+```bash
+git clone https://github.com/<your-org>/Maximilian.git
+cd Maximilian
+pnpm install
+```
+
+**这一步会**:装 21 个 packages + 4 个 apps 的依赖(用 pnpm workspace),拉 turbo / vitest / drizzle 等 devDeps。
+
+**首次预计时间**:~2 分钟(取决于网速)。
+
+</td>
+<td valign="top">
+
+```bash
+git clone https://github.com/<your-org>/Maximilian.git
+cd Maximilian
+pnpm install
+```
+
+**What this does**: installs 21 packages + 4 apps via pnpm workspaces, plus devDeps (turbo, vitest, drizzle, etc.).
+
+**First run time**: ~2 min (network-dependent).
+
+</td>
+</tr>
+</table>
+
+> 💡 **提示 / Tip**:遇到 `EACCES` / `EPERM` → 别用 `sudo pnpm`,改 `pnpm config set store-dir ~/.local/share/pnpm` 把 store 放用户目录。
+
+---
+
+### 2. 配环境变量 / Configure `.env`
+
+<table>
+<tr>
+<th width="50%">🇨🇳 中文</th>
+<th width="50%">🇺🇸 English</th>
+</tr>
+<tr>
+<td valign="top">
+
+```bash
+cp .env.example .env
+$EDITOR .env            # 必填:至少一个 API key
+```
+
+**必填 (至少一个)**:
+
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+OPENROUTER_API_KEY=sk-or-...
+DEEPSEEK_API_KEY=sk-...
+```
+
+每个 provider 还可指定默认模型(可选):
+
+```bash
+OPENAI_MODEL=gpt-4o-mini
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022
+OPENROUTER_MODEL=anthropic/claude-3.5-haiku
+DEEPSEEK_MODEL=deepseek-chat
+```
+
+**其余字段默认即可**:
+
+- `PORT=3001` / `CORS_ORIGIN=http://localhost:5174`
+- `WORKSPACE_DIR=./workspaces`(工作区落盘位置)
+- `LOG_LEVEL=info`
+
+</td>
+<td valign="top">
+
+```bash
+cp .env.example .env
+$EDITOR .env            # Required: at least one API key
+```
+
+**Required (at least one)**:
+
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+OPENROUTER_API_KEY=sk-or-...
+DEEPSEEK_API_KEY=sk-...
+```
+
+Per-provider default model (optional):
+
+```bash
+OPENAI_MODEL=gpt-4o-mini
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022
+OPENROUTER_MODEL=anthropic/claude-3.5-haiku
+DEEPSEEK_MODEL=deepseek-chat
+```
+
+**Other fields can stay default**:
+
+- `PORT=3001` / `CORS_ORIGIN=http://localhost:5174`
+- `WORKSPACE_DIR=./workspaces` (workspace artifact path)
+- `LOG_LEVEL=info`
+
+</td>
+</tr>
+</table>
+
+**存储后端选择 / Storage backend**
+
+| 模式 / Mode            | 配置 / Config                            | 适用 / Use case        |
+| ---------------------- | ---------------------------------------- | ---------------------- |
+| 🟢 **文件存储** (默认) | 啥都不设                                 | 本地玩、demo、单人开发 |
+| 🟡 **PostgreSQL**      | 取消注释 `DATABASE_URL=postgresql://...` | 多人 / 持久化 / 多租户 |
+
+不设 `DATABASE_URL` 时,workspace 走 `./workspaces/{id}/` 落 JSONL。设了之后走 Drizzle ORM。
+
+---
+
+### 3. 选启动模式 / Pick a startup mode
+
+<table>
+<tr>
+<th width="50%">🇨🇳 中文</th>
+<th width="50%">🇺🇸 English</th>
+</tr>
+<tr>
+<td valign="top">
+
+```bash
+# A. 开发模式(文件存储,推荐首次)
+pnpm dev
+# → API :3001 + Dashboard :5174(Vite)
+# → workspaces 落 ./workspaces/
+
+# B. 全功能(API + Dashboard + meta-system)
+pnpm start:all
+# → 打开 META_AGENT_ENABLED + DIGITAL_TWIN + EVOLUTION + TELEMETRY
+
+# C. 分布式(BullMQ 队列 + worker)
+pnpm start:full
+# → 起 API + Dashboard + Worker 三个进程
+# → 需要先 docker compose up redis 起 Redis
+
+# D. Docker 一键全栈(API + Dashboard + Worker + Postgres + Redis + OTel + Prometheus)
+docker compose --profile queue --profile observability up -d
+
+# E. 只看 SDK 演示
+pnpm demo
+```
+
+</td>
+<td valign="top">
+
+```bash
+# A. Dev mode (file storage, recommended for first run)
+pnpm dev
+# → API :3001 + Dashboard :5174 (Vite)
+# → workspaces persist to ./workspaces/
+
+# B. Full-featured (API + Dashboard + meta-system)
+pnpm start:all
+# → Enables META_AGENT_ENABLED + DIGITAL_TWIN + EVOLUTION + TELEMETRY
+
+# C. Distributed (BullMQ queue + worker)
+pnpm start:full
+# → API + Dashboard + Worker in three procs
+# → Requires `docker compose up redis` first
+
+# D. Docker full stack (API + Dashboard + Worker + Postgres + Redis + OTel + Prometheus)
+docker compose --profile queue --profile observability up -d
+
+# E. SDK demo only
+pnpm demo
+```
+
+</td>
+</tr>
+</table>
+
+> 💡 **端口别搞混 / Don't mix up ports**:
+>
+> - `pnpm dev` → Dashboard 跑在 **5174** (Vite dev server)
+> - Docker compose → Dashboard 跑在 **5173** (nginx 反代)
+>
+> API 始终是 **3001**。
+
+---
+
+### 4. 验证 / Verify
+
+<table>
+<tr>
+<th width="50%">🇨🇳 中文</th>
+<th width="50%">🇺🇸 English</th>
+</tr>
+<tr>
+<td valign="top">
+
+```bash
+# 健康检查
+curl http://localhost:3001/api/health
+# → {"status":"ok",...}
+
+# Liveness(K8s)
+curl http://localhost:3001/api/health/live
+
+# Readiness(K8s,带 DB / Redis ping)
+curl http://localhost:3001/api/ready
+
+# OpenAPI 拉一份
+curl http://localhost:3001/api/openapi.json | jq '.info.title'
+# → "Maximilian API"
+```
+
+**访问入口**:
+
+- 🎨 Dashboard: <http://localhost:5174>
+- 🔌 API root: <http://localhost:3001/api/health>
+- 📚 Swagger UI: <http://localhost:3001/api/docs>
+- 📊 Prometheus (Docker): <http://localhost:9090>
+
+</td>
+<td valign="top">
+
+```bash
+# Health check
+curl http://localhost:3001/api/health
+# → {"status":"ok",...}
+
+# Liveness (K8s)
+curl http://localhost:3001/api/health/live
+
+# Readiness (K8s, pings DB / Redis)
+curl http://localhost:3001/api/ready
+
+# Pull OpenAPI spec
+curl http://localhost:3001/api/openapi.json | jq '.info.title'
+# → "Maximilian API"
+```
+
+**Access points**:
+
+- 🎨 Dashboard: <http://localhost:5174>
+- 🔌 API root: <http://localhost:3001/api/health>
+- 📚 Swagger UI: <http://localhost:3001/api/docs>
+- 📊 Prometheus (Docker): <http://localhost:9090>
+
+</td>
+</tr>
+</table>
+
+---
+
+### 5. 跑测试(可选)/ Run tests (optional)
+
+```bash
+pnpm type-check          # 全包 TS 类型检查 (~15s)
+pnpm test                # 全包 vitest 单元测试 (~30s,~1283 tests)
+pnpm --filter @max/api test  # 只跑某个包
+pnpm e2e                 # Playwright 端到端(需要 dashboard 先起)
+```
+
+---
+
+### 🆘 常见问题 / Troubleshooting
+
+| 症状 / Symptom                                 | 原因 / Cause                    | 修法 / Fix                                                                 |
+| ---------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| `EBADENGINE`                                   | Node 版本 < 20                  | `nvm install 20 && nvm use 20`                                             |
+| `ERR_PNPM_BAD_PM_VERSION`                      | pnpm 与 `packageManager` 不一致 | `corepack prepare pnpm@9.12.0 --activate`                                  |
+| `EADDRINUSE :::3001`                           | 端口被占                        | `lsof -i :3001` → `kill <pid>`,或改 `PORT`                                 |
+| `401 unauthorized` 在 `/api/chat`              | 没设 auth,只 dev 模式放行       | 确认 `NODE_ENV != production`,或设 `ADMIN_TOKEN`                           |
+| `Cannot find module '@max/...'`                | pnpm workspace 没 link          | `pnpm install` 重跑                                                        |
+| Dashboard 空白                                 | `pnpm dev` 起时 vite 还没编译   | 等 5-10s,或开 DevTools 看 console                                          |
+| Docker 起来后 API 报 `ECONNREFUSED postgres`   | postgres 还没 ready             | `docker compose logs -f postgres` 等 `database system is ready`,API 会重试 |
+| 测试跑挂 `Cannot read properties of undefined` | 之前的运行残留 state            | `pnpm clean && pnpm install`                                               |
+| 启动后立刻 `Out of memory`                     | LLM stream 没消费               | 检查 `pnpm dev` 的 worker 进程,只跑单 workspace                            |
+
+> 🔍 更深的生产部署 + 迁移 + 扩 worker + 备份恢复 → [`docs/operations/deployment.md`](docs/operations/deployment.md)
 
 ---
 
@@ -604,21 +889,21 @@ Maximilian/
 
 <div align="center">
 
-| 标签 / Tag | 路径前缀 / Path prefix | 用途 / Purpose |
-|---|---|---|
-| 🔐 `auth` | `/api/auth/*` | 注册 / 登录 / 刷新 / 登出 (JWT) |
-| 💬 `chat` | `/api/chat` | 提交需求,触发 workspace |
-| 📦 `workspaces` | `/api/workspaces/*` | CRUD + 列表 / 详情 / 产物 |
-| 🌀 `executions` | `/api/executions/*` | 执行历史、回放、产物下载 |
-| 🧠 `learning` | `/api/learning/*` | Agent 表现学习数据 |
-| 📈 `evolution` | `/api/evolution/*` | 画像 / 排行榜 / 版本快照 |
-| 🔬 `meta` | `/api/meta/*` | 进化 / 发现 / 治理 / 出生 / 淘汰 |
-| 🛡️ `governance` | `/api/governance/*` | 风险评估 / 审批 / 策略 |
-| 🏢 `tenants` | `/api/tenants/*` | 租户 CRUD(多租户模式) |
-| 👥 `permissions` | `/api/permissions/*` | RBAC 权限矩阵 |
-| 📊 `usage` | `/api/usage/*` | LLM token 用量、计费 |
-| 📈 `observability` | `/api/observability/*` | 指标 / 事件 / 健康检查 |
-| ⚙️ `system` | `/api/health`, `/api/metrics`, `/api/ready` | 健康 / Prometheus / K8s 就绪 |
+| 标签 / Tag         | 路径前缀 / Path prefix                      | 用途 / Purpose                   |
+| ------------------ | ------------------------------------------- | -------------------------------- |
+| 🔐 `auth`          | `/api/auth/*`                               | 注册 / 登录 / 刷新 / 登出 (JWT)  |
+| 💬 `chat`          | `/api/chat`                                 | 提交需求,触发 workspace          |
+| 📦 `workspaces`    | `/api/workspaces/*`                         | CRUD + 列表 / 详情 / 产物        |
+| 🌀 `executions`    | `/api/executions/*`                         | 执行历史、回放、产物下载         |
+| 🧠 `learning`      | `/api/learning/*`                           | Agent 表现学习数据               |
+| 📈 `evolution`     | `/api/evolution/*`                          | 画像 / 排行榜 / 版本快照         |
+| 🔬 `meta`          | `/api/meta/*`                               | 进化 / 发现 / 治理 / 出生 / 淘汰 |
+| 🛡️ `governance`    | `/api/governance/*`                         | 风险评估 / 审批 / 策略           |
+| 🏢 `tenants`       | `/api/tenants/*`                            | 租户 CRUD(多租户模式)            |
+| 👥 `permissions`   | `/api/permissions/*`                        | RBAC 权限矩阵                    |
+| 📊 `usage`         | `/api/usage/*`                              | LLM token 用量、计费             |
+| 📈 `observability` | `/api/observability/*`                      | 指标 / 事件 / 健康检查           |
+| ⚙️ `system`        | `/api/health`, `/api/metrics`, `/api/ready` | 健康 / Prometheus / K8s 就绪     |
 
 </div>
 
@@ -635,20 +920,20 @@ Maximilian/
 ─────────────────       ──────────────────       ──────────────────    ──────────────────
 No JWT_SECRET            Set ADMIN_TOKEN=…        Set JWT_SECRET=…      NODE_ENV=production
 No ADMIN_TOKEN           Authorization:           + DATABASE_URL=…      requires auth
-                         Bearer <token>           + /api/auth/register  
-                                                 + /api/auth/login  
-                                                 + RBAC: admin /       
+                         Bearer <token>           + /api/auth/register
+                                                 + /api/auth/login
+                                                 + RBAC: admin /
                                                    operator / viewer
 ```
 
 </div>
 
-| 模式 / Mode | 配置 / Config | 鉴权方式 / Auth | 适用场景 / Use case |
-|---|---|---|---|
-| 🟢 **Dev** | 啥都不设 | 无 auth,所有端点放行 | 本地玩,别联网 |
-| 🟡 **Single-tenant** | `ADMIN_TOKEN=xxx` | `Authorization: Bearer xxx` | 一个人/小团队自托管 |
-| 🟠 **Multi-user** | `JWT_SECRET=…` + `DATABASE_URL=…` | 注册拿 JWT,RBAC 三角色 | 多人协作、SaaS |
-| 🔴 **Production** | 上面任一 + `NODE_ENV=production` | 同上,但 server 启动时强制要求 | 上线 |
+| 模式 / Mode          | 配置 / Config                     | 鉴权方式 / Auth               | 适用场景 / Use case |
+| -------------------- | --------------------------------- | ----------------------------- | ------------------- |
+| 🟢 **Dev**           | 啥都不设                          | 无 auth,所有端点放行          | 本地玩,别联网       |
+| 🟡 **Single-tenant** | `ADMIN_TOKEN=xxx`                 | `Authorization: Bearer xxx`   | 一个人/小团队自托管 |
+| 🟠 **Multi-user**    | `JWT_SECRET=…` + `DATABASE_URL=…` | 注册拿 JWT,RBAC 三角色        | 多人协作、SaaS      |
+| 🔴 **Production**    | 上面任一 + `NODE_ENV=production`  | 同上,但 server 启动时强制要求 | 上线                |
 
 ---
 
@@ -656,13 +941,13 @@ No ADMIN_TOKEN           Authorization:           + DATABASE_URL=…      requir
 
 <div align="center">
 
-|  | 🐧 Linux | 🍎 macOS | 🪟 Windows 11 |
-|:---:|:---:|:---:|:---:|
-| ⚡ **API** | ✅ OK | ✅ OK | ✅ OK |
-| 🎨 **Dashboard** | ✅ OK | ✅ OK | ✅ OK |
-| ⌨️ **TUI** | ✅ OK | ✅ OK | ✅ OK¹ |
-| 📨 **Worker** | ✅ OK | ✅ OK | ✅ OK |
-| 🐳 **Docker** | ✅ OK | ✅ OK | ✅ OK |
+|                  | 🐧 Linux | 🍎 macOS | 🪟 Windows 11 |
+| :--------------: | :------: | :------: | :-----------: |
+|    ⚡ **API**    |  ✅ OK   |  ✅ OK   |     ✅ OK     |
+| 🎨 **Dashboard** |  ✅ OK   |  ✅ OK   |     ✅ OK     |
+|    ⌨️ **TUI**    |  ✅ OK   |  ✅ OK   |    ✅ OK¹     |
+|  📨 **Worker**   |  ✅ OK   |  ✅ OK   |     ✅ OK     |
+|  🐳 **Docker**   |  ✅ OK   |  ✅ OK   |     ✅ OK     |
 
 </div>
 
@@ -674,15 +959,15 @@ No ADMIN_TOKEN           Authorization:           + DATABASE_URL=…      requir
 
 ### 🎛️ Feature flags
 
-| Flag | 默认 / Default | 效果 / Effect |
-|---|---|---|
-| `EVOLUTION_ENABLED` | `true` | 画像 + 排行榜 + 自动晋升 |
-| `DAGS_MODE` | `false` | 走 DAGS 团队组合(跳过 Commander) |
-| `META_AGENT_ENABLED` | `false` | Discovery + 出生 / 淘汰 + 治理周期 |
-| `DIGITAL_TWIN_ENABLED` | `false` | 模拟 → 安全上线(需要先开 meta) |
-| `TELEMETRY_ENABLED` | `true` | TelemetryCollector + Prometheus |
-| `TASK_QUEUE_ENABLED` | `false` | 走 BullMQ 队列(否则进程内执行) |
-| `MULTI_TENANT_ENABLED` | `false` | 每个 store 强制租户隔离 |
+| Flag                   | 默认 / Default | 效果 / Effect                      |
+| ---------------------- | -------------- | ---------------------------------- |
+| `EVOLUTION_ENABLED`    | `true`         | 画像 + 排行榜 + 自动晋升           |
+| `DAGS_MODE`            | `false`        | 走 DAGS 团队组合(跳过 Commander)   |
+| `META_AGENT_ENABLED`   | `false`        | Discovery + 出生 / 淘汰 + 治理周期 |
+| `DIGITAL_TWIN_ENABLED` | `false`        | 模拟 → 安全上线(需要先开 meta)     |
+| `TELEMETRY_ENABLED`    | `true`         | TelemetryCollector + Prometheus    |
+| `TASK_QUEUE_ENABLED`   | `false`        | 走 BullMQ 队列(否则进程内执行)     |
+| `MULTI_TENANT_ENABLED` | `false`        | 每个 store 强制租户隔离            |
 
 ### 🐳 全栈一键起 / Full-stack with Docker
 
@@ -694,21 +979,22 @@ docker compose --profile queue --profile observability up -d
 
 <div align="center">
 
-| 服务 / Service | 端口 / Port | 图标 / Icon |
-|---|---|:---:|
-| 🐘 **postgres** | `localhost:5432` | 🐘 |
-| 🔴 **redis** | `localhost:6379` | 🔴 |
-| ⚡ **api** | `localhost:3001` | ⚡ |
-| 🎨 **dashboard** | `localhost:5173` (nginx) | 🎨 |
-| 📨 **worker** | 内连,无对外端口 | 📨 |
-| 🔭 **otel-collector** | `localhost:4317` / `4318` | 🔭 |
-| 📊 **prometheus** | `localhost:9090` | 📊 |
+| 服务 / Service        | 端口 / Port               | 图标 / Icon |
+| --------------------- | ------------------------- | :---------: |
+| 🐘 **postgres**       | `localhost:5432`          |     🐘      |
+| 🔴 **redis**          | `localhost:6379`          |     🔴      |
+| ⚡ **api**            | `localhost:3001`          |     ⚡      |
+| 🎨 **dashboard**      | `localhost:5173` (nginx)  |     🎨      |
+| 📨 **worker**         | 内连,无对外端口           |     📨      |
+| 🔭 **otel-collector** | `localhost:4317` / `4318` |     🔭      |
+| 📊 **prometheus**     | `localhost:9090`          |     📊      |
 
 </div>
 
 完整部署手册 / Full deployment runbook:[`docs/operations/deployment.md`](docs/operations/deployment.md)
 
 里面包括 / including:
+
 - 🏠 自托管 (Docker Compose / Kubernetes)
 - 🔑 生成生产 `JWT_SECRET`
 - 🗃️ 初次数据库迁移
@@ -745,14 +1031,14 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 
 ## 📚 文档 / Documentation
 
-| 文档 / Doc | 路径 / Path | 用途 / What |
-|---|---|---|
-| 🚀 部署手册 | [`docs/operations/deployment.md`](docs/operations/deployment.md) | 生产部署完整流程 |
-| 🏗️ 架构 | [`docs/architecture/`](docs/architecture/) | 系统模块依赖、设计权衡 |
-| 📜 变更日志 | [`docs/changelogs/`](docs/changelogs/) | 6 个 phase 的逐项改动 |
-| 🤖 Agent 设计 | [`docs/agent-designs/`](docs/agent-designs/) | 各类 agent 的 prompt / schema |
-| 🔬 Meta-system | [`docs/meta-system/`](docs/meta-system/) | 进化 / 治理 / HITL 详细 |
-| 🛡️ 安全 | [`SECURITY.md`](SECURITY.md) | 漏洞披露策略 |
+| 文档 / Doc     | 路径 / Path                                                      | 用途 / What                   |
+| -------------- | ---------------------------------------------------------------- | ----------------------------- |
+| 🚀 部署手册    | [`docs/operations/deployment.md`](docs/operations/deployment.md) | 生产部署完整流程              |
+| 🏗️ 架构        | [`docs/architecture/`](docs/architecture/)                       | 系统模块依赖、设计权衡        |
+| 📜 变更日志    | [`docs/changelogs/`](docs/changelogs/)                           | 6 个 phase 的逐项改动         |
+| 🤖 Agent 设计  | [`docs/agent-designs/`](docs/agent-designs/)                     | 各类 agent 的 prompt / schema |
+| 🔬 Meta-system | [`docs/meta-system/`](docs/meta-system/)                         | 进化 / 治理 / HITL 详细       |
+| 🛡️ 安全        | [`SECURITY.md`](SECURITY.md)                                     | 漏洞披露策略                  |
 
 ---
 
@@ -774,132 +1060,132 @@ Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (
 
 > jimmc414 的多 agent 科研自动化系统,基于 Claude 的科学发现流水线。我们从中扫描并借鉴了 15 个最匹配 Maximilian 的模式。
 
-| 借鉴模块 (Borrowed) | 本仓位置 (In this repo) | 原始文件 (Origin) |
-|---|---|---|
-| ScholarEval — 8-dim peer-review scoring | `packages/core/src/validation/scholar-eval.ts` | `kosmos/validation/scholar_eval.py` |
-| FailureDetector — over-interpretation / invented-metrics / rabbit-hole | `packages/core/src/validation/failure-detector.ts` | `kosmos/validation/failure_detector.py` |
-| EventBus — typed pub/sub + EventFilter | `packages/core/src/event-bus.ts` | `kosmos/core/event_bus.py` |
-| NullModel — permutation-test validator | `packages/core/src/validation/null-model.ts` | `kosmos/validation/null_model.py` |
-| PlanReviewer — 5-dim plan quality gate | `packages/core/src/validation/plan-reviewer.ts` | `kosmos/orchestration/plan_reviewer.py` |
-| DelegationManager — concurrent task executor | `packages/core/src/orchestration/delegation-manager.ts` | `kosmos/orchestration/delegation.py` |
-| AgentRegistry — type-keyed registry + message routing | `packages/core/src/orchestration/agent-registry.ts` | `kosmos/agents/registry.py` |
-| NoveltyDetector — semantic dedup via similarity | `packages/core/src/orchestration/novelty-detector.ts` | `kosmos/orchestration/novelty_detector.py` |
-| SafetyGuardrails — code/path/resource policies + emergency stop | `packages/core/src/safety/guardrails.ts` | `kosmos/safety/guardrails.py` |
-| ReproducibilityManager — seed + env snapshot + hash | `packages/core/src/safety/reproducibility.ts` | `kosmos/safety/reproducibility.py` |
-| KnowledgeGraph — node/edge graph (downgraded from Neo4j) | `packages/core/src/knowledge/graph.ts` | `kosmos/knowledge/graph.py` |
-| ArtifactStateManager — JSON finding/hypothesis persistence | `packages/core/src/world-model/artifacts.ts` | `kosmos/world_model/artifacts.py` |
-| MetricsCollector — counters + USD budget + alerts | `packages/core/src/monitoring/metrics.ts` | `kosmos/core/metrics.py` |
-| HypothesisGenerator — structured hypothesis + scoring | `packages/core/src/agents/hypothesis-generator.ts` | `kosmos/agents/hypothesis_generator.py` |
-| ConvergenceEnsemble — cross-run semantic clustering | `packages/core/src/workflow/ensemble.ts` | `kosmos/workflow/ensemble.py` |
+| 借鉴模块 (Borrowed)                                                    | 本仓位置 (In this repo)                                 | 原始文件 (Origin)                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
+| ScholarEval — 8-dim peer-review scoring                                | `packages/core/src/validation/scholar-eval.ts`          | `kosmos/validation/scholar_eval.py`        |
+| FailureDetector — over-interpretation / invented-metrics / rabbit-hole | `packages/core/src/validation/failure-detector.ts`      | `kosmos/validation/failure_detector.py`    |
+| EventBus — typed pub/sub + EventFilter                                 | `packages/core/src/event-bus.ts`                        | `kosmos/core/event_bus.py`                 |
+| NullModel — permutation-test validator                                 | `packages/core/src/validation/null-model.ts`            | `kosmos/validation/null_model.py`          |
+| PlanReviewer — 5-dim plan quality gate                                 | `packages/core/src/validation/plan-reviewer.ts`         | `kosmos/orchestration/plan_reviewer.py`    |
+| DelegationManager — concurrent task executor                           | `packages/core/src/orchestration/delegation-manager.ts` | `kosmos/orchestration/delegation.py`       |
+| AgentRegistry — type-keyed registry + message routing                  | `packages/core/src/orchestration/agent-registry.ts`     | `kosmos/agents/registry.py`                |
+| NoveltyDetector — semantic dedup via similarity                        | `packages/core/src/orchestration/novelty-detector.ts`   | `kosmos/orchestration/novelty_detector.py` |
+| SafetyGuardrails — code/path/resource policies + emergency stop        | `packages/core/src/safety/guardrails.ts`                | `kosmos/safety/guardrails.py`              |
+| ReproducibilityManager — seed + env snapshot + hash                    | `packages/core/src/safety/reproducibility.ts`           | `kosmos/safety/reproducibility.py`         |
+| KnowledgeGraph — node/edge graph (downgraded from Neo4j)               | `packages/core/src/knowledge/graph.ts`                  | `kosmos/knowledge/graph.py`                |
+| ArtifactStateManager — JSON finding/hypothesis persistence             | `packages/core/src/world-model/artifacts.ts`            | `kosmos/world_model/artifacts.py`          |
+| MetricsCollector — counters + USD budget + alerts                      | `packages/core/src/monitoring/metrics.ts`               | `kosmos/core/metrics.py`                   |
+| HypothesisGenerator — structured hypothesis + scoring                  | `packages/core/src/agents/hypothesis-generator.ts`      | `kosmos/agents/hypothesis_generator.py`    |
+| ConvergenceEnsemble — cross-run semantic clustering                    | `packages/core/src/workflow/ensemble.ts`                | `kosmos/workflow/ensemble.py`              |
 
 ### 🤖 [crewAI](https://github.com/crewAIInc/crewAI) — 4 patterns
 
 > 多 agent 编排框架,任务可以委派给 role-specialized agents。
 
-| 借鉴模块 | 本仓位置 | 原始文件 |
-|---|---|---|
-| MemoryScope — hierarchical path-based memory | `packages/core/src/memory-scope.ts` | `crewai/memory/` |
-| Tool result cache (per-task caching) | `packages/core/src/tool-integration.ts` | `crewai/cache_handler.py` |
-| PlannerObserver — per-step self-refinement | `packages/core/src/planner-observer.ts` | `crewai/planner/` |
-| Agent capability / role description in plan prompt | `packages/commander/src/index.ts` | `crewai/agents/` |
+| 借鉴模块                                           | 本仓位置                                | 原始文件                  |
+| -------------------------------------------------- | --------------------------------------- | ------------------------- |
+| MemoryScope — hierarchical path-based memory       | `packages/core/src/memory-scope.ts`     | `crewai/memory/`          |
+| Tool result cache (per-task caching)               | `packages/core/src/tool-integration.ts` | `crewai/cache_handler.py` |
+| PlannerObserver — per-step self-refinement         | `packages/core/src/planner-observer.ts` | `crewai/planner/`         |
+| Agent capability / role description in plan prompt | `packages/commander/src/index.ts`       | `crewai/agents/`          |
 
 ### 🤖 [AutoGen Magentic-One](https://github.com/microsoft/autogen) + [AutoGen DiGraph](https://microsoft.github.io/autogen/) — 4 patterns
 
 > Microsoft 的多 agent 对话框架;Magentic-One 是其 Orchestrator 子项目。
 
-| 借鉴模块 | 本仓位置 | 原始文件 |
-|---|---|---|
-| StallReason `idle` / `loop-detected` 三态检测 | `packages/core/src/stall-detection.ts` | `autogen/magentic-one/orchestrator.py` |
-| DiGraph task `condition` strings (substring match vs prior outputs) | `packages/commander/src/index.ts` + `packages/core/src/runtime.ts` | `autogen DiGraph check_condition` |
-| Commander capability-driven task decomposition | `packages/commander/src/index.ts` | `autogen SelectorGroupChat` |
-| StallDetector-based replan on idle | `packages/core/src/runtime.ts` | `autogen Magentic-One Orchestrator.loop()` |
+| 借鉴模块                                                            | 本仓位置                                                           | 原始文件                                   |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
+| StallReason `idle` / `loop-detected` 三态检测                       | `packages/core/src/stall-detection.ts`                             | `autogen/magentic-one/orchestrator.py`     |
+| DiGraph task `condition` strings (substring match vs prior outputs) | `packages/commander/src/index.ts` + `packages/core/src/runtime.ts` | `autogen DiGraph check_condition`          |
+| Commander capability-driven task decomposition                      | `packages/commander/src/index.ts`                                  | `autogen SelectorGroupChat`                |
+| StallDetector-based replan on idle                                  | `packages/core/src/runtime.ts`                                     | `autogen Magentic-One Orchestrator.loop()` |
 
 ### 🐙 [openclaw](https://github.com/sHxmg/openclaw) (or similar OSS agent-loop implementations) — 4 patterns
 
 > Claude-Code 风格的 agent loop 实现,含 outer/inner steering 循环。
 
-| 借鉴模块 | 本仓位置 | 原始文件 |
-|---|---|---|
+| 借鉴模块                                 | 本仓位置                                | 原始文件                         |
+| ---------------------------------------- | --------------------------------------- | -------------------------------- |
 | Steering messages (outer-loop interrupt) | `packages/core/src/tool-integration.ts` | `openclaw agent-loop.ts:258-389` |
 | Follow-up messages (post-loop injection) | `packages/core/src/tool-integration.ts` | `openclaw agent-loop.ts:376-382` |
-| `prepareNextTurn` per-turn hook | `packages/core/src/tool-integration.ts` | `openclaw prepareNextTurn` |
-| `shouldStopAfterTurn` explicit stop hook | `packages/core/src/tool-integration.ts` | `openclaw shouldStopAfterTurn` |
-| Session save/load state snapshot | `packages/core/src/runtime.ts` | `openclaw sessions store` |
+| `prepareNextTurn` per-turn hook          | `packages/core/src/tool-integration.ts` | `openclaw prepareNextTurn`       |
+| `shouldStopAfterTurn` explicit stop hook | `packages/core/src/tool-integration.ts` | `openclaw shouldStopAfterTurn`   |
+| Session save/load state snapshot         | `packages/core/src/runtime.ts`          | `openclaw sessions store`        |
 
 ### 🛠️ [cc-switch](https://github.com/sairin1202/cc-switch) (or similar tool-allowlist implementations) — 1 pattern
 
 > CLI 工具调用治理,带 per-agent 工具白/黑名单。
 
-| 借鉴模块 | 本仓位置 |
-|---|---|
+| 借鉴模块                              | 本仓位置                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------ |
 | Tool allowlist + denylist (per-agent) | `packages/core/src/tool-integration.ts` + `packages/core/src/runtime.ts` |
 
 ### 🖥️ [OpenHands](https://github.com/All-Hands-AI/OpenHands) — 1 pattern
 
 > 自主软件工程 agent,sandbox 化代码执行。
 
-| 借鉴模块 | 本仓位置 | 原始文件 |
-|---|---|---|
+| 借鉴模块                                             | 本仓位置                       | 原始文件             |
+| ---------------------------------------------------- | ------------------------------ | -------------------- |
 | SandboxService — abstract base + LocalSandboxService | `packages/core/src/sandbox.ts` | `openhands/runtime/` |
 
 ### 🛡️ [hermes-agent](https://github.com/snap-stanford/hermes-agent) (or similar error-classification agents) — 1 pattern
 
 > 智能 agent 错误分类器,把错误归类并决定 retry / fallback / rotate-credential 策略。
 
-| 借鉴模块 | 本仓位置 | 原始文件 |
-|---|---|---|
+| 借鉴模块                                  | 本仓位置                                                                | 原始文件                           |
+| ----------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------- |
 | FailoverReason + ClassifiedError pipeline | `packages/core/src/failover-reason.ts` + `packages/core/src/runtime.ts` | `hermes-agent error_classifier.py` |
 
 ### 🧠 [wshobson/agents](https://github.com/wshobson/agents) (or similar pre-flight check agents) — 2 patterns
 
 > Anthropic 推出的开源 agent 集合。
 
-| 借鉴模块 | 本仓位置 |
-|---|---|
-| MADR-format ADR (Architecture Decision Records) | `packages/core/src/adr.ts` |
-| Pre-flight validation in plan | `packages/commander/src/index.ts` |
+| 借鉴模块                                        | 本仓位置                          |
+| ----------------------------------------------- | --------------------------------- |
+| MADR-format ADR (Architecture Decision Records) | `packages/core/src/adr.ts`        |
+| Pre-flight validation in plan                   | `packages/commander/src/index.ts` |
 
 ### 🌿 [parallel-feature-development](https://github.com/sahilrajput/parallel-feature-development) (or similar worktree-orchestration workflows) — 1 pattern
 
 > 多 branch 并行开发时,文件级所有权声明防止冲突。
 
-| 借鉴模块 | 本仓位置 |
-|---|---|
+| 借鉴模块                              | 本仓位置                                                           |
+| ------------------------------------- | ------------------------------------------------------------------ |
 | `ownedFiles` exclusive file ownership | `packages/commander/src/index.ts` + `packages/core/src/runtime.ts` |
 
 ### 🎼 [conductor tracks.md](https://github.com/conductor-oss/conductor) — 1 pattern
 
 > Netflix Conductor 的 phase/track 编排。
 
-| 借鉴模块 | 本仓位置 |
-|---|---|
+| 借鉴模块                              | 本仓位置                          |
+| ------------------------------------- | --------------------------------- |
 | `tracks` phased-work metadata in plan | `packages/commander/src/index.ts` |
 
 ### 🧬 [codebase-memory-mcp](https://github.com/Automata-Labs-team/codebase-memory-mcp) (or similar repo-scoped memory MCP servers) — 1 pattern
 
 > 把整个 codebase 作为记忆存储,path-scoped 隔离。
 
-| 借鉴模块 | 本仓位置 |
-|---|---|
+| 借鉴模块                            | 本仓位置                           |
+| ----------------------------------- | ---------------------------------- |
 | File-based repo-scoped memory store | `packages/core/src/repo-memory.ts` |
 
 ---
 
 ### 📊 借鉴统计 / Borrowing Stats
 
-| 来源项目 | 模块数 | 占比 |
-|---|---|---|
-| Kosmos | 15 | 50% |
-| crewAI | 4 | 13% |
-| AutoGen / Magentic-One | 4 | 13% |
-| openclaw | 4 | 13% |
-| cc-switch | 1 | 3% |
-| OpenHands | 1 | 3% |
-| hermes-agent | 1 | 3% |
-| wshobson/agents | 2 | 7% |
-| parallel-feature-development | 1 | 3% |
-| Conductor | 1 | 3% |
-| codebase-memory-mcp | 1 | 3% |
+| 来源项目                     | 模块数 | 占比 |
+| ---------------------------- | ------ | ---- |
+| Kosmos                       | 15     | 50%  |
+| crewAI                       | 4      | 13%  |
+| AutoGen / Magentic-One       | 4      | 13%  |
+| openclaw                     | 4      | 13%  |
+| cc-switch                    | 1      | 3%   |
+| OpenHands                    | 1      | 3%   |
+| hermes-agent                 | 1      | 3%   |
+| wshobson/agents              | 2      | 7%   |
+| parallel-feature-development | 1      | 3%   |
+| Conductor                    | 1      | 3%   |
+| codebase-memory-mcp          | 1      | 3%   |
 
 **合计 30 个借鉴模式,源自 11 个项目。**
 **Total: 30 borrowed patterns from 11 projects.**

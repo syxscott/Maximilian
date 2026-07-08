@@ -11,11 +11,11 @@ name: docker-publish
 on:
   push:
     branches: [main, master]
-    tags: ['v*.*.*']
+    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to apply (e.g. v0.2.0-rc1)'
+        description: "Tag to apply (e.g. v0.2.0-rc1)"
         required: true
 
 permissions:
@@ -39,9 +39,9 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - { name: api,       context: '.',                dockerfile: './apps/api/Dockerfile' }
-          - { name: dashboard, context: '.',                dockerfile: './apps/dashboard/Dockerfile' }
-          - { name: worker,    context: '.',                dockerfile: './apps/worker/Dockerfile' }
+          - { name: api, context: ".", dockerfile: "./apps/api/Dockerfile" }
+          - { name: dashboard, context: ".", dockerfile: "./apps/dashboard/Dockerfile" }
+          - { name: worker, context: ".", dockerfile: "./apps/worker/Dockerfile" }
         platforms:
           - linux/amd64
           - linux/arm64
@@ -73,16 +73,21 @@ jobs:
         id: meta
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/maximilian-${{ matrix.target.name }}"
-          TAGS="--tag ${IMAGE}:latest"
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME}"
-            TAGS="${TAGS} --tag ${IMAGE}:${VERSION} --tag ${IMAGE}:${VERSION%%.*}"
-          fi
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            TAGS="${TAGS} --tag ${IMAGE}:${{ inputs.tag }}"
-          fi
-          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          # build-push-action's `tags:` wants newline-separated `image:tag`
+          # refs — NOT `--tag <ref>` CLI strings. Emit the bare refs.
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE}:latest"
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              VERSION="${GITHUB_REF_NAME}"
+              echo "${IMAGE}:${VERSION}"
+              echo "${IMAGE}:${VERSION%%.*}"
+            fi
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+              echo "${IMAGE}:${{ inputs.tag }}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build & push
         uses: docker/build-push-action@v6
@@ -96,7 +101,7 @@ jobs:
             org.opencontainers.image.title=maximilian-${{ matrix.target.name }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.meta.outputs.tags }}
+            org.opencontainers.image.version=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
