@@ -769,7 +769,6 @@ const FileIcon: React.FC<{ node?: { path?: string; type?: string } }> = ({ node 
 
 const ImagePreview: React.FC<{ src: string; alt?: string }> = ({ src, alt }) => (
   <div data-component="image-preview" className="flex items-center justify-center p-4">
-    {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src={src} alt={alt} className="max-h-[80vh] max-w-full rounded" />
   </div>
 )
@@ -1137,7 +1136,6 @@ const UserMessageDisplay: React.FC<{
                 className="flex items-center gap-2 rounded border border-border-weak-base bg-background-stronger p-2"
               >
                 {type === "image" ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img data-slot="user-message-attachment-image" src={file.url} alt={name} className="h-12 w-12 rounded object-cover" />
                 ) : (
                   <div data-slot="user-message-attachment-file" className="flex items-center gap-2">

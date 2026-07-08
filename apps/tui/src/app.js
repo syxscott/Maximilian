@@ -123,7 +123,6 @@ function App({ config }) {
         ]);
         // We intentionally re-register on every locale change so the title text
         // follows the active language.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [getLocale()]);
     function openLanguageDialog() {
         dialog.replace(_jsx(DialogLanguageList, { onSelect: (locale) => {

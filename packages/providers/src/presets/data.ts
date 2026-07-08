@@ -25,7 +25,7 @@
 
 import type { ProviderPreset } from "./types.js"
 
-/* eslint-disable @typescript-eslint/comma-dangle */
+/* eslint-disable comma-dangle */
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   // ──────────────── official (first-party LLM vendors) ────────────────

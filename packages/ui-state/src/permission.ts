@@ -299,7 +299,6 @@ export function PermissionProvider({
       },
       disableAutoAccept: (sessionID, directory) => disable(sessionID, directory),
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
 

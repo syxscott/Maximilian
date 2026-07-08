@@ -109,7 +109,6 @@ export function TextReveal(props: TextRevealProps) {
       setSwapping(false)
       frameRef.current = undefined
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text])
 
   React.useEffect(() => {
@@ -128,7 +127,6 @@ export function TextReveal(props: TextRevealProps) {
       const id = requestAnimationFrame(() => setReady(true))
       return () => cancelAnimationFrame(id)
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   React.useEffect(() => {

@@ -83,7 +83,6 @@ export const ToolStatusTitle: React.FC<ToolStatusTitleProps> = ({
       setState((s) => ({ ...s, width: last }))
       finishTimerRef.current = setTimeout(finish, 600)
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, activeTail, doneTail])
 
   React.useEffect(() => {
