@@ -48,7 +48,10 @@ jobs:
       # turn green. Use a fake — the load test only hits /api/workspaces.
       OPENAI_API_KEY: sk-fake-for-readiness
       OPENAI_MODEL: gpt-4o-mini
-      NODE_ENV: production
+      # NOTE: NODE_ENV=production is set only on the API-start step below.
+      # Setting it at the workflow env level makes `pnpm install` skip
+      # devDependencies, so `husky` (a devDep) isn't installed and the
+      # root package.json `prepare` script fails with `husky: not found`.
 
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +78,8 @@ jobs:
         run: node scripts/migrate.mjs
 
       - name: Start API in background
+        env:
+          NODE_ENV: production
         run: |
           pnpm --filter @max/api build
           : > api.log
