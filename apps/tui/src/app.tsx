@@ -45,6 +45,8 @@ import {
   type PluginHost,
   type Route,
 } from "./context"
+import { useLiveUsage } from "./hooks/useLiveUsage"
+import { formatTokens, formatPercent } from "@max/i18n"
 import { type ExecutionTrace, type Health, type PendingProposal, type UsageSummary } from "./api"
 
 // ---------------------------------------------------------------------------
@@ -396,6 +398,7 @@ function Home() {
           <UsageRow usage={usage} />
           <PendingRow pending={pending} />
           <ExecutionsRow executions={executions} />
+          <LiveUsageBar />
         </>
       )}
       <Text color={theme.theme.textMuted}>Press / for language, ctrl+\ for the command palette (stub).</Text>
@@ -452,6 +455,42 @@ function ExecutionsRow({ executions }: { executions: ExecutionTrace[] }) {
       {executions.map((e) => (
         <Text key={e.id}>  [{e.status}] {e.userPrompt.slice(0, 60)}{e.userPrompt.length > 60 ? "…" : ""}</Text>
       ))}
+    </Box>
+  )
+}
+
+// Live usage bar — mirrors the dashboard's LiveUsagePill. Polls the same
+// `/api/obs/usage/summary?range=today` endpoint every 30s and renders a
+// single bottom line: `· 💰 $X.XXXX · XX.XK tok · 45% cache`.
+//
+// On the first poll we render a muted placeholder so the home view doesn't
+// shift height once data arrives. On subsequent poll failures we keep the
+// last known value visible and flip the colour to red so the user knows
+// the snapshot is stale.
+function LiveUsageBar() {
+  useLocale()
+  const { data, isLoading, isError } = useLiveUsage()
+  if (isLoading && !data) {
+    return (
+      <Box marginTop={1}>
+        <Text color="gray">· 💰 … loading usage</Text>
+      </Box>
+    )
+  }
+  if (!data || data.totalRequests === 0) {
+    return (
+      <Box marginTop={1}>
+        <Text color="gray">· 💰 $0.0000 · 0 tok today</Text>
+      </Box>
+    )
+  }
+  return (
+    <Box marginTop={1}>
+      <Text color={isError ? "red" : "green"}>
+        · 💰 ${data.totalCostUsd.toFixed(4)} · {formatTokens(data.totalTokens)} tok
+        {data.cacheHitRate > 0 ? ` · ${formatPercent(data.cacheHitRate, 0)} cache` : ""}
+        {isError ? " (stale)" : ""}
+      </Text>
     </Box>
   )
 }

@@ -12,6 +12,7 @@ import { TaskPanel } from "./components/TaskPanel";
 import { OutputPanel } from "./components/OutputPanel";
 import { ReviewPanel } from "./components/ReviewPanel";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { LiveUsagePill } from "./components/LiveUsagePill";
 import { PermissionDialog } from "./components/PermissionDialog";
 import { permissionsApi, type PendingPermission } from "./lib/permissions";
 import { usePerfTier } from "./lib/perf-tier";
@@ -236,6 +237,7 @@ export function App() {
               <span>{health.providers.length} providers</span>
             </div>
           ) : null}
+          <LiveUsagePill onOpenUsage={() => setTab("usage")} />
           <ThemeToggle />
         </div>
       </header>
