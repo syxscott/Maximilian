@@ -127,6 +127,15 @@ export class ProviderRouter implements Provider {
       }
     }
 
+    if (errors.length === 0) {
+      // Every entry was skipped via `!isConfigured()` — surface that as a
+      // distinct error rather than the misleading "0 attempts" message.
+      throw new ProviderError(
+        "router",
+        undefined,
+        "No providers are configured (set the relevant API keys / enable flags)",
+      );
+    }
     const messages = errors.map((e) => e.message).join("; ");
     throw new ProviderError(
       "router",

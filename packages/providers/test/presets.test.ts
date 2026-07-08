@@ -90,6 +90,20 @@ describe("PROVIDER_PRESETS", () => {
     }
   });
 
+  it("no baseUrl contains unresolved template placeholders", () => {
+    // CC Switch sometimes ships raw `${AWS_REGION}` / `${ENDPOINT_ID}` / etc.
+    // placeholders that need runtime substitution. Maximilian has no template
+    // pipeline, so any preset with a placeholder would never resolve to a
+    // real endpoint at runtime — they must be filtered at generation time.
+    const placeholder = /\$\{[^}]+\}|YOUR_[A-Z_]+/;
+    for (const p of PROVIDER_PRESETS) {
+      expect(
+        placeholder.test(p.baseUrl),
+        `${p.id}: baseUrl "${p.baseUrl}" contains an unresolved template placeholder`,
+      ).toBe(false);
+    }
+  });
+
   it("no envKey collides between presets", () => {
     const seen = new Map<string, string>();
     for (const p of PROVIDER_PRESETS) {

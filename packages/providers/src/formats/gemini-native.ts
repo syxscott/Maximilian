@@ -245,17 +245,19 @@ export class GeminiNativeProvider implements Provider {
     }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    let pending = ""; // SSE text accumulated from the wire, CRLF normalized
     try {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        // SSE frames are separated by blank lines
+        // Gemini ships SSE with CRLF line endings; normalize on the way in
+        // so a frame ending in `\r` doesn't get stuck behind the trailing
+        // bytes after we slice it off.
+        pending += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
         let frameEnd: number;
-        while ((frameEnd = buffer.indexOf("\n\n")) !== -1) {
-          const frame = buffer.slice(0, frameEnd);
-          buffer = buffer.slice(frameEnd + 2);
+        while ((frameEnd = pending.indexOf("\n\n")) !== -1) {
+          const frame = pending.slice(0, frameEnd);
+          pending = pending.slice(frameEnd + 2);
           // Each frame may have multiple "data: " lines; we only care about the payload
           for (const line of frame.split("\n")) {
             if (!line.startsWith("data:")) continue;

@@ -112,42 +112,36 @@ export class AnthropicMessagesProvider implements Provider {
           // Anthropic SDK's `Usage` type predates prompt caching; the runtime
           // payload includes `cache_creation_input_tokens` and
           // `cache_read_input_tokens` whenever caching is in effect.
-          const usageExt = response.usage as typeof response.usage & {
-            cache_creation_input_tokens?: number;
-            cache_read_input_tokens?: number;
-          };
-          if (response.usage) {
-            span?.setAttribute(
-              "llm.promptTokens",
-              response.usage.input_tokens,
-            );
-            span?.setAttribute(
-              "llm.completionTokens",
-              response.usage.output_tokens,
-            );
-            if (usageExt.cache_read_input_tokens) {
-              span?.setAttribute(
-                "llm.cacheReadTokens",
-                usageExt.cache_read_input_tokens,
-              );
+          const usageExt = response.usage as
+            | (typeof response.usage & {
+                cache_creation_input_tokens?: number;
+                cache_read_input_tokens?: number;
+              })
+            | undefined;
+          const promptTokens = usageExt?.input_tokens ?? 0;
+          const completionTokens = usageExt?.output_tokens ?? 0;
+          const cacheReadTokens = usageExt?.cache_read_input_tokens ?? 0;
+          const cacheCreationTokens =
+            usageExt?.cache_creation_input_tokens ?? 0;
+          if (usageExt) {
+            span?.setAttribute("llm.promptTokens", promptTokens);
+            span?.setAttribute("llm.completionTokens", completionTokens);
+            if (cacheReadTokens) {
+              span?.setAttribute("llm.cacheReadTokens", cacheReadTokens);
             }
-            if (usageExt.cache_creation_input_tokens) {
-              span?.setAttribute(
-                "llm.cacheCreationTokens",
-                usageExt.cache_creation_input_tokens,
-              );
+            if (cacheCreationTokens) {
+              span?.setAttribute("llm.cacheCreationTokens", cacheCreationTokens);
             }
           }
           return {
             content,
             model: response.model,
             usage: {
-              promptTokens: response.usage.input_tokens,
-              completionTokens: response.usage.output_tokens,
-              totalTokens:
-                response.usage.input_tokens + response.usage.output_tokens,
-              cacheReadTokens: usageExt.cache_read_input_tokens ?? 0,
-              cacheCreationTokens: usageExt.cache_creation_input_tokens ?? 0,
+              promptTokens,
+              completionTokens,
+              totalTokens: promptTokens + completionTokens,
+              cacheReadTokens,
+              cacheCreationTokens,
             },
             finishReason: response.stop_reason ?? undefined,
             raw: response,

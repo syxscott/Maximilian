@@ -45,7 +45,7 @@ describe("withRetry + withCircuitBreaker integration", () => {
         resetTimeout: 1000,
         jitter: false,
       }),
-      { baseDelay: 1, maxRetries: 3, jitter: false },
+      { baseDelay: 1, maxAttempts: 3, jitter: false },
     );
 
     const out = await p.chat(messages);
@@ -62,12 +62,12 @@ describe("withRetry + withCircuitBreaker integration", () => {
         resetTimeout: 1000,
         jitter: false,
       }),
-      { baseDelay: 1, maxRetries: 2, jitter: false },
+      { baseDelay: 1, maxAttempts: 2, jitter: false },
     );
 
     await expect(p.chat(messages)).rejects.toThrow("rate limit 429");
-    // 1 initial + 2 retries = 3 attempts
-    expect(chat).toHaveBeenCalledTimes(3);
+    // 1 initial + 1 retry = 2 attempts
+    expect(chat).toHaveBeenCalledTimes(2);
   });
 
   it("circuit-breaker's OPEN state fails fast even when wrapped by withRetry", async () => {
@@ -78,7 +78,7 @@ describe("withRetry + withCircuitBreaker integration", () => {
         resetTimeout: 60_000, // long enough that reset doesn't kick in
         jitter: false,
       }),
-      { baseDelay: 1, maxRetries: 10, jitter: false },
+      { baseDelay: 1, maxAttempts: 10, jitter: false },
     );
 
     // 3 failed calls open the circuit (no retries trigger because retry
@@ -108,7 +108,7 @@ describe("withRetry + withCircuitBreaker integration", () => {
         resetTimeout: 30,
         jitter: false,
       }),
-      { baseDelay: 1, maxRetries: 5, jitter: false },
+      { baseDelay: 1, maxAttempts: 5, jitter: false },
     );
 
     // First attempt: 3 retries internally, 3 calls = circuit opens
@@ -130,7 +130,7 @@ describe("withRetry + withCircuitBreaker integration", () => {
         resetTimeout: 1000,
         jitter: false,
       }),
-      { baseDelay: 1, maxRetries: 5, jitter: false },
+      { baseDelay: 1, maxAttempts: 5, jitter: false },
     );
 
     // 4xx should NOT be retried — the retry policy filters them out.
