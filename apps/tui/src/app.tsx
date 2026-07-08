@@ -400,7 +400,9 @@ function Home() {
           <LiveUsageBar />
         </>
       )}
-      <Text color={theme.theme.textMuted}>Press / for language, ctrl+\ for the command palette (stub).</Text>
+      <Text color={theme.theme.textMuted}>
+        Press / for language, ctrl+\ for the command palette (stub).
+      </Text>
     </Box>
   )
 }
@@ -412,7 +414,11 @@ function HealthRow({ health }: { health: Health | null }) {
   return (
     <Box marginTop={1}>
       <Text color={ok ? "green" : "yellow"}>{ok ? "●" : "○"} </Text>
-      <Text>API {health.status} · providers: {health.providers.map((p) => p.id).join(", ") || t("common.none")} · evolution: {health.evolution}</Text>
+      <Text>
+        API {health.status} · providers:{" "}
+        {health.providers.map((p) => p.id).join(", ") || t("common.none")} · evolution:{" "}
+        {health.evolution}
+      </Text>
     </Box>
   )
 }
@@ -423,10 +429,21 @@ function UsageRow({ usage }: { usage: UsageSummary | null }) {
   return (
     <Box marginTop={1} flexDirection="column">
       <Text bold>{t("tui.today")}</Text>
-      <Text>  requests: {usage.totalRequests} · cost: ${usage.totalCostUsd.toFixed(4)} · success: {(usage.successRate * 100).toFixed(1)}%</Text>
-      <Text>  tokens: {usage.realTotalTokens.toLocaleString()} (cache hit {(usage.cacheHitRate * 100).toFixed(1)}%)</Text>
+      <Text>
+        {" "}
+        requests: {usage.totalRequests} · cost: ${usage.totalCostUsd.toFixed(4)} · success:{" "}
+        {(usage.successRate * 100).toFixed(1)}%
+      </Text>
+      <Text>
+        {" "}
+        tokens: {usage.realTotalTokens.toLocaleString()} (cache hit{" "}
+        {(usage.cacheHitRate * 100).toFixed(1)}%)
+      </Text>
       {usage.unpricedRequestCount > 0 && (
-        <Text color="red">  ⚠ {usage.unpricedRequestCount} unpriced request(s) — pricing table missing entry</Text>
+        <Text color="red">
+          {" "}
+          ⚠ {usage.unpricedRequestCount} unpriced request(s) — pricing table missing entry
+        </Text>
       )}
     </Box>
   )
@@ -437,9 +454,14 @@ function PendingRow({ pending }: { pending: PendingProposal[] }) {
   if (pending.length === 0) return null
   return (
     <Box marginTop={1} flexDirection="column">
-      <Text bold color="yellow">Pending governance ({pending.length})</Text>
+      <Text bold color="yellow">
+        Pending governance ({pending.length})
+      </Text>
       {pending.slice(0, 3).map((p) => (
-        <Text key={p.proposalId}>  {p.proposal.action} {p.proposal.subject} · utility {p.score.utility.toFixed(2)}</Text>
+        <Text key={p.proposalId}>
+          {" "}
+          {p.proposal.action} {p.proposal.subject} · utility {p.score.utility.toFixed(2)}
+        </Text>
       ))}
     </Box>
   )
@@ -452,7 +474,11 @@ function ExecutionsRow({ executions }: { executions: ExecutionTrace[] }) {
     <Box marginTop={1} flexDirection="column">
       <Text bold>{t("tui.recentExecutions")}</Text>
       {executions.map((e) => (
-        <Text key={e.id}>  [{e.status}] {e.userPrompt.slice(0, 60)}{e.userPrompt.length > 60 ? "…" : ""}</Text>
+        <Text key={e.id}>
+          {" "}
+          [{e.status}] {e.userPrompt.slice(0, 60)}
+          {e.userPrompt.length > 60 ? "…" : ""}
+        </Text>
       ))}
     </Box>
   )

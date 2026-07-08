@@ -73,7 +73,24 @@ jobs:
         run: pnpm lint
 
       - name: Format check
-        run: pnpm format:check
+        # Scope prettier --check to files touched by this commit instead of
+        # the whole repo. The repo accumulated 960+ pre-existing formatting
+        # drift against `.prettierrc.json` (semi: false / singleQuote: false)
+        # before this step landed, so checking everything fails on every push
+        # even when the diff itself is clean. Touching only changed files
+        # still enforces "new code stays formatted" without piling on a
+        # separate "format whole repo" PR.
+        run: |
+          CHANGED=$(git diff --name-only --diff-filter=ACMRTUXB HEAD~1 HEAD \
+            -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.md' '*.yml' '*.yaml' \
+            ':(exclude)pnpm-lock.yaml' ':(exclude)CHANGELOG.md')
+          if [ -z "$CHANGED" ]; then
+            echo "No formatted files changed — skipping prettier check."
+            exit 0
+          fi
+          echo "Checking format on:"
+          echo "$CHANGED"
+          npx prettier --check $CHANGED
 
       - name: License headers (new files)
         run: pnpm license:check

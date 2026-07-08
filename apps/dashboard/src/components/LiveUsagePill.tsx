@@ -13,16 +13,16 @@
  * semantics, applied via `data !== undefined`).
  */
 
-import { Loader2 } from "lucide-react";
-import { useLiveUsage } from "../hooks/useLiveUsage";
-import { formatTokens as fmtTokens, formatPercent as fmtPercent } from "@max/i18n";
+import { Loader2 } from "lucide-react"
+import { useLiveUsage } from "../hooks/useLiveUsage"
+import { formatTokens as fmtTokens, formatPercent as fmtPercent } from "@max/i18n"
 
 export interface LiveUsagePillProps {
-  onOpenUsage: () => void;
+  onOpenUsage: () => void
 }
 
 export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
-  const { data, isLoading, isError } = useLiveUsage();
+  const { data, isLoading, isError } = useLiveUsage()
 
   // First load: muted placeholder so the header height doesn't jump.
   if (isLoading && !data) {
@@ -36,7 +36,7 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
         <Loader2 className="h-3 w-3 animate-spin" />
         <span>usage…</span>
       </button>
-    );
+    )
   }
 
   // No data yet (e.g. evolution disabled) or all polls failed.
@@ -50,7 +50,7 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
       >
         💰 $0.0000 · 0 tok today
       </button>
-    );
+    )
   }
 
   return (
@@ -80,5 +80,5 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
         </>
       )}
     </button>
-  );
+  )
 }

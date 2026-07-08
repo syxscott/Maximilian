@@ -53,9 +53,7 @@ export function useLiveUsage(enabled = true): UseLiveUsageResult {
 
     async function poll() {
       try {
-        const summary = await sdk.client.get<UsageSummary>(
-          "/api/obs/usage/summary?range=today",
-        )
+        const summary = await sdk.client.get<UsageSummary>("/api/obs/usage/summary?range=today")
         if (cancelled || ctrl.signal.aborted) return
         setData(trim(summary))
         setIsError(false)
