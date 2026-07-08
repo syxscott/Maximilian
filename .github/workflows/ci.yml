@@ -80,8 +80,13 @@ jobs:
         # even when the diff itself is clean. Touching only changed files
         # still enforces "new code stays formatted" without piling on a
         # separate "format whole repo" PR.
+        #
+        # Use `github.event.before` + `github.sha` instead of `HEAD~1` so
+        # this works with the shallow clone (`fetch-depth: 1`).
         run: |
-          CHANGED=$(git diff --name-only --diff-filter=ACMRTUXB HEAD~1 HEAD \
+          BEFORE="${{ github.event.before }}"
+          SHA="${{ github.sha }}"
+          CHANGED=$(git diff --name-only --diff-filter=ACMRTUXB "$BEFORE" "$SHA" \
             -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.md' '*.yml' '*.yaml' \
             ':(exclude)pnpm-lock.yaml' ':(exclude)CHANGELOG.md')
           if [ -z "$CHANGED" ]; then
