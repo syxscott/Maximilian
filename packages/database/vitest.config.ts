@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   test: {
@@ -13,4 +13,4 @@ export default defineConfig({
     // files serially makes the second call's IF NOT EXISTS a no-op.
     fileParallelism: false,
   },
-});
+})
