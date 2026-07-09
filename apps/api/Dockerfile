@@ -10,7 +10,7 @@ WORKDIR /app
 # ─── deps ──────────────────────────────────────────────────────────────
 # Build dependencies in a separate layer so they cache across code changes.
 FROM base AS deps
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig*.json ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/dashboard/package.json ./apps/dashboard/
 COPY packages ./packages
@@ -22,7 +22,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 FROM deps AS build
 COPY apps/api ./apps/api
 COPY apps/dashboard ./apps/dashboard
-COPY tsconfig.base.json ./
+COPY tsconfig*.json ./
 RUN pnpm --filter @max/api run type-check
 # Build only the api and its workspace deps. The workspace also contains
 # "optional" packages like @max/compat-shims (peer-only shims for ink /
