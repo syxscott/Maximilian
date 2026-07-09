@@ -13,6 +13,7 @@
  */
 
 import { access as fsAccess, constants as fsConstants, mkdir as fsMkdir } from "node:fs/promises"
+import { sql } from "drizzle-orm"
 
 export interface ReadinessCheck {
   name: string
@@ -47,10 +48,10 @@ export async function probePostgres(opts: {
         ),
       ])
     } else {
-      // We don't import drizzle's `sql` tag here — the caller passes the
-      // actual query runner. This keeps the probe module side-effect-free.
+      // Real drizzle client: probe with `SELECT 1`. This is the canonical
+      // liveness query — no side effects, exercises the connection roundtrip.
       await Promise.race([
-        opts.db.execute(undefined),
+        opts.db.execute(sql`SELECT 1`),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("postgres probe timed out")), 2000),
         ),
