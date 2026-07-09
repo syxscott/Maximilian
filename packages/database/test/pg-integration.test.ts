@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
-import { sql } from "drizzle-orm"
+import { sql, eq } from "drizzle-orm"
 import {
   createDb,
   closeDb,
@@ -95,7 +95,9 @@ d("Real PostgreSQL integration", () => {
       { id: "ten-A", name: "Tenant A", slug: "a", createdAt: now, updatedAt: now },
       { id: "ten-B", name: "Tenant B", slug: "b", createdAt: now, updatedAt: now },
     ])
-    // Save workspace under tenant A.
+    // Save workspace under tenant A. PgWorkspaceStore.saveWorkspace
+    // accepts ISO strings and converts via `new Date(workspace.createdAt)`
+    // before the insert — no need to pre-convert here.
     const ws = {
       id: "ws-multi",
       userRequest: "secret for A",
@@ -103,8 +105,8 @@ d("Real PostgreSQL integration", () => {
       results: [],
       status: "pending" as const,
       tenantId: "ten-A",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
     }
     await store.saveWorkspace(ws, "ten-A")
     // Tenant A can load it.
