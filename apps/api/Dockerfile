@@ -24,7 +24,13 @@ COPY apps/api ./apps/api
 COPY apps/dashboard ./apps/dashboard
 COPY tsconfig.base.json ./
 RUN pnpm --filter @max/api run type-check
-RUN pnpm --recursive --filter @max/* run build
+# Build only the api and its workspace deps. The workspace also contains
+# "optional" packages like @max/compat-shims (peer-only shims for ink /
+# hono / drizzle that the consumer must install separately). Building
+# them inside the api image tries to tsc packages whose devDeps aren't
+# installed by the deps stage's `--filter=@max/api...` and fails on
+# missing type defs (`ink`, `node:*`, etc.). Scope to api's closure.
+RUN pnpm --recursive --filter @max/api... run build
 
 # ─── runtime ──────────────────────────────────────────────────────────
 # Slim runtime with only production deps + compiled output.
