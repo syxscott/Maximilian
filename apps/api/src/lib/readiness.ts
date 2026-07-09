@@ -12,7 +12,11 @@
  * with mocked dependencies.
  */
 
-import { access as fsAccess, constants as fsConstants } from "node:fs/promises";
+import {
+  access as fsAccess,
+  constants as fsConstants,
+  mkdir as fsMkdir,
+} from "node:fs/promises";
 
 export interface ReadinessCheck {
   name: string;
@@ -81,17 +85,37 @@ export function probeLlm(providerCount: number): ReadinessCheck {
 
 /**
  * Probe workspace directory writability.
+ *
+ * The default WORKSPACE_DIR (`./workspaces`) is gitignored, so a fresh CI
+ * checkout's `probeWorkspaceDir` would otherwise fail with ENOENT. We try
+ * `mkdir -p` first and only fail if it can't materialize the dir — that's
+ * what's actually broken vs. just "haven't made the dir yet".
  */
 export async function probeWorkspaceDir(path: string): Promise<ReadinessCheck> {
   const start = Date.now();
   try {
     await fsAccess(path, fsConstants.W_OK);
     return { name: "workspace_dir", ok: true, latencyMs: Date.now() - start };
-  } catch (err) {
+  } catch (accessErr) {
+    if (accessErr instanceof Error && (accessErr as NodeJS.ErrnoException).code === "ENOENT") {
+      try {
+        await fsMkdir(path, { recursive: true });
+        await fsAccess(path, fsConstants.W_OK);
+        return { name: "workspace_dir", ok: true, latencyMs: Date.now() - start };
+      } catch (mkdirErr) {
+        return {
+          name: "workspace_dir",
+          ok: false,
+          latencyMs: Date.now() - start,
+          error: mkdirErr instanceof Error ? mkdirErr.message : String(mkdirErr),
+        };
+      }
+    }
     return {
       name: "workspace_dir",
       ok: false,
-      error: err instanceof Error ? err.message : String(err),
+      latencyMs: Date.now() - start,
+      error: accessErr instanceof Error ? accessErr.message : String(accessErr),
     };
   }
 }

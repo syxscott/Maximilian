@@ -92,7 +92,22 @@ describe("probeWorkspaceDir", () => {
     }
   });
 
-  it("reports failure for non-existent directory", async () => {
+  it("creates a missing directory under a writable parent and reports ok", async () => {
+    // gitignored `./workspaces` doesn't exist after a fresh CI checkout.
+    // The probe materializes it via `mkdir -p` before checking W_OK.
+    const parent = mkdtempSync(join(tmpdir(), "max-ready-parent-"));
+    const missing = join(parent, "freshly-created/workspaces");
+    try {
+      const r = await probeWorkspaceDir(missing);
+      expect(r.ok).toBe(true);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  it("reports failure for non-existent directory under non-writable parent", async () => {
+    // `/nonexistent/...` lives under `/`, which we don't have write
+    // access to in the test runner — mkdir will fail with EACCES.
     const r = await probeWorkspaceDir("/nonexistent/max-ready-path-xyz");
     expect(r.ok).toBe(false);
     expect(r.error).toBeDefined();
