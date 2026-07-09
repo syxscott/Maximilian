@@ -10,3 +10,10 @@ coverage/
 .vite/
 .cache/
 workspaces/
+
+# Per-package `pnpm-lock.yaml` files are created as a side effect of
+# running `pnpm install` from inside a sub-package directory. The
+# workspace's root `pnpm-lock.yaml` is the source of truth, so
+# per-package copies are noise and not tracked.
+/**/pnpm-lock.yaml
+!pnpm-lock.yaml
