@@ -1,4 +1,4 @@
-import type { Theme } from "./index"
+import type { Theme } from "./index.js"
 
 export const darkTheme: Theme = {
   name: "dark",

@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "../lib/utils"
-import { FileMedia, type FileMediaOptions, type FileContent } from "./file-media"
+import { cn } from "../lib/utils.js"
+import { FileMedia, type FileMediaOptions, type FileContent } from "./file-media.js"
 
 /**
  * React port of OpenCode's file.tsx. The diff rendering pipeline is delegated

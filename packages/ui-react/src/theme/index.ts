@@ -51,6 +51,6 @@ export interface Theme {
   cssVars: Record<string, string>
 }
 
-export { darkTheme } from "./dark"
-export { lightTheme } from "./light"
-export { useTheme, ThemeProvider, type ThemeMode } from "../context/theme"
+export { darkTheme } from "./dark.js"
+export { lightTheme } from "./light.js"
+export { useTheme, ThemeProvider, type ThemeMode } from "../context/theme.js"

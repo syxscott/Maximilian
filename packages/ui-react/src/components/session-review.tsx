@@ -5,7 +5,7 @@ import * as Accordion from "@radix-ui/react-accordion"
 import * as RadioGroup from "@radix-ui/react-radio-group"
 import * as Tooltip from "@radix-ui/react-tooltip"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export type SessionReviewDiffStyle = "unified" | "split"
 

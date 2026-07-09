@@ -1,1 +1,1 @@
-export { useTheme, ThemeProvider, type ThemeMode } from "../context/theme"
+export { useTheme, ThemeProvider, type ThemeMode } from "../context/theme.js"

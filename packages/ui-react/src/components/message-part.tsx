@@ -5,11 +5,11 @@ import * as Accordion from "@radix-ui/react-accordion"
 import * as Checkbox from "@radix-ui/react-checkbox"
 import * as Collapsible from "@radix-ui/react-collapsible"
 import * as Tooltip from "@radix-ui/react-tooltip"
-import { cn } from "../lib/utils"
-import { BasicTool, GenericTool, type TriggerTitle, type IconName } from "./basic-tool"
-import { AnimatedCountList, type CountItem } from "./tool-count-summary"
-import { ToolStatusTitle } from "./tool-status-title"
-import { ToolErrorCard } from "./tool-error-card"
+import { cn } from "../lib/utils.js"
+import { BasicTool, GenericTool, type TriggerTitle, type IconName } from "./basic-tool.js"
+import { AnimatedCountList, type CountItem } from "./tool-count-summary.js"
+import { ToolStatusTitle } from "./tool-status-title.js"
+import { ToolErrorCard } from "./tool-error-card.js"
 
 // -----------------------------------------------------------------------------
 // Domain types (kept loose so the host can plug in its own SDK)

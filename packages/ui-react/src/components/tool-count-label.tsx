@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "../lib/utils"
-import { AnimatedNumber } from "./animated-number"
+import { cn } from "../lib/utils.js"
+import { AnimatedNumber } from "./animated-number.js"
 
 function splitText(text: string) {
   const match = /{{\s*count\s*}}/.exec(text)

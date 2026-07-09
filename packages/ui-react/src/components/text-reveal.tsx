@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 const px = (value: number | string | undefined, fallback: number): string => {
   if (typeof value === "number") return `${value}px`

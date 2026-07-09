@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from "react"
-import { useI18n } from "../context/i18n"
-import { Card } from "./card"
-import { Tooltip, TooltipTrigger, TooltipContent } from "./tooltip"
-import { Spinner } from "./spinner"
+import { useI18n } from "../context/i18n.js"
+import { Card } from "./card.js"
+import { Tooltip, TooltipTrigger, TooltipContent } from "./tooltip.js"
+import { Spinner } from "./spinner.js"
 
 // Stub type - replace with real SDK type when available
 export interface SessionStatus {

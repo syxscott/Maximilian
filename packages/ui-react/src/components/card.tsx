@@ -1,5 +1,5 @@
 import { forwardRef, type HTMLAttributes, type CSSProperties } from "react"
-import { Icon, type IconProps } from "./icon"
+import { Icon, type IconProps } from "./icon.js"
 
 type Variant = "normal" | "error" | "warning" | "success" | "info"
 

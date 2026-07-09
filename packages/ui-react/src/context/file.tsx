@@ -1,5 +1,5 @@
 import * as React from "react"
-import { createSimpleContext } from "./helper"
+import { createSimpleContext } from "./helper.js"
 
 export type FileComponent = React.ComponentType<any>
 

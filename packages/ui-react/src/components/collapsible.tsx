@@ -1,6 +1,6 @@
 import { forwardRef, type HTMLAttributes } from "react"
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
-import { Icon } from "./icon"
+import { Icon } from "./icon.js"
 
 export interface CollapsibleProps
   extends React.ComponentPropsWithoutRef<typeof CollapsiblePrimitive.Root> {

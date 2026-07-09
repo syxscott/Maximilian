@@ -1,7 +1,7 @@
 import * as React from "react"
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react"
-import { Popover, PopoverContent, PopoverTrigger } from "./popover"
-import { cn } from "../lib/utils"
+import { Popover, PopoverContent, PopoverTrigger } from "./popover.js"
+import { cn } from "../lib/utils.js"
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
 const MONTHS = [

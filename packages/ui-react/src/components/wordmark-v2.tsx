@@ -1,5 +1,5 @@
 import { useId, type SVGProps } from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export interface WordmarkV2Props extends Omit<SVGProps<SVGSVGElement>, "children"> {
   className?: string

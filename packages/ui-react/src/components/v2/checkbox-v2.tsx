@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
 import * as LabelPrimitive from "@radix-ui/react-label"
-import { cn } from "../../lib/utils"
+import { cn } from "../../lib/utils.js"
 
 export interface CheckboxV2Props
   extends React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root> {

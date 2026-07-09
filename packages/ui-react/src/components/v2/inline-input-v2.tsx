@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Copy } from "lucide-react"
-import { cn } from "../../lib/utils"
+import { cn } from "../../lib/utils.js"
 
 export interface InlineInputV2Props
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type" | "prefix"> {

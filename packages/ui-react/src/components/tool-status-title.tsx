@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 function commonPrefix(active: string, done: string) {
   const a = Array.from(active)

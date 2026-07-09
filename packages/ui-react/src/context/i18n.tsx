@@ -1,5 +1,5 @@
 import * as React from "react"
-import { dict as en } from "../i18n/en"
+import { dict as en } from "../i18n/en.js"
 
 export type UiI18nKey = keyof typeof en
 

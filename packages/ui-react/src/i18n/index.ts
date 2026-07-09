@@ -1,6 +1,6 @@
-import { dict as en } from "./en"
-import { dict as zhCN } from "./zh-CN"
-import type { UiI18nParams } from "../context/i18n"
+import { dict as en } from "./en.js"
+import { dict as zhCN } from "./zh-CN.js"
+import type { UiI18nParams } from "../context/i18n.js"
 
 export type Locale = "en" | "zh-CN"
 
@@ -38,6 +38,6 @@ export function createI18n(options: CreateI18nOptions) {
   }
 }
 
-export type { UiI18n } from "../context/i18n"
-export { dict as en } from "./en"
-export { dict as zhCN } from "./zh-CN"
+export type { UiI18n } from "../context/i18n.js"
+export { dict as en } from "./en.js"
+export { dict as zhCN } from "./zh-CN.js"

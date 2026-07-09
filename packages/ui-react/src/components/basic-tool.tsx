@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import * as Collapsible from "@radix-ui/react-collapsible"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export type IconName =
   | "glasses"

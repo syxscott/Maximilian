@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Check, Copy } from "lucide-react"
-import { SyntaxHighlight, type ShikiHighlighter } from "./syntax-highlight"
-import { cn } from "../lib/utils"
+import { SyntaxHighlight, type ShikiHighlighter } from "./syntax-highlight.js"
+import { cn } from "../lib/utils.js"
 
 export interface CodeBlockProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
   code: string

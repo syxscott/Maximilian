@@ -1,7 +1,7 @@
 import * as React from "react"
-import { Dialog, DialogContent } from "./dialog"
+import { Dialog, DialogContent } from "./dialog.js"
 import { Search } from "lucide-react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 /**
  * Lightweight command palette.

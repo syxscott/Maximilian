@@ -1,7 +1,7 @@
 import * as React from "react"
-import { darkTheme } from "../theme/dark"
-import { lightTheme } from "../theme/light"
-import type { Theme, ThemeName } from "../theme"
+import { darkTheme } from "../theme/dark.js"
+import { lightTheme } from "../theme/light.js"
+import type { Theme, ThemeName } from "../theme/index.js"
 
 export type ThemeMode = "light" | "dark" | "system"
 

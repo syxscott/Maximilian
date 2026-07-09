@@ -1,5 +1,5 @@
 import { forwardRef, type HTMLAttributes, type FormHTMLAttributes } from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export interface DockTrayProps extends HTMLAttributes<HTMLDivElement> {
   attach?: "none" | "top"

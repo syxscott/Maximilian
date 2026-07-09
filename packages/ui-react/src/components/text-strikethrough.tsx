@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export interface TextStrikethroughProps extends React.HTMLAttributes<HTMLSpanElement> {
   /** Whether the strikethrough is active (line drawn across). */

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export interface TextShimmerProps extends Omit<React.HTMLAttributes<HTMLElement>, "children"> {
   text: string

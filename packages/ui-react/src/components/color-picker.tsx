@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Pipette, Check } from "lucide-react"
-import { Popover, PopoverContent, PopoverTrigger } from "./popover"
-import { cn } from "../lib/utils"
+import { Popover, PopoverContent, PopoverTrigger } from "./popover.js"
+import { cn } from "../lib/utils.js"
 
 const PRESET_COLORS = [
   "#000000", "#ffffff", "#f87171", "#fb923c", "#fbbf24", "#a3e635",

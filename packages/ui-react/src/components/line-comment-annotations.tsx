@@ -9,12 +9,12 @@ import {
   useState,
 } from "react"
 import { createPortal } from "react-dom"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 import {
   LineComment,
   LineCommentEditor,
   type LineCommentEditorProps,
-} from "./line-comment"
+} from "./line-comment.js"
 
 export type LineCommentSelection = { start: number; end: number; side?: "additions" | "deletions" }
 

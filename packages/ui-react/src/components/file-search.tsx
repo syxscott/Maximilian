@@ -1,7 +1,7 @@
 import { useCallback, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from "react"
 import { createPortal } from "react-dom"
-import { useI18n } from "../context/i18n"
-import { Icon } from "./icon"
+import { useI18n } from "../context/i18n.js"
+import { Icon } from "./icon.js"
 
 export interface FileSearchBarProps {
   pos: { top: number; right: number }
