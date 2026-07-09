@@ -34,10 +34,11 @@ const d = skipPg ? describe.skip : describe
 
 d("Real PostgreSQL integration", () => {
   let store: InstanceType<typeof PgWorkspaceStore>
+  let db: ReturnType<typeof createDb>
 
   beforeAll(async () => {
     if (skipPg) return
-    const db = createDb(url!)
+    db = createDb(url!)
     // Run migrations — they should be idempotent on a fresh schema.
     await runMigrations({ url: url!, migrationsFolder: "./drizzle" })
     store = new PgWorkspaceStore(db)
@@ -86,8 +87,6 @@ d("Real PostgreSQL integration", () => {
   })
 
   it("isolates workspaces by tenant when MULTI_TENANT_ENABLED is on", async () => {
-    const { db } = await import("../src/index.js")
-    const { eq } = await import("drizzle-orm")
     // Two tenants.
     await db.insert(tenants).values([
       {
