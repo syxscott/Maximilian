@@ -87,22 +87,13 @@ d("Real PostgreSQL integration", () => {
   })
 
   it("isolates workspaces by tenant when MULTI_TENANT_ENABLED is on", async () => {
-    // Two tenants.
+    // Two tenants. Schema declares createdAt/updatedAt as `timestamp` —
+    // drizzle's PgTimestamp.mapToDriverValue calls .toISOString() on the
+    // value, so it must be a Date, not an ISO string.
+    const now = new Date()
     await db.insert(tenants).values([
-      {
-        id: "ten-A",
-        name: "Tenant A",
-        slug: "a",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: "ten-B",
-        name: "Tenant B",
-        slug: "b",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
+      { id: "ten-A", name: "Tenant A", slug: "a", createdAt: now, updatedAt: now },
+      { id: "ten-B", name: "Tenant B", slug: "b", createdAt: now, updatedAt: now },
     ])
     // Save workspace under tenant A.
     const ws = {
