@@ -13,7 +13,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "demo": "pnpm --filter @max/api demo",
     "start:all": "npx concurrently -k -n api,dashboard \"META_AGENT_ENABLED=true DIGITAL_TWIN_ENABLED=true EVOLUTION_ENABLED=true TELEMETRY_ENABLED=true pnpm --filter @max/api start\" \"pnpm --filter @max/dashboard dev\"",
     "start:full": "npx concurrently -k -n api,dashboard,worker \"META_AGENT_ENABLED=true DIGITAL_TWIN_ENABLED=true EVOLUTION_ENABLED=true TELEMETRY_ENABLED=true TASK_QUEUE_ENABLED=true pnpm --filter @max/api start\" \"pnpm --filter @max/dashboard dev\" \"TASK_QUEUE_ENABLED=true pnpm --filter @max/worker start\"",
