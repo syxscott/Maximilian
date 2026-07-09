@@ -120,7 +120,14 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=2048
 
       - name: Test
-        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run test
+        # @max/e2e is a Playwright visual regression suite that needs the
+        # Chromium binary and a built dashboard. It's already gated by a
+        # dedicated workflow (e2e.yml) that installs browsers and only
+        # runs when dashboard / e2e / ui-react files change — running
+        # it on every CI push both blocks the queue (~30s+ browser
+        # download) and hits the "browser binary missing" error from the
+        # top-level CI. Filter it out here.
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" --filter '!@max/e2e' run test
 
       - name: Build
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run build
