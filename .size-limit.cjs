@@ -39,10 +39,7 @@ const workspacePackages = fs
   .map((dir) => {
     try {
       const pkg = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "packages", dir.name, "package.json"),
-          "utf8",
-        ),
+        fs.readFileSync(path.join(__dirname, "packages", dir.name, "package.json"), "utf8"),
       )
       return pkg.name
     } catch {
@@ -74,11 +71,7 @@ function applyMaximilianWebpackDefaults(config) {
     },
     externals: [
       ({ request }, callback) => {
-        if (
-          request === "react" ||
-          request === "react-dom" ||
-          workspacePackages.includes(request)
-        ) {
+        if (request === "react" || request === "react-dom" || workspacePackages.includes(request)) {
           // Emit `import * as ns from "react"` so the resulting bundle
           // is valid ESM and webpack's module concatenation pass can
           // parse it.
