@@ -1,12 +1,5 @@
 {
-  "*.{ts,tsx,js,mjs}": [
-    "eslint --fix --max-warnings=0",
-    "prettier --write"
-  ],
-  "*.{json,yml,yaml,md}": [
-    "prettier --write"
-  ],
-  "*.{ts,tsx}": [
-    "bash scripts/check-license-headers.sh --fix"
-  ]
+  "*.{ts,tsx,js,mjs}": ["eslint --fix --max-warnings=0", "prettier --write"],
+  "*.{json,yml,yaml,md}": ["prettier --write"],
+  "*.{ts,tsx}": ["bash scripts/check-license-headers.sh --staged"]
 }
