@@ -69,7 +69,15 @@ jobs:
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run type-check
 
       - name: Test (full workspace)
-        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run test
+        # @max/e2e is a Playwright suite that needs the chromium binary
+        # (`pnpm exec playwright install --with-deps`). The dedicated
+        # e2e.yml workflow installs the browser and runs the suite when
+        # the relevant files change. Running it here — without the
+        # browser install — produces 8 false-positive "Executable
+        # doesn't exist" failures on every Dependabot PR, drowning out
+        # the real regression signal the upgrade check is supposed to
+        # surface. Mirror the main CI's exclusion.
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" --filter '!@max/e2e' run test
 
       - name: Build (full workspace)
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run build
