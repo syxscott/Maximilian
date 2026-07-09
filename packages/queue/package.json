@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "build": "tsc",
     "type-check": "tsc --noEmit",
     "test": "vitest run"
   },
