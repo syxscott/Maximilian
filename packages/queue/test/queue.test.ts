@@ -14,7 +14,7 @@
  * The skip pattern is the same one used by apps/api/test/pg-smoke.test.ts
  * so CI can opt in by exporting REDIS_URL (e.g. via a service container).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest"
 import {
   WORKSPACE_QUEUE,
   HEARTBEAT_MAX_AGE_MS,
@@ -23,72 +23,87 @@ import {
   createWorker,
   acquireResourceLease,
   type WorkspaceJobData,
-} from "../src/index.js";
+} from "../src/index.js"
 
 describe("queue constants & defaults", () => {
   it("WORKSPACE_QUEUE has the canonical name", () => {
-    expect(WORKSPACE_QUEUE).toBe("workspace-execution");
-  });
+    expect(WORKSPACE_QUEUE).toBe("workspace-execution")
+  })
 
   it("HEARTBEAT_MAX_AGE_MS is the documented 30s", () => {
-    expect(HEARTBEAT_MAX_AGE_MS).toBe(30_000);
-  });
+    expect(HEARTBEAT_MAX_AGE_MS).toBe(30_000)
+  })
 
   it("DEFAULT_JOB_OPTIONS retries 3x with exponential backoff and 1h retention", () => {
-    expect(DEFAULT_JOB_OPTIONS.attempts).toBe(3);
-    expect(DEFAULT_JOB_OPTIONS.backoff).toEqual({ type: "exponential", delay: 2000 });
-    expect(DEFAULT_JOB_OPTIONS.removeOnComplete).toEqual({ age: 3600 });
-    expect(DEFAULT_JOB_OPTIONS.removeOnFail).toEqual({ age: 86400 });
-  });
+    expect(DEFAULT_JOB_OPTIONS.attempts).toBe(3)
+    expect(DEFAULT_JOB_OPTIONS.backoff).toEqual({ type: "exponential", delay: 2000 })
+    expect(DEFAULT_JOB_OPTIONS.removeOnComplete).toEqual({ age: 3600 })
+    expect(DEFAULT_JOB_OPTIONS.removeOnFail).toEqual({ age: 86400 })
+  })
 
   it("acquireResourceLease is a no-op without a resource budget", async () => {
-    const lease = await acquireResourceLease("redis://unused", undefined);
-    await expect(lease.release()).resolves.toBeUndefined();
-  });
-});
+    const lease = await acquireResourceLease("redis://unused", undefined)
+    await expect(lease.release()).resolves.toBeUndefined()
+  })
+})
 
 // ── Live tests (require REDIS_URL) ─────────────────────────────────────────
 
-const redisUrl = process.env.REDIS_URL;
-const skipRedis = !redisUrl;
-const d = skipRedis ? describe.skip : describe;
+const redisUrl = process.env.REDIS_URL
+const skipRedis = !redisUrl
+const d = skipRedis ? describe.skip : describe
 
 d("live redis (REDIS_URL set)", () => {
   it("readWorkerHeartbeat returns undefined before any worker has run", async () => {
-    expect(redisUrl).toBeTruthy();
-    const beat = await readWorkerHeartbeat(redisUrl!);
-    expect(beat).toBeUndefined();
-  });
+    expect(redisUrl).toBeTruthy()
+    const beat = await readWorkerHeartbeat(redisUrl!)
+    expect(beat).toBeUndefined()
+  })
 
   it("createWorker writes a heartbeat that readWorkerHeartbeat can see", async () => {
-    const received: Array<{ workspaceId: string; mode: string; tenantId?: string; resourceBudget?: WorkspaceJobData["resourceBudget"] }> = [];
-    const worker = createWorker(redisUrl!, async (workspaceId, mode, tenantId, resourceBudget) => {
-      received.push({ workspaceId, mode, tenantId, resourceBudget });
-    }, 1);
+    const received: Array<{
+      workspaceId: string
+      mode: string
+      tenantId?: string
+      resourceBudget?: WorkspaceJobData["resourceBudget"]
+    }> = []
+    const { worker, stopHeartbeat } = createWorker(
+      redisUrl!,
+      async (workspaceId, mode, tenantId, resourceBudget) => {
+        received.push({ workspaceId, mode, tenantId, resourceBudget })
+      },
+      1,
+    )
 
     // Heartbeat fires synchronously on createWorker. Give it a tick to land.
-    await new Promise((r) => setTimeout(r, 250));
-    const beat = await readWorkerHeartbeat(redisUrl!);
-    expect(typeof beat).toBe("number");
-    expect(Math.abs(Date.now() - (beat as number))).toBeLessThan(HEARTBEAT_MAX_AGE_MS);
+    await new Promise((r) => setTimeout(r, 250))
+    const beat = await readWorkerHeartbeat(redisUrl!)
+    expect(typeof beat).toBe("number")
+    expect(Math.abs(Date.now() - (beat as number))).toBeLessThan(HEARTBEAT_MAX_AGE_MS)
 
     // Enqueue a job and confirm the worker drains it.
-    const queue = createQueue(redisUrl!);
+    const queue = createQueue(redisUrl!)
     const job = await queue.add("execute", {
       workspaceId: "ws-test-1",
       mode: "commander",
       tenantId: "tenant-test",
       resourceBudget: { vramMb: 16000, exclusive: true },
-    } satisfies WorkspaceJobData);
+    } satisfies WorkspaceJobData)
 
-    await job.waitUntilFinished(queue, 5_000).catch(() => {});
+    await job.waitUntilFinished(queue, 5_000).catch(() => {})
     // Give the worker a moment in case waitUntilFinished raced.
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 250))
     expect(received).toEqual([
-      { workspaceId: "ws-test-1", mode: "commander", tenantId: "tenant-test", resourceBudget: { vramMb: 16000, exclusive: true } },
-    ]);
+      {
+        workspaceId: "ws-test-1",
+        mode: "commander",
+        tenantId: "tenant-test",
+        resourceBudget: { vramMb: 16000, exclusive: true },
+      },
+    ])
 
-    await queue.close();
-    await worker.close();
-  }, 15_000);
-});
+    await queue.close()
+    await worker.close()
+    stopHeartbeat()
+  }, 15_000)
+})

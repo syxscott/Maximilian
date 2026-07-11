@@ -66,7 +66,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Type-check (full workspace)
-        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run type-check
+        # @max/e2e is a Playwright suite. The dedicated e2e.yml workflow
+        # runs it with the chromium binary installed. Including it here
+        # fails type-check when e2e source references playwright types
+        # that aren't installed by `pnpm install --frozen-lockfile`
+        # without `--filter @max/e2e...`. Mirror the e2e exclusion.
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" --filter '!@max/e2e' run type-check
 
       - name: Test (full workspace)
         # @max/e2e is a Playwright suite that needs the chromium binary
@@ -80,7 +85,9 @@ jobs:
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" --filter '!@max/e2e' run test
 
       - name: Build (full workspace)
-        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run build
+        # Same e2e exclusion as above — build tries to tsc packages in
+        # e2e whose devDeps aren't installed.
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" --filter '!@max/e2e' run build
 
       # Diff summary — useful for reviewers to know at a glance whether this
       # PR touches anything the compat-shims layer would absorb.

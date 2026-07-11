@@ -112,6 +112,10 @@ jobs:
           fi
           echo "Checking format on:"
           echo "$CHANGED"
+          # Quote `$CHANGED` so paths with spaces or newlines don't get
+          # word-split. `set -e` so a prettier failure aborts this step
+          # (without it, a `npx prettier --check` exit code is ignored).
+          set -e
           npx prettier --check $CHANGED
 
       - name: License headers (new files)

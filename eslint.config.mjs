@@ -50,11 +50,14 @@ export default [
       "no-unused-vars": "off", // TS handles this via noUnusedLocals
       "no-unused-expressions": "off", // TS handles this
       "prefer-const": "warn",
-      "eqeqeq": ["error", "always", { null: "ignore" }],
+      eqeqeq: ["error", "always", { null: "ignore" }],
       "no-var": "error",
 
       // Style — only warn, don't fail
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/ban-ts-comment": ["warn", { "ts-ignore": "allow-with-description" }],
     },

@@ -3,16 +3,17 @@
  *
  * Usage:
  *   API side:    const q = createQueue(redisUrl); await q.add("execute", { workspaceId });
- *   Worker side: const w = createWorker(redisUrl, processor); // processor(workspaceId)
+ *   Worker side: const { worker, stopHeartbeat } = createWorker(redisUrl, processor);
+ *                 // processor(workspaceId); call stopHeartbeat() on shutdown.
  */
 
-export * from "./resource-lease.js";
+export * from "./resource-lease.js"
 
-import { Queue, Worker, type JobsOptions } from "bullmq";
-import { Redis } from "ioredis";
+import { Queue, Worker, type JobsOptions } from "bullmq"
+import { Redis } from "ioredis"
 
 /** Canonical queue name — must match between producer and consumer. */
-export const WORKSPACE_QUEUE = "workspace-execution";
+export const WORKSPACE_QUEUE = "workspace-execution"
 
 /**
  * Heartbeat key — each running worker writes this with a TTL so the API
@@ -23,39 +24,39 @@ export const WORKSPACE_QUEUE = "workspace-execution";
  * Exported so the worker's healthcheck script and any external probe
  * can read the same key without re-deriving the string literal.
  */
-export const HEARTBEAT_KEY = "maximilian:worker:heartbeat";
+export const HEARTBEAT_KEY = "maximilian:worker:heartbeat"
 /** Heartbeat TTL — must be > refresh interval. */
-const HEARTBEAT_TTL_SECONDS = 30;
+const HEARTBEAT_TTL_SECONDS = 30
 /** Maximum allowed age of the latest heartbeat. */
-export const HEARTBEAT_MAX_AGE_MS = HEARTBEAT_TTL_SECONDS * 1000;
+export const HEARTBEAT_MAX_AGE_MS = HEARTBEAT_TTL_SECONDS * 1000
 
 export interface ResourceBudget {
-  vramMb?: number;
-  exclusive?: boolean;
+  vramMb?: number
+  exclusive?: boolean
 }
 
 /** Data persisted in each BullMQ job. */
 export interface WorkspaceJobData {
-  workspaceId: string;
+  workspaceId: string
   /** "commander" | "dags" — tells the worker which execution path to use. */
-  mode: "commander" | "dags";
+  mode: "commander" | "dags"
   /**
    * Tenant ID of the user who enqueued the job. The worker uses this to
    * load/save the workspace with the correct tenant scope — without it,
    * the workspace store would refuse to surface tenant-owned data to a
    * dev-mode (no-tenant) worker. May be undefined for dev/no-tenant jobs.
    */
-  tenantId?: string;
-  resourceBudget?: ResourceBudget;
+  tenantId?: string
+  resourceBudget?: ResourceBudget
 }
 
 /** Default retry policy: 3 attempts, exponential back-off starting at 2 s. */
 export const DEFAULT_JOB_OPTIONS: JobsOptions = {
   attempts: 3,
   backoff: { type: "exponential", delay: 2000 },
-  removeOnComplete: { age: 3600 },   // keep completed jobs for 1 h
-  removeOnFail: { age: 86400 },       // keep failed jobs for 1 d
-};
+  removeOnComplete: { age: 3600 }, // keep completed jobs for 1 h
+  removeOnFail: { age: 86400 }, // keep failed jobs for 1 d
+}
 
 /**
  * Create a BullMQ Queue (producer side — used by the API).
@@ -64,7 +65,7 @@ export function createQueue(redisUrl: string): Queue {
   return new Queue(WORKSPACE_QUEUE, {
     connection: { url: redisUrl },
     defaultJobOptions: DEFAULT_JOB_OPTIONS,
-  });
+  })
 }
 
 export type WorkspaceProcessor = (
@@ -72,7 +73,7 @@ export type WorkspaceProcessor = (
   mode: "commander" | "dags",
   tenantId: string | undefined,
   resourceBudget: ResourceBudget | undefined,
-) => Promise<void>;
+) => Promise<void>
 
 /**
  * Create a BullMQ Worker (consumer side — used by the worker process).
@@ -90,12 +91,12 @@ export function createWorker(
   redisUrl: string,
   processor: WorkspaceProcessor,
   concurrency = 3,
-): Worker<WorkspaceJobData> {
+): { worker: Worker<WorkspaceJobData>; stopHeartbeat: () => void } {
   const worker = new Worker<WorkspaceJobData>(
     WORKSPACE_QUEUE,
     async (job) => {
-      const { workspaceId, mode, tenantId, resourceBudget } = job.data;
-      await processor(workspaceId, mode, tenantId, resourceBudget);
+      const { workspaceId, mode, tenantId, resourceBudget } = job.data
+      await processor(workspaceId, mode, tenantId, resourceBudget)
     },
     {
       connection: { url: redisUrl },
@@ -105,9 +106,9 @@ export function createWorker(
       stalledInterval: 30_000,
       lockDuration: 300_000,
     },
-  );
-  startHeartbeat(redisUrl);
-  return worker;
+  )
+  const stopHeartbeat = startHeartbeat(redisUrl)
+  return { worker, stopHeartbeat }
 }
 
 /**
@@ -123,14 +124,14 @@ export async function readWorkerHeartbeat(redisUrl: string): Promise<number | un
   const conn = new Redis(redisUrl, {
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
-  });
+  })
   try {
-    const raw = await conn.get(HEARTBEAT_KEY);
-    if (!raw) return undefined;
-    const ts = Number(raw);
-    return Number.isFinite(ts) ? ts : undefined;
+    const raw = await conn.get(HEARTBEAT_KEY)
+    if (!raw) return undefined
+    const ts = Number(raw)
+    return Number.isFinite(ts) ? ts : undefined
   } finally {
-    conn.disconnect();
+    conn.disconnect()
   }
 }
 
@@ -147,39 +148,43 @@ export async function readWorkerHeartbeat(redisUrl: string): Promise<number | un
 function startHeartbeat(redisUrl: string): () => void {
   const conn = new Redis(redisUrl, {
     maxRetriesPerRequest: null,
-  });
-  const intervalMs = (HEARTBEAT_TTL_SECONDS * 1000) / 2;
-  let stopped = false;
-  let failedBeats = 0;
+  })
+  const intervalMs = (HEARTBEAT_TTL_SECONDS * 1000) / 2
+  let stopped = false
+  let failedBeats = 0
 
   const beat = () => {
-    if (stopped) return;
+    if (stopped) return
     conn
       .set(HEARTBEAT_KEY, String(Date.now()), "EX", HEARTBEAT_TTL_SECONDS)
       .catch((err) => {
-        failedBeats += 1;
+        failedBeats += 1
         // Throttle: don't flood logs on a sustained outage. Reset the
         // counter if the connection recovers so the next failure is loud.
         if (failedBeats === 1 || failedBeats % 30 === 0) {
           console.warn(
             `[queue] heartbeat refresh failed (count=${failedBeats}):`,
             (err as Error).message,
-          );
+          )
         }
       })
       .then(() => {
         if (failedBeats > 0) {
-          console.info(`[queue] heartbeat recovered after ${failedBeats} failed beat(s)`);
-          failedBeats = 0;
+          console.info(`[queue] heartbeat recovered after ${failedBeats} failed beat(s)`)
+          failedBeats = 0
         }
-      });
-  };
-  beat();
-  const timer = setInterval(beat, intervalMs);
+      })
+  }
+  beat()
+  const timer = setInterval(beat, intervalMs)
+  // `.unref()` so the heartbeat timer alone never holds the event loop
+  // open after SIGTERM has torn everything else down. The Redis client
+  // below also disconnects on stop().
+  timer.unref()
 
   return () => {
-    stopped = true;
-    clearInterval(timer);
-    conn.disconnect();
-  };
+    stopped = true
+    clearInterval(timer)
+    conn.disconnect()
+  }
 }
