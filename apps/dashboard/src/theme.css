@@ -93,6 +93,22 @@
   --mx-tracking-tight: -0.04px;
   --mx-tracking-tighter: -0.16px;
 
+  /* ─── Status + role tokens (Vercel/Linear polish) ─────────────────── */
+
+  --mx-status-idle: var(--mx-grey-500);
+  --mx-status-running: var(--mx-blue-600);
+  --mx-status-done: var(--mx-green-600);
+  --mx-status-error: var(--mx-red-600);
+
+  --mx-role-frontend: var(--mx-blue-600);
+  --mx-role-frontend-muted: rgba(59, 92, 246, 0.12);
+  --mx-role-backend: var(--mx-green-600);
+  --mx-role-backend-muted: rgba(73, 201, 112, 0.12);
+  --mx-role-review: var(--mx-red-600);
+  --mx-role-review-muted: rgba(241, 72, 79, 0.12);
+  --mx-role-general: var(--mx-purple-600);
+  --mx-role-general-muted: rgba(139, 92, 246, 0.12);
+
   /* ─── Spacing & Sizing ─────────────────────────────────────────────── */
 
   --mx-spacing: 0.25rem; /* 4px base */
@@ -202,4 +218,72 @@
   --mx-border-muted: var(--mx-alpha-dark-8);
   --mx-border-base: var(--mx-alpha-dark-10);
   --mx-border-strong: var(--mx-alpha-dark-20);
+}
+/* ─── status dot (used by AgentPanel) ───────────────────────────────── */
+.status-dot {
+  display: inline-block;
+  border-radius: 9999px;
+  vertical-align: middle;
+}
+.status-dot--idle {
+  background: transparent;
+  border: 1px solid var(--mx-status-idle);
+}
+.status-dot--running {
+  background: var(--mx-status-running);
+  border: 1px solid var(--mx-status-running);
+}
+.status-dot--done {
+  background: var(--mx-status-done);
+  border: 1px solid var(--mx-status-done);
+}
+.status-dot--error {
+  background: var(--mx-status-error);
+  border: 1px solid var(--mx-status-error);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .status-dot--pulse {
+    animation: status-dot-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes status-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ─── wave indicator (used by TaskPanel) ─────────────────────────────── */
+.wave-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.wave-indicator__tick {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: transparent;
+}
+.wave-indicator__tick--queued {
+  border: 1px solid var(--mx-grey-500);
+}
+.wave-indicator__tick--done {
+  background: var(--mx-green-600);
+  border: 1px solid var(--mx-green-600);
+}
+.wave-indicator__tick--active {
+  background: var(--mx-blue-600);
+  border: 1px solid var(--mx-blue-600);
+}
+.wave-indicator__divider {
+  width: 8px;
+  height: 1px;
+  background: var(--mx-grey-600);
+  margin: 0 4px;
+}
+.wave-indicator__legend {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--mx-grey-500);
 }

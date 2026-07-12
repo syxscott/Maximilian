@@ -1,76 +1,96 @@
-import { useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { useLocale, t } from "@max/i18n";
-import type { Workspace, RuntimeEvent } from "../api";
+import { useLocale, t } from "@max/i18n"
+import { StatusDot } from "./_helpers/StatusDot"
+import type { Workspace, RuntimeEvent } from "../api"
 
-interface Props {
-  workspace: Workspace | null;
-  events: RuntimeEvent[];
+const ROLE_TINT: Record<string, { token: string; muted: string; monogram: string }> = {
+  frontend: {
+    token: "var(--mx-role-frontend)",
+    muted: "var(--mx-role-frontend-muted)",
+    monogram: "F",
+  },
+  backend: {
+    token: "var(--mx-role-backend)",
+    muted: "var(--mx-role-backend-muted)",
+    monogram: "B",
+  },
+  review: { token: "var(--mx-role-review)", muted: "var(--mx-role-review-muted)", monogram: "R" },
+  general: {
+    token: "var(--mx-role-general)",
+    muted: "var(--mx-role-general-muted)",
+    monogram: "G",
+  },
 }
 
-function getTaskStatus(taskId: string, events: RuntimeEvent[]): string {
-  const failed = events.some((e) => e.type === "task-failed" && (e as Record<string, unknown>).taskId === taskId);
-  if (failed) return "failed";
-  const done = events.some((e) => e.type === "task-complete" && (e as Record<string, unknown>).taskId === taskId);
-  if (done) return "completed";
-  const active = events.some((e) => e.type === "task-start" && (e as Record<string, unknown>).taskId === taskId);
-  if (active) return "running";
-  return "pending";
+export interface AgentPanelProps {
+  workspace: Workspace | null
+  events: RuntimeEvent[]
 }
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  pending: "secondary",
-  running: "outline",
-  completed: "default",
-  failed: "destructive",
-};
+function statusFromTask(s: string, error?: string): "idle" | "running" | "done" | "error" {
+  if (error) return "error"
+  if (s === "running") return "running"
+  if (s === "completed" || s === "done") return "done"
+  return "idle"
+}
 
-const ROLE_COLORS: Record<string, string> = {
-  commander: "bg-purple-900/50 text-purple-300 border-purple-700",
-  frontend: "bg-blue-900/50 text-blue-300 border-blue-700",
-  backend: "bg-green-900/50 text-green-300 border-green-700",
-  review: "bg-yellow-900/50 text-yellow-300 border-yellow-700",
-  general: "bg-gray-800/50 text-gray-300 border-gray-600",
-};
+function durationSince(start: string | undefined, now: number): string {
+  if (!start) return ""
+  const ms = now - new Date(start).getTime()
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`
+}
 
-export function AgentPanel({ workspace, events }: Props) {
-  useLocale();
-  const agentRows = useMemo(() => {
-    if (!workspace?.plan) return [];
-    return workspace.plan.tasks.map((task) => ({
-      task,
-      status: getTaskStatus(task.id, events),
-    }));
-  }, [workspace?.plan, events]);
+export function AgentPanel({ workspace, events }: AgentPanelProps) {
+  useLocale()
+  const tasks = workspace?.plan?.tasks ?? []
+  const taskErrors = new Map<string, string>(
+    workspace?.results?.filter((r) => r.error).map((r) => [r.taskId, r.error as string]) ?? [],
+  )
+
+  if (tasks.length === 0) {
+    return (
+      <div className="agent-panel px-3 py-6 text-xs text-muted-foreground font-mono">
+        {t("agent.empty")}
+      </div>
+    )
+  }
+
+  const now = Date.now()
 
   return (
-    <div className="p-4">
-      <h2 className="text-lg font-semibold mb-2 text-foreground">{t("agent.title")}</h2>
-      {agentRows.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t("agent.empty")}</p>
-      ) : (
-        <div className="space-y-2">
-          {agentRows.map(({ task, status }) => (
-            <Card key={task.id} className="bg-muted/30 border-border/50">
-              <CardContent className="py-2 px-3">
-                <div className="flex gap-1.5">
-                  <Badge className={ROLE_COLORS[task.agentRole] ?? ROLE_COLORS.general}>
-                    {task.agentRole}
-                  </Badge>
-                  <Badge variant={STATUS_VARIANT[status] ?? "secondary"}>
-                    {status}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-sm text-foreground">{task.description}</p>
-                {task.id && (
-                  <p className="mt-1 text-xs font-mono text-muted-foreground">id: {task.id}</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+    <div className="agent-panel divide-y divide-border">
+      {tasks.map((task) => {
+        const role = ROLE_TINT[task.agentRole] ?? ROLE_TINT.general!
+        const status = statusFromTask(task.status, taskErrors.get(task.id))
+        const dur = durationSince(task.startedAt, now)
+        return (
+          <div
+            key={task.id}
+            className={`agent-row agent-row--${task.agentRole} flex items-center gap-3 px-3 py-2${
+              status === "error" ? " border-l-4 border-l-[color:var(--mx-red-600)]" : ""
+            }`}
+          >
+            <span
+              aria-hidden
+              className="flex items-center justify-center w-6 h-6 rounded text-[10px] font-mono font-bold"
+              style={{ background: role.muted, color: role.token }}
+            >
+              {role.monogram}
+            </span>
+            <StatusDot status={status} />
+            <span className="flex-1 text-xs font-mono truncate" title={task.description}>
+              {task.description}
+            </span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
+              {task.agentRole}
+            </span>
+            <span className="text-xs text-muted-foreground font-mono tabular-nums w-14 text-right">
+              {dur || "—"}
+            </span>
+          </div>
+        )
+      })}
     </div>
-  );
+  )
 }

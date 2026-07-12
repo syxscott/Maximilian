@@ -1,65 +1,171 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { useLocale, t } from "@max/i18n";
-import type { Workspace } from "../api";
+import { useLocale, t } from "@max/i18n"
+import { WaveIndicator, computeWaves } from "./_helpers/WaveIndicator"
+import type { Workspace } from "../api"
 
 interface Props {
-  workspace: Workspace | null;
+  workspace: Workspace | null
 }
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  pending: "secondary",
-  running: "outline",
-  completed: "default",
-  failed: "destructive",
-};
+type Phase = "plan" | "runtime" | "done"
 
-const ROLE_COLORS: Record<string, string> = {
-  frontend: "bg-blue-900/50 text-blue-300 border-blue-700",
-  backend: "bg-green-900/50 text-green-300 border-green-700",
-  review: "bg-yellow-900/50 text-yellow-300 border-yellow-700",
-  general: "bg-gray-800/50 text-gray-300 border-gray-600",
-};
+function detectPhase(tasks: Array<{ status: string }>): Phase {
+  const has = (s: string) => tasks.some((t) => t.status === s)
+  if (has("running")) return "runtime"
+  if (has("completed") || has("failed")) {
+    return tasks.every((t) => t.status === "completed" || t.status === "failed")
+      ? "done"
+      : "runtime"
+  }
+  return "plan"
+}
+
+function topoLevel(
+  taskId: string,
+  byId: Map<string, { dependsOn: string[] }>,
+  cache = new Map<string, number>(),
+): number {
+  if (cache.has(taskId)) return cache.get(taskId)!
+  const t = byId.get(taskId)
+  if (!t || t.dependsOn.length === 0) {
+    cache.set(taskId, 0)
+    return 0
+  }
+  const level = 1 + Math.max(...t.dependsOn.map((d) => topoLevel(d, byId, cache)))
+  cache.set(taskId, level)
+  return level
+}
+
+function durationLabel(startedAt: string | undefined, completedAt: string | undefined): string {
+  if (!startedAt) return ""
+  const end = completedAt ? new Date(completedAt).getTime() : Date.now()
+  const ms = end - new Date(startedAt).getTime()
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`
+}
+
+const STATUS_DOT: Record<string, string> = {
+  pending: "bg-muted-foreground/40",
+  running: "bg-[color:var(--mx-status-running)]",
+  completed: "bg-[color:var(--mx-status-done)]",
+  failed: "bg-[color:var(--mx-status-error)]",
+}
 
 export function TaskPanel({ workspace }: Props) {
-  useLocale();
+  useLocale()
+  const tasks = workspace?.plan?.tasks ?? []
+  if (tasks.length === 0) {
+    return (
+      <div className="task-panel px-3 py-6 text-xs text-muted-foreground font-mono">
+        {t("task.empty")}
+      </div>
+    )
+  }
+
+  const phase = detectPhase(tasks)
+  const byId = new Map(tasks.map((task) => [task.id, task]))
+  const waves = phase === "runtime" ? computeWaves(tasks) : []
+
   return (
-    <div className="p-4">
-      <h2 className="text-lg font-semibold mb-2 text-foreground">{t("task.title")}</h2>
-      {!workspace?.plan ? (
-        <p className="text-muted-foreground text-sm">{t("task.empty")}</p>
-      ) : (
-        <>
-          <p className="text-muted-foreground text-sm mb-2">{workspace.plan.rationale}</p>
-          <div className="space-y-2">
-            {workspace.plan.tasks.map((task) => (
-              <Card key={task.id} className="bg-muted/30 border-border/50">
-                <CardContent className="py-2 px-3">
-                  <div className="flex gap-1.5">
-                    <Badge className={ROLE_COLORS[task.agentRole] ?? ROLE_COLORS.general}>
-                      {task.agentRole}
-                    </Badge>
-                    <Badge variant={STATUS_VARIANT[task.status] ?? "secondary"}>
-                      {task.status}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-foreground">{task.description}</p>
-                  {task.dependsOn.length > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("task.dependsOn")}: {task.dependsOn.join(", ")}
-                    </p>
-                  )}
+    <div className="task-panel divide-y divide-border">
+      {workspace?.plan?.rationale && (
+        <p className="px-3 py-2 text-[11px] text-muted-foreground font-mono leading-relaxed border-b border-border">
+          {workspace.plan.rationale}
+        </p>
+      )}
+      {phase === "runtime" && waves.length > 0 && (
+        <div className="px-3 py-2 border-b border-border">
+          <WaveIndicator waves={waves} />
+        </div>
+      )}
+      {phase === "runtime" && (
+        <ul className="divide-y divide-border">
+          {tasks.map((task) => (
+            <li
+              key={task.id}
+              className="task-row flex items-center gap-2 px-3 py-1.5 text-xs font-mono"
+            >
+              <span
+                className={`task-row__status task-row__status--${task.status} inline-block w-1.5 h-1.5 rounded-full ${STATUS_DOT[task.status] ?? STATUS_DOT.pending}`}
+              />
+              <span className="flex-1 truncate" title={task.description}>
+                {task.description}
+              </span>
+              {task.dependsOn.length > 0 && (
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  ← {task.dependsOn.join(", ")}
+                </span>
+              )}
+              <span className="text-muted-foreground tabular-nums w-14 text-right">
+                {durationLabel(task.startedAt, task.completedAt)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {phase === "done" && (
+        <ol className="px-3 py-2 space-y-1 text-xs font-mono">
+          {[...tasks]
+            .sort(
+              (a, b) =>
+                new Date(a.completedAt ?? 0).getTime() - new Date(b.completedAt ?? 0).getTime(),
+            )
+            .map((task) => {
+              const depth = topoLevel(task.id, byId)
+              const dur = durationLabel(task.startedAt, task.completedAt)
+              return (
+                <li
+                  key={task.id}
+                  className="task-row flex items-center gap-2"
+                  style={{ paddingLeft: depth * 16 }}
+                >
+                  <span
+                    className={
+                      task.status === "failed"
+                        ? "text-[color:var(--mx-red-600)]"
+                        : "text-[color:var(--mx-green-600)]"
+                    }
+                  >
+                    {task.status === "failed" ? "✕" : "✓"}
+                  </span>
+                  <span className="truncate flex-1">{task.description}</span>
                   {task.error && (
-                    <p className="mt-1 text-sm text-destructive">
+                    <span className="text-[10px] text-[color:var(--mx-red-600)] font-mono">
                       error: {task.error}
-                    </p>
+                    </span>
                   )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </>
+                  <span className="text-muted-foreground tabular-nums w-14 text-right">{dur}</span>
+                </li>
+              )
+            })}
+        </ol>
+      )}
+      {phase === "plan" && (
+        <ul className="px-3 py-2 space-y-1 text-xs font-mono">
+          {tasks.map((task) => {
+            const depth = topoLevel(task.id, byId)
+            return (
+              <li
+                key={task.id}
+                className="task-row flex items-center gap-2 opacity-80 hover:opacity-100"
+                style={{ paddingLeft: depth * 16 }}
+                title={task.description}
+              >
+                <span className="text-muted-foreground">▸</span>
+                <span className="truncate flex-1">{task.description}</span>
+                {task.dependsOn.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    ← {task.dependsOn.join(", ")}
+                  </span>
+                )}
+                <span className="text-muted-foreground text-[10px] uppercase tracking-wider">
+                  {task.agentRole}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
       )}
     </div>
-  );
+  )
 }

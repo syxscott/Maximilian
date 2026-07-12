@@ -4,15 +4,16 @@
  * Responses are validated at runtime with Zod schemas.
  */
 
-import { z } from "zod";
+import { z } from "zod"
 
-export const BASE = "/api";
+export const BASE = "/api"
 
 // Auth token — read from localStorage if set via the UI, otherwise empty.
 // In dev (no ADMIN_TOKEN on the backend) this is ignored.
 export function authHeaders(): Record<string, string> {
-  const token = typeof localStorage !== "undefined" ? localStorage.getItem("maximilian-admin-token") : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const token =
+    typeof localStorage !== "undefined" ? localStorage.getItem("maximilian-admin-token") : null
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 /** Fetch once, validate response body against a Zod schema. */
@@ -21,23 +22,23 @@ export async function fetchJson<T>(
   init: RequestInit,
   schema: z.ZodType<T>,
 ): Promise<T> {
-  const res = await fetch(url, init);
+  const res = await fetch(url, init)
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    const detail = body ? `: ${body.slice(0, 200)}` : "";
-    throw new Error(`${res.status} ${res.statusText}${detail}`);
+    const body = await res.text().catch(() => "")
+    const detail = body ? `: ${body.slice(0, 200)}` : ""
+    throw new Error(`${res.status} ${res.statusText}${detail}`)
   }
-  const data = await res.json();
-  const parsed = schema.safeParse(data);
+  const data = await res.json()
+  const parsed = schema.safeParse(data)
   if (!parsed.success) {
-    console.error("[api] schema validation failed:", parsed.error.issues);
-    throw new Error(`invalid response shape: ${parsed.error.issues[0]?.message ?? "unknown"}`);
+    console.error("[api] schema validation failed:", parsed.error.issues)
+    throw new Error(`invalid response shape: ${parsed.error.issues[0]?.message ?? "unknown"}`)
   }
-  return parsed.data;
+  return parsed.data
 }
 
 // Re-export zod so feature modules can share the runtime schema.
-export { z };
+export { z }
 
 // ── Schemas ────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ const TeamGraphNodeSchema = z.object({
   role: z.string(),
   displayName: z.string(),
   dependsOn: z.array(z.string()),
-});
+})
 
 export const ExecutionTraceSchema = z.object({
   id: z.string(),
@@ -58,19 +59,21 @@ export const ExecutionTraceSchema = z.object({
     nodes: z.array(TeamGraphNodeSchema),
     capabilities: z.array(z.string()),
   }),
-  steps: z.array(z.object({
-    role: z.string(),
-    content: z.string(),
-    agentRole: z.string(),
-    taskId: z.string(),
-    timestamp: z.string(),
-  })),
+  steps: z.array(
+    z.object({
+      role: z.string(),
+      content: z.string(),
+      agentRole: z.string(),
+      taskId: z.string(),
+      timestamp: z.string(),
+    }),
+  ),
   status: z.enum(["running", "completed", "failed"]),
   startedAt: z.string(),
   completedAt: z.string().optional(),
   error: z.string().optional(),
-});
-export type ExecutionTrace = z.infer<typeof ExecutionTraceSchema>;
+})
+export type ExecutionTrace = z.infer<typeof ExecutionTraceSchema>
 
 export const EvolutionTraceSchema = z.object({
   id: z.string(),
@@ -88,24 +91,28 @@ export const EvolutionTraceSchema = z.object({
   rolloutStatus: z.string(),
   approved: z.boolean(),
   recordedAt: z.string(),
-});
-export type EvolutionTrace = z.infer<typeof EvolutionTraceSchema>;
+})
+export type EvolutionTrace = z.infer<typeof EvolutionTraceSchema>
 
 export const UIGraphSchema = z.object({
-  nodes: z.array(z.object({
-    id: z.string(),
-    type: z.string(),
-    label: z.string(),
-    model: z.string().optional(),
-  })),
-  edges: z.array(z.object({
-    id: z.string(),
-    source: z.string(),
-    target: z.string(),
-    type: z.string(),
-  })),
-});
-export type UIGraph = z.infer<typeof UIGraphSchema>;
+  nodes: z.array(
+    z.object({
+      id: z.string(),
+      type: z.string(),
+      label: z.string(),
+      model: z.string().optional(),
+    }),
+  ),
+  edges: z.array(
+    z.object({
+      id: z.string(),
+      source: z.string(),
+      target: z.string(),
+      type: z.string(),
+    }),
+  ),
+})
+export type UIGraph = z.infer<typeof UIGraphSchema>
 
 /**
  * Flat timeline entry — the backend returns a flat list of evolution
@@ -124,21 +131,21 @@ export const TimelineEntrySchema = z.object({
   rolloutStatus: z.string(),
   /** Optional parent event id (when the backend can link it). */
   parentId: z.string().optional(),
-});
+})
 export interface TimelineEntry {
-  id: string;
-  proposalId: string;
-  proposalType?: string;
-  action: string;
-  subject: string;
-  approved: boolean;
+  id: string
+  proposalId: string
+  proposalType?: string
+  action: string
+  subject: string
+  approved: boolean
   /** Defaults to 0 when missing — see `TimelineEntrySchema`. */
-  utility?: number;
-  recordedAt: string;
-  rolloutStatus: string;
-  parentId?: string;
+  utility?: number
+  recordedAt: string
+  rolloutStatus: string
+  parentId?: string
   /** Attached by `buildTimelineTree()`. Backend never returns this field. */
-  children?: TimelineEntry[];
+  children?: TimelineEntry[]
 }
 
 /**
@@ -148,29 +155,29 @@ export interface TimelineEntry {
  * child of the previous event on the same subject.
  */
 export function buildTimelineTree(entries: TimelineEntry[]): TimelineEntry[] {
-  if (entries.length === 0) return [];
-  const byId = new Map<string, TimelineEntry & { children: TimelineEntry[] }>();
-  for (const e of entries) byId.set(e.id, { ...e, children: [] });
+  if (entries.length === 0) return []
+  const byId = new Map<string, TimelineEntry & { children: TimelineEntry[] }>()
+  for (const e of entries) byId.set(e.id, { ...e, children: [] })
 
-  const roots: Array<TimelineEntry & { children: TimelineEntry[] }> = [];
+  const roots: Array<TimelineEntry & { children: TimelineEntry[] }> = []
   // Sort by recordedAt so chronological parent→child links fall out naturally.
-  const sorted = [...entries].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+  const sorted = [...entries].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt))
 
   for (const e of sorted) {
-    const node = byId.get(e.id)!;
+    const node = byId.get(e.id)!
     if (e.parentId && byId.has(e.parentId)) {
-      byId.get(e.parentId)!.children.push(node);
+      byId.get(e.parentId)!.children.push(node)
     } else {
       // No explicit parent — attach to the previous event for the same subject
       // (or to the root if this is the first one).
       const prev = [...byId.values()]
         .reverse()
-        .find((n) => n.subject === e.subject && n.recordedAt < e.recordedAt);
-      if (prev) prev.children.push(node);
-      else roots.push(node);
+        .find((n) => n.subject === e.subject && n.recordedAt < e.recordedAt)
+      if (prev) prev.children.push(node)
+      else roots.push(node)
     }
   }
-  return roots;
+  return roots
 }
 
 export const PendingProposalSchema = z.object({
@@ -205,8 +212,8 @@ export const PendingProposalSchema = z.object({
   }),
   status: z.string(),
   requestedAt: z.string(),
-});
-export type PendingProposal = z.infer<typeof PendingProposalSchema>;
+})
+export type PendingProposal = z.infer<typeof PendingProposalSchema>
 
 export const GovernanceConfigSchema = z.object({
   maxAgents: z.number(),
@@ -216,8 +223,8 @@ export const GovernanceConfigSchema = z.object({
   minUsageForBirth: z.number(),
   hitlRiskThreshold: z.number(),
   hitlAlwaysForActions: z.array(z.string()),
-});
-export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
+})
+export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>
 
 export const CapabilityRecordSchema = z.object({
   id: z.string(),
@@ -230,8 +237,8 @@ export const CapabilityRecordSchema = z.object({
   avgDurationMs: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
-});
-export type CapabilityRecord = z.infer<typeof CapabilityRecordSchema>;
+})
+export type CapabilityRecord = z.infer<typeof CapabilityRecordSchema>
 
 const HealthSchema = z.object({
   status: z.string(),
@@ -241,71 +248,108 @@ const HealthSchema = z.object({
   dagsMode: z.string(),
   metaAgent: z.string(),
   telemetry: z.string(),
-});
-export type Health = z.infer<typeof HealthSchema>;
+})
+export type Health = z.infer<typeof HealthSchema>
 
 // ── Observability API ─────────────────────────────────────────────────────
 
 export const obsApi = {
   listExecutions: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/obs/executions`, { signal }, z.object({ count: z.number(), executions: z.array(ExecutionTraceSchema) })),
+    fetchJson(
+      `${BASE}/obs/executions`,
+      { signal },
+      z.object({ count: z.number(), executions: z.array(ExecutionTraceSchema) }),
+    ),
 
   listEvolutions: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/obs/evolutions`, { signal }, z.object({ count: z.number(), evolutions: z.array(EvolutionTraceSchema) })),
+    fetchJson(
+      `${BASE}/obs/evolutions`,
+      { signal },
+      z.object({ count: z.number(), evolutions: z.array(EvolutionTraceSchema) }),
+    ),
 
   getGraph: (executionId: string, signal?: AbortSignal) =>
     fetchJson(`${BASE}/obs/graph/${executionId}`, { signal }, UIGraphSchema),
 
   getTimeline: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/obs/timeline`, { signal }, z.object({ timeline: z.array(TimelineEntrySchema) })),
+    fetchJson(
+      `${BASE}/obs/timeline`,
+      { signal },
+      z.object({ timeline: z.array(TimelineEntrySchema) }),
+    ),
 
   lineageByRole: (role: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/obs/lineage/agent/${encodeURIComponent(role)}`, { signal }, z.object({
-      role: z.string(),
-      count: z.number(),
-      lineage: z.array(EvolutionTraceSchema),
-    })),
-};
+    fetchJson(
+      `${BASE}/obs/lineage/agent/${encodeURIComponent(role)}`,
+      { signal },
+      z.object({
+        role: z.string(),
+        count: z.number(),
+        lineage: z.array(EvolutionTraceSchema),
+      }),
+    ),
+}
 
 // ── Governance API ────────────────────────────────────────────────────────
 
 export const govApi = {
   listPending: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/gov/pending`, { headers: authHeaders(), signal }, z.object({ count: z.number(), proposals: z.array(PendingProposalSchema) })),
+    fetchJson(
+      `${BASE}/gov/pending`,
+      { headers: authHeaders(), signal },
+      z.object({ count: z.number(), proposals: z.array(PendingProposalSchema) }),
+    ),
 
-  resolveProposal: (id: string, action: "approve" | "reject", reason: string, user: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/gov/proposals/${encodeURIComponent(id)}/action`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ action, reason, user }),
-      signal,
-    }, z.object({
-      proposalId: z.string(),
-      status: z.string(),
-      resolvedBy: z.string(),
-    })),
-};
+  resolveProposal: (
+    id: string,
+    action: "approve" | "reject",
+    reason: string,
+    user: string,
+    signal?: AbortSignal,
+  ) =>
+    fetchJson(
+      `${BASE}/gov/proposals/${encodeURIComponent(id)}/action`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action, reason, user }),
+        signal,
+      },
+      z.object({
+        proposalId: z.string(),
+        status: z.string(),
+        resolvedBy: z.string(),
+      }),
+    ),
+}
 
 // ── Meta API ──────────────────────────────────────────────────────────────
 
 export const metaApi = {
   listCapabilities: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/meta/capabilities`, { signal }, z.object({ count: z.number(), capabilities: z.array(CapabilityRecordSchema) })),
+    fetchJson(
+      `${BASE}/meta/capabilities`,
+      { signal },
+      z.object({ count: z.number(), capabilities: z.array(CapabilityRecordSchema) }),
+    ),
 
   getGovernanceConfig: (signal?: AbortSignal) =>
     fetchJson(`${BASE}/meta/governance/config`, { signal }, GovernanceConfigSchema),
 
   updateGovernanceConfig: (config: Partial<GovernanceConfig>, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/meta/governance/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify(config),
-      signal,
-    }, z.object({ ok: z.boolean(), config: GovernanceConfigSchema })),
+    fetchJson(
+      `${BASE}/meta/governance/config`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(config),
+        signal,
+      },
+      z.object({ ok: z.boolean(), config: GovernanceConfigSchema }),
+    ),
 
-  health: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/health`, { signal }, HealthSchema),
-};
+  health: (signal?: AbortSignal) => fetchJson(`${BASE}/health`, { signal }, HealthSchema),
+}
 
 // ── Workspace / Chat Schemas ─────────────────────────────────────────────
 
@@ -317,19 +361,19 @@ export const ProviderInfoSchema = z.object({
   name: z.string(),
   defaultModel: z.string(),
   configured: z.boolean(),
-});
-export type ProviderInfo = z.infer<typeof ProviderInfoSchema>;
+})
+export type ProviderInfo = z.infer<typeof ProviderInfoSchema>
 
 export const ProviderListResponseSchema = z.object({
   providers: z.array(ProviderInfoSchema),
   default: z.string().optional(),
-});
-export type ProviderListResponse = z.infer<typeof ProviderListResponseSchema>;
+})
+export type ProviderListResponse = z.infer<typeof ProviderListResponseSchema>
 
 // ── Usage Aggregation Schemas ─────────────────────────────────────────────
 
-export const UsageRangeSchema = z.enum(["today", "1d", "7d", "14d", "30d", "all"]);
-export type UsageRange = z.infer<typeof UsageRangeSchema>;
+export const UsageRangeSchema = z.enum(["today", "1d", "7d", "14d", "30d", "all"])
+export type UsageRange = z.infer<typeof UsageRangeSchema>
 
 export const LatencyStatsSchema = z.object({
   p50Ms: z.number().nonnegative(),
@@ -337,8 +381,8 @@ export const LatencyStatsSchema = z.object({
   p99Ms: z.number().nonnegative(),
   avgMs: z.number().nonnegative(),
   sampleCount: z.number().int().nonnegative(),
-});
-export type LatencyStats = z.infer<typeof LatencyStatsSchema>;
+})
+export type LatencyStats = z.infer<typeof LatencyStatsSchema>
 
 export const UsageSummarySchema = z.object({
   range: UsageRangeSchema,
@@ -353,8 +397,8 @@ export const UsageSummarySchema = z.object({
   cacheHitRate: z.number().min(0).max(1),
   unpricedRequestCount: z.number().int().nonnegative(),
   latency: LatencyStatsSchema,
-});
-export type UsageSummary = z.infer<typeof UsageSummarySchema>;
+})
+export type UsageSummary = z.infer<typeof UsageSummarySchema>
 
 export const DailyUsageEntrySchema = z.object({
   date: z.string(),
@@ -365,14 +409,14 @@ export const DailyUsageEntrySchema = z.object({
   totalCacheCreationTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
   totalCostUsd: z.number().nonnegative(),
-});
-export type DailyUsageEntry = z.infer<typeof DailyUsageEntrySchema>;
+})
+export type DailyUsageEntry = z.infer<typeof DailyUsageEntrySchema>
 
 export const UsageDailyResponseSchema = z.object({
   range: UsageRangeSchema,
   daily: z.array(DailyUsageEntrySchema),
-});
-export type UsageDailyResponse = z.infer<typeof UsageDailyResponseSchema>;
+})
+export type UsageDailyResponse = z.infer<typeof UsageDailyResponseSchema>
 
 const PlanTaskSchema = z.object({
   id: z.string(),
@@ -382,7 +426,9 @@ const PlanTaskSchema = z.object({
   dependsOn: z.array(z.string()),
   resultId: z.string().optional(),
   error: z.string().optional(),
-});
+  startedAt: z.string().optional(),
+  completedAt: z.string().optional(),
+})
 
 const PlanSchema = z.object({
   id: z.string(),
@@ -391,7 +437,7 @@ const PlanSchema = z.object({
   rationale: z.string(),
   tasks: z.array(PlanTaskSchema),
   createdAt: z.string(),
-});
+})
 
 const ResultSchema = z.object({
   id: z.string(),
@@ -401,7 +447,9 @@ const ResultSchema = z.object({
   output: z.string(),
   metadata: z.record(z.unknown()),
   createdAt: z.string(),
-});
+  error: z.string().optional(),
+  durationMs: z.number().optional(),
+})
 
 const ReviewResultSchema = z.object({
   id: z.string(),
@@ -410,7 +458,7 @@ const ReviewResultSchema = z.object({
   suggestions: z.array(z.string()),
   summary: z.string(),
   reviewedAt: z.string(),
-});
+})
 
 export const WorkspaceSchema = z.object({
   id: z.string(),
@@ -425,66 +473,90 @@ export const WorkspaceSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   error: z.string().optional(),
-});
-export type Workspace = z.infer<typeof WorkspaceSchema>;
+})
+export type Workspace = z.infer<typeof WorkspaceSchema>
 
-export const RuntimeEventSchema = z.object({
-  type: z.string(),
-  workspaceId: z.string(),
-}).passthrough();
-export type RuntimeEvent = z.infer<typeof RuntimeEventSchema>;
+export const RuntimeEventSchema = z
+  .object({
+    type: z.string(),
+    workspaceId: z.string(),
+  })
+  .passthrough()
+export type RuntimeEvent = z.infer<typeof RuntimeEventSchema>
 
 // ── Chat / Workspace API ─────────────────────────────────────────────────
 
 export const chatApi = {
   chat: (message: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ message }),
-      signal,
-    }, z.object({ workspaceId: z.string(), planId: z.string(), status: z.string() })),
+    fetchJson(
+      `${BASE}/chat`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ message }),
+        signal,
+      },
+      z.object({ workspaceId: z.string(), planId: z.string(), status: z.string() }),
+    ),
 
   getWorkspace: (id: string, signal?: AbortSignal) =>
     fetchJson(`${BASE}/workspaces/${encodeURIComponent(id)}`, { signal }, WorkspaceSchema),
 
   listArtifacts: (id: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/workspaces/${encodeURIComponent(id)}/artifacts`, { signal }, z.object({
-      workspaceId: z.string(),
-      artifacts: z.array(z.string()),
-    })),
+    fetchJson(
+      `${BASE}/workspaces/${encodeURIComponent(id)}/artifacts`,
+      { signal },
+      z.object({
+        workspaceId: z.string(),
+        artifacts: z.array(z.string()),
+      }),
+    ),
 
   readArtifact: async (workspaceId: string, name: string): Promise<string> => {
-    const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(name)}`);
-    if (!res.ok) throw new Error(`Artifact not found: ${name}`);
-    return res.text();
+    const res = await fetch(
+      `${BASE}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(name)}`,
+    )
+    if (!res.ok) throw new Error(`Artifact not found: ${name}`)
+    return res.text()
   },
 
   getEvents: (id: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/workspaces/${encodeURIComponent(id)}/events`, { signal }, z.object({
-      workspaceId: z.string(),
-      events: z.array(RuntimeEventSchema),
-    })),
+    fetchJson(
+      `${BASE}/workspaces/${encodeURIComponent(id)}/events`,
+      { signal },
+      z.object({
+        workspaceId: z.string(),
+        events: z.array(RuntimeEventSchema),
+      }),
+    ),
 
   listProviders: (signal?: AbortSignal) =>
     fetchJson(`${BASE}/providers`, { signal }, ProviderListResponseSchema),
 
   setDefaultProvider: (providerId: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/system/providers/default`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ providerId }),
-      signal,
-    }, z.object({ ok: z.boolean(), providerId: z.string() })),
+    fetchJson(
+      `${BASE}/system/providers/default`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ providerId }),
+        signal,
+      },
+      z.object({ ok: z.boolean(), providerId: z.string() }),
+    ),
 
   setProviderModel: (providerId: string, model: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/system/providers/${encodeURIComponent(providerId)}/model`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ model }),
-      signal,
-    }, z.object({ ok: z.boolean(), providerId: z.string(), model: z.string() })),
-};
+    fetchJson(
+      `${BASE}/system/providers/${encodeURIComponent(providerId)}/model`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ model }),
+        signal,
+      },
+      z.object({ ok: z.boolean(), providerId: z.string(), model: z.string() }),
+    ),
+}
 
 // ── Usage API ──────────────────────────────────────────────────────────────
 
@@ -502,4 +574,4 @@ export const usageApi = {
       { signal },
       UsageDailyResponseSchema,
     ),
-};
+}
