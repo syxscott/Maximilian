@@ -370,7 +370,12 @@ export class AgentRuntime {
     meta: { workspaceId: string; taskId: string; tool: string; target: string },
   ): Promise<"allow" | "deny"> {
     const existing = this.permissionResolvers.get(requestId)
-    if (existing) return new Promise((resolve) => existing.resolve)
+    if (existing) {
+      // Duplicate requestId (likely a runtime re-entry or auto-retry). The
+      // original prompt is already in flight — refuse the second call rather
+      // than returning a Promise that resolves on a stale closure.
+      throw new Error(`permission request ${requestId} already pending`)
+    }
     const promptedAt = new Date().toISOString()
     this.permissionAudit.record({
       at: promptedAt,

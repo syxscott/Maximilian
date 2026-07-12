@@ -45,7 +45,7 @@ export function AgentPanel({ workspace, events }: AgentPanelProps) {
   useLocale()
   const tasks = workspace?.plan?.tasks ?? []
   const taskErrors = new Map<string, string>(
-    workspace?.results?.filter((r) => r.error).map((r) => [r.taskId, r.error as string]) ?? [],
+    tasks.filter((task) => task.error).map((task) => [task.id, task.error as string]),
   )
 
   if (tasks.length === 0) {

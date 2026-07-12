@@ -24,6 +24,7 @@ export interface Subscription {
   secret: string
   createdAt: string
   createdBy?: string
+  tenantId?: string
   lastDeliveredAt?: string
   totalDeliveries: number
   totalFailures: number
@@ -39,12 +40,17 @@ interface SseClient {
 const subscriptions = new Map<string, Subscription>()
 const sseClients = new Map<string, SseClient>()
 
-export function listSubscriptions(): Subscription[] {
-  return [...subscriptions.values()]
+export function listSubscriptions(tenantId?: string): Subscription[] {
+  const all = [...subscriptions.values()]
+  if (!tenantId) return all
+  return all.filter((s) => !s.tenantId || s.tenantId === tenantId)
 }
 
-export function getSubscription(id: string): Subscription | undefined {
-  return subscriptions.get(id)
+export function getSubscription(id: string, tenantId?: string): Subscription | undefined {
+  const sub = subscriptions.get(id)
+  if (!sub) return undefined
+  if (tenantId && sub.tenantId && sub.tenantId !== tenantId) return undefined
+  return sub
 }
 
 export function createSubscription(input: {
@@ -52,6 +58,7 @@ export function createSubscription(input: {
   target: string
   events?: string[]
   createdBy?: string
+  tenantId?: string
 }): Subscription {
   const sub: Subscription = {
     id: `sub_${randomUUID().slice(0, 8)}`,
@@ -61,6 +68,7 @@ export function createSubscription(input: {
     secret: randomUUID(),
     createdAt: new Date().toISOString(),
     createdBy: input.createdBy,
+    tenantId: input.tenantId,
     totalDeliveries: 0,
     totalFailures: 0,
   }
@@ -68,7 +76,10 @@ export function createSubscription(input: {
   return sub
 }
 
-export function deleteSubscription(id: string): boolean {
+export function deleteSubscription(id: string, tenantId?: string): boolean {
+  const sub = subscriptions.get(id)
+  if (!sub) return false
+  if (tenantId && sub.tenantId && sub.tenantId !== tenantId) return false
   return subscriptions.delete(id)
 }
 
@@ -90,7 +101,11 @@ export async function publishEvent(eventName: string, payload: unknown): Promise
     if (sub.type !== "webhook") continue
     if (sub.events.length > 0 && !sub.events.includes(eventName)) continue
 
-    const body = JSON.stringify({ event: eventName, payload, deliveredAt: new Date().toISOString() })
+    const body = JSON.stringify({
+      event: eventName,
+      payload,
+      deliveredAt: new Date().toISOString(),
+    })
     const sig = createHmac("sha256", sub.secret).update(body).digest("hex")
     try {
       const res = await fetch(sub.target, {

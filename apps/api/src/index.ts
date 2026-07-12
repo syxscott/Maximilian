@@ -1276,6 +1276,7 @@ if (db && config.JWT_SECRET) {
     jwtSecret: config.JWT_SECRET,
     jwtExpiresIn: config.JWT_EXPIRES_IN,
     jwtRefreshExpiresIn: config.JWT_REFRESH_EXPIRES_IN,
+    multiTenant: config.MULTI_TENANT_ENABLED,
   })
   api.openapi(authRegisterRoute, auth.register)
   api.openapi(authLoginRoute, auth.login)
@@ -1541,7 +1542,9 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
                 } catch {}
               }
             })
-            .catch(() => {})
+            .catch((err) => {
+              log.warn({ err, workspaceId: id }, "workspace reload failed in SSE loop")
+            })
         }
       })
 
@@ -1595,22 +1598,25 @@ import {
 api.openapi(createSubscriptionRoute, requireAuthMiddleware(), async (c) => {
   const { type, target, events } = c.req.valid("json")
   const auth = c.get("auth" as never) as { userId?: string } | undefined
-  const sub = createSubscription({ type, target, events, createdBy: auth?.userId })
+  const tenantId = c.get("tenantId" as never) as string | undefined
+  const sub = createSubscription({ type, target, events, createdBy: auth?.userId, tenantId })
   return c.json(sub, 201)
 })
 
 api.openapi(listSubscriptionsRoute, requireAuthMiddleware(), async (c) => {
-  return c.json({ subscriptions: listSubscriptions() })
+  const tenantId = c.get("tenantId" as never) as string | undefined
+  return c.json({ subscriptions: listSubscriptions(tenantId) })
 })
 
 api.openapi(deleteSubscriptionRoute, requireAuthMiddleware(), async (c) => {
   const { id } = c.req.valid("param")
-  const ok = deleteSubscription(id)
+  const tenantId = c.get("tenantId" as never) as string | undefined
+  const ok = deleteSubscription(id, tenantId)
   return ok ? c.body(null, 204) : c.json({ error: "Not found" }, 404)
 })
 
 // SSE stream for global events (webhook alternative — no setup, no HMAC).
-api.openapi(streamEventsRoute, async (c) => {
+api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
   const eventsParam = c.req.query("events")
   const events = eventsParam ? eventsParam.split(",").map((s) => s.trim()) : []
 
@@ -1675,14 +1681,14 @@ void publishEvent
 // Evolution routes
 if (evolution) {
   const evo = evolutionRoutes({ facade: evolution })
-  api.openapi(listMetricsRoute, evo.listMetrics)
-  api.openapi(getMetricRoute, evo.getMetric)
-  api.openapi(listAgentsRoute, evo.listAgents)
-  api.openapi(getAgentRoute, evo.getAgent)
-  api.openapi(leaderboardRoute, evo.leaderboard)
-  api.openapi(leaderboardForRoleRoute, evo.leaderboardForRole)
-  api.openapi(listVersionsRoute, evo.listVersions)
-  api.openapi(listDecisionsRoute, evo.listDecisions)
+  api.openapi(listMetricsRoute, requireAuthMiddleware(), evo.listMetrics)
+  api.openapi(getMetricRoute, requireAuthMiddleware(), evo.getMetric)
+  api.openapi(listAgentsRoute, requireAuthMiddleware(), evo.listAgents)
+  api.openapi(getAgentRoute, requireAuthMiddleware(), evo.getAgent)
+  api.openapi(leaderboardRoute, requireAuthMiddleware(), evo.leaderboard)
+  api.openapi(leaderboardForRoleRoute, requireAuthMiddleware(), evo.leaderboardForRole)
+  api.openapi(listVersionsRoute, requireAuthMiddleware(), evo.listVersions)
+  api.openapi(listDecisionsRoute, requireAuthMiddleware(), evo.listDecisions)
   api.openapi(recordFeedbackRoute, requireAuthMiddleware(), evo.recordFeedback)
   api.openapi(triggerEvolveRoute, requireAuthMiddleware(), evo.triggerEvolve)
 }
@@ -1690,20 +1696,20 @@ if (evolution) {
 // Phase 5.7 — Learning Dashboard
 if (learningApi) {
   const lr = learningRoutes({ api: learningApi })
-  api.openapi(learningStatusRoute, lr.status)
-  api.openapi(learningAgentsRoute, lr.agents)
-  api.openapi(learningEvolutionHistoryRoute, lr.evolutionHistory)
-  api.openapi(learningFailurePatternsRoute, lr.failurePatterns)
+  api.openapi(learningStatusRoute, requireAuthMiddleware(), lr.status)
+  api.openapi(learningAgentsRoute, requireAuthMiddleware(), lr.agents)
+  api.openapi(learningEvolutionHistoryRoute, requireAuthMiddleware(), lr.evolutionHistory)
+  api.openapi(learningFailurePatternsRoute, requireAuthMiddleware(), lr.failurePatterns)
   api.openapi(learningMineFailurePatternsRoute, requireAuthMiddleware(), lr.mineFailurePatterns)
 }
 
 // Phase 5.1 — Execution History
 if (executionStore) {
   const er = executionRoutes({ store: executionStore })
-  api.openapi(listExecutionsRoute, er.listAll)
-  api.openapi(listExecutionsForWorkspaceRoute, er.listForWorkspace)
-  api.openapi(listExecutionsForRoleRoute, er.listForRole)
-  api.openapi(getExecutionRoute, er.get)
+  api.openapi(listExecutionsRoute, requireAuthMiddleware(), er.listAll)
+  api.openapi(listExecutionsForWorkspaceRoute, requireAuthMiddleware(), er.listForWorkspace)
+  api.openapi(listExecutionsForRoleRoute, requireAuthMiddleware(), er.listForRole)
+  api.openapi(getExecutionRoute, requireAuthMiddleware(), er.get)
   api.openapi(appendExecutionFeedbackRoute, requireAuthMiddleware(), er.appendFeedback)
 }
 
@@ -1717,33 +1723,38 @@ if (metaOrchestrator && metaGovernance && metaOrgMemory && metaSimulation) {
     registry: metaRegistry!,
     discovery: metaDiscovery!,
   })
-  api.openapi(listCapabilitiesRoute, mr.listCapabilities)
-  api.openapi(getCapabilityRoute, mr.getCapability)
-  api.openapi(listProposalsRoute, mr.listProposals)
+  api.openapi(listCapabilitiesRoute, requireAuthMiddleware(), mr.listCapabilities)
+  api.openapi(getCapabilityRoute, requireAuthMiddleware(), mr.getCapability)
+  api.openapi(listProposalsRoute, requireAuthMiddleware(), mr.listProposals)
   api.openapi(runCycleRoute, requireAuthMiddleware(), mr.runCycle)
-  api.openapi(listEventsRoute, mr.listEvents)
-  api.openapi(countEventsRoute, mr.countEvents)
+  api.openapi(listEventsRoute, requireAuthMiddleware(), mr.listEvents)
+  api.openapi(countEventsRoute, requireAuthMiddleware(), mr.countEvents)
   api.openapi(checkGovernanceRoute, requireAuthMiddleware(), mr.checkGovernance)
   api.openapi(simulateRoute, requireAuthMiddleware(), mr.simulate)
   api.openapi(compareSimulationsRoute, requireAuthMiddleware(), mr.compareSimulations)
-  api.openapi(getGovernanceConfigRoute, mr.getGovernanceConfig)
-  api.openapi(putGovernanceConfigRoute, requireAuthMiddleware(), mr.putGovernanceConfig)
+  api.openapi(getGovernanceConfigRoute, requireAuthMiddleware(), mr.getGovernanceConfig)
+  api.openapi(
+    putGovernanceConfigRoute,
+    requireAuthMiddleware(),
+    requireRole("admin"),
+    mr.putGovernanceConfig,
+  )
 }
 
 // Phase 10 — Observability routes
 if (telemetry) {
   const or = obsRoutes({ telemetry })
-  api.openapi(listObsExecutionsRoute, or.listExecutions)
-  api.openapi(listObsEvolutionsRoute, or.listEvolutions)
-  api.openapi(lineageByRoleRoute, or.lineageByRole)
+  api.openapi(listObsExecutionsRoute, requireAuthMiddleware(), or.listExecutions)
+  api.openapi(listObsEvolutionsRoute, requireAuthMiddleware(), or.listEvolutions)
+  api.openapi(lineageByRoleRoute, requireAuthMiddleware(), or.lineageByRole)
 }
 
 // Usage aggregation routes — depend on evolution.metrics. When evolution is
 // disabled we return 503 so the frontend can detect "metrics off" cleanly.
 const ur = usageRoutes({ evolution })
-api.openapi(usageSummaryRoute, ur.summary)
-api.openapi(usageDailyRoute, ur.daily)
-api.openapi(usageLatencyRoute, ur.latency)
+api.openapi(usageSummaryRoute, requireAuthMiddleware(), ur.summary)
+api.openapi(usageDailyRoute, requireAuthMiddleware(), ur.daily)
+api.openapi(usageLatencyRoute, requireAuthMiddleware(), ur.latency)
 
 // Phase 11 — Visualizer adapter endpoints
 if (telemetry) {

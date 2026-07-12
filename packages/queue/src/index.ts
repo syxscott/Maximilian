@@ -119,19 +119,56 @@ export function createWorker(
  * The API calls this before enqueuing a workspace job. If the heartbeat
  * is missing or older than HEARTBEAT_MAX_AGE_MS, the API returns 503
  * rather than silently enqueueing into a void.
+ *
+ * Connection reuse: a long-lived Redis client is cached per `redisUrl` so
+ * repeated heartbeats (e.g. on every chat request) don't open a fresh
+ * TCP connection each time. The cache is a module-level Map; tests that
+ * need to reset it can call `__resetHeartbeatConnCacheForTest()`.
  */
-export async function readWorkerHeartbeat(redisUrl: string): Promise<number | undefined> {
+const heartbeatConnCache = new Map<string, Redis>()
+
+function getOrCreateHeartbeatConn(redisUrl: string): Redis {
+  const cached = heartbeatConnCache.get(redisUrl)
+  if (cached && cached.status !== "end") return cached
   const conn = new Redis(redisUrl, {
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
+    lazyConnect: false,
   })
+  conn.on("end", () => {
+    if (heartbeatConnCache.get(redisUrl) === conn) heartbeatConnCache.delete(redisUrl)
+  })
+  conn.on("error", () => {
+    // Errors are surfaced via the GET promise — keep the connection alive
+    // so transient blips don't tear down the cache entry.
+  })
+  heartbeatConnCache.set(redisUrl, conn)
+  return conn
+}
+
+/** Test-only hook to clear the cached heartbeat Redis client. */
+export function __resetHeartbeatConnCacheForTest(): void {
+  for (const conn of heartbeatConnCache.values()) {
+    try {
+      conn.disconnect()
+    } catch {
+      // ignore — best-effort cleanup
+    }
+  }
+  heartbeatConnCache.clear()
+}
+
+export async function readWorkerHeartbeat(redisUrl: string): Promise<number | undefined> {
+  const conn = getOrCreateHeartbeatConn(redisUrl)
   try {
     const raw = await conn.get(HEARTBEAT_KEY)
     if (!raw) return undefined
     const ts = Number(raw)
     return Number.isFinite(ts) ? ts : undefined
-  } finally {
-    conn.disconnect()
+  } catch {
+    // Connection broken — drop the cached entry so the next call reconnects.
+    if (heartbeatConnCache.get(redisUrl) === conn) heartbeatConnCache.delete(redisUrl)
+    return undefined
   }
 }
 
