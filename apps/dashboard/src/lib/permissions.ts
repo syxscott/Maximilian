@@ -13,16 +13,16 @@
  * the API surface and the in-memory cache.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { BASE, fetchJson, authHeaders, z } from "../api";
+import { useCallback, useEffect, useState } from "react"
+import { BASE, fetchJson, authHeaders, z } from "../api"
 
-export type Permission = "allow" | "ask" | "deny";
-export const TOOL_NAMES = ["bash", "read", "write", "edit", "glob", "grep"] as const;
-export type ToolName = (typeof TOOL_NAMES)[number];
+export type Permission = "allow" | "ask" | "deny"
+export const TOOL_NAMES = ["bash", "read", "write", "edit", "glob", "grep"] as const
+export type ToolName = (typeof TOOL_NAMES)[number]
 
 export interface Permissions {
-  defaults: Record<ToolName, Permission>;
-  patterns: Partial<Record<ToolName, Record<string, Permission>>>;
+  defaults: Record<ToolName, Permission>
+  patterns: Partial<Record<ToolName, Record<string, Permission>>>
 }
 
 export const DEFAULT_PERMISSIONS: Permissions = {
@@ -35,31 +35,37 @@ export const DEFAULT_PERMISSIONS: Permissions = {
     grep: "allow",
   },
   patterns: {},
-};
+}
 
 // ── REST client ──────────────────────────────────────────────────────────
 
 const permSchema = z
   .object({
     defaults: z.record(z.union([z.literal("allow"), z.literal("ask"), z.literal("deny")])),
-    patterns: z.record(z.record(z.union([z.literal("allow"), z.literal("ask"), z.literal("deny")]))),
+    patterns: z.record(
+      z.record(z.union([z.literal("allow"), z.literal("ask"), z.literal("deny")])),
+    ),
   })
-  .passthrough();
+  .passthrough()
 
-const testSchema = z.object({ pattern: z.string(), value: z.string(), matches: z.boolean() });
+const testSchema = z.object({ pattern: z.string(), value: z.string(), matches: z.boolean() })
 const answerSchema = z.object({
   requestId: z.string(),
   decision: z.union([z.literal("allow"), z.literal("deny")]),
-});
+})
 const approvalAnswerSchema = z.object({
   requestId: z.string(),
   decision: z.union([z.literal("approve"), z.literal("reject")]),
   comment: z.string().optional(),
-});
+})
 
 export const permissionsApi = {
   get: (signal?: AbortSignal): Promise<Permissions> =>
-    fetchJson(`${BASE}/permissions`, { headers: authHeaders(), signal }, permSchema) as Promise<Permissions>,
+    fetchJson(
+      `${BASE}/permissions`,
+      { headers: authHeaders(), signal },
+      permSchema,
+    ) as Promise<Permissions>,
 
   put: (config: Permissions, signal?: AbortSignal): Promise<Permissions> =>
     fetchJson(
@@ -92,7 +98,11 @@ export const permissionsApi = {
       testSchema,
     ) as Promise<{ matches: boolean }>,
 
-  answer: (requestId: string, decision: "allow" | "deny", signal?: AbortSignal): Promise<{ requestId: string; decision: "allow" | "deny" }> =>
+  answer: (
+    requestId: string,
+    decision: "allow" | "deny",
+    signal?: AbortSignal,
+  ): Promise<{ requestId: string; decision: "allow" | "deny" }> =>
     fetchJson(
       `${BASE}/permissions/answer`,
       {
@@ -104,7 +114,12 @@ export const permissionsApi = {
       answerSchema,
     ) as Promise<{ requestId: string; decision: "allow" | "deny" }>,
 
-  answerApproval: (requestId: string, decision: "approve" | "reject", comment?: string, signal?: AbortSignal): Promise<{ requestId: string; decision: "approve" | "reject"; comment?: string }> =>
+  answerApproval: (
+    requestId: string,
+    decision: "approve" | "reject",
+    comment?: string,
+    signal?: AbortSignal,
+  ): Promise<{ requestId: string; decision: "approve" | "reject"; comment?: string }> =>
     fetchJson(
       `${BASE}/approvals/answer`,
       {
@@ -115,17 +130,22 @@ export const permissionsApi = {
       },
       approvalAnswerSchema,
     ) as Promise<{ requestId: string; decision: "approve" | "reject"; comment?: string }>,
-};
+}
 
 // ── Hooks ────────────────────────────────────────────────────────────────
 
 export interface UsePermissionsResult {
-  config: Permissions;
-  loading: boolean;
-  error: string | null;
-  reload: () => Promise<void>;
-  save: (next: Permissions) => Promise<void>;
-  reset: () => Promise<void>;
+  config: Permissions
+  loading: boolean
+  error: string | null
+  /** Last save() error, separate from `error` (which is for load failures).
+   *  Cleared on the next successful save; callers should render it
+   *  alongside the matrix so a 4xx/5xx doesn't look like a silent success. */
+  saveError: string | null
+  saving: boolean
+  reload: () => Promise<void>
+  save: (next: Permissions) => Promise<void>
+  reset: () => Promise<void>
 }
 
 /**
@@ -133,40 +153,59 @@ export interface UsePermissionsResult {
  * UI never has to handle a half-loaded state.
  */
 export function usePermissions(): UsePermissionsResult {
-  const [config, setConfig] = useState<Permissions>(DEFAULT_PERMISSIONS);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [config, setConfig] = useState<Permissions>(DEFAULT_PERMISSIONS)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
-      const next = await permissionsApi.get();
-      setConfig(normalise(next));
+      const next = await permissionsApi.get()
+      setConfig(normalise(next))
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setConfig(DEFAULT_PERMISSIONS);
+      setError(err instanceof Error ? err.message : String(err))
+      setConfig(DEFAULT_PERMISSIONS)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   const save = useCallback(async (next: Permissions) => {
-    setError(null);
-    const persisted = await permissionsApi.put(normalise(next));
-    setConfig(normalise(persisted));
-  }, []);
+    setSaveError(null)
+    setSaving(true)
+    try {
+      const persisted = await permissionsApi.put(normalise(next))
+      setConfig(normalise(persisted))
+    } catch (err) {
+      // Surface the failure up so `PermissionsMatrix` can render it. The
+      // previous implementation rethrew and the matrix swallow-logged it,
+      // so a failed PUT looked indistinguishable from a no-op success.
+      setSaveError(err instanceof Error ? err.message : String(err))
+      throw err
+    } finally {
+      setSaving(false)
+    }
+  }, [])
 
   const reset = useCallback(async () => {
-    const next = await permissionsApi.reset();
-    setConfig(normalise(next));
-  }, []);
+    setSaveError(null)
+    try {
+      const next = await permissionsApi.reset()
+      setConfig(normalise(next))
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err))
+      throw err
+    }
+  }, [])
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void reload()
+  }, [reload])
 
-  return { config, loading, error, reload, save, reset };
+  return { config, loading, error, saveError, saving, reload, save, reset }
 }
 
 /**
@@ -181,35 +220,35 @@ export function usePermissions(): UsePermissionsResult {
  * cost of a second connection and the races between two replay buffers.
  */
 export interface PendingPermission {
-  kind: "permission" | "approval";
-  requestId: string;
-  workspaceId: string;
-  taskId: string;
-  tool?: string;
-  target?: string;
-  prompt?: string;
-  reason?: string;
-  requireComment?: boolean;
+  kind: "permission" | "approval"
+  requestId: string
+  workspaceId: string
+  taskId: string
+  tool?: string
+  target?: string
+  prompt?: string
+  reason?: string
+  requireComment?: boolean
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 /** Coerce an unknown shape into a known-good `Permissions` (drop unknown tools). */
 function normalise(raw: Permissions): Permissions {
-  const defaults = { ...DEFAULT_PERMISSIONS.defaults };
+  const defaults = { ...DEFAULT_PERMISSIONS.defaults }
   for (const tool of TOOL_NAMES) {
-    const d = (raw.defaults ?? {})[tool];
-    if (d === "allow" || d === "ask" || d === "deny") defaults[tool] = d;
+    const d = (raw.defaults ?? {})[tool]
+    if (d === "allow" || d === "ask" || d === "deny") defaults[tool] = d
   }
-  const patterns: Permissions["patterns"] = {};
+  const patterns: Permissions["patterns"] = {}
   for (const tool of TOOL_NAMES) {
-    const p = (raw.patterns ?? {})[tool];
-    if (!p || typeof p !== "object") continue;
-    const filtered: Record<string, Permission> = {};
+    const p = (raw.patterns ?? {})[tool]
+    if (!p || typeof p !== "object") continue
+    const filtered: Record<string, Permission> = {}
     for (const [pat, action] of Object.entries(p)) {
-      if (action === "allow" || action === "ask" || action === "deny") filtered[pat] = action;
+      if (action === "allow" || action === "ask" || action === "deny") filtered[pat] = action
     }
-    if (Object.keys(filtered).length > 0) patterns[tool] = filtered;
+    if (Object.keys(filtered).length > 0) patterns[tool] = filtered
   }
-  return { defaults, patterns };
+  return { defaults, patterns }
 }

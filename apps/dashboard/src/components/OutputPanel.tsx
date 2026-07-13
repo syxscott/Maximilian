@@ -55,6 +55,13 @@ export function OutputPanel({
   useLocale()
   const results = (workspace?.results ?? []).filter((r) => r.agentRole !== "review")
   const [openIdx, setOpenIdx] = useState<number | null>(null)
+  // Clamp `openIdx` to the current `results` range. The previous version
+  // passed the raw state through, so a workspace switch that yielded
+  // fewer results left `openIdx` pointing past the end of the new
+  // array — the dialog then opened with an undefined `active` and
+  // rendered an empty title / blank body. Reset to null when out of
+  // range so the dialog closes cleanly on a new (shorter) workspace.
+  const clampedOpenIdx = openIdx !== null && openIdx < results.length ? openIdx : null
 
   if (results.length === 0) {
     return (
@@ -65,7 +72,7 @@ export function OutputPanel({
   }
 
   const tabValue = (r: { id: string }, i: number) => `${r.id}::${i}`
-  const active = openIdx !== null ? results[openIdx] : null
+  const active = clampedOpenIdx !== null ? results[clampedOpenIdx] : null
 
   return (
     <>
@@ -109,9 +116,11 @@ export function OutputPanel({
         })}
       </Tabs>
 
-      <Dialog open={openIdx !== null} onOpenChange={(o) => !o && setOpenIdx(null)}>
+      <Dialog open={clampedOpenIdx !== null} onOpenChange={(o) => !o && setOpenIdx(null)}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
-          <DialogTitle>{active ? `${active.agentRole} #${(openIdx ?? 0) + 1}` : ""}</DialogTitle>
+          <DialogTitle>
+            {active ? `${active.agentRole} #${(clampedOpenIdx ?? 0) + 1}` : ""}
+          </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground font-mono">
             {active?.id.slice(0, 12)}
           </DialogDescription>

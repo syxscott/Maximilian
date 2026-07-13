@@ -85,7 +85,7 @@ export async function run(input: TuiInput): Promise<void> {
   })
   // Surface where we ended up reading from — operators debugging "why is
   // my TUI in Chinese" need this hint in stderr.
-  // eslint-disable-next-line no-console
+
   console.error(`[tui] locale=${resolved} stateDir=${stateDir()}`)
 
   // OpenCode wraps the whole thing in an `Effect.scoped` to manage cleanup of
@@ -93,7 +93,6 @@ export async function run(input: TuiInput): Promise<void> {
   // lifecycle with a try/finally around `render()`.
   const onExit = (reason?: unknown) => {
     if (reason !== undefined) {
-      // eslint-disable-next-line no-console
       console.error(reason)
     }
   }
@@ -114,7 +113,6 @@ export async function run(input: TuiInput): Promise<void> {
     try {
       await input.pluginHost.dispose()
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error("Failed to dispose TUI plugins", err)
     }
   }
@@ -187,7 +185,6 @@ class ReactErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBounda
   }
 
   override componentDidCatch(error: unknown) {
-    // eslint-disable-next-line no-console
     console.error("TUI fatal error", error)
   }
 
@@ -297,11 +294,14 @@ function App({ config }: AppProps) {
     if (key.ctrl && input === "t") {
       setTerminalTitleEnabled((prev) => !prev)
     }
-    // `/language` slash command: opens the language picker dialog. Mirrors the
-    // `/theme` convention used by OpenCode's command palette.
-    if (input === "/") {
-      openLanguageDialog()
-    }
+    // NOTE: We previously also opened the language dialog on `/`, but
+    // that keypress needs to reach the prompt's autocomplete so the
+    // user can type `/language`, `/help`, etc. as slash commands.
+    // A global `/` keybind intercepts the key before the prompt's
+    // `TextInput` sees it, so the user could never type a leading
+    // slash in the prompt without the language dialog popping up.
+    // The language picker remains available via the command palette
+    // (ctrl+\) and via `/language` inside the prompt.
   })
 
   const routeData = route.data as Route
@@ -401,7 +401,7 @@ function Home() {
         </>
       )}
       <Text color={theme.theme.textMuted}>
-        Press / for language, ctrl+\ for the command palette (stub).
+        Type /language in the prompt, or ctrl+\ for the command palette (stub).
       </Text>
     </Box>
   )

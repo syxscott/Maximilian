@@ -12,7 +12,7 @@
  * deep identity for change detection.
  */
 
-import { useEffect, useReducer, useRef } from "react"
+import { useEffect, useReducer, useRef, type Dispatch } from "react"
 import { createSimpleContext } from "./helper"
 import { useEvent } from "./event"
 import { useSDK } from "./sdk"
@@ -23,22 +23,60 @@ import { useKV } from "./kv"
 import { useProject } from "./project"
 
 export type SyncEvent =
-  | { type: "permission.asked" | "permission.replied"; properties: { sessionID: string; requestID: string; id?: string } & Record<string, unknown> }
-  | { type: "question.asked" | "question.replied" | "question.rejected"; properties: { sessionID: string; requestID: string } & Record<string, unknown> }
+  | {
+      type: "permission.asked" | "permission.replied"
+      properties: { sessionID: string; requestID: string; id?: string } & Record<string, unknown>
+    }
+  | {
+      type: "question.asked" | "question.replied" | "question.rejected"
+      properties: { sessionID: string; requestID: string } & Record<string, unknown>
+    }
   | { type: "todo.updated"; properties: { sessionID: string; todos: unknown[] } }
   | { type: "session.diff"; properties: { sessionID: string; diff: unknown[] } }
   | { type: "session.deleted"; properties: { info: { id: string } } }
   | { type: "session.updated"; properties: { info: { id: string } & Record<string, unknown> } }
-  | { type: "session.next.moved"; properties: { sessionID: string; location: { directory: string; workspaceID: string }; subdirectory?: string; timestamp: number } }
+  | {
+      type: "session.next.moved"
+      properties: {
+        sessionID: string
+        location: { directory: string; workspaceID: string }
+        subdirectory?: string
+        timestamp: number
+      }
+    }
   | { type: "session.status"; properties: { sessionID: string; status: unknown } }
-  | { type: "message.updated"; properties: { info: { sessionID: string; id: string } & Record<string, unknown> } }
+  | {
+      type: "message.updated"
+      properties: { info: { sessionID: string; id: string } & Record<string, unknown> }
+    }
   | { type: "message.removed"; properties: { sessionID: string; messageID: string } }
-  | { type: "message.part.updated"; properties: { part: { sessionID: string; messageID: string; id: string } & Record<string, unknown> } }
-  | { type: "message.part.delta"; properties: { sessionID: string; messageID: string; partID: string; field: string; delta: string } }
-  | { type: "message.part.removed"; properties: { sessionID: string; messageID: string; partID: string } }
+  | {
+      type: "message.part.updated"
+      properties: {
+        part: { sessionID: string; messageID: string; id: string } & Record<string, unknown>
+      }
+    }
+  | {
+      type: "message.part.delta"
+      properties: {
+        sessionID: string
+        messageID: string
+        partID: string
+        field: string
+        delta: string
+      }
+    }
+  | {
+      type: "message.part.removed"
+      properties: { sessionID: string; messageID: string; partID: string }
+    }
   | { type: "lsp.updated"; properties: Record<string, never> }
   | { type: "vcs.branch.updated"; properties: { branch: string } }
   | { type: "server.instance.disposed"; properties?: Record<string, never> }
+  // Internal command: not produced by the server. `session.refresh()` dispatches
+  // this to merge a freshly fetched list into reducer state without mutating
+  // it in place. Kept here so consumers can typecheck `dispatch(event)` calls.
+  | { type: "session.list"; sessions: unknown[] }
 
 export type SyncData = {
   status: "loading" | "partial" | "complete"
@@ -95,17 +133,39 @@ const initialData: SyncData = {
 function reducer(state: SyncData, event: SyncEvent): SyncData {
   switch (event.type) {
     case "session.status":
-      return { ...state, session_status: { ...state.session_status, [event.properties.sessionID]: event.properties.status } }
+      return {
+        ...state,
+        session_status: {
+          ...state.session_status,
+          [event.properties.sessionID]: event.properties.status,
+        },
+      }
     case "todo.updated":
-      return { ...state, todo: { ...state.todo, [event.properties.sessionID]: event.properties.todos } }
+      return {
+        ...state,
+        todo: { ...state.todo, [event.properties.sessionID]: event.properties.todos },
+      }
     case "session.diff":
-      return { ...state, session_diff: { ...state.session_diff, [event.properties.sessionID]: event.properties.diff } }
+      return {
+        ...state,
+        session_diff: {
+          ...state.session_diff,
+          [event.properties.sessionID]: event.properties.diff,
+        },
+      }
     case "lsp.updated":
       return state
     case "vcs.branch.updated":
       return { ...state, vcs: { ...(state.vcs ?? {}), branch: event.properties.branch } }
     case "server.instance.disposed":
       return { ...state, status: "loading" }
+    // Internal event used by `session.refresh()` so the new list actually
+    // flows through React instead of being silently mutated into state.
+    // The previous version assigned `(data as ...).session = list` directly
+    // on the reducer state, which bypassed React's change detection — the
+    // UI kept rendering the old session list forever.
+    case "session.list":
+      return { ...state, session: event.sessions }
     default:
       return state
   }
@@ -128,6 +188,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     const [data, dispatch] = useReducer(reducer, initialData)
     const bootstrapRef = useRef<Promise<void> | null>(null)
+    const dispatchRef = useRef<Dispatch<SyncEvent>>(dispatch)
+    dispatchRef.current = dispatch
 
     useEffect(() => {
       const off = event.subscribe((evt) => {
@@ -146,9 +208,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const workspace = project.workspace.current()
           // Non-blocking fetch; consumers can call `sync.ready` to gate UI.
           await Promise.all([
-            sdk.client.get<{ providers: unknown[]; default: Record<string, string> }>(`/config/providers?workspace=${encodeURIComponent(workspace)}`).catch(() => null),
-            sdk.client.get<unknown[]>(`/provider/list?workspace=${encodeURIComponent(workspace)}`).catch(() => null),
-            sdk.client.get<unknown[]>(`/app/agents?workspace=${encodeURIComponent(workspace)}`).catch(() => null),
+            sdk.client
+              .get<{ providers: unknown[]; default: Record<string, string> }>(
+                `/config/providers?workspace=${encodeURIComponent(workspace)}`,
+              )
+              .catch(() => null),
+            sdk.client
+              .get<unknown[]>(`/provider/list?workspace=${encodeURIComponent(workspace)}`)
+              .catch(() => null),
+            sdk.client
+              .get<unknown[]>(`/app/agents?workspace=${encodeURIComponent(workspace)}`)
+              .catch(() => null),
           ])
         } catch (err) {
           console.error("tui bootstrap failed", err)
@@ -183,12 +253,16 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
         async refresh() {
           const list = await sdk.client
-            .get<unknown[]>(`/session/list?workspace=${encodeURIComponent(project.workspace.current())}`)
+            .get<unknown[]>(
+              `/session/list?workspace=${encodeURIComponent(project.workspace.current())}`,
+            )
             .catch(() => [])
           if (Array.isArray(list)) {
-            // Replace via the dispatch-shaped API: a coarse write is enough
-            // here since this code path is rarely hit.
-            ;(data as { session: unknown[] }).session = list
+            // Flow through the reducer instead of mutating state in place
+            // so React picks up the change. dispatchRef avoids re-creating
+            // this callback on every state update (which would invalidate
+            // every consumer's effect that depends on the sync object).
+            dispatchRef.current({ type: "session.list", sessions: list })
           }
         },
         status(_sessionID: string) {

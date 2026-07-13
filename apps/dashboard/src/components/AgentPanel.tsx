@@ -1,6 +1,6 @@
 import { useLocale, t } from "@max/i18n"
 import { StatusDot } from "./_helpers/StatusDot"
-import type { Workspace, RuntimeEvent } from "../api"
+import type { Workspace } from "../api"
 
 const ROLE_TINT: Record<string, { token: string; muted: string; monogram: string }> = {
   frontend: {
@@ -23,7 +23,6 @@ const ROLE_TINT: Record<string, { token: string; muted: string; monogram: string
 
 export interface AgentPanelProps {
   workspace: Workspace | null
-  events: RuntimeEvent[]
 }
 
 function statusFromTask(s: string, error?: string): "idle" | "running" | "done" | "error" {
@@ -41,7 +40,7 @@ function durationSince(start: string | undefined, now: number): string {
   return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`
 }
 
-export function AgentPanel({ workspace, events }: AgentPanelProps) {
+export function AgentPanel({ workspace }: AgentPanelProps) {
   useLocale()
   const tasks = workspace?.plan?.tasks ?? []
   const taskErrors = new Map<string, string>(

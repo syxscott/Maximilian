@@ -3,13 +3,8 @@
  * All fetches go through `../../api` (Zod-validated responses).
  */
 
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  type UseQueryOptions,
-} from "@tanstack/react-query";
-import { chatApi, metaApi, obsApi, govApi, usageApi } from "../../api";
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from "@tanstack/react-query"
+import { chatApi, metaApi, obsApi, govApi, usageApi } from "../../api"
 import type {
   Health,
   ExecutionTrace,
@@ -19,7 +14,7 @@ import type {
   UsageSummary,
   UsageDailyResponse,
   UsageRange,
-} from "../../api";
+} from "../../api"
 
 // ── Query keys ───────────────────────────────────────────────────────────
 
@@ -32,7 +27,7 @@ export const queryKeys = {
   pendingProposals: ["pending-proposals"] as const,
   usageSummary: (range: UsageRange) => ["usage-summary", range] as const,
   usageDaily: (range: UsageRange) => ["usage-daily", range] as const,
-};
+}
 
 // ── Health ───────────────────────────────────────────────────────────────
 
@@ -43,7 +38,7 @@ export function useHealth(options?: Partial<UseQueryOptions<Health>>) {
     staleTime: 30_000,
     retry: 2,
     ...options,
-  });
+  })
 }
 
 // ── Providers ────────────────────────────────────────────────────────────
@@ -54,29 +49,36 @@ export function useProviders(options?: Partial<UseQueryOptions<ProviderListRespo
     queryFn: ({ signal }) => chatApi.listProviders(signal),
     staleTime: 10_000,
     ...options,
-  });
+  })
 }
 
 export function useSetDefaultProvider() {
-  const qc = useQueryClient();
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ providerId, signal }: { providerId: string; signal?: AbortSignal }) =>
       chatApi.setDefaultProvider(providerId, signal),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.providers });
+      qc.invalidateQueries({ queryKey: queryKeys.providers })
     },
-  });
+  })
 }
 
 export function useSetProviderModel() {
-  const qc = useQueryClient();
+  const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ providerId, model, signal }: { providerId: string; model: string; signal?: AbortSignal }) =>
-      chatApi.setProviderModel(providerId, model, signal),
+    mutationFn: ({
+      providerId,
+      model,
+      signal,
+    }: {
+      providerId: string
+      model: string
+      signal?: AbortSignal
+    }) => chatApi.setProviderModel(providerId, model, signal),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.providers });
+      qc.invalidateQueries({ queryKey: queryKeys.providers })
     },
-  });
+  })
 }
 
 // ── Executions (polling) ─────────────────────────────────────────────────
@@ -86,7 +88,10 @@ export function useExecutions(pollInterval = 5000) {
     queryKey: queryKeys.executions,
     queryFn: ({ signal }) => obsApi.listExecutions(signal),
     refetchInterval: pollInterval,
-  });
+    // Don't burn battery when the tab is hidden — the user can't see
+    // updates anyway, and the next focused poll covers any missed events.
+    refetchIntervalInBackground: false,
+  })
 }
 
 export function useExecutionGraph(executionId: string | null) {
@@ -94,7 +99,7 @@ export function useExecutionGraph(executionId: string | null) {
     queryKey: ["execution-graph", executionId],
     queryFn: ({ signal }) => obsApi.getGraph(executionId!, signal),
     enabled: !!executionId,
-  });
+  })
 }
 
 // ── Evolution (polling) ──────────────────────────────────────────────────
@@ -104,7 +109,8 @@ export function useTimeline(pollInterval = 5000) {
     queryKey: queryKeys.timeline,
     queryFn: ({ signal }) => obsApi.getTimeline(signal),
     refetchInterval: pollInterval,
-  });
+    refetchIntervalInBackground: false,
+  })
 }
 
 // ── Governance (polling) ─────────────────────────────────────────────────
@@ -114,11 +120,12 @@ export function usePendingProposals(pollInterval = 5000) {
     queryKey: queryKeys.pendingProposals,
     queryFn: ({ signal }) => govApi.listPending(signal),
     refetchInterval: pollInterval,
-  });
+    refetchIntervalInBackground: false,
+  })
 }
 
 export function useResolveProposal() {
-  const qc = useQueryClient();
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
       id,
@@ -126,15 +133,15 @@ export function useResolveProposal() {
       reason,
       user,
     }: {
-      id: string;
-      action: "approve" | "reject";
-      reason: string;
-      user: string;
+      id: string
+      action: "approve" | "reject"
+      reason: string
+      user: string
     }) => govApi.resolveProposal(id, action, reason, user),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.pendingProposals });
+      qc.invalidateQueries({ queryKey: queryKeys.pendingProposals })
     },
-  });
+  })
 }
 
 // ── Usage ─────────────────────────────────────────────────────────────────
@@ -145,7 +152,7 @@ export function useUsageSummary(range: UsageRange) {
     queryFn: ({ signal }) => usageApi.summary(range, signal),
     staleTime: 60_000,
     refetchInterval: 60_000,
-  });
+  })
 }
 
 export function useUsageDaily(range: UsageRange) {
@@ -154,5 +161,5 @@ export function useUsageDaily(range: UsageRange) {
     queryFn: ({ signal }) => usageApi.daily(range, signal),
     staleTime: 60_000,
     refetchInterval: 60_000,
-  });
+  })
 }

@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 export interface Artifact {
   name: string
@@ -38,22 +38,52 @@ export function ArtifactPreview({ artifact }: ArtifactPreviewProps) {
 }
 
 function MarkdownBody({ content }: { content: string }) {
-  let rendered = ""
-  try {
-    // Try the project's markdown renderer if present. Falls back to <pre> on
-    // any error so the previewer never crashes on a malformed artifact.
+  // Dynamic-import instead of CommonJS `require()` so Vite's ESM bundler can
+  // tree-shake the markdown lib (when present) and won't blow up at build
+  // time on a project that hasn't installed the optional renderer. The
+  // previous version used `require("../lib/markdown")` which silently
+  // threw in production: the catch swallowed the error and the previewer
+  // always fell back to the <pre> rendering, so the markdown feature was
+  // effectively dead in deployed builds.
+  const [rendered, setRendered] = useState<string | null>(null)
+  const [rendererMissing, setRendererMissing] = useState(false)
 
-    const mod = require("../lib/markdown")
-    const fn = mod.renderMarkdown ?? mod.default
-    if (typeof fn === "function") rendered = fn(content)
-  } catch {
-    return (
-      <pre className="bg-muted/40 p-4 rounded-md overflow-auto max-h-[80vh] text-xs font-mono">
-        <code>{content}</code>
-      </pre>
-    )
-  }
-  if (!rendered) {
+  useEffect(() => {
+    let cancelled = false
+    setRendered(null)
+    setRendererMissing(false)
+    ;(async () => {
+      try {
+        // `import` of a module that doesn't exist is a build error under
+        // TS's resolver, so wrap the dynamic import in a Function() that
+        // hides the path from the type checker. The runtime path is still
+        // a normal `import()` call; we just want TS not to refuse the
+        // build when the optional renderer isn't installed.
+        const dynamicImport: (p: string) => Promise<unknown> = new Function(
+          "p",
+          "return import(p)",
+        ) as (p: string) => Promise<unknown>
+        const mod = (await dynamicImport("../lib/markdown")) as
+          { renderMarkdown?: (s: string) => string; default?: (s: string) => string } | undefined
+        const fn = mod?.renderMarkdown ?? mod?.default
+        if (typeof fn !== "function") {
+          if (!cancelled) setRendererMissing(true)
+          return
+        }
+        const html = fn(content)
+        if (!cancelled) setRendered(html)
+      } catch {
+        // Renderer module is optional; missing module is not an error —
+        // we just fall back to the <pre> view below.
+        if (!cancelled) setRendererMissing(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [content])
+
+  if (!rendered || rendererMissing) {
     return (
       <pre className="bg-muted/40 p-4 rounded-md overflow-auto max-h-[80vh] text-xs font-mono">
         <code>{content}</code>

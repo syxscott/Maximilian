@@ -4,10 +4,14 @@ import { Box, Text, useInput } from "ink"
 // OpenCode's `Dialog` is a modal overlay with a centered panel. In this React
 // 19 + ink port we expose:
 //
-//   - <Dialog>: a single modal panel that calls onClose when escape is pressed.
+//   - <Dialog>: a single modal panel. Pure presentational — it does NOT
+//     register its own `useInput` for ESC, because the surrounding
+//     <DialogProvider> already does (and double-registering causes the
+//     stack's onClose callbacks to fire twice on a single keypress).
 //   - <DialogProvider> + useDialog(): a stack-based registry implemented with
 //     React Context. Components push a node onto the stack and the top of the
-//     stack is rendered above the rest of the app.
+//     stack is rendered above the rest of the app. ESC handling lives HERE
+//     (single source of truth).
 //
 // Notes on differences from OpenCode:
 //   * ink 5.x has no native mouse handling, so we drop the outside-click and
@@ -20,7 +24,6 @@ export type DialogSize = "medium" | "large" | "xlarge"
 
 export interface DialogProps {
   size?: DialogSize
-  onClose?: () => void
   children?: React.ReactNode
 }
 
@@ -30,13 +33,7 @@ const SIZE_TO_WIDTH: Record<DialogSize, number> = {
   xlarge: 116,
 }
 
-export function Dialog({ size = "medium", onClose, children }: DialogProps) {
-  useInput((input, key) => {
-    if (key.escape || input === "q") {
-      onClose?.()
-    }
-  })
-
+export function Dialog({ size = "medium", children }: DialogProps) {
   // The "backdrop" is a tall column that pushes the panel down; ink has no
   // alpha, so we hint at it with a single dim text line above the panel.
   return (
@@ -99,15 +96,22 @@ export function DialogProvider({ children }: DialogProviderProps) {
       stack,
       size,
       replace(element, options) {
-        // Close any existing entries (mirrors OpenCode's behaviour).
-        for (const entry of stack) entry.onClose?.()
-        setStack([
-          {
-            element,
-            size: options?.size ?? "medium",
-            onClose: options?.onClose,
-          },
-        ])
+        // Pop the top entry and push the new one. Only the top's onClose
+        // fires — replace is a pop+push on the stack, not a clear-and-
+        // rebuild. The previous implementation iterated every entry and
+        // fired onClose on each, which clashed with the Provider's own
+        // ESC handler (which already pops the top) and caused stacked
+        // dialogs' onClose to fire in the wrong order: e.g. dismissing
+        // dialog C would also close A and B even though the user never
+        // saw them go away.
+        const top = stack[stack.length - 1]
+        top?.onClose?.()
+        const next: DialogEntry = {
+          element,
+          size: options?.size ?? "medium",
+          onClose: options?.onClose,
+        }
+        setStack([...stack.slice(0, -1), next])
         setSizeState(options?.size ?? "medium")
       },
       clear() {
@@ -141,9 +145,7 @@ export function DialogProvider({ children }: DialogProviderProps) {
       {children}
       {top ? (
         <Box position="absolute">
-          <Dialog size={top.size} onClose={() => value.clear()}>
-            {top.element}
-          </Dialog>
+          <Dialog size={top.size}>{top.element}</Dialog>
         </Box>
       ) : null}
     </DialogContext.Provider>

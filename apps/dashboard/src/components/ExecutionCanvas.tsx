@@ -1,17 +1,17 @@
-import { useState, useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { useExecutions, useExecutionGraph } from "@/lib/api/hooks";
-import { VirtualList } from "./VirtualList";
-import type { ExecutionTrace, UIGraph } from "../api";
+import { useState, useMemo } from "react"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { useExecutions, useExecutionGraph } from "@/lib/api/hooks"
+import { VirtualList } from "./VirtualList"
+import type { ExecutionTrace, UIGraph } from "../api"
 
 export function ExecutionCanvas() {
-  const [selected, setSelected] = useState<string | null>(null);
-  const { data: execData, isLoading: listLoading, error: listError } = useExecutions();
-  const { data: graph, isLoading: graphLoading, error: graphError } = useExecutionGraph(selected);
+  const [selected, setSelected] = useState<string | null>(null)
+  const { data: execData, isLoading: listLoading, error: listError } = useExecutions()
+  const { data: graph, isLoading: graphLoading, error: graphError } = useExecutionGraph(selected)
 
-  const executions = execData?.executions ?? [];
+  const executions = execData?.executions ?? []
 
   return (
     <div className="flex gap-6 h-full">
@@ -32,7 +32,7 @@ export function ExecutionCanvas() {
             height="calc(100vh - 12rem)"
             className="flex-1"
             renderRow={(ex) => {
-              const isSelected = selected === ex.id;
+              const isSelected = selected === ex.id
               return (
                 <button
                   onClick={() => setSelected(ex.id)}
@@ -52,7 +52,7 @@ export function ExecutionCanvas() {
                     <span>{ex.steps?.length ?? 0} steps</span>
                   </div>
                 </button>
-              );
+              )
             }}
           />
         )}
@@ -76,79 +76,106 @@ export function ExecutionCanvas() {
         )}
       </section>
     </div>
-  );
+  )
 }
 
 function GraphCanvas({ graph }: { graph: UIGraph }) {
-  const { nodes, edges } = graph;
+  const { nodes, edges } = graph
 
-  const NODE_W = 180;
-  const NODE_H = 72;
-  const GAP_X = 120;
-  const GAP_Y = 20;
-  const PAD = 40;
+  const NODE_W = 180
+  const NODE_H = 72
+  const GAP_X = 120
+  const GAP_Y = 20
+  const PAD = 40
 
   const { positions, totalW, totalH } = useMemo(() => {
-    const adj = new Map<string, string[]>();
-    for (const n of nodes) adj.set(n.id, []);
+    const adj = new Map<string, string[]>()
+    for (const n of nodes) adj.set(n.id, [])
     for (const e of edges) {
-      const list = adj.get(e.source);
-      if (list) list.push(e.target);
+      const list = adj.get(e.source)
+      if (list) list.push(e.target)
     }
 
-    const inDegree = new Map(nodes.map((n) => [n.id, 0]));
-    for (const e of edges) inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+    const inDegree = new Map(nodes.map((n) => [n.id, 0]))
+    for (const e of edges) inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1)
 
-    const layers: string[][] = [];
-    const visited = new Set<string>();
-    let queue = nodes.filter((n) => (inDegree.get(n.id) ?? 0) === 0).map((n) => n.id);
+    const layers: string[][] = []
+    const visited = new Set<string>()
+    let queue = nodes.filter((n) => (inDegree.get(n.id) ?? 0) === 0).map((n) => n.id)
 
     while (queue.length > 0) {
-      layers.push(queue);
-      for (const id of queue) visited.add(id);
-      const next: string[] = [];
+      layers.push(queue)
+      // Mark visited *before* descending so a cycle (e.g. A→B→A) doesn't
+      // re-push A into `next`, which previously produced overlapping
+      // layers and a confusing "remaining" column. The original code only
+      // added to `visited` after iterating the layer, so any node reached
+      // via a back-edge during the same layer pass re-entered the loop.
+      for (const id of queue) visited.add(id)
+      const next: string[] = []
       for (const id of queue) {
         for (const target of adj.get(id) ?? []) {
-          const deg = (inDegree.get(target) ?? 1) - 1;
-          inDegree.set(target, deg);
-          if (deg === 0 && !visited.has(target)) next.push(target);
+          if (visited.has(target)) continue
+          const deg = (inDegree.get(target) ?? 1) - 1
+          inDegree.set(target, deg)
+          if (deg === 0 && !visited.has(target)) next.push(target)
         }
       }
-      queue = next;
+      queue = next
     }
-    const remaining = nodes.filter((n) => !visited.has(n.id)).map((n) => n.id);
-    if (remaining.length > 0) layers.push(remaining);
+    // Anything still unvisited after a clean pass must be part of a cycle
+    // (or an isolated component with no inbound edges we somehow missed).
+    // Deduplicate so the layout doesn't double-place shared targets.
+    const remainingSet = new Set<string>()
+    for (const n of nodes) {
+      if (!visited.has(n.id)) remainingSet.add(n.id)
+    }
+    const remaining = [...remainingSet]
+    if (remaining.length > 0) layers.push(remaining)
 
-    const pos = new Map<string, { x: number; y: number }>();
-    let maxH = 0;
+    const pos = new Map<string, { x: number; y: number }>()
+    let maxH = 0
     for (let col = 0; col < layers.length; col++) {
-      const layer = layers[col];
+      const layer = layers[col]
       for (let row = 0; row < layer.length; row++) {
-        const x = PAD + col * (NODE_W + GAP_X);
-        const y = PAD + row * (NODE_H + GAP_Y);
-        pos.set(layer[row], { x, y });
-        maxH = Math.max(maxH, y + NODE_H + PAD);
+        const x = PAD + col * (NODE_W + GAP_X)
+        const y = PAD + row * (NODE_H + GAP_Y)
+        pos.set(layer[row], { x, y })
+        maxH = Math.max(maxH, y + NODE_H + PAD)
       }
     }
 
-    const w = PAD + layers.length * NODE_W + Math.max(0, layers.length - 1) * GAP_X + PAD;
-    const h = Math.max(maxH, 300);
-    return { positions: pos, totalW: w, totalH: h };
-  }, [nodes, edges]);
+    const w = PAD + layers.length * NODE_W + Math.max(0, layers.length - 1) * GAP_X + PAD
+    const h = Math.max(maxH, 300)
+    return { positions: pos, totalW: w, totalH: h }
+  }, [nodes, edges])
 
   return (
     <div className="h-full overflow-auto rounded-lg bg-muted/30 border border-border">
-      <svg width={totalW} height={totalH} className="min-w-full min-h-full" role="img" aria-label="Agent execution graph">
+      <svg
+        width={totalW}
+        height={totalH}
+        className="min-w-full min-h-full"
+        role="img"
+        aria-label="Agent execution graph"
+      >
         <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <marker
+            id="arrow"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
             <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground" />
           </marker>
         </defs>
 
         {edges.map((e) => {
-          const from = positions.get(e.source);
-          const to = positions.get(e.target);
-          if (!from || !to) return null;
+          const from = positions.get(e.source)
+          const to = positions.get(e.target)
+          if (!from || !to) return null
           return (
             <line
               key={e.id}
@@ -160,12 +187,12 @@ function GraphCanvas({ graph }: { graph: UIGraph }) {
               strokeWidth={1.5}
               markerEnd="url(#arrow)"
             />
-          );
+          )
         })}
 
         {nodes.map((n) => {
-          const pos = positions.get(n.id);
-          if (!pos) return null;
+          const pos = positions.get(n.id)
+          if (!pos) return null
           return (
             <g key={n.id} transform={`translate(${pos.x}, ${pos.y})`}>
               <rect
@@ -175,18 +202,32 @@ function GraphCanvas({ graph }: { graph: UIGraph }) {
                 className="fill-card stroke-primary"
                 strokeWidth={1.5}
               />
-              <text x={NODE_W / 2} y={24} textAnchor="middle" className="fill-blue-400" fontSize={11} fontFamily="monospace">
+              <text
+                x={NODE_W / 2}
+                y={24}
+                textAnchor="middle"
+                className="fill-blue-400"
+                fontSize={11}
+                fontFamily="monospace"
+              >
                 {n.id}
               </text>
-              <text x={NODE_W / 2} y={46} textAnchor="middle" className="fill-foreground" fontSize={13} fontWeight="600">
+              <text
+                x={NODE_W / 2}
+                y={46}
+                textAnchor="middle"
+                className="fill-foreground"
+                fontSize={13}
+                fontWeight="600"
+              >
                 {n.label}
               </text>
             </g>
-          );
+          )
         })}
       </svg>
     </div>
-  );
+  )
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -194,11 +235,11 @@ function StatusBadge({ status }: { status: string }) {
     running: "outline",
     completed: "default",
     failed: "destructive",
-  }[status] as "outline" | "default" | "destructive" | undefined;
+  }[status] as "outline" | "default" | "destructive" | undefined
 
   return (
     <Badge variant={variant ?? "secondary"} className="text-xs">
       {status}
     </Badge>
-  );
+  )
 }

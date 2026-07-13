@@ -33,7 +33,10 @@ export type SdkClient = {
    * casts while still tolerating the runtime absence.
    */
   session?: {
-    fork?: (input: { sessionID: string; messageID?: string }) => Promise<{ data?: { id?: string } } | undefined>
+    fork?: (input: {
+      sessionID: string
+      messageID?: string
+    }) => Promise<{ data?: { id?: string } } | undefined>
     revert?: (input: { sessionID: string; messageID: string }) => void | Promise<void>
   }
   permission?: {
@@ -45,26 +48,53 @@ export type SdkClient = {
     }) => void | Promise<void>
   }
   question?: {
-    reply?: (input: { requestID: string; directory: string; answers: string[][] }) => void | Promise<void>
+    reply?: (input: {
+      requestID: string
+      directory: string
+      answers: string[][]
+    }) => void | Promise<void>
     reject?: (input: { requestID: string; directory: string }) => void | Promise<void>
   }
   find?: {
-    files?: (input: { query?: string; workspace?: string }) => Promise<{ data?: string[]; error?: unknown }>
+    files?: (input: {
+      query?: string
+      workspace?: string
+    }) => Promise<{ data?: string[]; error?: unknown }>
   }
 }
 
-function createDefaultClient(url: string, init?: { directory?: string; headers?: RequestInit["headers"]; signal?: AbortSignal; token?: string }): SdkClient {
-  const headers: Record<string, string> = { "content-type": "application/json", ...(init?.headers as Record<string, string> | undefined) }
+function createDefaultClient(
+  url: string,
+  init?: {
+    directory?: string
+    headers?: RequestInit["headers"]
+    signal?: AbortSignal
+    token?: string
+  },
+): SdkClient {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined),
+  }
   if (init?.directory) headers["x-maximilian-directory"] = init.directory
   if (init?.token) headers["authorization"] = `Bearer ${init.token}`
 
-  const fetchImpl: typeof fetch = globalThis.fetch?.bind(globalThis) ?? (() => Promise.reject(new Error("fetch is not available")))
+  const fetchImpl: typeof fetch =
+    globalThis.fetch?.bind(globalThis) ??
+    (() => Promise.reject(new Error("fetch is not available")))
 
   return {
     raw: (path: string, requestInit?: RequestInit) =>
-      fetchImpl(new URL(path, url).toString(), { ...requestInit, headers: { ...headers, ...(requestInit?.headers as Record<string, string> | undefined) } }),
+      fetchImpl(new URL(path, url).toString(), {
+        ...requestInit,
+        headers: { ...headers, ...(requestInit?.headers as Record<string, string> | undefined) },
+      }),
     get: async <T,>(path: string): Promise<T> => {
-      const res = await fetchImpl(new URL(path, url).toString(), { method: "GET", headers, signal: init?.signal })
+      const res = await fetchImpl(new URL(path, url).toString(), {
+        method: "GET",
+        headers,
+        signal: init?.signal,
+      })
       if (!res.ok) throw new Error(`SDK GET ${path} failed: ${res.status}`)
       return (await res.json()) as T
     },
@@ -94,7 +124,15 @@ export type SdkContextValue = {
 
 export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
   SdkContextValue,
-  { url: string; directory?: string; fetch?: typeof fetch; headers?: RequestInit["headers"]; events?: EventSource; token?: string; enableSSE?: boolean }
+  {
+    url: string
+    directory?: string
+    fetch?: typeof fetch
+    headers?: RequestInit["headers"]
+    events?: EventSource
+    token?: string
+    enableSSE?: boolean
+  }
 >({
   name: "SDK",
   init: (props) => {
@@ -158,16 +196,23 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
       const ctrl = new AbortController()
       sse = ctrl
       void (async () => {
+        // Track consecutive *failed* connect attempts so a stable connection
+        // that closes cleanly (server restart, idle timeout) reconnects
+        // quickly. The previous implementation bumped `attempt` on every
+        // loop iteration including successful ones, so after a long-running
+        // healthy stream the backoff could be stuck at the 30s cap even
+        // though the next attempt would almost certainly succeed.
         let attempt = 0
         while (true) {
           if (abort.signal.aborted || ctrl.signal.aborted) break
+          let failed = false
           try {
             const res = await sdk.raw("/global/event", { signal: ctrl.signal })
             if (!res.ok || !res.body) throw new Error(`SSE failed: ${res.status}`)
             const reader = res.body.getReader()
             const decoder = new TextDecoder()
             let buf = ""
-            // eslint-disable-next-line no-constant-condition
+
             while (true) {
               const { value, done } = await reader.read()
               if (done) break
@@ -191,13 +236,22 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
               }
             }
           } catch {
+            failed = true
             /* fall through to backoff */
           }
           if (timer) clearTimeout(timer)
           if (queue.length > 0) flush()
-          attempt += 1
+          if (failed) {
+            attempt += 1
+          } else {
+            // Clean close: reset the failure counter so the next reconnect
+            // doesn't inherit a 30s backoff from a prior outage.
+            attempt = 0
+          }
           if (abort.signal.aborted || ctrl.signal.aborted) break
-          const backoff = Math.min(retryDelay * 2 ** (attempt - 1), maxRetryDelay)
+          const backoff = failed
+            ? Math.min(retryDelay * 2 ** (attempt - 1), maxRetryDelay)
+            : retryDelay
           await new Promise((resolve) => setTimeout(resolve, backoff))
         }
       })()
@@ -225,7 +279,10 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
       client: sdk,
       directory: props.directory,
       event: emitter,
-      fetch: props.fetch ?? globalThis.fetch?.bind(globalThis) ?? (() => Promise.reject(new Error("no fetch"))),
+      fetch:
+        props.fetch ??
+        globalThis.fetch?.bind(globalThis) ??
+        (() => Promise.reject(new Error("no fetch"))),
       url: props.url,
     }
   },

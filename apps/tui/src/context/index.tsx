@@ -45,7 +45,10 @@ function makeStubProvider<T>(name: string, defaultValue: T) {
   const Ctx = React.createContext<T | undefined>(undefined)
 
   function Provider({ children, value }: { children?: ReactNode; value?: T }) {
-    const resolved = React.useMemo(() => Object.freeze({ ...defaultValue, ...(value as Partial<T>) }) as T, [value])
+    const resolved = React.useMemo(
+      () => Object.freeze({ ...defaultValue, ...(value as Partial<T>) }) as T,
+      [value],
+    )
     return React.createElement(Ctx.Provider, { value: resolved }, children)
   }
 
@@ -71,9 +74,12 @@ export type ClipboardValue = {
   write?: (text: string) => Promise<void>
 }
 
-const { Provider: ClipboardProvider, use: useClipboardImpl } = makeStubProvider<ClipboardValue>("Clipboard", {
-  write: undefined,
-})
+const { Provider: ClipboardProvider, use: useClipboardImpl } = makeStubProvider<ClipboardValue>(
+  "Clipboard",
+  {
+    write: undefined,
+  },
+)
 
 export { ClipboardProvider, useClipboardImpl as useClipboard }
 
@@ -93,7 +99,10 @@ export type Args = {
 export type TuiConfigResolved = {
   mouse: boolean
   keybinds: {
-    gather: (group: string, commands: readonly string[]) => Array<{ key: string; desc: string; cmd: () => void }>
+    gather: (
+      group: string,
+      commands: readonly string[],
+    ) => Array<{ key: string; desc: string; cmd: () => void }>
   }
   [key: string]: unknown
 }
@@ -148,13 +157,28 @@ export type ExitValue = {
   exit: (reason?: unknown) => Promise<void> | void
 }
 
-function ExitContextRoot({ children, onExit }: { children?: ReactNode; onExit?: ExitValue["exit"] }) {
+function ExitContextRoot({
+  children,
+  onExit,
+}: {
+  children?: ReactNode
+  onExit?: ExitValue["exit"]
+}) {
   const ctx = React.useMemo<ExitValue>(
     () => ({
-      exit: onExit ?? ((reason?: unknown) => {
-        if (reason !== undefined) console.error(reason)
-        process.exit(0)
-      }),
+      // When the host doesn't wire an explicit `exit` handler, fall back
+      // to a no-op (with logging) rather than `process.exit(0)`. Hard-
+      // exiting the process from inside a fallback can be triggered by
+      // any component that calls `useExit()` while the provider is
+      // missing (test environments, preview renders, misconfigured
+      // apps), turning a missing-provider error into a process kill.
+      // The host owns the lifetime; if it wants to terminate, it should
+      // pass an explicit `exit` prop.
+      exit:
+        onExit ??
+        ((reason?: unknown) => {
+          if (reason !== undefined) console.error(reason)
+        }),
     }),
     [onExit],
   )
@@ -171,9 +195,10 @@ export function useExit(): ExitValue {
   const v = React.useContext(ExitContext)
   if (!v) {
     return {
+      // Missing-provider fallback: log and return instead of calling
+      // process.exit(). See ExitContextRoot for the rationale.
       exit: (reason?: unknown) => {
         if (reason !== undefined) console.error(reason)
-        process.exit(0)
       },
     }
   }
@@ -200,10 +225,8 @@ const pluginRuntimeImpl: PluginRuntimeValue = {
   Slot: DefaultSlot,
 }
 
-const { Provider: PluginRuntimeProvider, use: usePluginRuntime } = makeStubProvider<PluginRuntimeValue>(
-  "PluginRuntime",
-  pluginRuntimeImpl,
-)
+const { Provider: PluginRuntimeProvider, use: usePluginRuntime } =
+  makeStubProvider<PluginRuntimeValue>("PluginRuntime", pluginRuntimeImpl)
 export { PluginRuntimeProvider, usePluginRuntime }
 
 // --- Sync / Project / Event / Args / PromptRef / Editor ----------------
@@ -264,7 +287,12 @@ export const TUI_CONFIG_DEFAULT: TuiConfigResolved = {
 }
 
 export type PluginHost = {
-  start(input: { api: unknown; config: TuiConfigResolved; runtime: PluginRuntimeValue; dispose: () => void }): Promise<void>
+  start(input: {
+    api: unknown
+    config: TuiConfigResolved
+    runtime: PluginRuntimeValue
+    dispose: () => void
+  }): Promise<void>
   dispose(): Promise<void>
 }
 
@@ -274,10 +302,9 @@ const { Provider: PromptRefProvider, use: usePromptRef } = makeStubProvider<{
 }>("PromptRef", { current: null })
 export { PromptRefProvider, usePromptRef }
 
-const { Provider: EditorContextProvider, use: useEditor } = makeStubProvider<Record<string, unknown>>(
-  "Editor",
-  {},
-)
+const { Provider: EditorContextProvider, use: useEditor } = makeStubProvider<
+  Record<string, unknown>
+>("Editor", {})
 export { EditorContextProvider, useEditor }
 
 // OpencodeKeymap is referenced by app.tsx for keybindings; stub it.

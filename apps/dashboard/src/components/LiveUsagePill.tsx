@@ -82,7 +82,7 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
             <>
               <span className="text-muted-foreground">·</span>
               <span className="font-mono tabular-nums">
-                {fmtPercent(data!.cacheHitRate, 0)} cache
+                {fmtPercent(data?.cacheHitRate ?? 0, 0)} cache
               </span>
             </>
           )}

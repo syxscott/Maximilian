@@ -26,8 +26,14 @@ export interface LiveUsage {
 const POLL_INTERVAL_MS = 30_000
 
 export function useLiveUsage(enabled = true) {
+  // Reuse `useUsageSummary("today")`'s query key so TanStack Query dedupes
+  // the poll with the on-demand fetch from `UsagePanel`. The previous
+  // version suffixed "live" which forced the two hooks to make independent
+  // HTTP requests for the same data (twice the bandwidth, twice the
+  // server load, and a small chance of seeing two slightly different
+  // snapshots in the same render). Refetch cadence is shared too.
   return useQuery<LiveUsage>({
-    queryKey: [...queryKeys.usageSummary("today"), "live"],
+    queryKey: queryKeys.usageSummary("today"),
     queryFn: async ({ signal }) => {
       const s = await usageApi.summary("today", signal)
       return {

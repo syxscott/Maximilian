@@ -44,7 +44,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
   })
 
   return (
-    <Dialog size="medium" onClose={() => dialog.clear()}>
+    <Dialog size="medium">
       <Box flexDirection="column" paddingLeft={2} paddingRight={2} gap={1}>
         <Box flexDirection="row" justifyContent="space-between">
           <Text bold color={DEFAULT_COLORS.text}>
@@ -58,7 +58,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
         <Box flexDirection="row" justifyContent="flex-end" paddingBottom={1}>
           {OPTIONS.map((key) => {
             const isActive = key === active
-            const labelText = titleCase(key === "cancel" ? props.label ?? key : key)
+            const labelText = titleCase(key === "cancel" ? (props.label ?? key) : key)
             // Highlight the active option by wrapping its label in a Text with
             // backgroundColor and inverse colors. ink doesn't expose
             // backgroundColor on Box, so we put the highlight on the inner Text.
