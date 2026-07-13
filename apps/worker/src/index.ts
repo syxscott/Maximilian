@@ -168,11 +168,19 @@ async function main() {
       return
     }
 
-    if (workspace.status !== "planning") {
+    if (workspace.status === "executing" || workspace.status === "reviewing") {
+      // BullMQ retry path: a previous attempt crashed mid-execution and
+      // left the workspace in a non-planning state. A fresh runtime cannot
+      // resume `executing` directly - reset to `planning` so the runtime
+      // re-enters its normal flow. Without this, the retry would skip and
+      // leave the workspace permanently stuck while BullMQ marks the job done.
       log.warn(
         { workspaceId, status: workspace.status },
-        "workspace not in planning state — skipping",
+        "workspace left in mid-execution state (likely by a crashed worker); resetting to planning for retry",
       )
+      workspace.status = "planning"
+    } else if (workspace.status !== "planning") {
+      log.warn({ workspaceId, status: workspace.status }, "workspace already terminal - skipping")
       return
     }
 
@@ -184,6 +192,28 @@ async function main() {
     let final: Workspace
     try {
       final = await runtime.execute(workspace)
+    } catch (err) {
+      // Runtime threw - the workspace must NOT be left in planning/executing
+      // or the user sees a permanently stuck state. Persist a `failed`
+      // terminal state with the error message so they have something to
+      // act on. Re-throw so BullMQ records the failure on the job itself.
+      const message = (err as Error)?.message ?? String(err)
+      log.error({ workspaceId, err: message }, "runtime.execute threw - marking workspace failed")
+      const failed: Workspace = {
+        ...workspace,
+        status: "failed",
+        error: message,
+        updatedAt: new Date().toISOString(),
+      }
+      try {
+        await store.saveWorkspace(failed, tenantId)
+      } catch (saveErr) {
+        log.error(
+          { workspaceId, err: saveErr },
+          "failed to persist failed state after runtime error",
+        )
+      }
+      throw err
     } finally {
       await lease.release()
     }
@@ -230,6 +260,17 @@ async function main() {
   // calling stopHeartbeat it leaks across SIGTERM.
   const shutdown = async (signal: string) => {
     log.info({ signal }, "shutting down worker")
+    // Abort every in-flight runtime so parked permission/approval prompts
+    // reject, agent.execute calls unwind, and BullMQ doesn't have to wait
+    // for the stalled-job detector to re-enqueue work that k8s was about
+    // to SIGKILL anyway. Without this, a 30s k8s grace period ends in
+    // SIGKILL, the job goes stalled, and the workspace re-runs from
+    // scratch on the next worker - duplicating side effects and API calls.
+    try {
+      runtime.abortAll()
+    } catch (err) {
+      log.error({ err }, "error aborting in-flight runtimes during shutdown")
+    }
     try {
       await worker.close().catch((err) => {
         log.error({ err }, "error closing worker")

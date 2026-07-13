@@ -44,15 +44,33 @@ export class MemoryScope {
     public readonly rootPath: string = "/",
   ) {}
 
-  /** Build the absolute path for a relative `subpath`. */
+  /**
+   * Build the absolute path for a relative `subpath`. Absolute paths and
+   * `..` traversal are normalized so callers cannot escape `rootPath` -
+   * a child scope must never reach records outside its subtree.
+   */
   scopedPath(subpath: string): string {
-    if (subpath.startsWith("/")) return subpath
     const root = this.rootPath.endsWith("/") ? this.rootPath.slice(0, -1) : this.rootPath
-    return `${root}/${subpath}`
+    // Strip leading slashes so "/foo" is treated as a child of root, not as
+    // an absolute path that bypasses rootPath entirely.
+    const trimmed = subpath.replace(/^\/+/, "")
+    // Reject `..` segments - they would let a child scope climb above rootPath.
+    const segments = trimmed.split("/").filter((s) => s.length > 0)
+    for (const seg of segments) {
+      if (seg === "..") {
+        throw new Error(`illegal path traversal in memory scope subpath: ${subpath}`)
+      }
+    }
+    if (segments.length === 0) return root || "/"
+    return `${root}/${segments.join("/")}`
   }
 
   /** Remember `content` at this scope (or a sub-path). */
-  async remember(content: string, subpath?: string, metadata?: Record<string, unknown>): Promise<void> {
+  async remember(
+    content: string,
+    subpath?: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
     const scope = subpath ? this.scopedPath(subpath) : this.rootPath
     return this.backend.add(scope, content, metadata)
   }
@@ -79,7 +97,7 @@ export class MemoryScope {
     const prefix = root === "" ? "/" : root + "/"
     const directChildren = new Set<string>()
     for (const r of all) {
-      if (r.scope.startsWith(prefix) || root === "" && r.scope.startsWith("/")) {
+      if (r.scope.startsWith(prefix) || (root === "" && r.scope.startsWith("/"))) {
         const remainder = root === "" ? r.scope.slice(1) : r.scope.slice(prefix.length)
         const slash = remainder.indexOf("/")
         const child = slash >= 0 ? remainder.slice(0, slash) : remainder

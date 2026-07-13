@@ -594,6 +594,16 @@ runtime.on(async (event) => {
 
   recordRuntimeEvent(event)
 
+  // Forward runtime events to the webhook/SSE subscription bus.
+  // Without this, `publishEvent` is never called and webhook/SSE
+  // subscribers receive nothing - the function was imported but unused
+  // (the `void publishEvent` line below was just suppressing the
+  // unused-import warning). Fire-and-forget: webhook delivery is slow
+  // (10s timeout per subscription) and must NOT block the runtime loop.
+  // Tenant isolation is enforced inside publishEvent via the
+  // subscription's tenantId filter.
+  void publishEvent(event.type, event)
+
   if (!evolution) return
 
   if (event.type === "task-complete") {
@@ -1479,6 +1489,7 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
 
   const encoder = new TextEncoder()
   let unsub: (() => void) | undefined
+  let heartbeat: ReturnType<typeof setInterval> | undefined
   let closed = false
 
   // The browser's `EventSource` automatically resends the last-seen `id:`
@@ -1488,12 +1499,31 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
 
   const stream = new ReadableStream({
     start(controller) {
+      // Centralized teardown: clears the heartbeat interval AND
+      // unsubscribes from the runtime event stream. Idempotent via the
+      // `closed` flag. Called from `cancel()`, from `sendFrame`/`sendEphemeral`
+      // when enqueue throws (client gone), and after delivering the
+      // terminal `done` event. Without this, a dropped connection would
+      // leak the heartbeat interval and keep the subscription live.
+      const cleanup = () => {
+        if (closed) return
+        closed = true
+        try {
+          unsub?.()
+        } catch {}
+        unsub = undefined
+        if (heartbeat) {
+          clearInterval(heartbeat)
+          heartbeat = undefined
+        }
+      }
+
       const sendFrame = (event: SseEvent) => {
         if (closed) return
         try {
           controller.enqueue(encoder.encode(encodeSseFrame(event)))
         } catch {
-          closed = true
+          cleanup()
         }
       }
 
@@ -1507,9 +1537,23 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
         } catch {
-          closed = true
+          cleanup()
         }
       }
+
+      // Heartbeat: proxies and load balancers (nginx, ALB, etc.) drop
+      // idle SSE connections after 60s by default. A `:` comment frame
+      // every 25s keeps the connection alive without the browser
+      // surfacing it as an event. If enqueue throws (client gone),
+      // cleanup so the interval and subscription don't leak.
+      heartbeat = setInterval(() => {
+        if (closed) return
+        try {
+          controller.enqueue(encoder.encode(": ping\n\n"))
+        } catch {
+          cleanup()
+        }
+      }, 25_000)
 
       // 1. Always send the current workspace snapshot first — even if
       //    the buffer has replay events, the client needs the latest
@@ -1534,12 +1578,10 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
               if (updated) sendEphemeral({ type: "workspace", workspace: updated })
               if (updated?.status === "completed" || updated?.status === "failed") {
                 sendEphemeral({ type: "done" })
-                closed = true
                 try {
-                  unsub?.()
-                  unsub = undefined
                   controller.close()
                 } catch {}
+                cleanup()
               }
             })
             .catch((err) => {
@@ -1555,15 +1597,25 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
       //    stream.
       if (ws.status === "completed" || ws.status === "failed") {
         sendEphemeral({ type: "done" })
-        closed = true
         try {
           controller.close()
         } catch {}
+        cleanup()
       }
     },
     cancel() {
+      // Client disconnected - tear down the subscription and heartbeat
+      // so we don't keep emitting into a dead controller.
+      if (closed) return
       closed = true
-      unsub?.()
+      try {
+        unsub?.()
+      } catch {}
+      unsub = undefined
+      if (heartbeat) {
+        clearInterval(heartbeat)
+        heartbeat = undefined
+      }
     },
   })
 
@@ -1605,7 +1657,11 @@ api.openapi(createSubscriptionRoute, requireAuthMiddleware(), async (c) => {
 
 api.openapi(listSubscriptionsRoute, requireAuthMiddleware(), async (c) => {
   const tenantId = c.get("tenantId" as never) as string | undefined
-  return c.json({ subscriptions: listSubscriptions(tenantId) })
+  // Strip the signing secret from list responses. The secret is only
+  // returned once at creation time; exposing it here would let tenant A
+  // read tenant B's webhook key for any global (tenantId-less) subscription.
+  const subs = listSubscriptions(tenantId).map(({ secret: _secret, ...rest }) => rest)
+  return c.json({ subscriptions: subs })
 })
 
 api.openapi(deleteSubscriptionRoute, requireAuthMiddleware(), async (c) => {
@@ -1676,7 +1732,8 @@ api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
   })
 })
 
-void publishEvent
+// publishEvent is called from the runtime event subscriber above to
+// forward runtime events to webhook/SSE subscribers.
 
 // Evolution routes
 if (evolution) {
@@ -1797,12 +1854,27 @@ if (metaPendingStore && metaRollout && metaGovernance && metaOrgMemory && metaBi
 // Permissions — file-backed store at $rootDir/permissions.json (defaults to
 // ~/.maximilian). Always mounted; reads return defaults when the file is
 // missing. Auth-gated because the rules are read by the runtime gate.
+// Tenant isolation helper for permission/approval answer routes: loads
+// the workspace with the caller's tenantId scope. If the workspace doesn't
+// belong to the tenant (or doesn't exist), loadWorkspace returns undefined
+// and the route returns 403. Without this check, tenant B could answer
+// tenant A's pending prompts just by guessing the requestId.
+const checkWorkspaceTenant = async (
+  workspaceId: string,
+  tenantId: string | undefined,
+): Promise<boolean> => {
+  const ws = await store.loadWorkspace(workspaceId, tenantId)
+  return ws !== undefined && ws !== null
+}
+
 const perm = permissionsRoutes({
   runtime: {
     resolvePermission: (requestId, decision) => runtime.resolvePermission(requestId, decision),
+    getPendingPermission: (requestId) => runtime.getPendingPermission(requestId),
     getPermissionAudit: (query) => runtime.getPermissionAudit(query),
     countPermissionAudit: (opts) => runtime.permissionAuditLog.countMatching(opts),
   },
+  checkWorkspaceTenant,
 })
 api.use("/permissions/*", requireAuthMiddleware())
 api.openapi(getPermissionsRoute, perm.get)
@@ -1816,7 +1888,9 @@ api.openapi(auditPermissionsRoute, perm.audit)
 const approvals = approvalRoutes({
   runtime: {
     resolveApproval: resolveApprovalAcrossRuntimes,
+    getPendingApproval: (requestId) => runtime.getPendingApproval(requestId),
   },
+  checkWorkspaceTenant,
 })
 api.use("/approvals/*", requireAuthMiddleware())
 api.openapi(answerApprovalRoute, approvals.answer)

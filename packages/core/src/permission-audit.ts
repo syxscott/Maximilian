@@ -16,44 +16,44 @@
  * append-only durability we'll swap the body for a line-delimited JSONL.
  */
 
-export type PermissionAuditDecision = "ask" | "allow" | "deny";
+export type PermissionAuditDecision = "ask" | "allow" | "deny"
 
 export interface PermissionAuditEntry {
   /** ISO timestamp. */
-  at: string;
+  at: string
   /** Stable id from `PermissionRequestError.requestId`. Empty for deny/ask
    *  rows that never went through the UI (e.g. auto-deny on config reload). */
-  requestId: string;
-  workspaceId: string;
-  taskId: string;
-  tool: string;
-  target: string;
+  requestId: string
+  workspaceId: string
+  taskId: string
+  tool: string
+  target: string
   /** What the user (or auto-policy) decided. */
-  decision: PermissionAuditDecision;
+  decision: PermissionAuditDecision
   /**
    * If a matching `ask` entry exists, this is its timestamp. Lets auditors
    * pair a "decision" row with the original "asked" row.
    */
-  promptedAt?: string;
+  promptedAt?: string
 }
 
 export interface PermissionAuditQuery {
   /** Only return entries with `at >= since`. ISO timestamp. */
-  since?: string;
+  since?: string
   /** Hard cap on returned entries. Defaults to 100, max 1000. */
-  limit?: number;
+  limit?: number
   /** Filter to a specific tool (e.g. `bash`). */
-  tool?: string;
+  tool?: string
   /** Filter to a specific workspace. */
-  workspaceId?: string;
+  workspaceId?: string
 }
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 1000;
-const DEFAULT_CAPACITY = 1000;
+const DEFAULT_LIMIT = 100
+const MAX_LIMIT = 1000
+const DEFAULT_CAPACITY = 1000
 
 export class PermissionAuditLog {
-  private entries: PermissionAuditEntry[] = [];
+  private entries: PermissionAuditEntry[] = []
 
   constructor(
     private readonly capacity: number = DEFAULT_CAPACITY,
@@ -67,18 +67,14 @@ export class PermissionAuditLog {
    * row also dropped the lookup for the still-retained `allow` row).
    */
   record(entry: PermissionAuditEntry): PermissionAuditEntry {
-    this.entries.push(entry);
+    this.entries.push(entry)
     if (this.entries.length > this.capacity) {
-      this.entries.shift();
+      this.entries.shift()
     }
     if (this.persistPath) {
-      this.persist().catch((err) => {
-        // Persistence is best-effort; warn but don't fail the request flow.
-        // eslint-disable-next-line no-console
-        console.error("[permission-audit] persist failed", err);
-      });
+      this.schedulePersist()
     }
-    return entry;
+    return entry
   }
 
   /**
@@ -92,8 +88,8 @@ export class PermissionAuditLog {
    * the map removes an entire class of eviction-sync bugs.
    */
   getByRequestId(requestId: string): PermissionAuditEntry[] {
-    if (!requestId) return [];
-    return this.entries.filter((e) => e.requestId === requestId);
+    if (!requestId) return []
+    return this.entries.filter((e) => e.requestId === requestId)
   }
 
   /**
@@ -106,24 +102,24 @@ export class PermissionAuditLog {
    * `countMatching()`.
    */
   query(opts: PermissionAuditQuery = {}): PermissionAuditEntry[] {
-    const since = opts.since;
-    const tool = opts.tool;
-    const workspaceId = opts.workspaceId;
-    const limit = Math.min(MAX_LIMIT, Math.max(1, opts.limit ?? DEFAULT_LIMIT));
+    const since = opts.since
+    const tool = opts.tool
+    const workspaceId = opts.workspaceId
+    const limit = Math.min(MAX_LIMIT, Math.max(1, opts.limit ?? DEFAULT_LIMIT))
 
-    const filtered: PermissionAuditEntry[] = [];
+    const filtered: PermissionAuditEntry[] = []
     // Walk newest → oldest so we can stop early once we hit `limit` AND
     // crossed the `since` threshold.
     for (let i = this.entries.length - 1; i >= 0; i--) {
-      const e = this.entries[i]!;
-      if (since && e.at < since) break;
-      if (tool && e.tool !== tool) continue;
-      if (workspaceId && e.workspaceId !== workspaceId) continue;
-      filtered.push(e);
-      if (filtered.length >= limit) break;
+      const e = this.entries[i]!
+      if (since && e.at < since) break
+      if (tool && e.tool !== tool) continue
+      if (workspaceId && e.workspaceId !== workspaceId) continue
+      filtered.push(e)
+      if (filtered.length >= limit) break
     }
     // Returned in chronological order (oldest first) for stable display.
-    return filtered.reverse();
+    return filtered.reverse()
   }
 
   /**
@@ -132,36 +128,75 @@ export class PermissionAuditLog {
    * result set rather than the page size.
    */
   countMatching(opts: Omit<PermissionAuditQuery, "limit"> = {}): number {
-    const since = opts.since;
-    const tool = opts.tool;
-    const workspaceId = opts.workspaceId;
-    let n = 0;
+    const since = opts.since
+    const tool = opts.tool
+    const workspaceId = opts.workspaceId
+    let n = 0
     for (const e of this.entries) {
-      if (since && e.at < since) continue;
-      if (tool && e.tool !== tool) continue;
-      if (workspaceId && e.workspaceId !== workspaceId) continue;
-      n++;
+      if (since && e.at < since) continue
+      if (tool && e.tool !== tool) continue
+      if (workspaceId && e.workspaceId !== workspaceId) continue
+      n++
     }
-    return n;
+    return n
   }
 
   /** Total entries currently held (pre-filter). */
   size(): number {
-    return this.entries.length;
+    return this.entries.length
   }
 
   /** Drop all entries — exposed for tests. */
   clear(): void {
-    this.entries = [];
+    this.entries = []
   }
 
-  private async persist(): Promise<void> {
-    if (!this.persistPath) return;
-    const { writeFile, rename, mkdir } = await import("node:fs/promises");
-    const { dirname } = await import("node:path");
-    await mkdir(dirname(this.persistPath), { recursive: true });
-    const tmp = `${this.persistPath}.tmp.${process.pid}`;
-    await writeFile(tmp, JSON.stringify(this.entries, null, 2), "utf-8");
-    await rename(tmp, this.persistPath);
+  /**
+   * Coalesce + serialize persist calls. Without this, concurrent record()
+   * calls fire overlapping persist() calls that write to the SAME tmp file
+   * (`.tmp.<pid>`) - one writeFile clobbers the other mid-flight, and the
+   * two rename() calls race, which can leave the on-disk file empty or
+   * missing. The coalescing pattern ensures:
+   *   1. At most one persist runs at a time (no concurrent writes).
+   *   2. If record() fires while a persist is running, one follow-up
+   *      persist is scheduled (not N - the extra calls are coalesced
+   *      into a single dirty flag).
+   *   3. A persist crash doesn't kill the chain - the next record()
+   *      starts a fresh persist.
+   */
+  private persistInFlight: Promise<void> | null = null
+  private persistDirty = false
+
+  private schedulePersist(): void {
+    if (this.persistInFlight) {
+      this.persistDirty = true
+      return
+    }
+    this.persistInFlight = this.doPersist()
+      .catch((err) => {
+        // Persistence is best-effort; warn but don't fail the request flow.
+
+        console.error("[permission-audit] persist failed", err)
+      })
+      .finally(() => {
+        this.persistInFlight = null
+        if (this.persistDirty) {
+          this.persistDirty = false
+          this.schedulePersist()
+        }
+      })
+  }
+
+  private async doPersist(): Promise<void> {
+    if (!this.persistPath) return
+    const { writeFile, rename, mkdir } = await import("node:fs/promises")
+    const { dirname } = await import("node:path")
+    await mkdir(dirname(this.persistPath), { recursive: true })
+    // Unique tmp name per call as a safety net - even though schedulePersist
+    // serializes writes, a unique name prevents clobbering if a future
+    // caller bypasses the scheduler.
+    const tmp = `${this.persistPath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
+    await writeFile(tmp, JSON.stringify(this.entries, null, 2), "utf-8")
+    await rename(tmp, this.persistPath)
   }
 }

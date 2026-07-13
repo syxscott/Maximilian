@@ -265,6 +265,42 @@ class Semaphore {
   }
 }
 
+/**
+ * Race a promise against an abort signal. When the signal fires, the
+ * returned promise rejects immediately - the runtime doesn't have to wait
+ * for the underlying LLM call to complete before transitioning the
+ * workspace to "failed". The original promise continues in the background
+ * (Node's fetch doesn't support cancellation without plumbing the signal
+ * into the SDK call), but the wave loop is unblocked.
+ *
+ * Agents that pass `ctx.signal` to their provider.chat() call get true
+ * cancellation; this race is the safety net for agents that don't.
+ */
+function raceWithAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | undefined,
+  workspaceId: string,
+): Promise<T> {
+  if (!signal) return promise
+  if (signal.aborted) {
+    return Promise.reject(new Error(`workspace ${workspaceId} aborted`))
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error(`workspace ${workspaceId} aborted`))
+    signal.addEventListener("abort", onAbort, { once: true })
+    promise.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort)
+        resolve(v)
+      },
+      (e) => {
+        signal.removeEventListener("abort", onAbort)
+        reject(e)
+      },
+    )
+  })
+}
+
 export class AgentRuntime {
   private listeners = new Set<RuntimeListener>()
   private runningWorkspaces = new Map<string, AbortController>()
@@ -437,18 +473,15 @@ export class AgentRuntime {
   ): Promise<ApprovalResponse> {
     const existing = this.approvalResolvers.get(requestId)
     if (existing) {
-      return new Promise<ApprovalResponse>((resolve, reject) => {
-        const prevResolve = existing.resolve
-        const prevReject = existing.reject
-        existing.resolve = (response) => {
-          prevResolve(response)
-          resolve(response)
-        }
-        existing.reject = (err) => {
-          prevReject(err)
-          reject(err)
-        }
-      })
+      // Duplicate requestId (likely a runtime re-entry or auto-retry).
+      // The original prompt is already in flight - refuse the second
+      // call rather than chaining another resolve/reject onto the
+      // existing entry. The previous implementation built an unbounded
+      // linked list of resolvers on every duplicate, so a tight retry
+      // loop could grow the chain indefinitely and fire N resolves on
+      // a single user response. Matching awaitPermission's behaviour
+      // keeps the two parked-prompt APIs consistent.
+      throw new Error(`approval request ${requestId} already pending`)
     }
     const promptedAt = new Date().toISOString()
     return new Promise<ApprovalResponse>((resolve, reject) => {
@@ -539,6 +572,49 @@ export class AgentRuntime {
   /** How many permission requests are currently parked. For diagnostics. */
   pendingPermissionCount(): number {
     return this.permissionResolvers.size
+  }
+
+  /**
+   * Look up a pending permission request's metadata without resolving it.
+   * The API route uses this to persist the user's decision to the on-disk
+   * `permissions.json` so the same (tool, target) combination won't prompt
+   * again on subsequent calls. Returns undefined if the request is unknown
+   * or already resolved.
+   */
+  getPendingPermission(requestId: string):
+    | {
+        workspaceId: string
+        taskId: string
+        tool: string
+        target: string
+        promptedAt: string
+      }
+    | undefined {
+    const entry = this.permissionResolvers.get(requestId)
+    if (!entry) return undefined
+    return { ...entry.meta }
+  }
+
+  /**
+   * Look up a pending approval request's metadata without resolving it.
+   * Used by the API route for tenant isolation: it checks that the caller's
+   * tenantId matches the workspace that owns the pending approval, so
+   * tenant B can't approve/reject tenant A's tasks. Returns undefined if
+   * the request is unknown or already resolved.
+   */
+  getPendingApproval(requestId: string):
+    | {
+        workspaceId: string
+        taskId: string
+        prompt: string
+        requireComment: boolean
+        reason?: string
+        promptedAt: string
+      }
+    | undefined {
+    const entry = this.approvalResolvers.get(requestId)
+    if (!entry) return undefined
+    return { ...entry.meta }
   }
 
   /**
@@ -823,14 +899,14 @@ export class AgentRuntime {
       // Re-add retried tasks to remaining so they run in the next wave
       remaining.push(...retriedTasks)
 
-      // Check if any (non-retried) task failed
-      const firstFailure = results.find((r) => r.status === "rejected") as
-        PromiseRejectedResult | undefined
-      if (firstFailure) {
-        updated.status = "failed"
-        updated.error = String(firstFailure.reason)
-        break
-      }
+      // Note: we deliberately do NOT break out of the loop when a task
+      // fails permanently. The failed task is already in the `failed`
+      // set, so the next iteration's dependency resolver will skip
+      // tasks that depend on it, while independent tasks continue to
+      // run. Breaking here would abandon unrelated work that could
+      // still succeed - e.g. a frontend task failing shouldn't block a
+      // docs task that has no dependency on it. The workspace-level
+      // failure status is set after the loop based on `failed.size`.
 
       // Stall detection — observe per-round progress, and when the system
       // has been idle for `maxIdleRounds`, ask the host for a replan.
@@ -866,17 +942,27 @@ export class AgentRuntime {
               remaining.push(...replan.tasks)
               log.info(
                 { workspaceId: updated.id, newTaskCount: replan.tasks.length },
-                "replan accepted — pending replaced",
+                "replan accepted - pending replaced",
               )
-              // Reset the detector so a new stall window starts fresh.
-              stallDetector.reset()
+            } else {
+              log.info(
+                { workspaceId: updated.id },
+                "onStall returned no tasks - keeping original pending",
+              )
             }
           } catch (err) {
             log.error(
               { err, workspaceId: updated.id },
-              "onStall replan hook threw — keeping original pending",
+              "onStall replan hook threw - keeping original pending",
             )
           } finally {
+            // Always reset the detector, even when the replan failed or
+            // returned nothing. Without this, `stalled` stays true and
+            // observe() will never again transition (it only fires on
+            // the false->true edge), so onStall could never fire again
+            // - a transient LLM error would permanently disable replanning
+            // for this workspace.
+            stallDetector.reset()
             this.replanningWorkspaces.delete(updated.id)
           }
         }
@@ -886,7 +972,26 @@ export class AgentRuntime {
       pending.push(...remaining)
     }
 
-    if (updated.status === "executing") {
+    if (controller.signal.aborted) {
+      updated.status = "failed"
+      updated.error = updated.error ?? "Aborted"
+    } else if (failed.size > 0 && completed.size === 0) {
+      // Every task failed (none completed) - workspace is unrecoverable.
+      // Surface the first failed task's error so callers can see the
+      // root cause without digging through the task list.
+      const firstFailed = updated.plan?.tasks.find((t) => failed.has(t.id))
+      const firstError = firstFailed?.error ?? "unknown error"
+      updated.status = "failed"
+      updated.error = `All ${failed.size} task(s) failed (first error: ${firstError})`
+    } else if (failed.size > 0) {
+      // Partial failure: some tasks completed, some failed. Mark as
+      // completed so the user sees results, but record the failure
+      // count on the workspace error field for surfacing in UI.
+      const firstFailed = updated.plan?.tasks.find((t) => failed.has(t.id))
+      const firstError = firstFailed?.error ?? "unknown error"
+      updated.status = "completed"
+      updated.error = `${failed.size} task(s) failed (first error: ${firstError})`
+    } else if (updated.status === "executing") {
       updated.status = "completed"
     }
     updated.updatedAt = new Date().toISOString()
@@ -1014,10 +1119,15 @@ export class AgentRuntime {
 
         const ctx: AgentContext = {
           priorResults: workspace.results,
+          // Pass the workspace's abort signal so agents that check it can
+          // short-circuit LLM calls when the workspace is cancelled. The
+          // runtime also races execution against this signal (see below)
+          // so even agents that ignore ctx.signal don't block the wave loop.
+          signal: this.runningWorkspaces.get(workspace.id)?.signal,
         }
 
         try {
-          await agent.receiveTask(task, ctx)
+          await raceWithAbort(agent.receiveTask(task, ctx), ctx.signal, workspace.id)
 
           // P0-A wiring: when tool loop is enabled and the agent provides a
           // tool-enabled provider, route the chat call through `runToolLoop`.
@@ -1030,16 +1140,24 @@ export class AgentRuntime {
             toolProvider.setToolDenylist(agent.manifest.deniedTools)
           }
           const final = toolProvider
-            ? await runToolLoopAndSubmit(
-                agent,
-                task,
-                ctx,
-                toolProvider,
+            ? await raceWithAbort(
+                runToolLoopAndSubmit(
+                  agent,
+                  task,
+                  ctx,
+                  toolProvider,
+                  workspace.id,
+                  this.emit.bind(this),
+                  (requestId, meta) => this.awaitPermission(requestId, meta),
+                ),
+                ctx.signal,
                 workspace.id,
-                this.emit.bind(this),
-                (requestId, meta) => this.awaitPermission(requestId, meta),
               )
-            : await agent.execute(task, ctx).then((r) => agent.submitResult(r))
+            : await raceWithAbort(
+                agent.execute(task, ctx).then((r) => agent.submitResult(r)),
+                ctx.signal,
+                workspace.id,
+              )
 
           task.resultId = final.id
           task.status = "completed"
@@ -1142,6 +1260,10 @@ export class AgentRuntime {
       prompt?: string
       requireComment?: boolean
       reason?: string
+      /** Optional timeout in ms; if the user doesn't respond in time, the
+       *  approval task fails with "approval timed out". Without this, a
+       *  forgotten approval parks the workspace in `executing` forever. */
+      timeoutMs?: number
     }
     const prompt = approval.prompt ?? task.description
     const requireComment = approval.requireComment ?? false
@@ -1178,7 +1300,33 @@ export class AgentRuntime {
       reason: approval.reason,
     })
 
-    const response = await responsePromise
+    // Race the approval wait against (a) the workspace abort signal and
+    // (b) an optional per-approval timeout. The abort signal is already
+    // wired via abort() -> approvalResolvers.reject(), but raceWithAbort
+    // is a safety net in case the parked promise isn't cleaned up. The
+    // timeout covers the case where the user simply never responds and
+    // the workspace isn't explicitly aborted.
+    const workspaceSignal = this.runningWorkspaces.get(workspace.id)?.signal
+    const timeoutSignal = approval.timeoutMs ? AbortSignal.timeout(approval.timeoutMs) : undefined
+    const signals = [workspaceSignal, timeoutSignal].filter(
+      (s): s is AbortSignal => s !== undefined,
+    )
+    const response =
+      signals.length === 0
+        ? await responsePromise
+        : await raceWithAbort(
+            responsePromise,
+            signals.length === 1 ? signals[0] : AbortSignal.any(signals),
+            workspace.id,
+          ).catch((err) => {
+            // Clean up the parked resolver so a late user response doesn't
+            // resolve an already-rejected promise (harmless but noisy).
+            this.approvalResolvers.delete(requestId)
+            if (timeoutSignal?.aborted) {
+              throw new Error(`approval timed out after ${approval.timeoutMs}ms`)
+            }
+            throw err
+          })
 
     if (response.decision === "reject") {
       throw new Error(
@@ -1219,6 +1367,33 @@ export class AgentRuntime {
 
   abort(workspaceId: string): void {
     this.runningWorkspaces.get(workspaceId)?.abort()
+    // Reject any parked permission/approval prompts so runTask doesn't
+    // hang forever waiting on a user response that will never come.
+    // Without this, abort() only flips the AbortController but the
+    // `await awaitPermission(...)` call inside runTask keeps the task
+    // (and the workspace) pinned in `executing` until process exit.
+    for (const [id, entry] of this.permissionResolvers) {
+      if (entry.meta.workspaceId === workspaceId) {
+        entry.reject(new Error(`workspace ${workspaceId} aborted`))
+        this.permissionResolvers.delete(id)
+      }
+    }
+    for (const [id, entry] of this.approvalResolvers) {
+      if (entry.meta.workspaceId === workspaceId) {
+        entry.reject(new Error(`workspace ${workspaceId} aborted`))
+        this.approvalResolvers.delete(id)
+      }
+    }
+  }
+
+  /**
+   * Abort every in-flight workspace. Used by the worker on SIGTERM so
+   * BullMQ doesn't have to wait for the stalled-job detector to re-enqueue
+   * work that was about to be killed by k8s anyway. Each abort also
+   * rejects any parked permission/approval promises (see abort()).
+   */
+  abortAll(): void {
+    for (const id of this.runningWorkspaces.keys()) this.abort(id)
   }
 }
 

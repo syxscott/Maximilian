@@ -1,6 +1,6 @@
-import { and, eq, isNull } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { workspaces, workspaceArtifacts } from "../schema.js";
+import { and, eq, isNull, sql } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { workspaces, workspaceArtifacts } from "../schema.js"
 
 /**
  * PostgreSQL-backed workspace store.
@@ -18,23 +18,26 @@ export class PgWorkspaceStore {
       .select({ id: workspaces.id })
       .from(workspaces)
       .where(eq(workspaces.id, id))
-      .limit(1);
+      .limit(1)
     if (existing.length === 0) {
-      throw new Error(`workspace ${id} not found`);
+      throw new Error(`workspace ${id} not found`)
     }
   }
 
-  async saveWorkspace(workspace: {
-    id: string;
-    userRequest: string;
-    status: string;
-    plan?: unknown;
-    results?: unknown[];
-    review?: unknown;
-    createdAt: string;
-    updatedAt: string;
-    error?: string;
-  }, tenantId?: string): Promise<void> {
+  async saveWorkspace(
+    workspace: {
+      id: string
+      userRequest: string
+      status: string
+      plan?: unknown
+      results?: unknown[]
+      review?: unknown
+      createdAt: string
+      updatedAt: string
+      error?: string
+    },
+    tenantId?: string,
+  ): Promise<void> {
     await this.db
       .insert(workspaces)
       .values({
@@ -52,6 +55,14 @@ export class PgWorkspaceStore {
       .onConflictDoUpdate({
         target: workspaces.id,
         set: {
+          // COALESCE keeps the existing tenant_id if it's already set,
+          // and only claims the workspace for `tenantId` when it was
+          // previously NULL (unowned). Without this, an upsert would
+          // either (a) leave tenant_id stuck at NULL forever when a
+          // tenant caller tries to claim a legacy workspace, or
+          // (b) silently transfer ownership between tenants - a
+          // cross-tenant hijack via the upsert path.
+          tenantId: sql`COALESCE(${workspaces.tenantId}, ${tenantId ?? null})`,
           userRequest: workspace.userRequest,
           status: workspace.status,
           plan: workspace.plan ?? null,
@@ -60,20 +71,26 @@ export class PgWorkspaceStore {
           error: workspace.error ?? null,
           updatedAt: new Date(workspace.updatedAt),
         },
-      });
+      })
   }
 
-  async loadWorkspace(id: string, tenantId?: string): Promise<{
-    id: string;
-    userRequest: string;
-    status: string;
-    plan?: unknown;
-    results: unknown[];
-    review?: unknown;
-    createdAt: string;
-    updatedAt: string;
-    error?: string;
-  } | undefined> {
+  async loadWorkspace(
+    id: string,
+    tenantId?: string,
+  ): Promise<
+    | {
+        id: string
+        userRequest: string
+        status: string
+        plan?: unknown
+        results: unknown[]
+        review?: unknown
+        createdAt: string
+        updatedAt: string
+        error?: string
+      }
+    | undefined
+  > {
     // Tenant isolation:
     //   - When the caller provides a tenantId, require the row's tenant_id
     //     to match exactly. A NULL row tenant + tenantId caller is a
@@ -84,16 +101,13 @@ export class PgWorkspaceStore {
     // The previous implementation used a bare `eq(workspaces.id, id)`
     // when tenantId was undefined, which leaked any workspace to any
     // caller that knew its id.
-    const where = tenantId !== undefined
-      ? and(eq(workspaces.id, id), eq(workspaces.tenantId, tenantId))
-      : and(eq(workspaces.id, id), isNull(workspaces.tenantId));
-    const rows = await this.db
-      .select()
-      .from(workspaces)
-      .where(where)
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    const row = rows[0];
+    const where =
+      tenantId !== undefined
+        ? and(eq(workspaces.id, id), eq(workspaces.tenantId, tenantId))
+        : and(eq(workspaces.id, id), isNull(workspaces.tenantId))
+    const rows = await this.db.select().from(workspaces).where(where).limit(1)
+    if (rows.length === 0) return undefined
+    const row = rows[0]
     return {
       id: row.id,
       userRequest: row.userRequest,
@@ -104,7 +118,7 @@ export class PgWorkspaceStore {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       error: row.error ?? undefined,
-    };
+    }
   }
 
   async listWorkspaces(tenantId?: string): Promise<string[]> {
@@ -112,14 +126,10 @@ export class PgWorkspaceStore {
     // matching that tenant; a dev caller (no tenantId) only sees NULL
     // tenant rows. Previously, `where = undefined` returned every
     // workspace in the database to any dev caller.
-    const where = tenantId !== undefined
-      ? eq(workspaces.tenantId, tenantId)
-      : isNull(workspaces.tenantId);
-    const rows = await this.db
-      .select({ id: workspaces.id })
-      .from(workspaces)
-      .where(where);
-    return rows.map((r) => r.id);
+    const where =
+      tenantId !== undefined ? eq(workspaces.tenantId, tenantId) : isNull(workspaces.tenantId)
+    const rows = await this.db.select({ id: workspaces.id }).from(workspaces).where(where)
+    return rows.map((r) => r.id)
   }
 
   async saveArtifact(workspaceId: string, filename: string, content: string): Promise<string> {
@@ -129,8 +139,8 @@ export class PgWorkspaceStore {
       .onConflictDoUpdate({
         target: [workspaceArtifacts.workspaceId, workspaceArtifacts.filename],
         set: { content },
-      });
-    return filename;
+      })
+    return filename
   }
 
   async readArtifact(workspaceId: string, filename: string): Promise<string | undefined> {
@@ -143,15 +153,15 @@ export class PgWorkspaceStore {
           eq(workspaceArtifacts.filename, filename),
         ),
       )
-      .limit(1);
-    return rows[0]?.content;
+      .limit(1)
+    return rows[0]?.content
   }
 
   async listArtifacts(workspaceId: string): Promise<string[]> {
     const rows = await this.db
       .select({ filename: workspaceArtifacts.filename })
       .from(workspaceArtifacts)
-      .where(eq(workspaceArtifacts.workspaceId, workspaceId));
-    return rows.map((r) => r.filename);
+      .where(eq(workspaceArtifacts.workspaceId, workspaceId))
+    return rows.map((r) => r.filename)
   }
 }

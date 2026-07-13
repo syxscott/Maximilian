@@ -55,18 +55,28 @@ export interface SandboxService {
  * implementation; this one is for tests + local dev.
  */
 export class LocalSandboxService implements SandboxService {
-  private sandboxes = new Map<string, SandboxInfo & { workingDir?: string }>()
+  private sandboxes = new Map<
+    string,
+    SandboxInfo & {
+      workingDir?: string
+      childProcesses: Set<import("node:child_process").ChildProcess>
+    }
+  >()
 
   async start(options?: { metadata?: Record<string, unknown> }): Promise<SandboxInfo> {
     const id = `sb-${Math.random().toString(36).slice(2, 10)}`
     const now = new Date().toISOString()
-    const info: SandboxInfo & { workingDir?: string } = {
+    const info: SandboxInfo & {
+      workingDir?: string
+      childProcesses: Set<import("node:child_process").ChildProcess>
+    } = {
       id,
       status: "running",
       createdAt: now,
       updatedAt: now,
       metadata: options?.metadata,
       workingDir: (options?.metadata?.workingDir as string) ?? process.cwd(),
+      childProcesses: new Set(),
     }
     this.sandboxes.set(id, info)
     return info
@@ -91,6 +101,28 @@ export class LocalSandboxService implements SandboxService {
   async stop(id: string): Promise<boolean> {
     const sb = this.sandboxes.get(id)
     if (!sb) return false
+    // Kill any spawned child processes that are still running. Without
+    // this, `stop()` would leave orphaned processes running in the
+    // background - e.g. a long-running `npm test` or a detached server
+    // would keep consuming resources after the sandbox is "stopped".
+    // SIGTERM first (graceful), then escalate to SIGKILL after 2s if
+    // the process hasn't exited.
+    for (const child of sb.childProcesses) {
+      if (!child.killed) {
+        try {
+          child.kill("SIGTERM")
+          const escalate = setTimeout(() => {
+            if (!child.killed && child.exitCode === null) {
+              try {
+                child.kill("SIGKILL")
+              } catch {}
+            }
+          }, 2_000)
+          child.once("exit", () => clearTimeout(escalate))
+        } catch {}
+      }
+    }
+    sb.childProcesses.clear()
     sb.status = "stopped"
     sb.updatedAt = new Date().toISOString()
     this.sandboxes.delete(id)
@@ -100,39 +132,47 @@ export class LocalSandboxService implements SandboxService {
   async get(id: string): Promise<SandboxInfo | null> {
     const sb = this.sandboxes.get(id)
     if (!sb) return null
-    // Strip workingDir from the public SandboxInfo shape.
-    const { workingDir: _, ...info } = sb
+    const { workingDir: _, childProcesses: __, ...info } = sb
     return info
   }
 
-  async exec(id: string, command: string, options?: { timeoutMs?: number }): Promise<SandboxCommandResult> {
+  async exec(
+    id: string,
+    command: string,
+    options?: { timeoutMs?: number },
+  ): Promise<SandboxCommandResult> {
     const sb = this.sandboxes.get(id)
     if (!sb) {
       return { exitCode: 1, stdout: "", stderr: `Sandbox ${id} not found`, durationMs: 0 }
     }
     if (sb.status !== "running") {
-      return { exitCode: 1, stdout: "", stderr: `Sandbox ${id} is not running (status=${sb.status})`, durationMs: 0 }
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: `Sandbox ${id} is not running (status=${sb.status})`,
+        durationMs: 0,
+      }
     }
     // Use Node's exec via dynamic import — keeps the module small.
     const { exec: cpExec } = await import("node:child_process")
-    const { promisify } = await import("node:util")
-    const execAsync = promisify(cpExec)
     const start = Date.now()
     const timeout = options?.timeoutMs ?? 30_000
-    try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: sb.workingDir,
-        timeout,
+    return new Promise((resolve) => {
+      const child = cpExec(command, { cwd: sb.workingDir, timeout }, (err, stdout, stderr) => {
+        sb.childProcesses.delete(child)
+        if (err) {
+          const e = err as { code?: number }
+          resolve({
+            exitCode: e.code ?? 1,
+            stdout: stdout ?? "",
+            stderr: stderr ?? err.message,
+            durationMs: Date.now() - start,
+          })
+        } else {
+          resolve({ exitCode: 0, stdout, stderr, durationMs: Date.now() - start })
+        }
       })
-      return { exitCode: 0, stdout, stderr, durationMs: Date.now() - start }
-    } catch (err) {
-      const e = err as { stdout?: string; stderr?: string; code?: number }
-      return {
-        exitCode: e.code ?? 1,
-        stdout: e.stdout ?? "",
-        stderr: e.stderr ?? (err instanceof Error ? err.message : String(err)),
-        durationMs: Date.now() - start,
-      }
-    }
+      sb.childProcesses.add(child)
+    })
   }
 }

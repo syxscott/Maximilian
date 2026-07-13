@@ -96,39 +96,8 @@ export function unregisterSseClient(id: string): void {
  * Called by ScopedBus handlers — see api/src/index.ts.
  */
 export async function publishEvent(eventName: string, payload: unknown): Promise<void> {
-  // Webhooks
-  for (const sub of subscriptions.values()) {
-    if (sub.type !== "webhook") continue
-    if (sub.events.length > 0 && !sub.events.includes(eventName)) continue
-
-    const body = JSON.stringify({
-      event: eventName,
-      payload,
-      deliveredAt: new Date().toISOString(),
-    })
-    const sig = createHmac("sha256", sub.secret).update(body).digest("hex")
-    try {
-      const res = await fetch(sub.target, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-maximilian-event": eventName,
-          "x-maximilian-signature": `sha256=${sig}`,
-        },
-        body,
-        // 10-second timeout — webhooks must be fast.
-        signal: AbortSignal.timeout(10_000),
-      })
-      sub.lastDeliveredAt = new Date().toISOString()
-      sub.totalDeliveries++
-      if (!res.ok) sub.totalFailures++
-    } catch (err) {
-      sub.totalFailures++
-      console.warn(`[subscription ${sub.id}] webhook delivery failed:`, (err as Error).message)
-    }
-  }
-
-  // SSE
+  // SSE first - synchronous send, no network I/O. Subscribers get events
+  // immediately even when webhook deliveries are slow or timing out.
   for (const client of sseClients.values()) {
     if (client.events.length > 0 && !client.events.includes(eventName)) continue
     try {
@@ -137,6 +106,42 @@ export async function publishEvent(eventName: string, payload: unknown): Promise
       console.warn(`[sse ${client.id}] send failed:`, (err as Error).message)
     }
   }
+
+  // Webhooks - deliver concurrently so one slow endpoint can't block the
+  // others. Previously this was a serial for-await loop, which meant a
+  // single 10s-timeout webhook delayed every subsequent webhook AND every
+  // SSE subscriber (SSE was sent after the webhook loop finished).
+  const webhookSubs = [...subscriptions.values()].filter(
+    (s) => s.type === "webhook" && (s.events.length === 0 || s.events.includes(eventName)),
+  )
+  await Promise.allSettled(
+    webhookSubs.map(async (sub) => {
+      const body = JSON.stringify({
+        event: eventName,
+        payload,
+        deliveredAt: new Date().toISOString(),
+      })
+      const sig = createHmac("sha256", sub.secret).update(body).digest("hex")
+      try {
+        const res = await fetch(sub.target, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-maximilian-event": eventName,
+            "x-maximilian-signature": `sha256=${sig}`,
+          },
+          body,
+          signal: AbortSignal.timeout(10_000),
+        })
+        sub.lastDeliveredAt = new Date().toISOString()
+        sub.totalDeliveries++
+        if (!res.ok) sub.totalFailures++
+      } catch (err) {
+        sub.totalFailures++
+        console.warn(`[subscription ${sub.id}] webhook delivery failed:`, (err as Error).message)
+      }
+    }),
+  )
 }
 
 // ── OpenAPI routes ──────────────────────────────────────────────────────────
@@ -152,7 +157,11 @@ const SubscriptionResponse = z.object({
   type: z.enum(["webhook", "sse"]),
   target: z.string(),
   events: z.array(z.string()),
-  secret: z.string(),
+  // Secret is only returned at creation time. List/get responses omit
+  // it so tenant A can't read tenant B's webhook signing key - the
+  // list filter lets callers see global (tenantId-less) subscriptions,
+  // and without stripping the secret those would leak to every tenant.
+  secret: z.string().optional(),
   createdAt: z.string(),
   lastDeliveredAt: z.string().optional(),
   totalDeliveries: z.number(),
