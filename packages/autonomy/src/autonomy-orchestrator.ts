@@ -16,7 +16,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Workspace, Result, Task } from "@max/core";
-import type { AgentBlueprint, DAGS } from "@max/dags";
+import type { AgentBlueprint, Blueprint, DAGS } from "@max/dags";
 import { ExecutionStore } from "./execution-store.js";
 import { ReviewIntelligence } from "./review-intelligence.js";
 import { FailurePatternAnalyzer, InsightsStore } from "./insights-store.js";
@@ -65,6 +65,15 @@ export class AutonomyOrchestrator {
     const candidates: CandidateVersion[] = [];
     const promotions: PromotionRecord[] = [];
 
+    // Cache role -> blueprint to avoid repeated full scans
+    const blueprintCache = new Map<string, Blueprint>();
+    const resolveCachedBlueprint = async (role: string): Promise<Blueprint | undefined> => {
+      if (blueprintCache.has(role)) return blueprintCache.get(role)!;
+      const bp = await this.resolveBlueprint(role);
+      if (bp) blueprintCache.set(role, bp);
+      return bp;
+    };
+
     // 1. Per-task execution records.
     const taskRecords = await Promise.all(
       (workspace.plan?.tasks ?? []).map(async (task) => {
@@ -82,25 +91,31 @@ export class AutonomyOrchestrator {
     );
     const reviewResults = await Promise.all(
       reviewable.map(async (exec) => {
-        const artifacts = this.collectArtifacts(workspace, exec);
-        if (artifacts.length === 0) return null;
-        const review = await this.deps.review.review({
-          taskId: exec.taskId,
-          workspaceId: exec.workspaceId,
-          artifacts,
-          userRequest: workspace.userRequest,
-        });
-        exec.review = review;
-        await this.deps.executionStore.save(exec);
-        return review;
+        try {
+          const artifacts = this.collectArtifacts(workspace, exec);
+          if (artifacts.length === 0) return null;
+          const review = await this.deps.review.review({
+            taskId: exec.taskId,
+            workspaceId: exec.workspaceId,
+            artifacts,
+            userRequest: workspace.userRequest,
+          });
+          exec.review = review;
+          await this.deps.executionStore.save(exec);
+          return review;
+        } catch (err) {
+          console.error(`[AutonomyOrchestrator] review failed for ${exec.taskId}:`, err);
+          return null;
+        }
       })
     );
     reviews.push(...(reviewResults.filter(Boolean) as StructuredReview[]));
 
-    // 3. Failure pattern mining.
+    // 3. Failure pattern mining (shared single listAll call).
+    const allExecutions = await this.deps.executionStore.listAll();
     await Promise.all([
-      this.deps.failureAnalyzer.analyze(this.deps.executionStore),
-      this.deps.failureAnalyzer.leaderboardInsight(this.deps.executionStore),
+      this.deps.failureAnalyzer.analyze(allExecutions),
+      this.deps.failureAnalyzer.leaderboardInsight(allExecutions),
     ]);
 
     // 4. Evolution planning per role.
@@ -113,7 +128,7 @@ export class AutonomyOrchestrator {
           const roleReviews = reviews.filter((r) =>
             roleExecs.some((e) => e.taskId === r.taskId)
           );
-          const blueprint = await this.resolveBlueprint(role);
+          const blueprint = await resolveCachedBlueprint(role);
           if (!blueprint) return null;
           const plan = this.deps.planner.plan({
             role,
@@ -135,7 +150,7 @@ export class AutonomyOrchestrator {
     // 5. Candidate generation.
     const candidateResults = await Promise.all(
       plans.map(async (plan) => {
-        const blueprint = await this.resolveBlueprint(plan.agentRole);
+        const blueprint = await resolveCachedBlueprint(plan.agentRole);
         if (!blueprint) return null;
         return this.deps.candidateGenerator.generate(plan, blueprint);
       })
@@ -144,7 +159,7 @@ export class AutonomyOrchestrator {
 
     // 6. Promotion decisions (best-effort, may skip if sample too small).
     for (const candidate of candidates) {
-      const blueprint = await this.resolveBlueprint(candidate.agentRole);
+      const blueprint = await resolveCachedBlueprint(candidate.agentRole);
       if (!blueprint) continue;
       const decision = await this.deps.promotionEngine.decide(
         candidate,
