@@ -1051,14 +1051,14 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 
 </div>
 
-Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (borrow / adapt) 了 30 个模块 / 模式**,源自 11 个开源项目。
+Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (borrow / adapt) 了 27 个模块 / 模式**,源自 11 个开源项目。
 每一个借鉴模块都在源码头部标注 `借鉴 <project>` 注释,便于追溯。
 
 下面按 **来源项目** 列出所有借鉴内容。每一项注明:**借鉴模块** → **本仓位置**。
 
-### 🌌 [Kosmos](https://github.com/jimmc414/Kosmos) — 15 patterns (4 waves)
+### 🌌 [Kosmos](https://github.com/jimmc414/Kosmos) — 12 patterns
 
-> jimmc414 的多 agent 科研自动化系统,基于 Claude 的科学发现流水线。我们从中扫描并借鉴了 15 个最匹配 Maximilian 的模式。
+> jimmc414 的多 agent 科研自动化系统,基于 Claude 的科学发现流水线。我们从中扫描并借鉴了 12 个最匹配 Maximilian 的模式。
 
 | 借鉴模块 (Borrowed)                                                    | 本仓位置 (In this repo)                                 | 原始文件 (Origin)                          |
 | ---------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
@@ -1175,7 +1175,7 @@ Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (
 
 | 来源项目                     | 模块数 | 占比 |
 | ---------------------------- | ------ | ---- |
-| Kosmos                       | 15     | 50%  |
+| Kosmos                       | 12     | 44%  |
 | crewAI                       | 4      | 13%  |
 | AutoGen / Magentic-One       | 4      | 13%  |
 | openclaw                     | 4      | 13%  |
@@ -1187,8 +1187,8 @@ Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (
 | Conductor                    | 1      | 3%   |
 | codebase-memory-mcp          | 1      | 3%   |
 
-**合计 30 个借鉴模式,源自 11 个项目。**
-**Total: 30 borrowed patterns from 11 projects.**
+**合计 27 个借鉴模式,源自 11 个项目。**
+**Total: 27 borrowed patterns from 11 projects.**
 
 ### 🙏 致敬 / Special Thanks
 
