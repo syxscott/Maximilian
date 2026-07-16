@@ -129,6 +129,13 @@ export function postChat(deps: ChatDeps) {
 
     // 1. Plan (legacy Commander path).
     const { workspace, plan } = await deps.commander.plan(message);
+
+    // plan 执行前验证
+    const preflightErrors = deps.commander.preflight(plan);
+    if (preflightErrors.length > 0) {
+      return c.json({ error: preflightErrors.join("; ") }, 400);
+    }
+
     // Stash tenantId on workspace.metadata so the runtime sink (which
     // doesn't know about auth) can persist with the right tenant scope.
     workspace.metadata = { ...(workspace.metadata ?? {}), tenantId: tenantId ?? null };
