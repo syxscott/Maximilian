@@ -1,3 +1,8 @@
+// Copyright (c) 2026 Maximilian contributors
+// SPDX-License-Identifier: MIT
+//
+// Licensed under the MIT License. See LICENSE in the project root.
+
 export * from "./types.js";
 export * from "./agent.js";
 export * from "./runtime.js";
@@ -16,3 +21,44 @@ export { PluginManager, type Plugin, type HookName, type HookFn, type PluginCont
 export { createGeologicalEngineeringPlugin, type DomainToolCollection, type DomainToolSpec } from "./domain-plugins.js";
 export { PermissionAuditLog, type PermissionAuditEntry, type PermissionAuditQuery, type PermissionAuditDecision } from "./permission-audit.js";
 export { sanitizeDisplayLabel, DEFAULT_LABEL_MAX_LENGTH, type SanitizeLabelOptions } from "./validation/sanitize-label.js";
+// Phase + Profile (借鉴 ChatDev / Open Interpreter)
+export {
+  PhaseRunner,
+  defaultGate,
+  BUILT_IN_PHASES,
+  type Phase,
+  type PhaseContext,
+  type PhaseVerdict,
+  type PhaseResult,
+  type Artifact,
+  type ChatMessage,
+  type PhaseEvent,
+} from "./phase.js";
+export {
+  ProfileRegistry,
+  BUILT_IN_PROFILES,
+  type AgentProfile,
+  type RoleRegistry,
+  type ToolRegistry,
+} from "./profile.js";
+// Sandbox multi-backend (借鉴 OpenHands + Open Interpreter)
+export {
+  SandboxServiceBase,
+  LocalSandboxService,
+  DockerSandboxService,
+  MacSandboxExecService,
+  ProcessSandboxService,
+  type SandboxBackend,
+  type SandboxOptions,
+  type SandboxResult,
+  // Legacy interface (backward compat)
+  type SandboxStatus,
+  type SandboxInfo,
+  type SandboxCommandResult,
+  type SandboxService,
+} from "./sandbox.js";
+// ACP protocol + ExecutionBackend abstraction (mirrors OpenHands Workspace/Sandbox layer)
+export * from "./acp/index.js";
+export * from "./acp/backend.js";
+export type { FailoverReason, ClassifiedError } from "./failover-reason.js";
+export { classifyTaskError } from "./failover-reason.js";
