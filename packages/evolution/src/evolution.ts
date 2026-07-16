@@ -137,7 +137,8 @@ export class EvolutionEngine {
     const newSystemPrompt = composeImprovedPrompt(
       currentManifest.systemPrompt,
       failures,
-      feedback
+      feedback,
+      this.config.scoreThreshold
     );
     const newId = nextVersionId(profile.versions);
 
@@ -232,11 +233,12 @@ function nextVersionId(versions: string[]): string {
 function composeImprovedPrompt(
   base: string,
   failures: MetricRecord[],
-  feedback: string[]
+  feedback: string[],
+  scoreThreshold: number
 ): string {
   const parts: string[] = [base.trim()];
 
-  const failureModes = extractFailureModes(failures);
+  const failureModes = extractFailureModes(failures, scoreThreshold);
   if (failureModes.length > 0) {
     parts.push(
       `\n# Failure modes observed in past runs (avoid these)\n` +
@@ -257,11 +259,11 @@ function composeImprovedPrompt(
   return parts.join("\n");
 }
 
-function extractFailureModes(failures: MetricRecord[]): string[] {
+function extractFailureModes(failures: MetricRecord[], scoreThreshold: number): string[] {
   const modes: string[] = [];
   for (const f of failures) {
     if (f.error) modes.push(`Avoid runtime error: ${f.error.slice(0, 120)}`);
-    if (f.reviewScore !== undefined && f.reviewScore < SCORE_THRESHOLD) {
+    if (f.reviewScore !== undefined && f.reviewScore < scoreThreshold) {
       modes.push(`Last scored ${f.reviewScore}/10 — be more thorough.`);
     }
   }
