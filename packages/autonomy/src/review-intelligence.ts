@@ -15,6 +15,7 @@ import {
   StructuredReviewSchema,
   type StructuredReview,
 } from "./types.js";
+import { scholarEval } from "./validation/scholar-eval.js";
 
 export interface ReviewInput {
   taskId: string;
@@ -81,7 +82,8 @@ Produce the JSON review now.`;
       parsed = JSON.parse(match[0]);
     }
 
-    return this.normalize(input, parsed);
+    const review = this.normalize(input, parsed);
+    return withScholarEval(review, input.artifacts);
   }
 
   // --------------------------------------------------------------------------
@@ -124,7 +126,7 @@ Produce the JSON review now.`;
     let score = 7 + strengths.length - weaknesses.length * 2;
     score = Math.max(0, Math.min(10, Math.round(score)));
 
-    return this.normalize(input, {
+    const review = this.normalize(input, {
       score,
       strengths: dedupe(strengths),
       weaknesses: dedupe(weaknesses),
@@ -132,6 +134,7 @@ Produce the JSON review now.`;
       improvementSuggestions: dedupe(improvementSuggestions),
       summary: `Heuristic review of ${input.artifacts.length} artifact(s). ${strengths.length} strengths, ${weaknesses.length} weaknesses, ${failurePatterns.length} failure patterns.`,
     });
+    return withScholarEval(review, input.artifacts);
   }
 
   // --------------------------------------------------------------------------
@@ -166,4 +169,49 @@ function toStringArray(v: unknown): string[] {
 
 function dedupe(arr: string[]): string[] {
   return Array.from(new Set(arr));
+}
+
+/**
+ * Derive scholarEval input heuristics from artifact content.
+ */
+function deriveScholarEvalInput(artifacts: Array<{ role: string; content: string }>) {
+  const allText = artifacts.map((a) => a.content).join("\n");
+  const lower = allText.toLowerCase();
+
+  const hasTests = lower.includes("test") || lower.includes("spec") || lower.includes("jest") || lower.includes("pytest");
+  const hasBuild = lower.includes("package.json") || lower.includes("makefile") || lower.includes("cmake") || lower.includes("build.gradle");
+  const linesOfCode = allText.split("\n").length;
+
+  // Count code blocks as proxy for docs
+  const codeBlockCount = (allText.match(/```/g) || []).length;
+  const docsScore = codeBlockCount > 0 ? Math.min(0.9, 0.3 + codeBlockCount * 0.1) : 0.2;
+
+  // Heuristic security flags: hardcoded secrets, eval, innerHTML, etc.
+  const securityFlags = (
+    (lower.includes("eval(") ? 1 : 0) +
+    (lower.includes("innerhtml") ? 1 : 0) +
+    (lower.includes("dangerouslysetinnerhtml") ? 1 : 0) +
+    (lower.includes("password=") ? 1 : 0) +
+    (lower.includes("api_key") ? 1 : 0)
+  );
+
+  // Heuristic ethical flags: concerning patterns
+  const ethicalFlags = (
+    (lower.includes("discriminat") ? 1 : 0) +
+    (lower.includes("bias") ? 1 : 0)
+  );
+
+  return { hasTests, hasBuild, linesOfCode, docsScore, securityFlags, ethicalFlags };
+}
+
+/**
+ * Attach ScholarEval 8-dim result to a StructuredReview.
+ */
+async function withScholarEval(
+  review: StructuredReview,
+  artifacts: Array<{ role: string; content: string }>
+): Promise<StructuredReview> {
+  const input = deriveScholarEvalInput(artifacts);
+  const scholarResult = scholarEval(input);
+  return { ...review, scholarEval: scholarResult };
 }

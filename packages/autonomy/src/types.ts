@@ -13,6 +13,7 @@
 import { z } from "zod"
 import { AgentRole } from "@max/core"
 import { SCORE_THRESHOLD, ACCEPTANCE_THRESHOLD } from "@max/evolution"
+import type { ScholarEvalResult } from "./validation/scholar-eval.js"
 
 // ============================================================================
 // 5.2 — StructuredReview
@@ -29,6 +30,7 @@ export const StructuredReviewSchema = z.object({
   improvementSuggestions: z.array(z.string()).default([]),
   summary: z.string(),
   reviewedAt: z.string(),
+  scholarEval: z.any().optional(), // ScholarEvalResult
 })
 export type StructuredReview = z.infer<typeof StructuredReviewSchema>
 
