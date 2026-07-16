@@ -18,7 +18,7 @@ import { ProfileStore } from "./profile-store.js";
 import { Leaderboard } from "./leaderboard.js";
 import { ModelSelector } from "./selector.js";
 import { AgentMemoryStore } from "./memory.js";
-import { EvolutionEngine } from "./evolution.js";
+import { EvolutionEngine, SCORE_THRESHOLD } from "./evolution.js";
 import type { AgentProfile, MetricRecord, ModelSelection } from "./types.js";
 
 export interface CompletionInput {
@@ -97,7 +97,7 @@ export class EvolutionFacade {
     const updated = ProfileStore.recompute(profile, records);
 
     let nextMemory = updated.memory;
-    if (input.error || (input.reviewScore !== undefined && input.reviewScore < 6)) {
+    if (input.error || (input.reviewScore !== undefined && input.reviewScore < SCORE_THRESHOLD)) {
       nextMemory = AgentMemoryStore.recordFailure(nextMemory, record);
     } else if (input.result) {
       nextMemory = AgentMemoryStore.recordSuccess(nextMemory, record, input.result.output.slice(0, 240));

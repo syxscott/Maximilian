@@ -66,64 +66,81 @@ export class AutonomyOrchestrator {
     const promotions: PromotionRecord[] = [];
 
     // 1. Per-task execution records.
-    for (const task of workspace.plan?.tasks ?? []) {
-      const result = workspace.results.find((r) => r.taskId === task.id);
-      const exec = await this.buildExecutionRecord(workspace, task, result);
-      await this.deps.executionStore.save(exec);
-      executions.push(exec);
-    }
+    const taskRecords = await Promise.all(
+      (workspace.plan?.tasks ?? []).map(async (task) => {
+        const result = workspace.results.find((r) => r.taskId === task.id);
+        const exec = await this.buildExecutionRecord(workspace, task, result);
+        await this.deps.executionStore.save(exec);
+        return exec;
+      })
+    );
+    executions.push(...taskRecords);
 
     // 2. Structured reviews per non-review task.
-    for (const exec of executions) {
-      if (exec.agentRole === "reviewer" || exec.agentRole === "review") continue;
-      const artifacts = this.collectArtifacts(workspace, exec);
-      if (artifacts.length === 0) continue;
-      const review = await this.deps.review.review({
-        taskId: exec.taskId,
-        workspaceId: exec.workspaceId,
-        artifacts,
-        userRequest: workspace.userRequest,
-      });
-      exec.review = review;
-      await this.deps.executionStore.save(exec);
-      reviews.push(review);
-    }
+    const reviewable = executions.filter(
+      (exec) => exec.agentRole !== "reviewer" && exec.agentRole !== "review"
+    );
+    const reviewResults = await Promise.all(
+      reviewable.map(async (exec) => {
+        const artifacts = this.collectArtifacts(workspace, exec);
+        if (artifacts.length === 0) return null;
+        const review = await this.deps.review.review({
+          taskId: exec.taskId,
+          workspaceId: exec.workspaceId,
+          artifacts,
+          userRequest: workspace.userRequest,
+        });
+        exec.review = review;
+        await this.deps.executionStore.save(exec);
+        return review;
+      })
+    );
+    reviews.push(...(reviewResults.filter(Boolean) as StructuredReview[]));
 
     // 3. Failure pattern mining.
-    await this.deps.failureAnalyzer.analyze(this.deps.executionStore);
-    await this.deps.failureAnalyzer.leaderboardInsight(this.deps.executionStore);
+    await Promise.all([
+      this.deps.failureAnalyzer.analyze(this.deps.executionStore),
+      this.deps.failureAnalyzer.leaderboardInsight(this.deps.executionStore),
+    ]);
 
     // 4. Evolution planning per role.
     const insights = await this.deps.insightsStore.loadPatterns();
-    for (const role of uniqueRoles(executions)) {
-      if (role === "reviewer" || role === "review") continue;
-      const roleExecs = executions.filter((e) => e.agentRole === role);
-      const roleReviews = reviews.filter((r) =>
-        roleExecs.some((e) => e.taskId === r.taskId)
-      );
-      const blueprint = await this.resolveBlueprint(role);
-      if (!blueprint) continue;
-      const plan = this.deps.planner.plan({
-        role,
-        currentVersion: blueprint.version,
-        executions: roleExecs,
-        reviews: roleReviews,
-        failureInsights: insights,
-        userFeedback: roleExecs.flatMap((e) => e.userFeedback.map((f) => f.text)),
-      });
-      if (plan) {
-        await this.deps.planner.savePlan(plan);
-        plans.push(plan);
-      }
-    }
+    const roleResults = await Promise.all(
+      uniqueRoles(executions)
+        .filter((role) => role !== "reviewer" && role !== "review")
+        .map(async (role) => {
+          const roleExecs = executions.filter((e) => e.agentRole === role);
+          const roleReviews = reviews.filter((r) =>
+            roleExecs.some((e) => e.taskId === r.taskId)
+          );
+          const blueprint = await this.resolveBlueprint(role);
+          if (!blueprint) return null;
+          const plan = this.deps.planner.plan({
+            role,
+            currentVersion: blueprint.version,
+            executions: roleExecs,
+            reviews: roleReviews,
+            failureInsights: insights,
+            userFeedback: roleExecs.flatMap((e) => e.userFeedback.map((f) => f.text)),
+          });
+          if (plan) {
+            await this.deps.planner.savePlan(plan);
+            return plan;
+          }
+          return null;
+        })
+    );
+    plans.push(...(roleResults.filter(Boolean) as EvolutionPlan[]));
 
     // 5. Candidate generation.
-    for (const plan of plans) {
-      const blueprint = await this.resolveBlueprint(plan.agentRole);
-      if (!blueprint) continue;
-      const candidate = await this.deps.candidateGenerator.generate(plan, blueprint);
-      candidates.push(candidate);
-    }
+    const candidateResults = await Promise.all(
+      plans.map(async (plan) => {
+        const blueprint = await this.resolveBlueprint(plan.agentRole);
+        if (!blueprint) return null;
+        return this.deps.candidateGenerator.generate(plan, blueprint);
+      })
+    );
+    candidates.push(...candidateResults.filter(Boolean) as CandidateVersion[]);
 
     // 6. Promotion decisions (best-effort, may skip if sample too small).
     for (const candidate of candidates) {

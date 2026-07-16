@@ -12,6 +12,7 @@
 
 import { z } from "zod"
 import { AgentRole } from "@max/core"
+import { SCORE_THRESHOLD, ACCEPTANCE_THRESHOLD } from "@max/evolution"
 
 // ============================================================================
 // 5.2 — StructuredReview
@@ -207,8 +208,8 @@ export const DEFAULT_PROMOTION_CONFIG = {
 
 export const DEFAULT_PLANNER_CONFIG = {
   minExecutions: 10,
-  scoreThreshold: 6.0,
-  acceptanceThreshold: 0.5,
+  scoreThreshold: SCORE_THRESHOLD,
+  acceptanceThreshold: ACCEPTANCE_THRESHOLD,
   topFailureCount: 3,
 }
 

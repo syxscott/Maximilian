@@ -261,7 +261,7 @@ function extractFailureModes(failures: MetricRecord[]): string[] {
   const modes: string[] = [];
   for (const f of failures) {
     if (f.error) modes.push(`Avoid runtime error: ${f.error.slice(0, 120)}`);
-    if (f.reviewScore !== undefined && f.reviewScore < 6) {
+    if (f.reviewScore !== undefined && f.reviewScore < SCORE_THRESHOLD) {
       modes.push(`Last scored ${f.reviewScore}/10 — be more thorough.`);
     }
   }

@@ -22,3 +22,10 @@ export { AgentMemoryStore, COMPRESSION_THRESHOLD } from "./memory.js";
 export { EvolutionEngine, DEFAULT_EVOLUTION_CONFIG } from "./evolution.js";
 export { EvolutionFacade } from "./facade.js";
 export { evolutionAwareFactory } from "./factory.js";
+export {
+  SCORE_THRESHOLD,
+  ACCEPTANCE_THRESHOLD,
+  MIN_SAMPLES,
+  AB_SAMPLE_SIZE,
+  PROMOTE_MARGIN,
+} from "./evolution.js";
