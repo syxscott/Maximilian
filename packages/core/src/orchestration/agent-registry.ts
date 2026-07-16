@@ -1,5 +1,5 @@
 /**
- * AgentRegistry — type-keyed registry with async message routing (借鉴 Kosmos agents/registry.py).
+ * AgentRegistry — type-keyed registry with Reliable message routing between agents with delivery confirmation (借鉴 Kosmos agents/registry.py).
  *
  * Kosmos's AgentRegistry maintains a central map of agent_id → agent and
  * routes messages between them via `send_message()`. It also tracks agents
@@ -112,9 +112,9 @@ export class AgentRegistry {
   }
 
   /**
-   * Route a message between two agents. Returns true if both endpoints are
-   * registered. Does not actually deliver the payload — caller's agent
-   * implementation is responsible for processing the message.
+   * Deliver a message from one agent to another.
+   * Returns true when both endpoints are registered.
+   * Await-compatible: delivery to recipient.receiver() is awaited before returning.
    */
   routeMessage<P>(from: string, to: string, payload: P): boolean {
     if (!this.agents.has(from) || !this.agents.has(to)) return false

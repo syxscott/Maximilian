@@ -3,7 +3,7 @@
  *
  * Kosmos's EventBus exposes:
  *   - subscribe(callback, event_types, process_ids) for filtered subscription
- *   - publish() async + publish_sync() for emission
+ *   - publish() sync + publishAsync() for emission
  *   - EventSubscription context manager for auto-unsubscribe
  *
  * Maximilian adapts this as a generic typed pub/sub that supplements the
