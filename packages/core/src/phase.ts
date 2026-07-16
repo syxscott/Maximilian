@@ -209,6 +209,10 @@ export class PhaseRunner<S = unknown> {
 
     await this.eventBus.publishAsync({ type: "phase:start", phaseId: phase.id, turn: phaseIdx })
 
+    // Snapshot state before phase runs — used to restore if timeout occurs, preventing
+    // post-timeout writes from polluting shared state that subsequent phases may read.
+    const stateBeforePhase = structuredClone(this.ctx.state)
+
     // Build a phase-specific context (shares top-level ctx but resets messages)
     const phaseCtx: PhaseContext<S> = {
       ...this.ctx,
@@ -230,10 +234,12 @@ export class PhaseRunner<S = unknown> {
       }
     } catch (err) {
       phaseError = err instanceof Error ? err.message : String(err)
+      // Restore state to prevent post-timeout / post-error writes from polluting shared state.
+      this.ctx.state = stateBeforePhase
       // Exception in run() → verdict 'fail'
       const verdict: PhaseVerdict = "fail"
       await this.eventBus.publishAsync({ type: "phase:end", phaseId: phase.id, turn: phaseIdx, verdict })
-      return { phaseId: phase.id, verdict, output: undefined, durationMs: Date.now() - start, phaseError, finalState: phaseCtx.state }
+      return { phaseId: phase.id, verdict, output: undefined, durationMs: Date.now() - start, phaseError, finalState: stateBeforePhase }
     }
 
     // Evaluate gate
