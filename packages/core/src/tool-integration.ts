@@ -350,7 +350,17 @@ export interface ToolLoopOptions {
    * caller to enforce external stop signals (e.g. user abort, deadline).
    */
   shouldStopAfterTurn?: () => boolean
+  /**
+   * Owned files for the current task (借鉴 parallel-feature-development).
+   * When set, file-write tools (write, edit) are gated to only allow
+   * writes within these directories/files. Writes outside are rejected
+   * with an error.
+   */
+  ownedFiles?: string[]
 }
+
+/** Tools that write files and are subject to ownedFiles gating. */
+const FILE_WRITE_TOOLS = new Set(["write", "edit"])
 
 /**
  * Run a tool execution loop: send messages, execute tool calls, repeat.
@@ -448,6 +458,19 @@ export async function runToolLoop(
         }
       }
       try {
+        // ownedFiles permission gate: enforce write/edit tools only touch owned paths
+        if (options.ownedFiles && options.ownedFiles.length > 0 && FILE_WRITE_TOOLS.has(call.name)) {
+          const input = call.input as Record<string, unknown>
+          const filePath = typeof input?.path === "string" ? input.path : undefined
+          if (filePath) {
+            const isOwned = options.ownedFiles.some(prefix => filePath.startsWith(prefix))
+            if (!isOwned) {
+              throw new Error(
+                `File "${filePath}" is not in task's ownedFiles: [${options.ownedFiles.join(", ")}]`,
+              )
+            }
+          }
+        }
         if (!cacheHit) {
           result = await provider.executeTool(call, {
             sessionID: "default",

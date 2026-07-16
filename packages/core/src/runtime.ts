@@ -34,6 +34,13 @@ import {
   type PermissionAuditEntry,
   type PermissionAuditQuery,
 } from "./permission-audit.js"
+import type { BaseCheckpointSaver } from "./checkpoint/saver.js"
+import type { Checkpoint } from "./checkpoint/saver.js"
+import { SelfCritique } from "./self-critique.js"
+import { TaskPrioritizer } from "./task-prioritizer.js"
+import { RuntimeInterrupt } from "./runtime-interrupt.js"
+import type { TaskPriority } from "./types.js"
+import type { ChannelValues, ConfigurableDict } from "./types.js"
 
 /**
  * Long-term memory store interface.
@@ -66,6 +73,32 @@ export interface AgentMemoryStorePort {
  */
 export interface ModelSelectorPort {
   select(role: AgentRole): { provider: string; model: string; score: number; reason: string } | null
+}
+
+/**
+ * Runtime command for resuming from an interrupt (借鉴 LangGraph Command).
+ * @see https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint/langgraph/checkpoint/base/__init__.py
+ */
+export type RuntimeCommand =
+  | { kind: "resume"; value: unknown }
+  | { kind: "update"; patch: Partial<ChannelValues> }
+  | { kind: "goto"; nodeId: string }
+  | { kind: "interrupt"; reason: string; payload?: unknown };
+
+/**
+ * Result of a self-critique observation (借鉴 AutoGPT self-critique).
+ * @see https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/prompts/prompt.py
+ */
+export interface SelfCritiqueResult {
+  useful: boolean;
+  /** Quality score 0-10. Scores < 3 trigger replan. */
+  score: number;
+  /** Brief explanation of the score. */
+  reason: string;
+  /** Up to 3 concrete suggestions for improvement. */
+  suggestions?: string[];
+  /** The text that was critiqued (passed to `observe`). */
+  outputText?: string;
 }
 
 export type ApprovalDecision = "approve" | "reject"
@@ -224,6 +257,25 @@ export interface RuntimeOptions {
    * need to instantiate the detector themselves.
    */
   maxIdleRoundsBeforeStall?: number
+  /**
+   * Optional checkpoint saver for time-travel debugging and workspace forking.
+   * When provided, the runtime snapshots state after each wave, enabling
+   * getHistory(), rewindTo(), and forkFrom(). Without this, those methods
+   * throw (checkpointing is a no-op).
+   */
+  checkpointSaver?: BaseCheckpointSaver
+  /**
+   * Optional self-critique module. When provided, the runtime observes
+   * each tool-end event and uses the critique to inform stall detection
+   * and re-planning. See SelfCritique class (借鉴 AutoGPT).
+   */
+  selfCritique?: SelfCritique
+  /**
+   * Optional task prioritizer for dynamic task re-ordering between waves.
+   * When provided, each wave's end calls TaskPrioritizer.reRank() to
+   * adapt the pending task order based on recent results (借鉴 AutoGPT).
+   */
+  taskPrioritizer?: TaskPrioritizer
 }
 
 /**
@@ -363,6 +415,15 @@ export class AgentRuntime {
     }
   >()
   private permissionAudit = new PermissionAuditLog()
+  private checkpointSaver?: BaseCheckpointSaver
+  private selfCritique?: SelfCritique
+  private taskPrioritizer?: TaskPrioritizer
+  /** Per-workspace critique result history, cleared on each new workspace execution. */
+  private critiqueHistory = new Map<string, SelfCritiqueResult[]>()
+  /** Interrupt resolvers keyed by workspaceId. */
+  private interruptResolvers = new Map<string, (command: RuntimeCommand) => void>()
+  /** The currently active interrupt for a workspace (if interrupted). */
+  private activeInterrupt = new Map<string, RuntimeInterrupt>()
 
   constructor(
     private factory: AgentFactory,
@@ -379,6 +440,9 @@ export class AgentRuntime {
     this.maxTaskRetries = options?.maxTaskRetries ?? 0
     this.maxIdleRoundsBeforeStall = options?.maxIdleRoundsBeforeStall ?? 3
     this.onStall = options?.onStall
+    this.checkpointSaver = options?.checkpointSaver
+    this.selfCritique = options?.selfCritique
+    this.taskPrioritizer = options?.taskPrioritizer
   }
 
   on(listener: RuntimeListener): () => void {
@@ -391,6 +455,16 @@ export class AgentRuntime {
     this.emit(event)
   }
 
+  /** Steering hook: called before each tool-loop iteration to inject pending messages. */
+  getSteeringMessages() {
+    return [] as unknown as import("@max/providers").ChatMessage[]
+  }
+
+  /** Follow-up hook: called after tool-loop natural exit to queue follow-up work. */
+  getFollowUpMessages() {
+    return [] as unknown as import("@max/providers").ChatMessage[]
+  }
+
   /**
    * Park the current tool-loop iteration until the user (via the API)
    * answers a `PermissionRequestError`. The loop calls this after emitting
@@ -398,8 +472,9 @@ export class AgentRuntime {
    * the user picks allow/deny. Returns a promise that resolves with the
    * user's decision.
    *
-   * If a request with the same id is awaited twice, the second call returns
-   * the same promise — idempotent under retries from the loop.
+   * If a request with the same id is awaited twice, the second call throws
+   * — refusing the duplicate prevents an unbounded linked list of resolvers
+   * from forming on tight retry loops. Matches `awaitApproval`'s contract.
    */
   awaitPermission(
     requestId: string,
@@ -635,6 +710,146 @@ export class AgentRuntime {
     return this.ledgers.get(workspaceId)
   }
 
+  // ── Interrupt / Resume ────────────────────────────────────────────────────
+
+  /**
+   * Interrupt the current workspace execution (借鉴 LangGraph interrupt).
+   * Throws a RuntimeInterrupt that can be caught by the caller's outer loop.
+   * Use `resume()` to continue execution from the interrupt point.
+   *
+   * @param reason - Human-readable reason for the interrupt
+   * @param payload - Optional opaque payload attached to the interrupt
+   * @throws RuntimeInterrupt - always thrown; never returns normally
+   */
+  interrupt(reason: string, payload?: unknown): never {
+    const interrupt_ = new RuntimeInterrupt(reason, payload)
+    this.activeInterrupt.set("current", interrupt_)
+    // 修复 Bug6: store a resolver in interruptResolvers before throwing so resume() can find it
+    let resolvePromise: (command: RuntimeCommand) => void = () => {}
+    const p = new Promise<RuntimeCommand>((resolve) => { resolvePromise = resolve; })
+    this.interruptResolvers.set("current", resolvePromise)
+    // Avoid unhandled rejection in case resume is never called
+    p.catch(() => {})
+    throw interrupt_
+  }
+
+  /**
+   * Resume a workspace from an interrupt (借鉴 LangGraph resume).
+   * The workspace must currently be in an interrupted state (i.e. a prior
+   * call to `interrupt()` was made and caught). This method resolves the
+   * parked interrupt with the given command.
+   *
+   * @param command - The RuntimeCommand to apply on resume
+   */
+  async resume(command: RuntimeCommand): Promise<void> {
+    const resolver = this.interruptResolvers.get("current")
+    if (!resolver) {
+      throw new Error("no active interrupt to resume")
+    }
+    this.interruptResolvers.delete("current")
+    this.activeInterrupt.delete("current")
+    resolver(command)
+  }
+
+  // ── Checkpoint / Time-travel ──────────────────────────────────────────────
+
+  /**
+   * Get the checkpoint history for a workspace (借鉴 LangGraph getCBT).
+   * Returns all checkpoints ordered newest-first. Useful for time-travel
+   * debugging and displaying execution history in the UI.
+   *
+   * @param workspaceId - Workspace/thread to get history for
+   * @returns Array of Checkpoint tuples (newest first), or empty if no checkpoints
+   */
+  async getHistory(workspaceId: string): Promise<Checkpoint[]> {
+    if (!this.checkpointSaver) {
+      throw new Error("checkpointSaver not configured")
+    }
+    const tuples = await this.checkpointSaver.list({ thread_id: workspaceId })
+    return tuples.map((t) => t.checkpoint)
+  }
+
+  /**
+   * Rewind a workspace to a previous checkpoint (借鉴 LangGraph rewind).
+   * Loads the channel values from the target checkpoint and replaces the
+   * current workspace state. Pending tasks are rebuilt from the checkpoint's
+   * channel values if a `tasks` key is present.
+   *
+   * @param workspaceId - Workspace to rewind
+   * @param checkpointId - Checkpoint to rewind to
+   */
+  async rewindTo(workspaceId: string, checkpointId: string): Promise<void> {
+    if (!this.checkpointSaver) {
+      throw new Error("checkpointSaver not configured")
+    }
+    const tuple = await this.checkpointSaver.get({
+      thread_id: workspaceId,
+      checkpoint_id: checkpointId,
+    })
+    if (!tuple) {
+      throw new Error(`checkpoint ${checkpointId} not found for workspace ${workspaceId}`)
+    }
+    // Reload workspace state from checkpoint channel values
+    const ws = await this.sink.loadWorkspace(workspaceId)
+    // 修复 Bug11: explicit error when workspace or plan is missing
+    if (!ws) {
+      throw new Error(`rewindTo: workspace ${workspaceId} not found in sink`)
+    }
+    const updated: Workspace = {
+      ...ws,
+      results: (tuple.checkpoint.channelValues["results"] as Result[]) ?? ws.results,
+      status: "executing",
+      updatedAt: new Date().toISOString(),
+    }
+    // Restore plan tasks from checkpoint if present
+    if (tuple.checkpoint.channelValues["tasks"]) {
+      if (!updated.plan) {
+        throw new Error(`rewindTo: workspace ${workspaceId} has no plan to restore`)
+      }
+      updated.plan = {
+        ...updated.plan,
+        tasks: tuple.checkpoint.channelValues["tasks"] as Task[],
+      }
+    }
+    await this.sink.saveWorkspace(updated)
+    // Clear critique history for this workspace since we're rewinding
+    this.critiqueHistory.delete(workspaceId)
+  }
+
+  /**
+   * Fork a workspace to a new workspace id (借鉴 LangGraph fork).
+   * Copies the entire checkpoint history from the source to the destination.
+   * The new workspace starts in the same state as the source but with a
+   * fresh id, allowing parallel exploration of alternate execution paths.
+   *
+   * @param workspaceId - Source workspace to fork from
+   * @param newWorkspaceId - Optional id for the new workspace (generated if omitted)
+   * @returns The new workspace id
+   */
+  async forkFrom(workspaceId: string, newWorkspaceId?: string): Promise<string> {
+    if (!this.checkpointSaver) {
+      throw new Error("checkpointSaver not configured")
+    }
+    const forkId = newWorkspaceId ?? `fork-${randomUUID().slice(0, 8)}`
+    // 修复 Bug12: create Workspace record in sink before copying checkpoints
+    const source = await this.sink.loadWorkspace(workspaceId)
+    if (!source) {
+      throw new Error(`forkFrom: source workspace ${workspaceId} not found`)
+    }
+    const forked: Workspace = {
+      ...source,
+      id: forkId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    await this.sink.saveWorkspace(forked)
+    await this.checkpointSaver.copyThread(
+      { thread_id: workspaceId },
+      { thread_id: forkId },
+    )
+    return forkId
+  }
+
   private emit(event: RuntimeEvent): void {
     for (const l of this.listeners) {
       // Listeners are declared as (event) => void but commonly return a Promise
@@ -684,6 +899,8 @@ export class AgentRuntime {
     }
 
     if (!updated.plan) {
+      // 修复 Bug9: clean up runningWorkspaces before early return
+      this.runningWorkspaces.delete(workspace.id)
       updated.status = "failed"
       updated.error = "No plan attached to workspace"
       await this.sink.saveWorkspace(updated)
@@ -845,7 +1062,7 @@ export class AgentRuntime {
         runnable.map(async (task) => {
           await sem.acquire()
           try {
-            await this.runTask(updated, task, counters)
+            await this.runTask(updated, task, counters, stallDetector)
             completed.add(task.id)
           } catch (err) {
             const error = err instanceof Error ? err.message : String(err)
@@ -968,6 +1185,77 @@ export class AgentRuntime {
         }
       }
 
+      // ── Per-wave checkpoint & task re-ranking ───────────────────────────
+
+      // Task re-ranking: ask the LLM to reorder remaining tasks based on
+      // recent results and the overall goal (借鉴 AutoGPT TaskPrioritizer).
+      if (this.taskPrioritizer && remaining.length > 0) {
+        try {
+          const priorities = await this.taskPrioritizer.reRank(remaining, {
+            recentResults: updated.results,
+            goal: updated.userRequest,
+          })
+          if (priorities && priorities.length > 0) {
+            // Reorder remaining tasks by priority: high → medium → low
+            const priorityOrder = { high: 0, medium: 1, low: 2 }
+            const priorityMap = new Map(priorities.map((p) => [p.taskId, p]))
+            // Sort by LLM-assigned priority, then by original order for ties
+            remaining.sort((a, b) => {
+              const pa = priorityMap.get(a.id)
+              const pb = priorityMap.get(b.id)
+              const ordA = pa ? priorityOrder[pa.priority] : 1
+              const ordB = pb ? priorityOrder[pb.priority] : 1
+              if (ordA !== ordB) return ordA - ordB
+              return 0
+            })
+            // Apply newScope modifications if the LLM suggested scope changes
+            for (const t of remaining) {
+              const p = priorityMap.get(t.id)
+              if (p?.newScope) {
+                t.description = p.newScope
+              }
+            }
+            log.info(
+              { workspaceId: updated.id, newOrder: remaining.map((t) => t.id) },
+              "task re-rank applied",
+            )
+          }
+        } catch (err) {
+          log.error({ err, workspaceId: updated.id }, "task re-rank failed")
+        }
+      }
+
+      // 修复 Bug10: save checkpoint AFTER reRank mutation so checkpoint captures post-reRank state
+      if (this.checkpointSaver) {
+        const checkpointId = `${updated.id}-${roundRef.value.toString().padStart(4, "0")}`
+        const channelValues: ChannelValues = {
+          results: updated.results,
+          tasks: remaining,
+          plan: updated.plan,
+        }
+        const channelVersions: Record<string, number> = {}
+        const updatedChannels = ["results", "tasks"]
+        const prevCheckpointId = `${updated.id}-${(roundRef.value - 1).toString().padStart(4, "0")}`
+        try {
+          await this.checkpointSaver.put(
+            { thread_id: updated.id, checkpoint_id: checkpointId },
+            {
+              id: checkpointId,
+              parentId: roundRef.value === 1 ? null : prevCheckpointId,
+              channelValues,
+              channelVersions,
+              updatedChannels,
+              metadata: {
+                source: "loop" as const,
+                step: roundRef.value,
+              },
+            },
+          )
+        } catch (err) {
+          log.error({ err, workspaceId: updated.id }, "checkpoint save failed")
+        }
+      }
+
       pending.length = 0
       pending.push(...remaining)
     }
@@ -1017,6 +1305,7 @@ export class AgentRuntime {
       }
       roundRef: { value: number }
     },
+    stallDetector: StallDetector,
   ): Promise<void> {
     const _completed = counters.completed
     const messagesRef = counters.messagesEmittedRef
@@ -1139,6 +1428,9 @@ export class AgentRuntime {
             toolProvider.setToolAllowlist(agent.manifest.allowedTools)
             toolProvider.setToolDenylist(agent.manifest.deniedTools)
           }
+
+          // Ref to capture last tool call info for self-critique observation
+          const lastActionRef = { toolName: "", input: undefined as unknown }
           const final = toolProvider
             ? await raceWithAbort(
                 runToolLoopAndSubmit(
@@ -1149,6 +1441,9 @@ export class AgentRuntime {
                   workspace.id,
                   this.emit.bind(this),
                   (requestId, meta) => this.awaitPermission(requestId, meta),
+                  lastActionRef,
+                  this.getSteeringMessages.bind(this),
+                  this.getFollowUpMessages.bind(this),
                 ),
                 ctx.signal,
                 workspace.id,
@@ -1158,6 +1453,31 @@ export class AgentRuntime {
                 ctx.signal,
                 workspace.id,
               )
+
+          // Self-critique observation: evaluate the last action's quality
+          // (借鉴 AutoGPT self-critique — fires after each tool execution).
+          if (this.selfCritique && lastActionRef.toolName) {
+            const historyTail: ChatMessage[] = []
+            const critiqueResult = await this.selfCritique.observe(
+              `tool=${lastActionRef.toolName} input=${JSON.stringify(lastActionRef.input).slice(0, 200)}`,
+              final.output,
+              historyTail,
+            )
+            // Store critique result for this workspace
+            const existing = this.critiqueHistory.get(workspace.id) ?? []
+            existing.push(critiqueResult)
+            this.critiqueHistory.set(workspace.id, existing)
+
+            // If consecutive low scores, trigger an early stall signal
+            // by injecting a "stall suggestion" into the stall detector
+            if (this.selfCritique.shouldReplan(existing)) {
+              log.warn(
+                { workspaceId: workspace.id, lastScore: critiqueResult.score },
+                "self-critique score low — signaling early stall",
+              )
+              stallDetector.observe({ completedTasks: 0, newResults: 0 })
+            }
+          }
 
           task.resultId = final.id
           task.status = "completed"
@@ -1372,6 +1692,8 @@ export class AgentRuntime {
     // Without this, abort() only flips the AbortController but the
     // `await awaitPermission(...)` call inside runTask keeps the task
     // (and the workspace) pinned in `executing` until process exit.
+    // NOTE: iterating a Map and deleting the current key is safe in JS —
+    // the iterator advances correctly after delete.
     for (const [id, entry] of this.permissionResolvers) {
       if (entry.meta.workspaceId === workspaceId) {
         entry.reject(new Error(`workspace ${workspaceId} aborted`))
@@ -1415,13 +1737,20 @@ async function runToolLoopAndSubmit(
     requestId: string,
     meta: { workspaceId: string; taskId: string; tool: string; target: string },
   ) => Promise<"allow" | "deny">,
+  /** Optional: record last tool name+input for self-critique observation. */
+  lastActionRef?: { toolName: string; input?: unknown },
+  getSteeringMessages?: () => import("@max/providers").ChatMessage[],
+  getFollowUpMessages?: () => import("@max/providers").ChatMessage[],
 ): Promise<Result> {
   const messages = agent.buildChatMessages(task, ctx)
-  const { response } = await runToolLoop(toolProvider, messages, {
+  const { response, allToolCalls } = await runToolLoop(toolProvider, messages, {
     emitEvent: emit,
     workspaceId,
     taskId: task.id,
     awaitPermission,
+    getSteeringMessages,
+    getFollowUpMessages,
+    ownedFiles: task.metadata?.ownedFiles as string[] | undefined,
   })
   const result: Result = {
     id: `r-${randomUUID().slice(0, 8)}`,
@@ -1443,6 +1772,12 @@ async function runToolLoopAndSubmit(
     },
     createdAt: new Date().toISOString(),
     durationMs: undefined,
+  }
+  // Record last tool info for self-critique observation
+  if (lastActionRef) {
+    const lastCall = allToolCalls[allToolCalls.length - 1]
+    lastActionRef.toolName = lastCall?.name ?? ""
+    lastActionRef.input = lastCall?.input
   }
   return agent.submitResult(result)
 }
