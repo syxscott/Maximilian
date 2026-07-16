@@ -112,9 +112,9 @@ export class AgentRegistry {
   }
 
   /**
-   * Deliver a message from one agent to another.
-   * Returns true when both endpoints are registered.
-   * Await-compatible: delivery to recipient.receiver() is awaited before returning.
+   * Route a message between two agents. Returns true if both endpoints are
+   * registered. Records the message in history; actual payload delivery to
+   * the recipient's receiver() is implemented separately.
    */
   routeMessage<P>(from: string, to: string, payload: P): boolean {
     if (!this.agents.has(from) || !this.agents.has(to)) return false
