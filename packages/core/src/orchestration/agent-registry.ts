@@ -23,6 +23,8 @@ export interface AgentLike {
   status?: string
   /** Arbitrary per-agent metadata (capabilities, last-active, etc.). */
   metadata?: Record<string, unknown>
+  /** 消息接收处理器 */
+  receiver?: (from: string, payload: unknown) => Promise<void> | void
 }
 
 export interface AgentMessage<P = unknown> {
@@ -113,11 +115,13 @@ export class AgentRegistry {
 
   /**
    * Route a message between two agents. Returns true if both endpoints are
-   * registered. Records the message in history; actual payload delivery to
-   * the recipient's receiver() is implemented separately.
+   * registered and the message was delivered successfully.
+   * Records the message in history and invokes the recipient's receiver.
    */
-  routeMessage<P>(from: string, to: string, payload: P): boolean {
+  async routeMessage<P>(from: string, to: string, payload: P): Promise<boolean> {
     if (!this.agents.has(from) || !this.agents.has(to)) return false
+
+    const recipient = this.agents.get(to)!
     this.history.push({
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       from,
@@ -127,6 +131,19 @@ export class AgentRegistry {
     })
     if (this.history.length > this.historyCap) {
       this.history.splice(0, this.history.length - this.historyCap)
+    }
+
+    // 实际投递到接收方
+    if (recipient.receiver) {
+      try {
+        const result = recipient.receiver(from, payload)
+        if (result && typeof result.then === "function") {
+          await result
+        }
+      } catch (err) {
+        console.error(`[AgentRegistry] delivery to ${to} failed:`, err)
+        return false
+      }
     }
     return true
   }

@@ -64,20 +64,20 @@ describe("AgentRegistry (借鉴 Kosmos agents/registry.py)", () => {
     expect(reg.updateStatus("missing", "x")).toBe(false)
   })
 
-  it("routeMessage only succeeds for registered endpoints", () => {
+  it("routeMessage only succeeds for registered endpoints", async () => {
     const reg = new AgentRegistry()
     reg.register({ id: "a1", type: "x" })
     reg.register({ id: "a2", type: "y" })
-    expect(reg.routeMessage("a1", "a2", { query: "hi" })).toBe(true)
-    expect(reg.routeMessage("a1", "missing", {})).toBe(false)
-    expect(reg.routeMessage("missing", "a1", {})).toBe(false)
+    expect(await reg.routeMessage("a1", "a2", { query: "hi" })).toBe(true)
+    expect(await reg.routeMessage("a1", "missing", {})).toBe(false)
+    expect(await reg.routeMessage("missing", "a1", {})).toBe(false)
   })
 
-  it("recentMessages respects history cap", () => {
+  it("recentMessages respects history cap", async () => {
     const reg = new AgentRegistry({ messageHistoryCap: 5 })
     reg.register({ id: "a1", type: "x" })
     reg.register({ id: "a2", type: "y" })
-    for (let i = 0; i < 10; i++) reg.routeMessage("a1", "a2", { i })
+    for (let i = 0; i < 10; i++) await reg.routeMessage("a1", "a2", { i })
     expect(reg.recentMessages(100)).toHaveLength(5)
     expect(reg.recentMessages(3)).toHaveLength(3)
   })
@@ -95,11 +95,11 @@ describe("AgentRegistry (借鉴 Kosmos agents/registry.py)", () => {
     expect(health.byStatus.busy).toBe(1)
   })
 
-  it("clear wipes registry and history", () => {
+  it("clear wipes registry and history", async () => {
     const reg = new AgentRegistry()
     reg.register({ id: "a1", type: "x" })
     reg.register({ id: "a2", type: "y" })
-    reg.routeMessage("a1", "a2", {})
+    await reg.routeMessage("a1", "a2", {})
     reg.clear()
     expect(reg.size()).toBe(0)
     expect(reg.recentMessages()).toHaveLength(0)
