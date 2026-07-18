@@ -35,6 +35,7 @@ interface SseClient {
   send: (data: string) => void
   close: () => void
   events: string[]
+  tenantId?: string // auth context of the connecting client
 }
 
 const subscriptions = new Map<string, Subscription>()
@@ -94,11 +95,21 @@ export function unregisterSseClient(id: string): void {
 /**
  * Publish an event to all subscribers whose filters match.
  * Called by ScopedBus handlers — see api/src/index.ts.
+ * @param eventName - the runtime event type
+ * @param payload - the event payload (contains workspaceId for tenant routing)
+ * @param tenantId - tenant that originated this event (from workspace.metadata.tenantId)
  */
-export async function publishEvent(eventName: string, payload: unknown): Promise<void> {
+export async function publishEvent(
+  eventName: string,
+  payload: unknown,
+  tenantId?: string,
+): Promise<void> {
   // SSE first - synchronous send, no network I/O. Subscribers get events
   // immediately even when webhook deliveries are slow or timing out.
   for (const client of sseClients.values()) {
+    // Filter by tenant: client with no tenantId (legacy/global) receives all;
+    // client with tenantId only receives events from the same tenant.
+    if (client.tenantId !== undefined && client.tenantId !== tenantId) continue
     if (client.events.length > 0 && !client.events.includes(eventName)) continue
     try {
       client.send(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`)
@@ -111,8 +122,13 @@ export async function publishEvent(eventName: string, payload: unknown): Promise
   // others. Previously this was a serial for-await loop, which meant a
   // single 10s-timeout webhook delayed every subsequent webhook AND every
   // SSE subscriber (SSE was sent after the webhook loop finished).
+  // Tenant filter: sub without tenantId (legacy) receives all; sub with
+  // tenantId only receives events from the same tenant.
   const webhookSubs = [...subscriptions.values()].filter(
-    (s) => s.type === "webhook" && (s.events.length === 0 || s.events.includes(eventName)),
+    (s) =>
+      s.type === "webhook" &&
+      (s.tenantId === undefined || s.tenantId === tenantId) &&
+      (s.events.length === 0 || s.events.includes(eventName)),
   )
   await Promise.allSettled(
     webhookSubs.map(async (sub) => {

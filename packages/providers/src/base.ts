@@ -89,6 +89,22 @@ export interface Provider {
   isConfigured(): boolean;
 }
 
+/** Circuit breaker state exposed for monitoring endpoints. */
+export interface CircuitBreakerStats {
+  state: "closed" | "open" | "half-open";
+  failures: number;
+  lastFailureAt: number | undefined;
+  probeInFlight: boolean;
+}
+
+/** Optional interface for providers wrapped with circuit breaker. */
+export interface CircuitBreakerProvider extends Provider {
+  /** Get current circuit breaker statistics. */
+  getCircuitBreakerStats?(): CircuitBreakerStats;
+  /** Reset the circuit breaker (transitions to half-open on next attempt). */
+  resetCircuitBreaker?(): void;
+}
+
 /** Error type for provider failures. */
 export class ProviderError extends Error {
   constructor(

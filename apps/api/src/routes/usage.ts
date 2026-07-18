@@ -1,5 +1,5 @@
 /**
- * Usage routes — aggregate views over the per-task metric records collected
+ * Usage routes ? aggregate views over the per-task metric records collected
  * by the EvolutionEngine (token counts, cache hits, cost, success rate).
  *
  * Endpoints
@@ -111,12 +111,23 @@ export interface UsageSummary {
   successRate: number;
   /** 0..1 cache hit rate over the full range. */
   cacheHitRate: number;
-  /** Subset of records that succeeded yet still came back unpriced — see
+  /** Subset of records that succeeded yet still came back unpriced ? see
    *  `isUnpricedUsage` in @max/providers. Non-zero value indicates the
    *  price table is missing an entry for a model that's actually routed to. */
   unpricedRequestCount: number;
   /** Per-task latency distribution. */
   latency: LatencyStats;
+  /** Per-provider breakdown (mirrors token-monitor per-provider aggregation). */
+  byProvider: Array<{
+    provider: string;
+    totalRequests: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalCacheReadTokens: number;
+    totalCostUsd: number;
+    successRate: number;
+    cacheHitRate: number;
+  }>;
 }
 
 export interface DailyUsageEntry {
@@ -158,6 +169,17 @@ export function aggregateUsageSummary(
     hasExactPricingEntry(provider, model);
   const latencies: number[] = [];
 
+  // Per-provider breakdown (mirrors token-monitor per-provider aggregation)
+  const byProviderMap = new Map<string, {
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    costUsd: number;
+    successes: number;
+    cacheReadDenom: number;
+  }>();
+
   for (const r of records) {
     if (!inRange(r, range)) continue;
     totalRequests++;
@@ -174,28 +196,48 @@ export function aggregateUsageSummary(
       cacheCreationTokens: r.cacheCreationTokens ?? 0,
     });
 
-    // approximate cost — file-backed metrics have the same shape as pg
+    // approximate cost - file-backed metrics have the same shape as pg
     totalCostUsd += MetricsStore.estimateCostUSD(r);
 
-if (!r.error) successCount++;
+    if (!r.error) successCount++;
     if (isUnpriced(r, pricingLookup)) unpricedRequestCount++;
-    // Successful tasks only — failed tasks often have executionTime: 0
+    // Successful tasks only - failed tasks often have executionTime: 0
     // which would skew the distribution toward zero.
     if (!r.error && r.executionTime > 0) latencies.push(r.executionTime);
+
+    // Per-provider breakdown
+    const key = r.provider;
+    const existing = byProviderMap.get(key) ?? {
+      requests: 0, inputTokens: 0, outputTokens: 0,
+      cacheReadTokens: 0, costUsd: 0, successes: 0, cacheReadDenom: 0,
+    };
+    existing.requests++;
+    existing.inputTokens += r.tokenInput;
+    existing.outputTokens += r.tokenOutput;
+    existing.cacheReadTokens += r.cacheReadTokens ?? 0;
+    existing.costUsd += MetricsStore.estimateCostUSD(r);
+    if (!r.error) existing.successes++;
+    existing.cacheReadDenom += r.tokenInput + (r.cacheCreationTokens ?? 0);
+    byProviderMap.set(key, existing);
   }
 
   const latency = computeLatencyStats(latencies);
 
   // Cache hit rate: cacheRead / (promptTokens + cacheCreation).
-  // - Anthropic (cache_exclusive): promptTokens does not include cacheRead,
-  //   so cacheRead / (prompt + cacheCreation) is the natural fraction of
-  //   total context that came from cache.
-  // - OpenAI-style (cache_inclusive): promptTokens already includes
-  //   cacheRead, so the same formula gives cacheRead / promptTokens — i.e.
-  //   "what fraction of the prompt was cached". cacheCreation is always 0
-  //   for these providers and drops out of the formula.
   const denom = totalInputTokens + totalCacheCreationTokens;
   const cacheHitRate = denom > 0 ? totalCacheReadTokens / denom : 0;
+
+  // Build byProvider array
+  const byProvider = [...byProviderMap.entries()].map(([provider, s]) => ({
+    provider,
+    totalRequests: s.requests,
+    totalInputTokens: s.inputTokens,
+    totalOutputTokens: s.outputTokens,
+    totalCacheReadTokens: s.cacheReadTokens,
+    totalCostUsd: s.costUsd,
+    successRate: s.requests > 0 ? s.successes / s.requests : 0,
+    cacheHitRate: s.cacheReadDenom > 0 ? s.cacheReadTokens / s.cacheReadDenom : 0,
+  }));
 
   return {
     range: preset,
@@ -210,6 +252,7 @@ if (!r.error) successCount++;
     cacheHitRate,
     unpricedRequestCount,
     latency,
+    byProvider,
   };
 }
 
@@ -261,7 +304,7 @@ export function aggregateDailyUsage(
     const day = dateOf(r.timestamp);
     let entry = byDay.get(day);
     if (!entry) {
-      // Range was "all" or we got a record outside the predicted days list —
+      // Range was "all" or we got a record outside the predicted days list ?
       // still keep it so the dashboard doesn't miss outliers.
       entry = {
         date: day,
@@ -288,7 +331,7 @@ export function aggregateDailyUsage(
 
 /**
  * True when the price table has no entry for (provider, model) and no
- * provider-wide "*" wildcard either — i.e. the cost was computed from the
+ * provider-wide "*" wildcard either ? i.e. the cost was computed from the
  * global fallback. In that case the dashboard should flag the row so
  * operators know to add a real entry.
  */
@@ -337,7 +380,7 @@ function parsePreset(raw: string | undefined): UsageRangePreset {
   }
 }
 
-// ── OpenAPI route definitions ─────────────────────────────────────────────
+// ?? OpenAPI route definitions ?????????????????????????????????????????????
 
 export const usageSummaryRoute = createRoute({
   method: "get",

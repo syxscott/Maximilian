@@ -1,4 +1,4 @@
-import type { Provider, ChatMessage, ChatOptions, ChatResponse } from "./base.js";
+import type { Provider, CircuitBreakerProvider, ChatMessage, ChatOptions, ChatResponse } from "./base.js";
 
 export interface CircuitBreakerOptions {
   /** Number of consecutive failures before opening the circuit (default: 5) */
@@ -22,7 +22,7 @@ type CircuitState = "closed" | "open" | "half-open";
  * All state transitions go through a single serialized chain so concurrent
  * calls cannot both see "open + elapsed" and both enter half-open as probes.
  */
-export function withCircuitBreaker(provider: Provider, options?: CircuitBreakerOptions): Provider {
+export function withCircuitBreaker(provider: Provider, options?: CircuitBreakerOptions): CircuitBreakerProvider {
   const {
     failureThreshold = 5,
     resetTimeout = 30_000,
@@ -141,5 +141,12 @@ export function withCircuitBreaker(provider: Provider, options?: CircuitBreakerO
     stream: circuitStream,
     embeddings: provider.embeddings?.bind(provider),
     isConfigured: provider.isConfigured.bind(provider),
+    getCircuitBreakerStats: () => ({ state, failures, lastFailureAt: lastFailureTime, probeInFlight }),
+    resetCircuitBreaker: () => {
+      run(() => {
+        state = "half-open";
+        probeInFlight = false;
+      });
+    },
   };
 }

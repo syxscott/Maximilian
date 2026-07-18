@@ -81,6 +81,113 @@ export function useSetProviderModel() {
   })
 }
 
+// ── Failover & Health (borrowed from cc-switch) ─────────────────────────
+
+export const failoverKeys = {
+  queue: ["failover-queue"] as const,
+  health: (providerId: string) => ["provider-health", providerId] as const,
+  circuitBreakerStats: (providerId: string) => ["circuit-breaker-stats", providerId] as const,
+  autoFailoverEnabled: ["auto-failover-enabled"] as const,
+}
+
+/** Get provider health status (polled every 5s by dashboard). */
+export function useProviderHealth(providerId: string | null) {
+  return useQuery({
+    queryKey: failoverKeys.health(providerId ?? ""),
+    queryFn: ({ signal }) => chatApi.getProviderHealth(providerId!, signal),
+    enabled: !!providerId,
+    refetchInterval: 5_000,
+    retry: false,
+  })
+}
+
+/** Get circuit breaker statistics for a provider. */
+export function useCircuitBreakerStats(providerId: string | null) {
+  return useQuery({
+    queryKey: failoverKeys.circuitBreakerStats(providerId ?? ""),
+    queryFn: ({ signal }) => chatApi.getCircuitBreakerStats(providerId!, signal),
+    enabled: !!providerId,
+    refetchInterval: 5_000,
+  })
+}
+
+/** Reset circuit breaker for a provider. */
+export function useResetCircuitBreaker() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ providerId, signal }: { providerId: string; signal?: AbortSignal }) =>
+      chatApi.resetCircuitBreaker(providerId, signal),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: failoverKeys.health(variables.providerId) })
+      qc.invalidateQueries({ queryKey: queryKeys.providers })
+    },
+  })
+}
+
+/** Get the current failover queue. */
+export function useFailoverQueue() {
+  return useQuery({
+    queryKey: failoverKeys.queue,
+    queryFn: ({ signal }) => chatApi.getFailoverQueue(signal),
+  })
+}
+
+/** Add a provider to the failover queue. */
+export function useAddToFailoverQueue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      providerId,
+      priority,
+      signal,
+    }: {
+      providerId: string
+      priority?: number
+      signal?: AbortSignal
+    }) => chatApi.addToFailoverQueue(providerId, priority, signal),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: failoverKeys.queue })
+      qc.invalidateQueries({ queryKey: queryKeys.providers })
+    },
+  })
+}
+
+/** Remove a provider from the failover queue. */
+export function useRemoveFromFailoverQueue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ providerId, signal }: { providerId: string; signal?: AbortSignal }) =>
+      chatApi.removeFromFailoverQueue(providerId, signal),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: failoverKeys.queue })
+      qc.invalidateQueries({ queryKey: queryKeys.providers })
+    },
+  })
+}
+
+/** Get auto-failover enabled state. */
+export function useAutoFailoverEnabled() {
+  return useQuery({
+    queryKey: failoverKeys.autoFailoverEnabled,
+    queryFn: ({ signal }) => chatApi.getAutoFailoverEnabled(signal),
+    // Default to false while loading (matches backend default)
+    placeholderData: { enabled: false },
+  })
+}
+
+/** Set auto-failover enabled state. */
+export function useSetAutoFailoverEnabled() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ enabled, signal }: { enabled: boolean; signal?: AbortSignal }) =>
+      chatApi.setAutoFailoverEnabled(enabled, signal),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: failoverKeys.autoFailoverEnabled })
+      qc.invalidateQueries({ queryKey: queryKeys.providers })
+    },
+  })
+}
+
 // ── Executions (polling) ─────────────────────────────────────────────────
 
 export function useExecutions(pollInterval = 5000) {

@@ -116,20 +116,19 @@ export class FileWorkspaceStore {
     const keys = await this.storage.getKeys("ws/")
     const ids = keys.map((k) => k.replace(/^ws:/, "")).filter((id) => id.length > 0)
 
-    // Same isolation rule as loadWorkspace: a tenantId caller gets rows
-    // matching that tenant; a dev caller (no tenantId) only sees rows
-    // whose tenant key is empty/missing. Previously `tenantId === undefined`
-    // returned every workspace in the directory.
-    const filtered: string[] = []
-    for (const id of ids) {
-      const stored = await this.storage.getItem<string>(`tenant/${id}`)
-      const storedTenant = stored?.trim() ?? ""
-      if (tenantId !== undefined) {
-        if (storedTenant === tenantId) filtered.push(id)
-      } else {
-        if (storedTenant === "") filtered.push(id)
-      }
-    }
+    // Parallel fetch all tenant keys — O(n) concurrent round-trips instead
+    // of O(n) sequential round-trips. Same isolation rule as loadWorkspace:
+    // a tenantId caller gets rows matching that tenant; a dev caller
+    // (no tenantId) only sees rows whose tenant key is empty/missing.
+    const tenants = await Promise.all(
+      ids.map((id) => this.storage.getItem<string>(`tenant/${id}`)),
+    )
+    const filtered = ids
+      .map((id, i) => ({ id, tenant: (tenants[i] ?? "").trim() }))
+      .filter(({ tenant }) =>
+        tenantId !== undefined ? tenant === tenantId : tenant === "",
+      )
+      .map(({ id }) => id)
     return filtered.sort().reverse()
   }
 

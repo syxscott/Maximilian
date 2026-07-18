@@ -142,55 +142,78 @@ export function authRoutes(deps: AuthRouteDeps) {
       const id = `usr-${randomUUID()}`
       const passwordHash = await hash(password, 12)
       const now = new Date()
-
-      // Multi-tenant mode: every self-serve signup gets a fresh personal
-      // tenant so the user can actually access tenant-scoped resources.
-      // Without this, the user would be created with no tenantId and
-      // immediately locked out of every tenant-scoped endpoint.
-      let tenantId: string | undefined
-      let role: string
-      if (multiTenant) {
-        const tenantRowId = `tnt-${randomUUID()}`
-        const slug = `t-${randomUUID().slice(0, 8)}`
-        await db.insert(tenants).values({
-          id: tenantRowId,
-          name: `${email}'s workspace`,
-          slug,
-          plan: "free",
-          createdAt: now,
-          updatedAt: now,
-        })
-        tenantId = tenantRowId
-        role = "admin" // owner of the personal tenant
-      } else {
-        role = "viewer"
-      }
-
-      await db.insert(users).values({
-        id,
-        email,
-        passwordHash,
-        role,
-        tenantId: tenantId ?? null,
-        createdAt: now,
-        updatedAt: now,
-      })
-
-      const accessToken = await signAccessToken(id, role, jwtSecret, jwtExpiresIn, tenantId)
+      // Sign the refresh token before the tx so we can insert its hash atomically.
       const { token: refreshToken, jti } = await signRefreshToken(
         id,
         jwtSecret,
         jwtRefreshExpiresIn,
       )
 
-      // Store refresh token hash (with jti for O(1) lookup)
-      await db.insert(refreshTokens).values({
-        id: `rt-${randomUUID()}`,
-        jti,
-        userId: id,
-        tokenHash: await hash(refreshToken, 12),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      })
+      // Multi-tenant mode: every self-serve signup gets a fresh personal
+      // tenant so the user can actually access tenant-scoped resources.
+      // Without this, the user would be created with no tenantId and
+      // immediately locked out of every tenant-scoped endpoint.
+      // Both inserts are wrapped in a transaction so a failure on the user
+      // insert (e.g. email uniqueness race) rolls back the tenant row —
+      // preventing orphan tenants with no owner.
+      // The refresh token is also inserted in the same tx so there is
+      // never a user without a usable refresh handle.
+      let tenantId: string | undefined
+      let role: string
+      if (multiTenant) {
+        const tenantRowId = `tnt-${randomUUID()}`
+        const slug = `t-${randomUUID().slice(0, 8)}`
+        await db.transaction(async (tx) => {
+          await tx.insert(tenants).values({
+            id: tenantRowId,
+            name: `${email}'s workspace`,
+            slug,
+            plan: "free",
+            createdAt: now,
+            updatedAt: now,
+          })
+          await tx.insert(users).values({
+            id,
+            email,
+            passwordHash,
+            role: "admin", // owner of the personal tenant
+            tenantId: tenantRowId,
+            createdAt: now,
+            updatedAt: now,
+          })
+          await tx.insert(refreshTokens).values({
+            id: `rt-${randomUUID()}`,
+            jti,
+            userId: id,
+            tokenHash: await hash(refreshToken, 12),
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          })
+        })
+        tenantId = tenantRowId
+        role = "admin"
+      } else {
+        role = "viewer"
+        await db.transaction(async (tx) => {
+          await tx.insert(users).values({
+            id,
+            email,
+            passwordHash,
+            role,
+            tenantId: null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          await tx.insert(refreshTokens).values({
+            id: `rt-${randomUUID()}`,
+            jti,
+            userId: id,
+            tokenHash: await hash(refreshToken, 12),
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          })
+        })
+      }
+
+      const accessToken = await signAccessToken(id, role, jwtSecret, jwtExpiresIn, tenantId)
 
       log.info({ userId: id, email, role, tenantId }, "user registered")
 

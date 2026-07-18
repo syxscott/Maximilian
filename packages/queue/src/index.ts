@@ -129,7 +129,12 @@ const heartbeatConnCache = new Map<string, Redis>()
 
 function getOrCreateHeartbeatConn(redisUrl: string): Redis {
   const cached = heartbeatConnCache.get(redisUrl)
-  if (cached && cached.status !== "end") return cached
+  // Exclude 'end' (terminal) AND 'reconnecting' (mid-retry) — only reuse
+  // a connection that is actively connected. Without this, a cached conn
+  // in 'reconnecting' state returns to callers, fails immediately, gets
+  // evicted, and a fresh conn is created — churning connections on every
+  // heartbeat call during a Redis outage.
+  if (cached && cached.status !== "end" && cached.status !== "reconnecting") return cached
   const conn = new Redis(redisUrl, {
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,

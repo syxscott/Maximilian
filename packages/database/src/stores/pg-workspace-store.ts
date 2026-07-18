@@ -88,6 +88,9 @@ export class PgWorkspaceStore {
         createdAt: string
         updatedAt: string
         error?: string
+        /** Mirrors FileWorkspaceStore: tenantId lives inside metadata so the
+         * caller can read ws.metadata?.tenantId uniformly regardless of store. */
+        metadata: { tenantId?: string }
       }
     | undefined
   > {
@@ -118,6 +121,7 @@ export class PgWorkspaceStore {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       error: row.error ?? undefined,
+      metadata: { tenantId: row.tenantId ?? undefined },
     }
   }
 

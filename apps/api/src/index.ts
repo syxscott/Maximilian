@@ -102,6 +102,14 @@ import {
   readyRoute,
   setDefaultProviderRoute,
   setProviderModelRoute,
+  providerHealthRoute,
+  circuitBreakerStatsRoute,
+  circuitBreakerResetRoute,
+  failoverQueueRoute,
+  failoverQueueAddRoute,
+  failoverQueueRemoveRoute,
+  autoFailoverRoute,
+  setAutoFailoverRoute,
 } from "./routes/system.js"
 import {
   SseReplayBuffer,
@@ -511,10 +519,23 @@ const runtime = new AgentRuntime(finalFactory, sink, {
   },
 })
 const dagsApprovalRuntimes = new Set<ApprovalAnswerPort>()
+// In-memory cache: workspaceId → tenantId | null (null = no tenant, undefined = unknown/not-cached)
+// Caches the tenantId per workspace so we don't query the DB on every runtime event.
+const workspaceTenantCache = new Map<string, string | null>()
 const approvalRuntimeRegistry = {
   register(runtimePort: ApprovalAnswerPort): () => void {
     dagsApprovalRuntimes.add(runtimePort)
     return () => dagsApprovalRuntimes.delete(runtimePort)
+  },
+  /** Look up pending approval across primary + all DAGS runtimes (tenant isolation). */
+  getPendingApproval(requestId: string) {
+    const primary = runtime.getPendingApproval?.(requestId)
+    if (primary) return primary
+    for (const rt of [...dagsApprovalRuntimes]) {
+      const pending = rt.getPendingApproval?.(requestId)
+      if (pending) return pending
+    }
+    return undefined
   },
 }
 function resolveApprovalAcrossRuntimes(
@@ -602,7 +623,28 @@ runtime.on(async (event) => {
   // (10s timeout per subscription) and must NOT block the runtime loop.
   // Tenant isolation is enforced inside publishEvent via the
   // subscription's tenantId filter.
-  void publishEvent(event.type, event)
+  //
+  // Cache workspace → tenantId mapping to avoid per-event DB round-trip.
+  // Without this, concurrent lookups for fast-flying event sequences
+  // (task-start + task-complete in rapid succession) can complete out of
+  // order, delivering events to SSE subscribers in the wrong order.
+  let eventTenantId: string | undefined
+  if (event.workspaceId) {
+    if (workspaceTenantCache.has(event.workspaceId)) {
+      // Cache hit — use cached value (null means "no tenant" so use undefined)
+      eventTenantId = workspaceTenantCache.get(event.workspaceId) ?? undefined
+    } else {
+      // Cache miss — look up and populate cache (including null for "no tenant")
+      try {
+        eventTenantId = (await store.loadWorkspace(event.workspaceId))?.metadata?.tenantId
+        // Store null sentinel if no tenantId so we don't re-query for this workspace
+        workspaceTenantCache.set(event.workspaceId, eventTenantId ?? null)
+      } catch {
+        // Lookup failed — publish without tenant scope rather than dropping the event
+      }
+    }
+  }
+  void publishEvent(event.type, event, eventTenantId)
 
   if (!evolution) return
 
@@ -1279,6 +1321,98 @@ api.openapi(setProviderModelRoute, requireAuthMiddleware(), async (c) => {
   return c.json({ ok: true, providerId: id, model: trimmed })
 })
 
+// ── Circuit Breaker & Health ────────────────────────────────────────────────
+
+// In-memory failover queue (mirrors cc-switch's in-memory failover state)
+const failoverQueue = new Map<string, { priority: number; addedAt: number }>()
+let autoFailoverEnabled = false
+
+api.openapi(providerHealthRoute, requireAuthMiddleware(), async (c) => {
+  const id = c.req.param("id")
+  const provider = registry.get(id)
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404)
+  }
+  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+  const stats = cbProvider.getCircuitBreakerStats?.()
+  const isConfigured = provider.isConfigured()
+  // Derive health status from circuit breaker state and configuration
+  let status: "healthy" | "degraded" | "down" | "unknown" = "unknown"
+  if (stats) {
+    if (stats.state === "closed") status = isConfigured ? "healthy" : "down"
+    else if (stats.state === "open") status = "down"
+    else status = "degraded"
+  } else {
+    status = isConfigured ? "healthy" : "unknown"
+  }
+  return c.json({
+    status,
+    latencyMs: stats?.failures !== undefined ? undefined : undefined, // latency would require a probe
+    errorMessage: stats?.state === "open" ? "circuit breaker open" : undefined,
+    lastCheckedAt: stats?.lastFailureAt,
+  })
+})
+
+api.openapi(circuitBreakerStatsRoute, requireAuthMiddleware(), async (c) => {
+  const id = c.req.param("id")
+  const provider = registry.get(id)
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404)
+  }
+  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider  
+  const stats = cbProvider.getCircuitBreakerStats?.()
+  if (!stats) {
+    return c.json({ error: "Circuit breaker not available for this provider" }, 404)
+  }
+  return c.json(stats)
+})
+
+api.openapi(circuitBreakerResetRoute, requireAuthMiddleware(), async (c) => {
+  const id = c.req.param("id")
+  const provider = registry.get(id)
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404)
+  }
+  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider  
+  cbProvider.resetCircuitBreaker?.()
+  return c.json({ ok: true, providerId: id })
+})
+
+// ── Failover Queue ─────────────────────────────────────────────────────────
+
+api.openapi(failoverQueueRoute, requireAuthMiddleware(), async (c) => {
+  const queue = [...failoverQueue.entries()]
+    .map(([providerId, entry]) => ({ providerId, ...entry }))
+    .sort((a, b) => a.priority - b.priority)
+  return c.json({ queue })
+})
+
+api.openapi(failoverQueueAddRoute, requireAuthMiddleware(), async (c) => {
+  const { providerId, priority = 99 } = c.req.valid("json" as never) as { providerId: string; priority?: number }
+  const provider = registry.get(providerId)
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404)
+  }
+  failoverQueue.set(providerId, { priority, addedAt: Date.now() })
+  return c.json({ ok: true, providerId })
+})
+
+api.openapi(failoverQueueRemoveRoute, requireAuthMiddleware(), async (c) => {
+  const { providerId } = c.req.valid("json" as never) as { providerId: string }
+  failoverQueue.delete(providerId)
+  return c.json({ ok: true, providerId })
+})
+
+api.openapi(autoFailoverRoute, requireAuthMiddleware(), async (c) => {
+  return c.json({ enabled: autoFailoverEnabled })
+})
+
+api.openapi(setAutoFailoverRoute, requireAuthMiddleware(), async (c) => {
+  const { enabled } = c.req.valid("json" as never) as { enabled: boolean }
+  autoFailoverEnabled = enabled
+  return c.json({ ok: true, enabled: autoFailoverEnabled })
+})
+
 // Auth routes (only when DATABASE_URL is set — requires PostgreSQL)
 if (db && config.JWT_SECRET) {
   const auth = authRoutes({
@@ -1675,6 +1809,7 @@ api.openapi(deleteSubscriptionRoute, requireAuthMiddleware(), async (c) => {
 api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
   const eventsParam = c.req.query("events")
   const events = eventsParam ? eventsParam.split(",").map((s) => s.trim()) : []
+  const tenantId = c.get("tenantId" as never) as string | undefined
 
   const encoder = new TextEncoder()
   const id = `sse_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -1685,12 +1820,14 @@ api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
       const client = {
         id,
         events,
+        tenantId, // auth context — used by publishEvent to scope events per-tenant
         send: (data: string) => {
           if (closed) return
           controller.enqueue(encoder.encode(data))
         },
         close: () => {
           closed = true
+          unregisterSseClient(id)
           controller.close()
         },
       }
@@ -1703,6 +1840,8 @@ api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
           controller.enqueue(encoder.encode(`: heartbeat\n\n`))
         } catch {
           closed = true
+          unregisterSseClient(id)
+          clearInterval(heartbeat)
         }
       }, 15_000)
 
@@ -1888,7 +2027,7 @@ api.openapi(auditPermissionsRoute, perm.audit)
 const approvals = approvalRoutes({
   runtime: {
     resolveApproval: resolveApprovalAcrossRuntimes,
-    getPendingApproval: (requestId) => runtime.getPendingApproval(requestId),
+    getPendingApproval: (requestId) => approvalRuntimeRegistry.getPendingApproval(requestId),
   },
   checkWorkspaceTenant,
 })

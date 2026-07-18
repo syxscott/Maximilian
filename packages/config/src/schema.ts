@@ -100,6 +100,12 @@ export const ConfigSchema = z.object({
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
+
+  // Sandbox backend (借鉴 Open Interpreter multi-backend)
+  // Supported values: local | docker | mac-sandbox-exec | process
+  SANDBOX_BACKEND: z
+    .enum(["local", "docker", "mac-sandbox-exec", "process"])
+    .default("local"),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

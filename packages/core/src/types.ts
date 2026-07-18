@@ -170,6 +170,39 @@ export const AgentInstanceSchema = z.object({
 export type AgentInstance = z.infer<typeof AgentInstanceSchema>;
 
 // ============================================================================
+// Channel Values (checkpoint state)
+// ============================================================================
+
+/**
+ * Arbitrary key-value map representing the state of all channels at a
+ * checkpoint. Mirrors LangGraph's ChannelValues.
+ */
+export type ChannelValues = Record<string, unknown>;
+
+/**
+ * Free-form config dict used to query/checkpoint stores.
+ * The only required key is `thread_id` (the workspace id).
+ * Additional keys (e.g. `checkpoint_id`) are used for specific lookups.
+ */
+export type ConfigurableDict = Record<string, string | number | boolean | null | undefined>;
+
+// ============================================================================
+// Task Priority (task re-ranking)
+// ============================================================================
+
+/**
+ * Result of LLM-based task re-ranking (借鉴 AutoGPT TaskPrioritizer).
+ * Returned by TaskPrioritizer.reRank() and used by the runtime to
+ * reorder the remaining task list.
+ */
+export interface TaskPriority {
+  taskId: string;
+  priority: "high" | "medium" | "low";
+  /** Optional revised scope/description for the task. */
+  newScope?: string;
+}
+
+// ============================================================================
 // JSON Schemas (for OpenAPI / documentation)
 // ============================================================================
 

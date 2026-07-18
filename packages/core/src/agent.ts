@@ -27,7 +27,7 @@ export interface AgentContext {
 export abstract class Agent {
   abstract readonly manifest: AgentManifest
 
-  protected provider: Provider
+  protected _provider: Provider
   protected memory: ChatMessage[] = []
   /** Long-term memory prelude injected from AgentMemoryStore.toPrelude(). */
   protected memoryPrelude: string = ""
@@ -37,15 +37,20 @@ export abstract class Agent {
   /**
    * Per-task model override set by the runtime's ModelRouter. When present,
    * subclasses should prefer this provider+model pair over the default
-   * `this.provider` when making LLM calls.
+   * `this._provider` when making LLM calls.
    */
   protected modelOverride?: { provider: string; model: string }
 
   readonly id: string
   readonly createdAt: string
 
+  /** Expose provider so external callers (e.g. RolePlaying) can send chat messages. */
+  get provider(): Provider {
+    return this._provider
+  }
+
   constructor(provider: Provider, id?: string) {
-    this.provider = provider
+    this._provider = provider
     this.id = id ?? `agent-${randomUUID().slice(0, 8)}`
     this.createdAt = new Date().toISOString()
   }

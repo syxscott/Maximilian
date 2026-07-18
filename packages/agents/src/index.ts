@@ -8,6 +8,10 @@ export { FrontendAgent } from "./frontend.js";
 export { BackendAgent } from "./backend.js";
 export { ReviewAgent } from "./review.js";
 
+// Role registry + role-playing (借鉴 ChatDev RoleConfig.json + CAMEL RolePlaying)
+export { DefaultRoleRegistry, BUILT_IN_ROLES, type RoleSpec, type RoleRegistry } from "./roles.js";
+export { RolePlaying, type RolePlayOptions, type RolePlayMessage, type RolePlayTermination } from "./role-play.js";
+
 /**
  * Default agent factory used by the runtime.
  * Add new roles here; Commander will reference them by role string.

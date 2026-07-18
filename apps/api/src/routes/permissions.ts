@@ -451,6 +451,15 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps = {}) {
         }
       }
 
+      // Resolve FIRST — only persist the decision if the request is still
+      // alive. Persisting before resolve meant a stale request (already
+      // aborted/timeout) would have its (tool, target) pattern silently
+      // written to permissions.json and bypass the next prompt.
+      const ok = runtime.resolvePermission(requestId, decision)
+      if (!ok) {
+        return c.json({ error: "unknown_request" }, 404)
+      }
+
       if (pending && pending.target && isToolName(pending.tool)) {
         try {
           const config = await loadFrom(rootDir)
@@ -474,10 +483,6 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps = {}) {
         }
       }
 
-      const ok = runtime.resolvePermission(requestId, decision)
-      if (!ok) {
-        return c.json({ error: "unknown_request" }, 404)
-      }
       return c.json({ requestId, decision })
     },
 

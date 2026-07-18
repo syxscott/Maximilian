@@ -356,11 +356,80 @@ export const metaApi = {
 // Provider info — duplicated here so the lib/api hooks can re-use the
 // Zod-validated chatApi.listProviders without depending on the legacy
 // `lib/api/providers.ts` module.
+
+// ── Provider Category & Model Variants (borrowed from cc-switch) ──────────
+
+/** Provider category — mirrors cc-switch's ProviderCategory type. */
+export const ProviderCategorySchema = z.enum([
+  "official",      // First-party LLM vendor (Anthropic, OpenAI, Google)
+  "china",         // Chinese 1P vendor (DeepSeek, Zhipu, Kimi, ...)
+  "international", // Non-Chinese 1P vendor (Mistral, Cohere, Groq, ...)
+  "aggregator",    // Routing / aggregation service (OpenRouter, PackyCode, ...)
+  "cloud",         // Cloud-hosted proxy (AWS Bedrock, Azure OpenAI)
+  "custom",        // User-defined custom endpoint / local inference
+])
+export type ProviderCategory = z.infer<typeof ProviderCategorySchema>
+
+/** Model variant metadata — mirrors cc-switch's PresetModelVariant. */
+export const ModelVariantSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  contextLimit: z.number().int().positive().optional(),  // max context tokens
+  outputLimit: z.number().int().positive().optional(),   // max output tokens
+  modalities: z.object({
+    input: z.array(z.string()),
+    output: z.array(z.string()),
+  }).optional(),
+  options: z.record(z.unknown()).optional(),
+})
+export type ModelVariant = z.infer<typeof ModelVariantSchema>
+
+/** Provider metadata (not written to live config, only in ~/.cc-switch style config). */
+export const ProviderMetaSchema = z.object({
+  websiteUrl: z.string().optional(),
+  apiKeyUrl: z.string().optional(),
+  isPartner: z.boolean().optional(),
+  primePartner: z.boolean().optional(),
+})
+export type ProviderMeta = z.infer<typeof ProviderMetaSchema>
+
+/** Health status of a provider. */
+export const ProviderHealthSchema = z.object({
+  status: z.enum(["healthy", "degraded", "down", "unknown"]),
+  latencyMs: z.number().nonnegative().optional(),
+  errorMessage: z.string().optional(),
+  lastCheckedAt: z.number().int().positive().optional(), // Unix ms
+})
+export type ProviderHealth = z.infer<typeof ProviderHealthSchema>
+
+/** Provider info — enhanced with cc-switch features. */
 export const ProviderInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
   defaultModel: z.string(),
   configured: z.boolean(),
+  /** Provider category for UI differentiation and capability gating. */
+  category: ProviderCategorySchema.optional(),
+  /** Sort index for drag-to-reorder (higher = lower position). */
+  sortIndex: z.number().int().optional(),
+  /** Provider metadata (homepage, partner info). */
+  meta: ProviderMetaSchema.optional(),
+  /** Model variants with metadata (context limit, output limit, modalities). */
+  modelVariants: z.array(ModelVariantSchema).optional(),
+  /** Current health status (polled every 5s by the dashboard). */
+  health: ProviderHealthSchema.optional(),
+  /** Whether this provider is in the failover queue. */
+  inFailoverQueue: z.boolean().optional(),
+  /** Failover priority (1 = P1, 2 = P2, ...). Lower number = higher priority. */
+  failoverPriority: z.number().int().positive().optional(),
+  /** Whether auto-failover is enabled for this app. */
+  autoFailoverEnabled: z.boolean().optional(),
+  /** Icon name (e.g. "openai", "anthropic"). */
+  icon: z.string().optional(),
+  /** Icon color in hex format (e.g. "#00A67E"). */
+  iconColor: z.string().optional(),
+  /** Notes set by the user. */
+  notes: z.string().optional(),
 })
 export type ProviderInfo = z.infer<typeof ProviderInfoSchema>
 
@@ -384,6 +453,20 @@ export const LatencyStatsSchema = z.object({
 })
 export type LatencyStats = z.infer<typeof LatencyStatsSchema>
 
+/** Per-provider usage breakdown (mirrors token-monitor's per-provider aggregation). */
+export const ProviderBreakdownSchema = z.object({
+  provider: z.string(),
+  model: z.string().optional(),
+  totalRequests: z.number().int().nonnegative(),
+  totalInputTokens: z.number().int().nonnegative(),
+  totalOutputTokens: z.number().int().nonnegative(),
+  totalCacheReadTokens: z.number().int().nonnegative(),
+  totalCostUsd: z.number().nonnegative(),
+  successRate: z.number().min(0).max(1),
+  cacheHitRate: z.number().min(0).max(1),
+})
+export type ProviderBreakdown = z.infer<typeof ProviderBreakdownSchema>
+
 export const UsageSummarySchema = z.object({
   range: UsageRangeSchema,
   totalRequests: z.number().int().nonnegative(),
@@ -397,6 +480,8 @@ export const UsageSummarySchema = z.object({
   cacheHitRate: z.number().min(0).max(1),
   unpricedRequestCount: z.number().int().nonnegative(),
   latency: LatencyStatsSchema,
+  /** Per-provider breakdown (mirrors token-monitor's provider aggregation). */
+  byProvider: z.array(ProviderBreakdownSchema).optional(),
 })
 export type UsageSummary = z.infer<typeof UsageSummarySchema>
 
@@ -555,6 +640,112 @@ export const chatApi = {
         signal,
       },
       z.object({ ok: z.boolean(), providerId: z.string(), model: z.string() }),
+    ),
+
+  // ── Failover & Health (borrowed from cc-switch) ──────────────────────────
+
+  /** Get health status for a provider. */
+  getProviderHealth: (providerId: string, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/providers/${encodeURIComponent(providerId)}/health`,
+      { signal },
+      ProviderHealthSchema,
+    ),
+
+  /** Get the current failover queue for an app. */
+  getFailoverQueue: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/failover/queue`,
+      { signal },
+      z.object({
+        queue: z.array(z.object({
+          providerId: z.string(),
+          priority: z.number().int().positive(),
+          addedAt: z.number().int().positive(),
+        })),
+      }),
+    ),
+
+  /** Add a provider to the failover queue. */
+  addToFailoverQueue: (providerId: string, priority?: number, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/failover/queue/add`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ providerId, priority }),
+        signal,
+      },
+      z.object({ ok: z.boolean(), providerId: z.string() }),
+    ),
+
+  /** Remove a provider from the failover queue. */
+  removeFromFailoverQueue: (providerId: string, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/failover/queue/remove`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ providerId }),
+        signal,
+      },
+      z.object({ ok: z.boolean(), providerId: z.string() }),
+    ),
+
+  /** Get auto-failover enabled state. */
+  getAutoFailoverEnabled: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/failover/auto`,
+      { signal },
+      z.object({ enabled: z.boolean() }),
+    ),
+
+  /** Set auto-failover enabled state. */
+  setAutoFailoverEnabled: (enabled: boolean, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/failover/auto`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ enabled }),
+        signal,
+      },
+      z.object({ ok: z.boolean(), enabled: z.boolean() }),
+    ),
+
+  /** Reset circuit breaker for a provider (triggers health check + possible auto-recovery). */
+  resetCircuitBreaker: (providerId: string, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/providers/${encodeURIComponent(providerId)}/circuit-breaker/reset`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        signal,
+      },
+      z.object({ ok: z.boolean(), providerId: z.string() }),
+    ),
+
+  /** Get circuit breaker stats for a provider. */
+  getCircuitBreakerStats: (providerId: string, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/providers/${encodeURIComponent(providerId)}/circuit-breaker/stats`,
+      { signal },
+      z.object({
+        state: z.enum(["closed", "open", "half-open"]),
+        failures: z.number().int().nonnegative(),
+        lastFailureAt: z.number().int().positive().optional(),
+        probeInFlight: z.boolean().optional(),
+      }),
+    ),
+
+  // ── Usage Query ──────────────────────────────────────────────────────────
+
+  /** Query usage for the current tenant (or all if admin). */
+  queryUsage: (range: UsageRange, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/usage?range=${range}`,
+      { signal },
+      UsageSummarySchema,
     ),
 }
 

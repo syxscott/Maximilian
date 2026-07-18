@@ -175,7 +175,9 @@ export class PermissionAuditLog {
     this.persistInFlight = this.doPersist()
       .catch((err) => {
         // Persistence is best-effort; warn but don't fail the request flow.
-
+        // console.error (not the project logger) because this can fire at
+        // high frequency during a sustained I/O failure and we don't want
+        // to spam the structured log — a raw console warning is intentional.
         console.error("[permission-audit] persist failed", err)
       })
       .finally(() => {
