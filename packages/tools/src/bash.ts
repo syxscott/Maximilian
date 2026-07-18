@@ -2,8 +2,8 @@
 // Derived from OpenCode packages/core/src/tool/bash.ts
 // Plain TypeScript, no Effect-TS
 
-import { makeTool, type ToolContent } from "@max/llm"
-import { spawn, type ChildProcess } from "node:child_process"
+import { makeTool, type ToolContent, ToolKind } from "@max/llm"
+import { spawn } from "node:child_process"
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 600_000
@@ -42,6 +42,7 @@ function compactOutput(stdout: string, stderr: string): string {
 export const bashTool = makeTool<BashInput, BashOutput>({
   name: "bash",
   description: "Execute a shell command and return its output.",
+  kind: ToolKind.Execute,
   inputSchema: {
     type: "object",
     properties: {
@@ -75,8 +76,7 @@ export const bashTool = makeTool<BashInput, BashOutput>({
       const shell = defaultShell()
       const proc = spawn(shell, ["-c", input.command], {
         cwd,
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout,
+        stdio: ["pipe", "pipe", "pipe" as const],
       })
 
       let stdout = ""
@@ -84,6 +84,12 @@ export const bashTool = makeTool<BashInput, BashOutput>({
       let stdoutTruncated = false
       let stderrTruncated = false
       let timedOut = false
+
+      // Use setTimeout for timeout tracking since spawn's timeout option doesn't emit "timeout" event
+      const timer = setTimeout(() => {
+        timedOut = true
+        proc.kill("SIGKILL")
+      }, timeout)
 
       proc.stdout?.on("data", (chunk: Buffer) => {
         if (stdout.length + chunk.length > MAX_CAPTURE_BYTES) {
@@ -104,6 +110,7 @@ export const bashTool = makeTool<BashInput, BashOutput>({
       })
 
       proc.on("error", (err) => {
+        clearTimeout(timer)
         if ((err as NodeJS.ErrnoException).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
           warnings.push("output buffer exceeded")
         }
@@ -111,10 +118,11 @@ export const bashTool = makeTool<BashInput, BashOutput>({
       })
 
       proc.on("close", (code) => {
+        clearTimeout(timer)
         resolve({
           command: input.command,
           cwd,
-          exitCode: code ?? 1,
+          exitCode: timedOut ? 124 : (code ?? 1), // 124 is standard timeout exit code
           output: compactOutput(stdout, stderr),
           truncated: stdoutTruncated || stderrTruncated,
           stdoutTruncated,
@@ -122,11 +130,6 @@ export const bashTool = makeTool<BashInput, BashOutput>({
           timedOut,
           warnings,
         })
-      })
-
-      proc.on("timeout", () => {
-        timedOut = true
-        proc.kill("SIGKILL")
       })
     })
   },

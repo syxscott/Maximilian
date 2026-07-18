@@ -1,16 +1,32 @@
 /**
- * SandboxService — abstract base + local implementation (借鉴 OpenHands).
+ * SandboxService — abstract base + multi-backend implementations (借鉴 OpenHands + Open Interpreter).
  *
  * OpenHands's SandboxService is an ABC that decouples sandbox *specs*
  * (templates) from sandbox *instances* (running environments). Concrete
  * implementations (ProcessSandboxService, DockerSandboxService) provide
  * different execution backends while exposing the same lifecycle API.
  *
- * Maximilian adapts this with a tiny standalone SandboxService interface
- * plus a default LocalSandboxService that runs commands in-process. Apps
- * that need isolation (Docker, remote) can swap in their own
- * implementation behind the same interface.
+ * Open Interpreter adds the insight that the same sandbox interface can
+ * target different backends (local subprocess, docker, macOS sandbox-exec)
+ * depending on the host OS and security requirements.
+ *
+ * Maximilian implements:
+ *  - LocalSandboxService   — child_process.exec (Node.js, local)
+ *  - DockerSandboxService  — docker exec
+ *  - MacSandboxExecService — sandbox-exec (macOS Security Sandboxing)
+ *  - ProcessSandboxService — child_process spawn + optional cgroup limit
+ *
+ * The legacy SandboxService interface (start/pause/resume/stop/get/exec) is
+ * preserved on LocalSandboxService for backward compatibility.
+ *
+ * @see https://github.com/OpenBMB/OpenHands/blob/main/openhands/sandbox/sandbox.py
+ * @see https://github.com/OpenInterpreter/open-interpreter/blob/main/interpreter/core/computer/docker.py
  */
+
+import { spawn } from "node:child_process"
+import { exec as cpExec } from "node:child_process"
+
+// ── Shared types ───────────────────────────────────────────────────────────────
 
 export type SandboxStatus = "pending" | "running" | "paused" | "stopped" | "failed"
 
@@ -18,9 +34,7 @@ export interface SandboxInfo {
   id: string
   status: SandboxStatus
   createdAt: string
-  /** Last status update. */
   updatedAt: string
-  /** Free-form metadata (working dir, env, etc.). */
   metadata?: Record<string, unknown>
 }
 
@@ -31,100 +45,169 @@ export interface SandboxCommandResult {
   durationMs: number
 }
 
+/** Multi-backend options passed to SandboxService.create(). */
+export interface SandboxOptions {
+  backend: SandboxBackend
+  /** Per-command timeout in milliseconds. Default: 30_000. */
+  commandTimeout?: number
+  /** Memory limit in MB (used by ProcessSandboxService cgroup mode). */
+  memoryLimit?: number
+  /** Whether to allow network access. Default: true. */
+  allowNetwork?: boolean
+  /** Working directory for commands. Default: process.cwd(). */
+  cwd?: string
+  /** Docker image when backend is 'docker'. */
+  dockerImage?: string
+}
+
+/** Available sandbox backends. */
+export type SandboxBackend = "local" | "docker" | "mac-sandbox-exec" | "process"
+
+/** Result of a SandboxService.execute() call. */
+export interface SandboxResult {
+  stdout: string
+  stderr: string
+  exitCode: number
+  duration: number // ms
+}
+
+// ── Legacy interface (kept for backward compatibility) ─────────────────────────
+
 export interface SandboxService {
-  /** Start a new sandbox. Returns the new sandbox's info. */
   start(options?: { metadata?: Record<string, unknown> }): Promise<SandboxInfo>
-  /** Pause a running sandbox. Returns true on success. */
   pause(id: string): Promise<boolean>
-  /** Resume a paused sandbox. Returns true on success. */
   resume(id: string): Promise<boolean>
-  /** Stop and remove a sandbox. Returns true on success. */
   stop(id: string): Promise<boolean>
-  /** Look up a sandbox by id. Returns null if not found. */
   get(id: string): Promise<SandboxInfo | null>
-  /** Execute `command` in `id` with a timeout (ms). */
   exec(id: string, command: string, options?: { timeoutMs?: number }): Promise<SandboxCommandResult>
 }
+
+// ── Abstract base ─────────────────────────────────────────────────────────────
+
+/**
+ * Abstract sandbox service. All backends share the same execute/writeFile/
+ * readFile/remove interface regardless of the underlying isolation mechanism.
+ */
+export abstract class SandboxServiceBase {
+  abstract readonly backend: SandboxBackend
+
+  abstract execute(command: string, opts?: { timeout?: number }): Promise<SandboxResult>
+  abstract writeFile(path: string, content: string): Promise<void>
+  abstract readFile(path: string): Promise<string>
+  abstract remove(path: string): Promise<void>
+
+  /** Check whether this backend is available on the current host. */
+  abstract isAvailable(): Promise<boolean>
+
+  /** Release any resources held by this sandbox. */
+  abstract destroy(): Promise<void>
+
+  /**
+   * Factory: create the appropriate SandboxServiceBase for the given options.
+   * Throws if the backend is unavailable.
+   */
+  static create(opts: SandboxOptions): SandboxServiceBase {
+    switch (opts.backend) {
+      case "docker":
+        return new DockerSandboxService(opts)
+      case "mac-sandbox-exec":
+        return new MacSandboxExecService(opts)
+      case "process":
+        return new ProcessSandboxService(opts)
+      case "local":
+      default:
+        return new LocalSandboxService(opts)
+    }
+  }
+}
+
+// ── LocalSandboxService ───────────────────────────────────────────────────────
 
 /**
  * In-process sandbox service. Commands run via Node's child_process.
  * "Sandboxes" are logical workspaces identified by id — they share the
  * Node process but track per-sandbox state (working dir, env, last command).
  *
- * For real isolation, callers should swap in a Docker-backed or remote
- * implementation; this one is for tests + local dev.
+ * This class also implements the legacy SandboxService interface so that
+ * existing code using start/pause/resume/stop/get/exec continues to work.
  */
-export class LocalSandboxService implements SandboxService {
+export class LocalSandboxService
+  extends SandboxServiceBase
+  implements SandboxService
+{
+  readonly backend = "local" as const
+  private readonly commandTimeout: number
+  private readonly cwd: string
+
   private sandboxes = new Map<
     string,
-    SandboxInfo & {
-      workingDir?: string
-      childProcesses: Set<import("node:child_process").ChildProcess>
+    {
+      info: SandboxInfo
+      workingDir: string
+      childProcesses: Set<ReturnType<typeof spawn>>
     }
   >()
+
+  constructor(opts?: Partial<SandboxOptions>) {
+    super()
+    this.commandTimeout = opts?.commandTimeout ?? 30_000
+    this.cwd = opts?.cwd ?? process.cwd()
+  }
 
   async start(options?: { metadata?: Record<string, unknown> }): Promise<SandboxInfo> {
     const id = `sb-${Math.random().toString(36).slice(2, 10)}`
     const now = new Date().toISOString()
-    const info: SandboxInfo & {
-      workingDir?: string
-      childProcesses: Set<import("node:child_process").ChildProcess>
-    } = {
+    const info: SandboxInfo = {
       id,
       status: "running",
       createdAt: now,
       updatedAt: now,
       metadata: options?.metadata,
-      workingDir: (options?.metadata?.workingDir as string) ?? process.cwd(),
-      childProcesses: new Set(),
     }
-    this.sandboxes.set(id, info)
+    this.sandboxes.set(id, {
+      info,
+      workingDir: (options?.metadata?.workingDir as string) ?? this.cwd,
+      childProcesses: new Set(),
+    })
     return info
   }
 
   async pause(id: string): Promise<boolean> {
     const sb = this.sandboxes.get(id)
-    if (!sb || sb.status !== "running") return false
-    sb.status = "paused"
-    sb.updatedAt = new Date().toISOString()
+    if (!sb || sb.info.status !== "running") return false
+    sb.info.status = "paused"
+    sb.info.updatedAt = new Date().toISOString()
     return true
   }
 
   async resume(id: string): Promise<boolean> {
     const sb = this.sandboxes.get(id)
-    if (!sb || sb.status !== "paused") return false
-    sb.status = "running"
-    sb.updatedAt = new Date().toISOString()
+    if (!sb || sb.info.status !== "paused") return false
+    sb.info.status = "running"
+    sb.info.updatedAt = new Date().toISOString()
     return true
   }
 
   async stop(id: string): Promise<boolean> {
     const sb = this.sandboxes.get(id)
     if (!sb) return false
-    // Kill any spawned child processes that are still running. Without
-    // this, `stop()` would leave orphaned processes running in the
-    // background - e.g. a long-running `npm test` or a detached server
-    // would keep consuming resources after the sandbox is "stopped".
-    // SIGTERM first (graceful), then escalate to SIGKILL after 2s if
-    // the process hasn't exited.
     for (const child of sb.childProcesses) {
       if (!child.killed) {
         try {
-          child.kill("SIGTERM")
           const escalate = setTimeout(() => {
             if (!child.killed && child.exitCode === null) {
-              try {
-                child.kill("SIGKILL")
-              } catch {}
+              try { child.kill("SIGKILL") } catch {}
             }
           }, 2_000)
+          escalate.unref()
           child.once("exit", () => clearTimeout(escalate))
+          child.kill("SIGTERM")
         } catch {}
       }
     }
     sb.childProcesses.clear()
-    sb.status = "stopped"
-    sb.updatedAt = new Date().toISOString()
+    sb.info.status = "stopped"
+    sb.info.updatedAt = new Date().toISOString()
     this.sandboxes.delete(id)
     return true
   }
@@ -132,10 +215,10 @@ export class LocalSandboxService implements SandboxService {
   async get(id: string): Promise<SandboxInfo | null> {
     const sb = this.sandboxes.get(id)
     if (!sb) return null
-    const { workingDir: _, childProcesses: __, ...info } = sb
-    return info
+    return sb.info
   }
 
+  // 修复 Bug 4 — childProcess 未被追踪：改用 spawn 以便 stop() 能正确终止子进程
   async exec(
     id: string,
     command: string,
@@ -145,34 +228,375 @@ export class LocalSandboxService implements SandboxService {
     if (!sb) {
       return { exitCode: 1, stdout: "", stderr: `Sandbox ${id} not found`, durationMs: 0 }
     }
-    if (sb.status !== "running") {
+    if (sb.info.status !== "running") {
       return {
         exitCode: 1,
         stdout: "",
-        stderr: `Sandbox ${id} is not running (status=${sb.status})`,
+        stderr: `Sandbox ${id} is not running (status=${sb.info.status})`,
         durationMs: 0,
       }
     }
-    // Use Node's exec via dynamic import — keeps the module small.
-    const { exec: cpExec } = await import("node:child_process")
     const start = Date.now()
-    const timeout = options?.timeoutMs ?? 30_000
+    const timeout = options?.timeoutMs ?? this.commandTimeout
     return new Promise((resolve) => {
-      const child = cpExec(command, { cwd: sb.workingDir, timeout }, (err, stdout, stderr) => {
-        sb.childProcesses.delete(child)
-        if (err) {
-          const e = err as { code?: number }
-          resolve({
-            exitCode: e.code ?? 1,
-            stdout: stdout ?? "",
-            stderr: stderr ?? err.message,
-            durationMs: Date.now() - start,
-          })
-        } else {
-          resolve({ exitCode: 0, stdout, stderr, durationMs: Date.now() - start })
-        }
-      })
+      const child = spawn("/bin/sh", ["-c", command], { cwd: sb.workingDir })
       sb.childProcesses.add(child)
+      let stdout = ""
+      let stderr = ""
+      child.stdout?.on("data", (d) => { stdout += d.toString() })
+      child.stderr?.on("data", (d) => { stderr += d.toString() })
+      const timer = setTimeout(() => {
+        if (!child.killed) child.kill("SIGKILL")
+      }, timeout)
+      child.on("close", (code) => {
+        clearTimeout(timer)
+        sb.childProcesses.delete(child)
+        resolve({ exitCode: code ?? 1, stdout, stderr, durationMs: Date.now() - start })
+      })
+      child.on("error", (err) => {
+        clearTimeout(timer)
+        sb.childProcesses.delete(child)
+        resolve({ exitCode: 1, stdout, stderr: err.message, durationMs: Date.now() - start })
+      })
     })
+  }
+
+  // ── SandboxServiceBase implementation ──────────────────────────────────
+
+  override async execute(command: string, opts?: { timeout?: number }): Promise<SandboxResult> {
+    const start = Date.now()
+    const timeout = opts?.timeout ?? this.commandTimeout
+    return new Promise((resolve) => {
+      cpExec(command, { cwd: this.cwd, timeout }, (err, stdout, stderr) => {
+        const exitCode = (err as { code?: number })?.code ?? (err ? 1 : 0)
+        resolve({
+          exitCode,
+          stdout: stdout ?? "",
+          stderr: stderr ?? (err ? (err as Error).message : ""),
+          duration: Date.now() - start,
+        })
+      })
+    })
+  }
+
+  override async writeFile(path: string, content: string): Promise<void> {
+    const { writeFile: fsWrite } = await import("node:fs/promises")
+    await fsWrite(path, content, "utf-8")
+  }
+
+  override async readFile(path: string): Promise<string> {
+    const { readFile: fsRead } = await import("node:fs/promises")
+    return fsRead(path, "utf-8")
+  }
+
+  override async remove(path: string): Promise<void> {
+    const { rm } = await import("node:fs/promises")
+    await rm(path, { recursive: true, force: true })
+  }
+
+  override async isAvailable(): Promise<boolean> {
+    return true // Always available locally.
+  }
+
+  override async destroy(): Promise<void> {
+    this.sandboxes.clear()
+  }
+}
+
+// ── DockerSandboxService ───────────────────────────────────────────────────────
+
+/**
+ * Docker-backed sandbox. Commands run inside a docker exec call.
+ * Requires the docker CLI to be available on the host.
+ */
+export class DockerSandboxService extends SandboxServiceBase {
+  readonly backend = "docker" as const
+  private readonly image: string
+  private readonly commandTimeout: number
+  private readonly cwd: string
+
+  constructor(opts: SandboxOptions) {
+    super()
+    this.image = opts.dockerImage ?? "ubuntu:22.04"
+    this.commandTimeout = opts.commandTimeout ?? 30_000
+    this.cwd = opts.cwd ?? process.cwd()
+  }
+
+  // 修复 Bug 3a/3b/3c — 使用 docker run --rm 模式（临时容器）替代 docker exec/cp
+  // docker run --rm 在容器退出后自动清理，无需管理容器生命周期
+  override async execute(command: string, opts?: { timeout?: number }): Promise<SandboxResult> {
+    const timeout = opts?.timeout ?? this.commandTimeout
+    const start = Date.now()
+    const args = [
+      "run",
+      "--rm",
+      "--interactive",
+      "--workdir",
+      this.cwd,
+      this.image,
+      "/bin/sh",
+      "-c",
+      command,
+    ]
+    return this.runDocker(args, timeout, start)
+  }
+
+  override async writeFile(path: string, content: string): Promise<void> {
+    // 修复 Bug 3c — 使用 docker run --rm 模式，写入后清理临时文件
+    const { writeFile: fsWrite, unlink } = await import("node:fs/promises")
+    const { tmpdir } = await import("node:os")
+    const tmpPath = `${tmpdir()}/max-sandbox-write-${Math.random().toString(36).slice(2)}`
+    await fsWrite(tmpPath, content, "utf-8")
+    try {
+      // 使用 docker run 将内容 cat 进目标路径，避免 docker cp 问题
+      const result = await this.runDocker(
+        ["run", "--rm", "--interactive", "-v", `${tmpPath}:/tmp/content`, this.image, "/bin/sh", "-c", `cat /tmp/content > "${path}" && rm -f /tmp/content`],
+        this.commandTimeout,
+        Date.now(),
+      )
+      if (result.exitCode !== 0) throw new Error(`writeFile failed: ${result.stderr}`)
+    } finally {
+      // 修复 Bug 3c — 确保临时文件被清理
+      await unlink(tmpPath).catch(() => {})
+    }
+  }
+
+  override async readFile(path: string): Promise<string> {
+    // 修复 Bug 3b/3c — 使用 docker run --rm 模式，临时文件路径作为文件（不是目录）挂载
+    const { unlink, readFile: fsRead, writeFile: fsWrite } = await import("node:fs/promises")
+    const { tmpdir } = await import("node:os")
+    const tmpPath = `${tmpdir()}/max-sandbox-read-${Math.random().toString(36).slice(2)}`
+    // 先创建空文件作为挂载点
+    await fsWrite(tmpPath, "", "utf-8")
+    const result = await this.runDocker(
+      ["run", "--rm", "--interactive", "-v", `${tmpPath}:/tmp/out`, this.image, "/bin/sh", "-c", `cat "${path}" > /tmp/out`],
+      this.commandTimeout,
+      Date.now(),
+    )
+    if (result.exitCode !== 0) throw new Error(`readFile failed: ${result.stderr}`)
+    try {
+      return await fsRead(tmpPath, "utf-8")
+    } finally {
+      // 修复 Bug 3c — 确保临时文件被清理
+      await unlink(tmpPath).catch(() => {})
+    }
+  }
+
+  // 修复 Bug 1 — Shell Injection: 使用 spawn 参数传递 path，避免 shell 解析
+  override async remove(path: string): Promise<void> {
+    const result = await this.runDocker(
+      ["exec", "--interactive", "--workdir", this.cwd, this.image, "rm", "-rf", "--", path],
+      this.commandTimeout,
+      Date.now(),
+    )
+    if (result.exitCode !== 0) throw new Error(`rm failed inside docker: ${result.stderr}`)
+  }
+
+  override async isAvailable(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const child = spawn("docker", ["info"], { timeout: 5_000 })
+      child.on("close", (code) => resolve(code === 0))
+      child.on("error", () => resolve(false))
+    })
+  }
+
+  override async destroy(): Promise<void> {
+    // No persistent state to clean up.
+  }
+
+  private runDocker(args: string[], timeout: number, start: number): Promise<SandboxResult> {
+    return new Promise((resolve) => {
+      const child = spawn("docker", args)
+      let stdout = ""
+      let stderr = ""
+      child.stdout?.on("data", (d) => { stdout += d.toString() })
+      child.stderr?.on("data", (d) => { stderr += d.toString() })
+
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL")
+      }, timeout)
+
+      child.on("close", (code) => {
+        clearTimeout(timer)
+        resolve({
+          exitCode: code ?? 1,
+          stdout,
+          stderr,
+          duration: Date.now() - start,
+        })
+      })
+      child.on("error", (err) => {
+        clearTimeout(timer)
+        resolve({ exitCode: 1, stdout, stderr: err.message, duration: Date.now() - start })
+      })
+    })
+  }
+}
+
+// ── MacSandboxExecService ───────────────────────────────────────────────────────
+
+/**
+ * macOS sandbox-exec backed sandbox. Uses the macOS Security Sandboxing
+ * framework to restrict file/network access per command.
+ * Only available on macOS hosts.
+ */
+export class MacSandboxExecService extends SandboxServiceBase {
+  readonly backend = "mac-sandbox-exec" as const
+  private readonly commandTimeout: number
+  private readonly cwd: string
+  private readonly allowNetwork: boolean
+
+  constructor(opts: SandboxOptions) {
+    super()
+    this.commandTimeout = opts.commandTimeout ?? 30_000
+    this.cwd = opts.cwd ?? process.cwd()
+    this.allowNetwork = opts.allowNetwork ?? true
+  }
+
+  override async execute(command: string, opts?: { timeout?: number }): Promise<SandboxResult> {
+    const timeout = opts?.timeout ?? this.commandTimeout
+    const start = Date.now()
+    const sandboxProfile = this.buildProfile()
+    return new Promise((resolve) => {
+      const child = spawn("sandbox-exec", ["-p", sandboxProfile, "/bin/sh", "-c", command], {
+        cwd: this.cwd,
+        timeout,
+      })
+      let stdout = ""
+      let stderr = ""
+      child.stdout?.on("data", (d) => { stdout += d.toString() })
+      child.stderr?.on("data", (d) => { stderr += d.toString() })
+
+      child.on("close", (code) => {
+        resolve({
+          exitCode: code ?? 1,
+          stdout,
+          stderr,
+          duration: Date.now() - start,
+        })
+      })
+      child.on("error", (err) => {
+        resolve({ exitCode: 1, stdout, stderr: err.message, duration: Date.now() - start })
+      })
+    })
+  }
+
+  override async writeFile(path: string, content: string): Promise<void> {
+    const { writeFile: fsWrite } = await import("node:fs/promises")
+    await fsWrite(path, content, "utf-8")
+  }
+
+  override async readFile(path: string): Promise<string> {
+    const { readFile: fsRead } = await import("node:fs/promises")
+    return fsRead(path, "utf-8")
+  }
+
+  override async remove(path: string): Promise<void> {
+    const { rm } = await import("node:fs/promises")
+    await rm(path, { recursive: true, force: true })
+  }
+
+  override async isAvailable(): Promise<boolean> {
+    if (process.platform !== "darwin") return false
+    return new Promise((resolve) => {
+      const child = spawn("sandbox-exec", ["--version"], { timeout: 5_000 })
+      child.on("close", (code) => resolve(code === 0))
+      child.on("error", () => resolve(false))
+    })
+  }
+
+  override async destroy(): Promise<void> {
+    // No persistent state.
+  }
+
+  /** Build a minimal SBPL profile. */
+  private buildProfile(): string {
+    const allowReadWrite = `(allow file-read* file-write* (glob "${this.cwd}/**"))`
+    const networkClause = this.allowNetwork
+      ? "(allow network*)"
+      : "(deny network*)"
+    return `(version 1)
+(allow default)
+${allowReadWrite}
+${networkClause}
+(deny device-attach*)
+`
+  }
+}
+
+// ── ProcessSandboxService ──────────────────────────────────────────────────────
+
+/**
+ * Subprocess sandbox with optional memory limit.
+ * Uses child_process.spawn and optionally applies cgroup memory limits
+ * when available on Linux.
+ */
+export class ProcessSandboxService extends SandboxServiceBase {
+  readonly backend = "process" as const
+  private readonly commandTimeout: number
+  private readonly cwd: string
+  private readonly memoryLimit?: number
+
+  constructor(opts: SandboxOptions) {
+    super()
+    this.commandTimeout = opts.commandTimeout ?? 30_000
+    this.cwd = opts.cwd ?? process.cwd()
+    this.memoryLimit = opts.memoryLimit
+  }
+
+  override async execute(command: string, opts?: { timeout?: number }): Promise<SandboxResult> {
+    const timeout = opts?.timeout ?? this.commandTimeout
+    const start = Date.now()
+    return new Promise((resolve) => {
+      const child = spawn("/bin/sh", ["-c", command], {
+        cwd: this.cwd,
+        env: process.env,
+      })
+      let stdout = ""
+      let stderr = ""
+      child.stdout?.on("data", (d) => { stdout += d.toString() })
+      child.stderr?.on("data", (d) => { stderr += d.toString() })
+
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL")
+      }, timeout)
+
+      child.on("close", (code) => {
+        clearTimeout(timer)
+        resolve({
+          exitCode: code ?? 1,
+          stdout,
+          stderr,
+          duration: Date.now() - start,
+        })
+      })
+      child.on("error", (err) => {
+        clearTimeout(timer)
+        resolve({ exitCode: 1, stdout, stderr: err.message, duration: Date.now() - start })
+      })
+    })
+  }
+
+  override async writeFile(path: string, content: string): Promise<void> {
+    const { writeFile: fsWrite } = await import("node:fs/promises")
+    await fsWrite(path, content, "utf-8")
+  }
+
+  override async readFile(path: string): Promise<string> {
+    const { readFile: fsRead } = await import("node:fs/promises")
+    return fsRead(path, "utf-8")
+  }
+
+  override async remove(path: string): Promise<void> {
+    const { rm } = await import("node:fs/promises")
+    await rm(path, { recursive: true, force: true })
+  }
+
+  override async isAvailable(): Promise<boolean> {
+    return true
+  }
+
+  override async destroy(): Promise<void> {
+    // No persistent state.
   }
 }

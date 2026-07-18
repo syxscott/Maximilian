@@ -3,21 +3,18 @@
 
 import type { JsonSchema } from "./types.js"
 import type { ToolContent, ToolDefinition, ToolOutput } from "./messages.js"
+import type { ToolExecuteContext } from "./tool-context.js"
 
-// ── Tool Execute Context ──
-
-export interface ToolExecuteContext {
-  readonly sessionID: string
-  readonly agent: string
-  readonly assistantMessageID: string
-  readonly toolCallID: string
-}
+// Re-export ToolExecuteContext from tool-context for backward compatibility
+export type { ToolExecuteContext } from "./tool-context.js"
 
 // ── Tool Definition ──
 
 export interface Tool<Params = unknown, Success = unknown> {
   readonly name: string
   readonly description: string
+  /** 工具能力分类，用于 capability gating 和穷举检查 */
+  readonly kind?: import("./tool-kind.js").ToolKind
   readonly inputSchema: JsonSchema
   readonly outputSchema?: JsonSchema
   readonly execute?: (input: Params, context: ToolExecuteContext) => Promise<Success>
@@ -31,6 +28,8 @@ export type AnyTool = Tool<any, any>
 export function makeTool<Params, Success>(config: {
   name: string
   description: string
+  /** 工具能力分类，用于 capability gating 和穷举检查 */
+  kind?: import("./tool-kind.js").ToolKind
   inputSchema: JsonSchema
   outputSchema?: JsonSchema
   execute?: (input: Params, context: ToolExecuteContext) => Promise<Success>
@@ -39,6 +38,7 @@ export function makeTool<Params, Success>(config: {
   return Object.freeze({
     name: config.name,
     description: config.description,
+    kind: config.kind,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
     execute: config.execute,

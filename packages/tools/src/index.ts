@@ -1,6 +1,8 @@
 // Barrel export — @max/tools
 
 export { createToolRegistry, type ToolRegistry, type Materialization, type Settlement, type ExecuteInput } from "./registry.js"
+// Toolkit (借鉴 SuperAGI)
+export { DefaultToolRegistry, BUILT_IN_TOOLKITS, type Tool, type Toolkit } from "./toolkit.js"
 export { bashTool, type BashInput, type BashOutput } from "./bash.js"
 export { readTool, type ReadInput, type ReadOutput } from "./read.js"
 export { writeTool, type WriteInput, type WriteOutput } from "./write.js"

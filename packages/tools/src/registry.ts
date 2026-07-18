@@ -2,9 +2,15 @@
 // Derived from OpenCode packages/core/src/tool/registry.ts
 // Plain TypeScript, no Effect-TS
 
-import type { ToolDefinition, ToolContent, ToolOutput } from "@max/llm"
-import { toToolDefinition, type Tool, type AnyTool, type ToolExecuteContext, type ToolSettlement, validateToolName, ToolFailure } from "@max/llm"
-import { makeTextPart } from "@max/llm"
+import type { ToolDefinition, ToolOutput } from "@max/llm"
+import {
+  toToolDefinition,
+  type AnyTool,
+  validateToolName,
+  ToolFailure,
+  ToolExecuteContextBuilder,
+  ExtensionBag,
+} from "@max/llm"
 
 // ── Registration ──
 
@@ -24,6 +30,11 @@ export interface ExecuteInput {
     readonly name: string
     readonly input: unknown
   }
+  /**
+   * 可选的扩展数据，会被合并到 ToolExecuteContext.extensions 中。
+   * 传入 Symbol → unknown 的映射。
+   */
+  readonly extensions?: ReadonlyMap<symbol, unknown>
 }
 
 // ── Materialization ──
@@ -107,15 +118,30 @@ export function createToolRegistry(): ToolRegistry {
           throw new ToolFailure({ message: `Tool "${call.name}" has no execute function` })
         }
 
-        const context: ToolExecuteContext = {
-          sessionID: input.sessionID,
-          agent: input.agent,
-          assistantMessageID: input.assistantMessageID,
-          toolCallID: call.id,
+        // 使用 Builder 构建带扩展的上下文
+        const extensions = new ExtensionBag()
+        if (input.extensions) {
+          for (const [key, value] of input.extensions) {
+            extensions.set(key, value)
+          }
         }
 
+        const context = new ToolExecuteContextBuilder()
+          .sessionID(input.sessionID)
+          .agent(input.agent)
+          .assistantMessageID(input.assistantMessageID)
+          .toolCallID(call.id)
+          .build()
+
+        // 将扩展袋注入到 context 中（通过 Object.assign，因为 context 是 frozen 的）
+        // 注意：这里我们重新构建一个带扩展的 context
+        const contextWithExtensions = Object.freeze({
+          ...context,
+          extensions,
+        })
+
         try {
-          const result = await tool.execute(call.input, context)
+          const result = await tool.execute(call.input, contextWithExtensions)
           const output = tool.toModelOutput
             ? { structured: result, content: tool.toModelOutput(result) }
             : { structured: result, content: [{ type: "text" as const, text: String(result) }] }

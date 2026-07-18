@@ -2,7 +2,7 @@
 // Derived from OpenCode packages/core/src/tool/grep.ts
 // Plain TypeScript, no Effect-TS
 
-import { makeTool, type ToolContent } from "@max/llm"
+import { makeTool, type ToolContent, ToolKind } from "@max/llm"
 import { readFile, stat, readdir } from "node:fs/promises"
 import { resolve, relative, join } from "node:path"
 
@@ -71,6 +71,7 @@ async function walkDir(dir: string, maxFiles: number): Promise<string[]> {
 export const grepTool = makeTool<GrepInput, GrepOutput>({
   name: "grep",
   description: "Search for a pattern in file contents. Returns matching lines with file paths and line numbers.",
+  kind: ToolKind.Search,
   inputSchema: {
     type: "object",
     properties: {

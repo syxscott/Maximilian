@@ -311,6 +311,36 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
 <td align="center">📈</td>
 <td><b>Observability</b> — Pino + OpenTelemetry + Prometheus</td>
 </tr>
+<tr>
+<td align="center">🔧</td>
+<td><b>ToolKind 枚举系统</b> — 编译期穷举检查,Capability Mode 格子</td>
+<td align="center">🔧</td>
+<td><b>ToolKind enum</b> — compile-time exhaustiveness, Capability Mode lattice</td>
+</tr>
+<tr>
+<td align="center">📦</td>
+<td><b>统一工具上下文</b> — ExtensionBag 扩展机制,Symbol key 类型安全</td>
+<td align="center">📦</td>
+<td><b>Unified tool context</b> — ExtensionBag, type-safe Symbol keys</td>
+</tr>
+<tr>
+<td align="center">🌊</td>
+<td><b>流式工具协议</b> — AsyncIterable Progress/Terminal, 支持实时输出</td>
+<td align="center">🌊</td>
+<td><b>Streaming tool protocol</b> — AsyncIterable Progress/Terminal, real-time output</td>
+</tr>
+<tr>
+<td align="center">🛡️</td>
+<td><b>SandboxProfile</b> — 5 种沙箱预设(Off/Workspace/Devbox/ReadOnly/Strict)</td>
+<td align="center">🛡️</td>
+<td><b>SandboxProfile</b> — 5 sandbox presets with path/network policy</td>
+</tr>
+<tr>
+<td align="center">💡</td>
+<td><b>Reminder 系统</b> — 工具执行后提醒,安全/性能/验证提示</td>
+<td align="center">💡</td>
+<td><b>Reminder system</b> — post-execution hints, security/performance checks</td>
+</tr>
 </table>
 
 </div>

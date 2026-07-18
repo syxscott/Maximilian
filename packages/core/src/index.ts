@@ -57,8 +57,44 @@ export {
   type SandboxCommandResult,
   type SandboxService,
 } from "./sandbox.js";
+// SandboxProfile abstraction (借鉴 grok-build sandbox profiles)
+export {
+  SandboxProfileName,
+  SANDBOX_PROFILES,
+  SandboxManager,
+  isSandboxActive,
+  shouldAutoAllowBash,
+  getSandboxManager,
+  createSandboxBackend,
+  isPathAllowed,
+} from "./sandbox-profile.js";
+export type {
+  SandboxProfile,
+  PathPolicy,
+  NetworkPolicy,
+  SandboxViolation,
+} from "./sandbox-profile.js";
 // ACP protocol + ExecutionBackend abstraction (mirrors OpenHands Workspace/Sandbox layer)
 export * from "./acp/index.js";
 export * from "./acp/backend.js";
 export type { FailoverReason, ClassifiedError } from "./failover-reason.js";
 export { classifyTaskError } from "./failover-reason.js";
+// Reminder system (借鉴 grok-build Reminder trait)
+export {
+  ReminderCollector,
+  DEFAULT_REMINDER_POLICY,
+  createDefaultSystemReminders,
+  createRepeatedCommandReminder,
+  createFileEditVerificationReminder,
+  createSecurityReminder,
+  createBuildTestReminder,
+  formatReminder,
+  formatReminders,
+  toReminderInjection,
+  type Reminder,
+  type ReminderType,
+  type ReminderPriority,
+  type ReminderPolicy,
+  type ReminderCollector as ReminderCollectorInterface,
+  type SystemReminder,
+} from "./reminder.js";
