@@ -16,9 +16,7 @@
  */
 
 import { spawn } from "node:child_process"
-import {
-  type ToolStreamItem,
-} from "@max/llm"
+import { type ToolStreamItem, terminalSuccess } from "@max/llm"
 import { getAbortSignal } from "@max/llm"
 import { ToolKind } from "@max/llm"
 
@@ -184,10 +182,18 @@ export const streamingBashTool = {
 
     // Yield stdout/stderr as progress items (if not truncated)
     if (!stdoutTruncated && stdout) {
-      yield { type: "progress", content: { kind: "stdout", data: stdout }, timestamp: Date.now() } as ToolStreamItem<BashOutput>
+      yield {
+        type: "progress",
+        content: { kind: "stdout", data: stdout },
+        timestamp: Date.now(),
+      } as ToolStreamItem<BashOutput>
     }
     if (!stderrTruncated && stderr) {
-      yield { type: "progress", content: { kind: "stderr", data: stderr }, timestamp: Date.now() } as ToolStreamItem<BashOutput>
+      yield {
+        type: "progress",
+        content: { kind: "stderr", data: stderr },
+        timestamp: Date.now(),
+      } as ToolStreamItem<BashOutput>
     }
 
     yield terminalSuccess(result, Date.now() - start)
