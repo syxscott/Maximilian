@@ -31,21 +31,6 @@ function countOccurrences(text: string, search: string): number {
   return count
 }
 
-function _previewLines(oldText: string, newText: string, contextLines = 3): string {
-  const oldLines = oldText.split("\n")
-  const newLines = newText.split("\n")
-  const preview: string[] = []
-  // Show contextLines lines from the start of each
-  const end = Math.min(oldLines.length, contextLines)
-  for (let i = 0; i < end; i++) {
-    preview.push(`- ${oldLines[i]}`)
-  }
-  for (let i = 0; i < Math.min(newLines.length, contextLines); i++) {
-    preview.push(`+ ${newLines[i]}`)
-  }
-  return preview.join("\n")
-}
-
 export const editTool = makeTool<EditInput, EditOutput>({
   name: "edit",
   description: "Replace a string in a file. The old string must appear exactly once (unless replaceAll is true).",
