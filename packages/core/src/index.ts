@@ -98,3 +98,13 @@ export {
   type ReminderCollector as ReminderCollectorInterface,
   type SystemReminder,
 } from "./reminder.js";
+// Claude Code skills loader
+export {
+  loadClaudeSkills,
+  createClaudeSkillsProvider,
+  resolveClaudeSkillsDir,
+  hasClaudeSkillsDir,
+  renderClaudeSkillsPrelude,
+  DEFAULT_CLAUDE_SKILLS_DIR,
+  type ClaudeSkillsLoaderOptions,
+} from "./claude-skills.js";
