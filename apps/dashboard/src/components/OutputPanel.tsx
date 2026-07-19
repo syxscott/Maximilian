@@ -14,41 +14,41 @@ export interface OutputPanelProps {
 
 function guessMime(name: string): string {
   const lower = name.toLowerCase()
-  if (
-    lower.endsWith(".png") ||
-    lower.endsWith(".jpg") ||
-    lower.endsWith(".jpeg") ||
-    lower.endsWith(".gif") ||
-    lower.endsWith(".webp") ||
-    lower.endsWith(".svg")
-  ) {
-    return `image/${lower.split(".").pop() === "svg" ? "svg+xml" : lower.split(".").pop() === "jpg" ? "jpeg" : lower.split(".").pop()}`
+  // Extract the extension ONCE (Array.prototype.pop mutates, so chained calls are wrong).
+  const ext = lower.includes(".") ? lower.slice(lower.lastIndexOf(".") + 1) : ""
+  if (ext === "png" || ext === "gif" || ext === "webp") return `image/${ext}`
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg"
+  if (ext === "svg") return "image/svg+xml"
+  if (ext === "csv") return "text/csv"
+  if (ext === "md" || ext === "markdown") return "text/markdown"
+  if (["ts", "tsx", "js", "jsx", "py", "rs", "go", "json", "yaml", "yml", "toml"].includes(ext)) {
+    return "text/plain"
   }
-  if (lower.endsWith(".csv")) return "text/csv"
-  if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "text/markdown"
-  if (/\.(ts|tsx|js|jsx|py|rs|go|json|yaml|yml|toml)$/i.test(name)) return "text/plain"
   return "text/plain"
 }
 
-function mimeIcon(mime: string, name: string) {
+function mimeIcon(mime: string, _name: string) {
   if (mime.startsWith("image/")) return ImageIcon
-  if (mime === "text/csv" || name.endsWith(".csv")) return BarChart2
-  if (/(ts|tsx|js|jsx|py|rs|go)$/i.test(name)) return Code2
+  if (mime === "text/csv") return BarChart2
+  if (/(ts|tsx|js|jsx|py|rs|go)$/i.test(_name)) return Code2
   return FileText
 }
 
-function resultToArtifact(r: { id: string; taskId: string; output: string }): Artifact {
+function resultToArtifact(
+  r: { id: string; taskId: string; output: string },
+  workspaceId: string,
+): Artifact {
   const filename = `${r.taskId}.txt`
   return {
     name: filename,
     mime: guessMime(filename),
     content: r.output,
-    workspaceId: "",
+    workspaceId,
   }
 }
 
 export function OutputPanel({
-  workspaceId: _workspaceId,
+  workspaceId,
   workspace,
   events: _events,
 }: OutputPanelProps) {
@@ -124,7 +124,7 @@ export function OutputPanel({
           <DialogDescription className="text-xs text-muted-foreground font-mono">
             {active?.id.slice(0, 12)}
           </DialogDescription>
-          {active && <ArtifactPreview artifact={resultToArtifact(active)} />}
+          {active && <ArtifactPreview artifact={resultToArtifact(active, workspaceId ?? "")} />}
         </DialogContent>
       </Dialog>
     </>

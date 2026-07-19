@@ -196,7 +196,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         dispatch(evt as unknown as SyncEvent)
       })
       return () => {
-        off()
+        // The default SDK emitter's `on` returns void (no unsubscribe);
+        // the in-memory bus's `subscribe` returns a teardown. Guard
+        // before calling so provider unmount doesn't crash the tree.
+        if (typeof off === "function") off()
       }
     }, [event])
 

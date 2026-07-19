@@ -229,6 +229,23 @@ import { swaggerUI } from "@hono/swagger-ui"
 import { FileMemoryStore } from "@max/core"
 import type { AgentMemoryStorePort, ModelSelectorPort } from "@max/core"
 import type { ModelSelectorPort as CommanderModelSelectorPort } from "@max/commander"
+import {
+  JsonlEventLog,
+  EventLogRegistry,
+  type LoggedEvent,
+} from "./event-log.js"
+import {
+  createSseHandler,
+  createEventBus,
+  createSseReplaySubsystem,
+  type EventBus,
+} from "./sse-replay.js"
+
+// Re-export so external consumers (tests, future workers) can use the
+// durable replay log without re-implementing the JSONL mutex dance.
+export { JsonlEventLog, EventLogRegistry }
+export { createSseHandler, createEventBus }
+export type { LoggedEvent }
 
 type AppEnv = { Variables: { requestId: string; userId?: string; userRole?: string } }
 const config = getConfig()
@@ -299,6 +316,27 @@ app.use("*", async (c, next) => {
 // ---------------------------------------------------------------------------
 
 const workspaceDir = config.WORKSPACE_DIR
+
+// Path imports for the root-dir constant below. Kept local (no top-level
+// import) because `path` is only used here and we don't want to widen
+// the module graph of this already-heavy server entry.
+import path from "node:path"
+
+// Root dir for durable per-workspace JSONL event logs. The path is
+// configurable via EVENTS_DIR so tests and non-default deployments
+// can point it at a tmpdir or a fast disk. Defaults to
+// `<WORKSPACE_DIR>/events/` so events live next to workspace state.
+const eventsRootDir = config.EVENTS_DIR ?? path.join(workspaceDir, "events")
+
+// Durable event-log registry + event bus. The per-workspace append-only
+// JSONL log is what backs the replay-capable SSE endpoint
+// (`/api/workspaces/:id/stream`) — a reconnecting client can resume
+// from any `Last-Event-ID` because we never evict events from disk.
+// Compare with `sseReplay` (the in-memory ring buffer, capacity 64)
+// which is still used for the websocket-style `SseReplayBuffer.since`
+// lookups but is insuficient alone for long reconnects.
+const eventLogRegistry = new EventLogRegistry(eventsRootDir)
+const workspaceEventBus = createEventBus()
 
 // Database: use PostgreSQL when DATABASE_URL is set, otherwise file-based stores.
 const db = config.DATABASE_URL ? createDb(config.DATABASE_URL) : null
@@ -375,6 +413,23 @@ function publishRuntimeEvent(event: RuntimeEvent): void {
     }
   }
   busEmit<RuntimeEvent>("workspace", event.workspaceId, event)
+  // Forward durable events to the replay-enabled SSE handler. The bus
+  // delivers them to every open stream; the log keeps them around so a
+  // reconnecting client can replay missed events from disk.
+  try {
+    workspaceEventBus.publish(event.workspaceId, { type: "event", event })
+  } catch (err) {
+    log.warn({ err, workspaceId: event.workspaceId }, "workspaceEventBus publish failed")
+  }
+  // Also persist the runtime event to the workspace's JSONL log so it
+  // survives a full process restart and can be replayed even if no SSE
+  // client was connected at emit time.
+  try {
+    const log_ = eventLogRegistry.for(event.workspaceId)
+    void log_.append(event.type, event)
+  } catch (err) {
+    log.warn({ err, workspaceId: event.workspaceId }, "event-log append failed")
+  }
 }
 
 function subscribeWorkspaceStream(
@@ -1766,6 +1821,33 @@ api.openapi(listArtifactsRoute, requireAuthMiddleware(), listArtifacts(store))
 api.openapi(getArtifactRoute, requireAuthMiddleware(), getArtifact(store))
 
 // ---------------------------------------------------------------------------
+// Durable replay SSE endpoint — same wire format as the in-memory
+// `streamWorkspaceRoute` above, but backed by the append-only JSONL log
+// so reconnecting clients can replay events from any point in history,
+// not just the last 64.
+//
+// Mounted under /api/workspaces/:id/stream-durable (and /api/v1/...) so
+// the two endpoints can coexist during the migration. The handler is
+// created via `createSseHandler` from `sse-replay.ts`.
+// ---------------------------------------------------------------------------
+const durableSseHandler = createSseHandler(
+  { forWorkspace: (id: string) => eventLogRegistry.for(id) },
+  {
+    subscribe: (id, cb) => workspaceEventBus.subscribe(id, cb),
+    onConnect: async (id) => {
+      try {
+        const ws = await store.loadWorkspace(id)
+        if (ws) return { type: "workspace", workspace: ws } as Record<string, unknown>
+      } catch (err) {
+        log.warn({ err, workspaceId: id }, "durable sse onConnect failed")
+      }
+      return null
+    },
+  },
+)
+versionedRoute("get", "/workspaces/:id/stream-durable", durableSseHandler)
+
+// ---------------------------------------------------------------------------
 // Webhook / SSE subscriptions — public customer-facing surface.
 // ---------------------------------------------------------------------------
 import {
@@ -2235,6 +2317,13 @@ function shutdown(signal: string) {
       log.error({ err }, "error flushing telemetry")
     })
     log.info("telemetry flushed")
+    // Close the durable event-log registry (flushes and releases file
+    // handles). Without this, the open write handle for each workspace
+    // leaks into the kernel.
+    await eventLogRegistry.closeAll().catch((err) => {
+      log.error({ err }, "error closing event-log registry")
+    })
+    log.info("event-log registry closed")
     // BullMQ's queue.close() also closes its ioredis connection, but if
     // the app owns a separate Redis connection (future), close it here.
     await closeDb().catch((err) => {

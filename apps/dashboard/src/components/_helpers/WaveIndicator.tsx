@@ -1,4 +1,5 @@
 import { Fragment } from "react"
+import { useLocale, t } from "@max/i18n"
 
 export type WaveStatus = "queued" | "active" | "done"
 
@@ -14,6 +15,7 @@ export interface WaveIndicatorProps {
 }
 
 export function WaveIndicator({ waves, className }: WaveIndicatorProps) {
+  useLocale()
   if (waves.length === 0) return null
 
   const currentIdx = waves.findIndex((w) => w.status === "active")
@@ -23,7 +25,7 @@ export function WaveIndicator({ waves, className }: WaveIndicatorProps) {
   return (
     <div
       className={["wave-indicator", className].filter(Boolean).join(" ")}
-      aria-label={`Task waves: ${waves.length} total, ${currentActive} currently active`}
+      aria-label={t("task.waves.aria", { total: waves.length, active: currentActive })}
     >
       <div role="list" className="flex items-center gap-0.5">
         {waves.flatMap((wave, i) => (
@@ -42,12 +44,12 @@ export function WaveIndicator({ waves, className }: WaveIndicatorProps) {
       </div>
       <div className="wave-indicator__legend font-mono tabular-nums">
         <span>
-          wave {current + 1} / {waves.length}
+          {t("task.wave.label", { current: current + 1, total: waves.length })}
         </span>
         {currentActive > 0 && (
           <>
             <span aria-hidden>·</span>
-            <span>{currentActive} parallel active</span>
+            <span>{t("task.wave.parallel", { n: currentActive })}</span>
           </>
         )}
       </div>

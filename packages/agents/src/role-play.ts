@@ -88,9 +88,6 @@ export class RolePlaying {
    * then B critiques A's output.
    *
    * Returns both messages produced this turn.
-   *
-   * 修复 Bug 15 — A is only pushed to history after B completes successfully.
-   * 修复 Bug 17 — AbortSignal + timeout guard on provider calls.
    */
   async step(): Promise<RolePlayMessage[]> {
     const { roleA, roleB, task, signal, timeoutMs } = this.options
@@ -101,61 +98,52 @@ export class RolePlaying {
       throw new Error(`Role not found: ${!phaseARole ? roleA : roleB}`)
     }
 
-    // Helper to wrap provider call with AbortSignal + timeout
-    const withTimeout = <T>(promise: Promise<T>): Promise<T> => {
-      const ctrl = new AbortController()
-      const timeout = setTimeout(() => ctrl.abort(), timeoutMs)
-      const combined = signal
-        ? Promise.race([promise, new Promise<never>((_, reject) => {
-            signal.addEventListener("abort", () => reject(new Error("step() aborted")))
-          })])
-        : promise
-      return combined
-        .finally(() => clearTimeout(timeout))
-        .catch((err) => { throw err })
+    // Cooperative cancellation: abort local controller when external signal fires.
+    const localCtrl = new AbortController()
+    const timeoutHandle = setTimeout(() => localCtrl.abort(), timeoutMs)
+    if (signal?.aborted) {
+      clearTimeout(timeoutHandle)
+      localCtrl.abort()
+    } else if (signal) {
+      signal.addEventListener("abort", () => {
+        clearTimeout(timeoutHandle)
+        localCtrl.abort()
+      })
     }
+    const effectiveSignal = localCtrl.signal
+
+    const chatOptions = {
+      signal: effectiveSignal,
+    }
+
+    const cleanup = () => clearTimeout(timeoutHandle)
+    const runA = async (prompt: string) => {
+      try { return await this.agentAExecute(prompt, phaseARole, chatOptions) }
+      finally { cleanup() }
+    }
+    const runB = async (prompt: string) => {
+      try { return await this.agentBExecute(prompt, phaseBRole, chatOptions) }
+      finally { cleanup() }
+    }
+
+    let aOutput: string
+    let bFeedback: string
 
     if (this.turn === 0) {
-      // Turn 0: A addresses the task directly.
-      const aOutput = await withTimeout(this.agentAExecute(task, phaseARole))
-
-      // B critiques A's output — only push A after B succeeds (Bug 15).
-      const bFeedback = await withTimeout(this.agentBExecute(
-        `Review the following output from ${roleA} and provide specific, actionable feedback:\n\n${aOutput}`,
-        phaseBRole,
-      ))
-
-      const aMsg: RolePlayMessage = { role: "A", content: aOutput, timestamp: new Date() }
-      const bMsg: RolePlayMessage = { role: "B", content: bFeedback, timestamp: new Date() }
-      this.history.push(aMsg)
-      this.history.push(bMsg)
-
-      this.turn++
-      return [aMsg, bMsg]
+      aOutput = await runA(task)
+      bFeedback = await runB(`Review the following output from ${roleA} and provide specific, actionable feedback:\n\n${aOutput}`)
     } else {
-      // Subsequent turns: A responds to B's most recent feedback.
       const lastB = this.lastMessageByRole("B")
       if (!lastB) throw new Error("Unexpected: no B message in history")
-
-      const aOutput = await withTimeout(this.agentAExecute(
-        `Address the following feedback from ${roleB} and revise your output accordingly:\n\n${lastB.content}`,
-        phaseARole,
-      ))
-
-      // B re-reviews — only push A after B succeeds (Bug 15).
-      const bFeedback = await withTimeout(this.agentBExecute(
-        `Re-review the revised output from ${roleA} and state whether it adequately addresses your previous feedback. If still unsatisfactory, provide further corrections:\n\n${aOutput}`,
-        phaseBRole,
-      ))
-
-      const aMsg: RolePlayMessage = { role: "A", content: aOutput, timestamp: new Date() }
-      const bMsg: RolePlayMessage = { role: "B", content: bFeedback, timestamp: new Date() }
-      this.history.push(aMsg)
-      this.history.push(bMsg)
-
-      this.turn++
-      return [aMsg, bMsg]
+      aOutput = await runA(`Address the following feedback from ${roleB} and revise your output accordingly:\n\n${lastB.content}`)
+      bFeedback = await runB(`Re-review the revised output from ${roleA} and state whether it adequately addresses your previous feedback. If still unsatisfactory, provide further corrections:\n\n${aOutput}`)
     }
+
+    const aMsg: RolePlayMessage = { role: "A", content: aOutput, timestamp: new Date() }
+    const bMsg: RolePlayMessage = { role: "B", content: bFeedback, timestamp: new Date() }
+    this.history.push(aMsg, bMsg)
+    this.turn++
+    return [aMsg, bMsg]
   }
 
   /**
@@ -200,44 +188,50 @@ export class RolePlaying {
   // ── private ────────────────────────────────────────────────────────────────
 
   /** Build messages for agent A. */
-  private async agentAExecute(userContent: string, roleSpec: { systemPrompt: string; temperature?: number }): Promise<string> {
-    // 修复 Bug 16 — read temperature from roleSpec (not substring hack)
+  private async agentAExecute(
+    userContent: string,
+    roleSpec: { systemPrompt: string; temperature?: number },
+    chatOptions: { signal?: AbortSignal },
+  ): Promise<string> {
     const temp = roleSpec.temperature ?? (roleSpec.systemPrompt.includes("reviewer") ? 0.2 : 0.4)
-    const systemContent = roleSpec.systemPrompt
     const messages: ChatMessage[] = [
-      { role: "system", content: systemContent },
+      { role: "system", content: roleSpec.systemPrompt },
       ...this.injectHistoryAsUser(),
       { role: "user", content: userContent },
     ]
     const response = await this.agentA.provider.chat(messages, {
       model: this.options.model,
       temperature: temp,
+      signal: chatOptions.signal,
     })
     return response.content
   }
 
   /** Build messages for agent B. */
-  private async agentBExecute(userContent: string, roleSpec: { systemPrompt: string; temperature?: number }): Promise<string> {
-    // 修复 Bug 16 — read temperature from roleSpec (not substring hack)
+  private async agentBExecute(
+    userContent: string,
+    roleSpec: { systemPrompt: string; temperature?: number },
+    chatOptions: { signal?: AbortSignal },
+  ): Promise<string> {
     const temp = roleSpec.temperature ?? (roleSpec.systemPrompt.includes("reviewer") ? 0.2 : 0.4)
-    const systemContent = roleSpec.systemPrompt
     const messages: ChatMessage[] = [
-      { role: "system", content: systemContent },
+      { role: "system", content: roleSpec.systemPrompt },
       ...this.injectHistoryAsUser(),
       { role: "user", content: userContent },
     ]
     const response = await this.agentB.provider.chat(messages, {
       model: this.options.model,
       temperature: temp,
+      signal: chatOptions.signal,
     })
     return response.content
   }
 
-  /** Inject A's prior outputs as user messages so the next speaker has context. */
+  /** Inject prior messages as assistant messages so speaker identity is preserved. */
   private injectHistoryAsUser(): ChatMessage[] {
     return this.history.map((msg) => ({
-      role: "user" as const,
-      content: `[${msg.role}]: ${msg.content}`,
+      role: "assistant" as const,
+      content: `[Role ${msg.role}]: ${msg.content}`,
     }))
   }
 
@@ -248,13 +242,19 @@ export class RolePlaying {
     return undefined
   }
 
-  /** Heuristic: if B's message contains "APPROVED" or "looks good", consider it consensus. */
-  private estimateConsensusScore(aOutput: string, bFeedback: string): number {
+  /**
+   * Heuristic: require explicit positive approval from B.
+   * Requires word boundaries to avoid "not approved" matching /APPROVED/.
+   */
+  private estimateConsensusScore(_aOutput: string, bFeedback: string): number {
+    // Explicit approval phrases with word boundaries to avoid "not approved" matching.
     const approved =
-      /APPROVED|looks good|looks correct|accepted|satisfied/i.test(bFeedback)
-    const revised = /revise|fix|change|update|address/i.test(bFeedback)
-    if (approved) return 9
-    if (!revised) return 7
-    return 5
+      /\b(approved|looks good|looks correct|looks acceptable|accepted|satisfied|good enough|lgtm)\b/i.test(bFeedback)
+    // Explicit rejection/fix keywords.
+    const needsWork =
+      /\b(revise|fix|change|update|address|correct|rewrite|redo|must|should)\b/i.test(bFeedback)
+    if (approved && !needsWork) return 9
+    if (needsWork) return 5
+    return 7
   }
 }

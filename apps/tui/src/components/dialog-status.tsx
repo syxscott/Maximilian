@@ -93,7 +93,7 @@ export function DialogStatus(props: DialogStatusProps) {
     if (key.escape) props.onClose?.()
   })
 
-  const mcpEntries = Object.entries(props.mcps)
+  const mcpEntries = useMemo(() => Object.entries(props.mcps), [props.mcps])
   const showMcp = mcpEntries.length > 0
   const showLsp = props.lsps.length > 0
   const showFormatters = enabledFormatters.length > 0

@@ -21,6 +21,7 @@
 
 import type { AgentMemory, MemoryEntry, MetricRecord } from "./types.js";
 import { emptyMemory, MemoryMime, toMemoryEntry } from "./types.js";
+import { containsSecret, scrubSecrets } from "./secret-scrub.js";
 
 export const COMPRESSION_THRESHOLD = 20;
 
@@ -57,10 +58,14 @@ export class AgentMemoryStore {
   }
 
   static recordSuccess(mem: AgentMemory, record: MetricRecord, snippet: string | undefined): AgentMemory {
+    // Scrub any secrets in the snippet before persisting (hermes-evolution
+    // SECRET_PATTERNS). A good example that contains an API key would
+    // be re-injected into future prompts and leak credentials.
+    const safeSnippet = snippet && containsSecret(snippet) ? scrubSecrets(snippet) : snippet;
     const next: AgentMemory = {
       ...mem,
-      goodExamples: snippet
-        ? appendCapped(mem.goodExamples, toMemoryEntry(snippet, MemoryMime.TextPlain), 50)
+      goodExamples: safeSnippet
+        ? appendCapped(mem.goodExamples, toMemoryEntry(safeSnippet, MemoryMime.TextPlain), 50)
         : mem.goodExamples,
       totalEntries: mem.totalEntries + 1,
     };
@@ -69,29 +74,34 @@ export class AgentMemoryStore {
 
   static recordFailure(mem: AgentMemory, record: MetricRecord): AgentMemory {
     const errLine = record.error ?? `Score ${record.reviewScore}/10 below threshold`;
+    const safeErrLine = containsSecret(errLine) ? scrubSecrets(errLine) : errLine;
     return {
       ...mem,
-      commonErrors: appendCapped(mem.commonErrors, toMemoryEntry(errLine, MemoryMime.TextPlain), 50),
+      commonErrors: appendCapped(mem.commonErrors, toMemoryEntry(safeErrLine, MemoryMime.TextPlain), 50),
       totalEntries: mem.totalEntries + 1,
     };
   }
 
   static recordFeedback(mem: AgentMemory, text: string): AgentMemory {
-    if (!text.trim()) return mem;
+    const trimmed = text.trim();
+    if (!trimmed) return mem;
+    const safeText = containsSecret(trimmed) ? scrubSecrets(trimmed) : trimmed;
     return {
       ...mem,
-      userFeedback: appendCapped(mem.userFeedback, toMemoryEntry(text.trim(), MemoryMime.TextPlain), 50),
+      userFeedback: appendCapped(mem.userFeedback, toMemoryEntry(safeText, MemoryMime.TextPlain), 50),
       totalEntries: mem.totalEntries + 1,
     };
   }
 
   static recordReviewSuggestions(mem: AgentMemory, suggestions: string[]): AgentMemory {
     if (suggestions.length === 0) return mem;
+    const joined = suggestions.join(" | ");
+    const safeJoined = containsSecret(joined) ? scrubSecrets(joined) : joined;
     return {
       ...mem,
       reviewSuggestions: appendCapped(
         mem.reviewSuggestions,
-        toMemoryEntry(suggestions.join(" | "), MemoryMime.TextPlain),
+        toMemoryEntry(safeJoined, MemoryMime.TextPlain),
         50,
       ),
       totalEntries: mem.totalEntries + 1,

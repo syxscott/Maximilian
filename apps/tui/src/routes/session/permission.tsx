@@ -542,6 +542,15 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
       options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
       escapeKey="reject"
       onSelect={(option) => {
+        // If the Maximilian SDK stub doesn't implement the permission
+        // surface, every option is a silent no-op and the dialog stays
+        // open forever with the agent blocked. Surface that to the
+        // user (and to operators) and bail out of the prompt.
+        if (!sdk.client.permission?.reply) {
+          console.warn("[permission] SDK does not implement permission.reply; cannot resolve prompt")
+          props.onComplete?.()
+          return
+        }
         if (option === "always") {
           setStage("always")
           return
@@ -551,7 +560,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
             setStage("reject")
             return
           }
-          void sdk.client.permission?.reply?.({
+          void sdk.client.permission.reply({
             reply: "reject",
             requestID: props.request.id,
             directory: props.directory,
@@ -559,7 +568,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           })
           return
         }
-        void sdk.client.permission?.reply?.({
+        void sdk.client.permission.reply({
           reply: "once",
           requestID: props.request.id,
           directory: props.directory,

@@ -22,14 +22,30 @@ type Setter<T> = T | ((prev: T) => T)
 async function readJson<T>(file: string): Promise<T> {
   const fs = await import("node:fs/promises")
   const text = await fs.readFile(file, "utf8")
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    // Corrupted JSON — treat as empty store rather than crashing the init.
+    return {} as T
+  }
 }
 
 async function writeJsonAtomic(file: string, value: unknown): Promise<void> {
   const fs = await import("node:fs/promises")
   const tmp = `${file}.tmp`
   await fs.writeFile(tmp, JSON.stringify(value, null, 2), "utf8")
-  await fs.rename(tmp, file)
+  try {
+    await fs.rename(tmp, file)
+  } catch (err) {
+    // Best-effort: on rename failure, try direct copy as fallback before propagating.
+    try {
+      await fs.copyFile(tmp, file)
+      await fs.unlink(tmp)
+    } catch {
+      // Surface the original rename error.
+      throw err
+    }
+  }
 }
 
 type KvValue = {
@@ -108,12 +124,19 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext<KvValue,
         if (store[name] === undefined) {
           set(name, defaultValue as unknown)
         }
-        const getter = () => store[name] as T
+        // Track the live value in a ref so the getter returns the most
+        // recent write immediately, not the value from whichever render
+        // closure captured `store`. Without this, code that does
+        //   const v = getter(); setter(x); console.log(getter())
+        // sees v repeated (closure stale) instead of v then x.
+        const liveRef: { current: T } = { current: (store[name] as T | undefined) ?? defaultValue }
+        const getter = () => liveRef.current
         const setter = (next: Setter<T>) => {
           setStore((prev) => {
             const previous = prev[name] as T | undefined
             const resolved =
               typeof next === "function" ? (next as (p: T | undefined) => T)(previous) : next
+            liveRef.current = resolved
             const merged = { ...prev, [name]: resolved }
             void persist(merged)
             return merged

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,13 +28,13 @@ import { Activity, AlertTriangle, CheckCircle, XCircle, Zap } from "lucide-react
 
 // ── Category config (borrowed from cc-switch) ─────────────────────────────
 
-const CATEGORY_LABELS: Record<ProviderCategory, string> = {
-  official: "Official",
-  china: "China",
-  international: "Intl",
-  aggregator: "Aggregator",
-  cloud: "Cloud",
-  custom: "Custom",
+const CATEGORY_KEYS: Record<ProviderCategory, string> = {
+  official: "provider.category.official",
+  china: "provider.category.china",
+  international: "provider.category.international",
+  aggregator: "provider.category.aggregator",
+  cloud: "provider.category.cloud",
+  custom: "provider.category.custom",
 }
 
 const CATEGORY_COLORS: Record<ProviderCategory, string> = {
@@ -82,13 +82,13 @@ function CircuitBreakerBadge({ state }: { state?: string }) {
   if (state === "open") return (
     <Badge variant="destructive" className="text-xs gap-1">
       <Zap className="w-3 h-3" />
-      Circuit Open
+      {t("provider.circuitBreaker")}
     </Badge>
   )
   if (state === "half-open") return (
     <Badge variant="secondary" className="text-xs gap-1">
       <Zap className="w-3 h-3" />
-      Probing
+      {t("provider.probing")}
     </Badge>
   )
   return null
@@ -140,6 +140,7 @@ export function ProviderPanel() {
           itemHeight={172}
           height="60vh"
           className="rounded-md"
+          getItemKey={(provider) => provider.id}
           renderRow={(provider) => (
             <div className="pb-3">
               <ProviderCard
@@ -194,12 +195,17 @@ function ProviderCard({
   const catalog = modelVariants?.map((v) => v.id) ?? PROVIDER_MODEL_CATALOG[provider.id]
   const [model, setModelState] = useState(provider.defaultModel)
   const [editing, setEditing] = useState(false)
+  // Track the model the user has saved so the post-save "flash back" of
+  // the OLD defaultModel during the refetch window doesn't overwrite the
+  // newly-committed value. We compare against this ref instead of `model`
+  // because `model` is the in-flight value the user is editing.
+  const savedModelRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!editing && model !== provider.defaultModel) {
+    if (!editing && provider.defaultModel !== savedModelRef.current) {
       setModelState(provider.defaultModel)
     }
-  }, [provider.defaultModel, editing, model])
+  }, [provider.defaultModel, editing])
 
   const handleBlur = () => setEditing(false)
 
@@ -217,7 +223,7 @@ function ProviderCard({
             {/* Category badge — mirrors cc-switch's ProviderCard category display */}
             {provider.category && (
               <Badge className={CATEGORY_COLORS[provider.category]}>
-                {CATEGORY_LABELS[provider.category]}
+                {t(CATEGORY_KEYS[provider.category])}
               </Badge>
             )}
 
@@ -238,7 +244,7 @@ function ProviderCard({
             {provider.inFailoverQueue && (
               <Badge variant="outline" className="text-xs gap-1">
                 <Zap className="w-3 h-3" />
-                Failover
+                {t("provider.failoverBadge")}
               </Badge>
             )}
           </div>
@@ -279,7 +285,10 @@ function ProviderCard({
           {/* Model context limit display — mirrors cc-switch's PresetModelVariant display */}
           {modelVariants && (
             <span className="text-muted-foreground">
-              ctx: {modelVariants.find((v) => v.id === model)?.contextLimit?.toLocaleString() ?? "—"}
+              {t("provider.contextLimitLabel", {
+                limit:
+                  modelVariants.find((v) => v.id === model)?.contextLimit?.toLocaleString() ?? "—",
+              })}
             </span>
           )}
         </div>
@@ -335,7 +344,13 @@ function ProviderCard({
             variant="outline"
             disabled={!provider.configured || isMutating || model === provider.defaultModel}
             onClick={async () => {
-              await onSaveModel(model)
+              const chosen = model
+              await onSaveModel(chosen)
+              // Mark this model as the "last saved" snapshot before exiting
+              // edit mode. The effect above compares against this ref so a
+              // brief gap where the refetched `provider.defaultModel` is
+              // still the OLD value won't reset the dropdown back.
+              savedModelRef.current = chosen
               setEditing(false)
             }}
           >
@@ -355,7 +370,7 @@ function ProviderCard({
               disabled={resetCircuit.isPending}
             >
               <Zap className="w-3 h-3" />
-              Reset Circuit
+              {t("provider.resetCircuit")}
             </Button>
           )}
 
@@ -368,7 +383,7 @@ function ProviderCard({
               onClick={() => removeFromFailover.mutate({ providerId: provider.id })}
               disabled={removeFromFailover.isPending}
             >
-              Remove from Failover
+              {t("provider.failover.remove")}
             </Button>
           ) : (
             autoFailoverEnabled && (
@@ -385,7 +400,7 @@ function ProviderCard({
                 disabled={addToFailover.isPending}
               >
                 <Zap className="w-3 h-3" />
-                Add to Failover
+                {t("provider.failover.add")}
               </Button>
             )
           )}

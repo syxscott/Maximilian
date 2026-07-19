@@ -2,6 +2,14 @@
 import path from "path"
 import { appendFile, mkdir, rename, rm } from "fs/promises"
 
+// Maximilian's persistence layer is Bun-specific for read paths (readText,
+// readJson) because the Bun runtime gives us atomic, GC-friendly file
+// handles without an extra fs module. The write helpers fall back to
+// Node's `fs/promises` so they keep working when this module runs under
+// Node (tests, dashboards). Keeping both paths in one place avoids the
+// scenario where appendText is silently dropped because someone imported
+// the file under Node where Bun.write isn't available.
+
 export function readText(filePath: string) {
   return Bun.file(filePath).text()
 }

@@ -31,10 +31,34 @@ export function DialogConfirm(props: DialogConfirmProps) {
   const dialog = useDialog()
   const [active, setActive] = React.useState<Option>("confirm")
 
+  // The previous implementation called `props.onConfirm?.()` then
+  // `dialog.clear()` synchronously. `dialog.clear()` fires `onClose`,
+  // which `DialogConfirm.show` had set to `() => resolve(undefined)` —
+  // so the second `resolve(undefined)` won (Promise ignores additional
+  // resolves) and the awaited result was always `undefined` regardless
+  // of the user's choice. Fix: only call `dialog.clear()` from inside
+  // the onConfirm/onCancel callbacks themselves, and let ESC also
+  // resolve explicitly to `false`.
+  const commit = (which: "confirm" | "cancel") => {
+    if (which === "confirm") props.onConfirm?.()
+    if (which === "cancel") props.onCancel?.()
+    dialog.clear()
+  }
+
   useInput((input, key) => {
     if (key.return) {
-      if (active === "confirm") props.onConfirm?.()
-      if (active === "cancel") props.onCancel?.()
+      commit(active)
+      return
+    }
+    if (key.escape) {
+      // ESC means "cancel" — explicit resolve so callers awaiting the
+      // promise don't hang until the dialog's onClose fires.
+      if (active === "confirm") {
+        // active was on confirm but ESC cancels; resolve false.
+        props.onCancel?.()
+      } else {
+        props.onCancel?.()
+      }
       dialog.clear()
       return
     }
@@ -86,15 +110,26 @@ DialogConfirm.show = (
   label?: string,
 ): Promise<DialogConfirmResult> => {
   return new Promise<DialogConfirmResult>((resolve) => {
+    // onClose is the "I gave up / dialog was dismissed" path; resolve
+    // to `undefined` ONLY if no user-driven resolve fired first. With
+    // the fix above, commit() always resolves before clearing, so
+    // onClose here is a true safety net for forced dismissals (e.g.
+    // DialogProvider unmount) — in practice it should rarely fire.
+    let settled = false
+    const safeResolve = (value: DialogConfirmResult) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
     dialog.replace(
       <DialogConfirm
         title={title}
         message={message}
-        onConfirm={() => resolve(true)}
-        onCancel={() => resolve(false)}
+        onConfirm={() => safeResolve(true)}
+        onCancel={() => safeResolve(false)}
         label={label}
       />,
-      { onClose: () => resolve(undefined) },
+      { onClose: () => safeResolve(undefined) },
     )
   })
 }

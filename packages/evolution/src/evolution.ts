@@ -8,14 +8,19 @@
  *
  *   evolve(profile, ...)
  *     1. compose an "improved" system prompt that addresses the failure modes
- *     2. register it as the next version (v1 → v2, etc.)
- *     3. run an A/B test (3 tasks per side, or as many as history allows)
- *     4. promote if newAvgScore > oldAvgScore + MARGIN, else archive
+ *     2. validate it against constraint gates (size, growth, role marker,
+ *        secret leak) — borrowed from hermes-evolution/evolution/core/constraints.py
+ *     3. register it as the next version (v1 → v2, etc.)
+ *     4. score via pluggable Judge (default: offline heuristic; LLM
+ *        callers can pass their own)
+ *     5. promote if newScore > oldScore + MARGIN, else archive
  *
- * The "A/B" evaluation here is deterministic: it scores a candidate by
- * how many of the recent failure-mode strings it explicitly addresses in
- * the new prompt. This keeps tests fast and offline; a future phase can
- * swap in live re-execution.
+ * The "A/B" evaluation is now pluggable: the default `defaultJudge` is a
+ * deterministic offline heuristic; a real LLM can be passed as `judge` to
+ * the engine constructor for live re-scoring.
+ *
+ * All persisted text passes through `scrubSecrets` (hermes-evolution
+ * SECRET_PATTERNS) before being written to `goodExample` / `userFeedback`.
  */
 
 import { promises as fs } from "node:fs";
@@ -32,6 +37,9 @@ import {
 import { ProfileStore } from "./profile-store.js";
 import { MetricsStore } from "./metrics-store.js";
 import { readModifyWriteAtomic, writeFileAtomic } from "./atomic.js";
+import { validateCandidate, type GateResult } from "./constraint-gates.js";
+import { scrubSecrets, containsSecret } from "./secret-scrub.js";
+import { defaultJudge, toReviewScore, type Judge } from "./llm-judge.js";
 
 export const SCORE_THRESHOLD = 6.0;
 export const ACCEPTANCE_THRESHOLD = 0.5;
@@ -55,13 +63,23 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
   promoteMargin: PROMOTE_MARGIN,
 };
 
+export interface EvolutionEngineOptions {
+  /** Pluggable judge for A/B scoring. Default: `defaultJudge` (offline). */
+  judge?: Judge;
+}
+
 export class EvolutionEngine {
+  private readonly judge: Judge;
+
   constructor(
     private rootDir: string,
     private metrics: MetricsStore,
     private profiles: ProfileStore,
-    private config: EvolutionConfig = DEFAULT_EVOLUTION_CONFIG
-  ) {}
+    private config: EvolutionConfig = DEFAULT_EVOLUTION_CONFIG,
+    opts: EvolutionEngineOptions = {},
+  ) {
+    this.judge = opts.judge ?? defaultJudge;
+  }
 
   private versionsDir(role: string): string {
     return path.join(this.rootDir, "agent-versions", role);
@@ -73,6 +91,10 @@ export class EvolutionEngine {
 
   private decisionsFile(role: string): string {
     return path.join(this.versionsDir(role), "decisions.json");
+  }
+
+  private failedVersionsDir(role: string): string {
+    return path.join(this.versionsDir(role), "failed");
   }
 
   async listVersions(role: AgentRole): Promise<AgentVersion[]> {
@@ -96,10 +118,6 @@ export class EvolutionEngine {
     return all[all.length - 1];
   }
 
-  /**
-   * Decide whether this profile should evolve. Pure function over the
-   * profile + recent metric records; no side effects.
-   */
   static shouldEvolve(
     profile: AgentProfile,
     recent: MetricRecord[],
@@ -116,10 +134,6 @@ export class EvolutionEngine {
     return acceptRate < config.acceptanceThreshold;
   }
 
-  /**
-   * Run the full evolution cycle for one role. Returns the decision
-   * (promoted or discarded) plus the candidate version.
-   */
   async evolve(
     role: AgentRole,
     currentManifest: AgentManifest
@@ -133,14 +147,69 @@ export class EvolutionEngine {
     );
     const feedback = profile.memory.userFeedback.slice(-5).map((e) => e.content);
 
-    // 1. Compose candidate prompt.
+    // 1. Compose candidate prompt (scrub secrets in feedback first).
+    const safeFeedback = feedback.map((f) => scrubSecrets(f));
+    const basePrompt = current?.manifest.systemPrompt ?? currentManifest.systemPrompt;
     const newSystemPrompt = composeImprovedPrompt(
-      currentManifest.systemPrompt,
+      basePrompt,
       failures,
-      feedback,
+      safeFeedback,
       this.config.scoreThreshold
     );
     const newId = nextVersionId(profile.versions);
+
+    // 2. Constraint gates — borrowed from hermes-evolution/constraints.py
+    const gate = validateCandidate({
+      newSystemPrompt,
+      baseSystemPrompt: basePrompt,
+    });
+    if (!gate.ok) {
+      // Write the rejected candidate to a sibling `failed/` dir for
+      // postmortem (mirrors hermes' `evolved_FAILED.md`).
+      await fs.mkdir(this.failedVersionsDir(role), { recursive: true });
+      const failedPath = path.join(this.failedVersionsDir(role), `${newId}.json`);
+      await writeFileAtomic(
+        failedPath,
+        JSON.stringify(
+          {
+            id: newId,
+            agentRole: role,
+            gate,
+            newSystemPrompt,
+            createdAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      );
+
+      const decision: EvolutionDecision = {
+        id: `evo-${randomUUID().slice(0, 8)}`,
+        agentRole: role,
+        fromVersion: current?.id ?? "v0",
+        toVersion: newId,
+        outcome: "discarded",
+        oldAvgScore: 0,
+        newAvgScore: 0,
+        triggeredAt: new Date().toISOString(),
+        reason: `Constraint gate rejected: ${gate.code} — ${gate.reason}`,
+      };
+      // Also persist a "stub" AgentVersion under the canonical version file
+      // so listVersions and consumers can find it. The `reason` carries the
+      // gate detail; `stats.avgScore = 0` indicates "not yet evaluated".
+      const rejectedStub: AgentVersion = AgentVersionSchema.parse({
+        id: newId,
+        agentRole: role,
+        manifest: { ...currentManifest, systemPrompt: currentManifest.systemPrompt },
+        createdAt: new Date().toISOString(),
+        reason: `GATE_REJECTED: ${gate.code} — ${gate.reason ?? ""}`.slice(0, 240),
+        stats: { totalTasks: 0, avgScore: 0 },
+      });
+      await fs.mkdir(this.versionsDir(role), { recursive: true });
+      await writeFileAtomic(this.versionFile(role, newId), JSON.stringify(rejectedStub, null, 2));
+      await this.appendDecision(role, decision);
+      return decision;
+    }
 
     const candidate: AgentVersion = AgentVersionSchema.parse({
       id: newId,
@@ -156,11 +225,33 @@ export class EvolutionEngine {
     await fs.mkdir(this.versionsDir(role), { recursive: true });
     await writeFileAtomic(this.versionFile(role, newId), JSON.stringify(candidate, null, 2));
 
-    // 2. A/B test using a deterministic score estimator.
-    const oldScore = estimateAvgScore(current?.manifest.systemPrompt ?? currentManifest.systemPrompt, recent);
-    const newScore = estimateAvgScore(newSystemPrompt, recent);
-    const promoted =
-      newScore > oldScore + this.config.promoteMargin;
+    // 3. A/B scoring via the pluggable Judge (default heuristic, or LLM).
+    const failureStrings = extractFailureModeStrings(failures, this.config.scoreThreshold);
+    const oldJudge = await this.judge({
+      candidate: basePrompt,
+      baseline: basePrompt,
+      failures: failureStrings,
+      feedback: safeFeedback,
+      scoreThreshold: this.config.scoreThreshold,
+    });
+    const newJudge = await this.judge({
+      candidate: newSystemPrompt,
+      baseline: basePrompt,
+      failures: failureStrings,
+      feedback: safeFeedback,
+      scoreThreshold: this.config.scoreThreshold,
+    });
+
+    // Convert 0..1 composite → 0..10 review score.
+    const oldScore = toReviewScore(oldJudge);
+    const newScore = toReviewScore(newJudge);
+    const deltaScore = newScore - oldScore;
+
+    // 4. Promote if new > old + margin. We add the length penalty to the
+    //    margin so overlong candidates pay an extra cost — borrowed from
+    //    the Hermes anti-bloat operator.
+    const effectiveMargin = this.config.promoteMargin + newJudge.lengthPenalty;
+    const promoted = newScore > oldScore + effectiveMargin;
 
     if (promoted) {
       candidate.stats.avgScore = newScore;
@@ -178,7 +269,46 @@ export class EvolutionEngine {
         manifest: { ...currentManifest, systemPrompt: newSystemPrompt },
       };
       await this.profiles.save(updatedProfile);
+    } else {
+      // Also persist the candidate in the main versions dir so consumers
+      // (tests, leaderboard, decision-log) can find it via listVersions.
+      // The `retiredAt` field marks it as "considered, not promoted".
+      const rejected: AgentVersion = {
+        ...candidate,
+        stats: { totalTasks: 0, avgScore: newScore },
+        reason: candidate.reason + " (discarded: score did not exceed old + margin)",
+      };
+      await writeFileAtomic(this.versionFile(role, newId), JSON.stringify(rejected, null, 2));
+      // Also write a copy to failed/ for postmortem (gate detail + judge).
+      await fs.mkdir(this.failedVersionsDir(role), { recursive: true });
+      const failedPath = path.join(this.failedVersionsDir(role), `${newId}.json`);
+      await writeFileAtomic(
+        failedPath,
+        JSON.stringify(
+          {
+            id: newId,
+            agentRole: role,
+            gate: { ...gate, ok: false, reason: `score ${newScore.toFixed(2)} ≤ old ${oldScore.toFixed(2)} + margin ${effectiveMargin.toFixed(2)}` },
+            newSystemPrompt,
+            judge: newJudge,
+            createdAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      );
     }
+
+    const reasonParts: string[] = [
+      `judge composite ${(newJudge.composite).toFixed(2)} (correctness ${newJudge.correctness.toFixed(2)}, procedure ${newJudge.procedure.toFixed(2)}, conciseness ${newJudge.conciseness.toFixed(2)})`,
+    ];
+    if (newJudge.lengthPenalty > 0) {
+      reasonParts.push(`length penalty ${newJudge.lengthPenalty.toFixed(2)}`);
+    }
+    if (newJudge.feedback) {
+      reasonParts.push(newJudge.feedback);
+    }
+    reasonParts.push(`Δ ${deltaScore >= 0 ? "+" : ""}${deltaScore.toFixed(2)} (margin ${effectiveMargin.toFixed(2)})`);
 
     const decision: EvolutionDecision = {
       id: `evo-${randomUUID().slice(0, 8)}`,
@@ -190,8 +320,8 @@ export class EvolutionEngine {
       newAvgScore: newScore,
       triggeredAt: new Date().toISOString(),
       reason: promoted
-        ? `New version scored ${newScore.toFixed(2)} vs ${oldScore.toFixed(2)} on recent sample.`
-        : `New version did not exceed old + margin (${newScore.toFixed(2)} vs ${oldScore.toFixed(2)}).`,
+        ? `Promoted: ${reasonParts.join("; ")}.`
+        : `Discarded: ${reasonParts.join("; ")}.`,
     };
 
     await this.appendDecision(role, decision);
@@ -199,16 +329,16 @@ export class EvolutionEngine {
   }
 
   private async appendDecision(role: AgentRole, decision: EvolutionDecision): Promise<void> {
-    // Atomic read-modify-write so two concurrent evolve() calls for the
-    // same role don't lose each other's decision. The mtime-based retry
-    // is best-effort; with low concurrency (one evolve per role at a
-    // time in practice) it's enough to eliminate the lost-update window
-    // that the previous read-then-write had.
     await readModifyWriteAtomic<EvolutionDecision[]>(
       this.decisionsFile(role),
       [],
       (existing) => [...existing, decision],
     );
+  }
+
+  /** Public helper: scrub a text blob before persisting to memory. */
+  static scrubText(text: string): string {
+    return containsSecret(text) ? scrubSecrets(text) : text;
   }
 }
 
@@ -238,7 +368,7 @@ function composeImprovedPrompt(
 ): string {
   const parts: string[] = [base.trim()];
 
-  const failureModes = extractFailureModes(failures, scoreThreshold);
+  const failureModes = extractFailureModeStrings(failures, scoreThreshold);
   if (failureModes.length > 0) {
     parts.push(
       `\n# Failure modes observed in past runs (avoid these)\n` +
@@ -259,7 +389,7 @@ function composeImprovedPrompt(
   return parts.join("\n");
 }
 
-function extractFailureModes(failures: MetricRecord[], scoreThreshold: number): string[] {
+function extractFailureModeStrings(failures: MetricRecord[], scoreThreshold: number): string[] {
   const modes: string[] = [];
   for (const f of failures) {
     if (f.error) modes.push(`Avoid runtime error: ${f.error.slice(0, 120)}`);
@@ -272,10 +402,9 @@ function extractFailureModes(failures: MetricRecord[], scoreThreshold: number): 
 
 /**
  * Estimate an average score for a given prompt against a set of past
- * records. The estimator is intentionally simple: it counts how many of
- * the failure-mode markers appear in the new prompt vs the old one. A
- * more sophisticated version (embedding similarity, live re-run) is out
- * of scope for the MVP.
+ * records. Kept for backward compatibility — the new `evolve` uses the
+ * pluggable Judge instead. Kept exported via `estimateAvgScore` for any
+ * external callers.
  */
 function estimateAvgScore(prompt: string, recent: MetricRecord[]): number {
   if (recent.length === 0) return 5;
@@ -285,7 +414,6 @@ function estimateAvgScore(prompt: string, recent: MetricRecord[]): number {
     .reduce((a, r) => a + (r.reviewScore ?? 0), 0) /
     Math.max(1, recent.filter((r) => r.reviewScore !== undefined).length);
 
-  // Heuristic: +0.4 per failure-mode marker the prompt addresses, capped.
   let bonus = 0;
   const markers = ["failure", "avoid", "assumption", "thorough", "feedback", "discipline"];
   for (const m of markers) {
@@ -294,3 +422,7 @@ function estimateAvgScore(prompt: string, recent: MetricRecord[]): number {
   bonus = Math.min(bonus, 2.0);
   return Math.min(10, baseAvg + bonus);
 }
+
+export { estimateAvgScore };
+export type { GateResult };
+

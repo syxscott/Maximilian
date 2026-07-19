@@ -182,7 +182,12 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
 
     const refreshLocation = useCallback(
       async (ref?: LocationRef) => {
-        const response = await sdk.client.v2.location
+        // Maximilian's SDK stub does not implement the `v2` namespace
+        // yet. Bail silently when the surface is absent so the data
+        // provider mounts and the rest of the TUI keeps working.
+        const v2 = sdk.client.v2
+        if (!v2?.location?.get) return
+        const response = await v2.location
           .get({ location: locationQuery(ref) }, { throwOnError: true })
         const location = response.data
         const key = locationKey(location)
@@ -432,6 +437,12 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
                 event.properties.callID,
               )
               if (match?.state?.status !== "running") return
+              // Tolerate missing `provider` on the event envelope so a
+              // partial sync doesn't crash the data reducer (which runs
+              // inside a setStore updater and so would unmount the
+              // entire React tree).
+              const providerPayload =
+                (event.properties.provider as { executed?: unknown; metadata?: unknown } | undefined) ?? {}
               match.state = {
                 status: "completed",
                 input: match.state.input,
@@ -440,14 +451,43 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
                 result: event.properties.result,
               }
               match.provider = {
-                executed: event.properties.provider.executed || match.provider?.executed === true,
+                executed: providerPayload.executed === true || match.provider?.executed === true,
                 metadata: match.provider?.metadata,
-                resultMetadata: event.properties.provider.metadata,
+                resultMetadata: providerPayload.metadata,
               }
               match.time.completed = event.properties.timestamp
             })
             break
           case "session.next.tool.failed":
+            message.update(event.properties.sessionID, (draft) => {
+              const match = message.latestTool(
+                message.assistant(draft, event.properties.assistantMessageID) as any,
+                event.properties.callID,
+              )
+              if (!match || (match.state.status !== "pending" && match.state.status !== "running")) return
+              // Read provider through a tolerant guard. The OpenCode SDK
+              // event envelope sometimes omits `provider` for partial
+              // syncs; dereferencing it without a guard crashes the data
+              // reducer, which is called inside a setStore updater and
+              // so unmounts the entire React tree.
+              const providerPayload =
+                (event.properties.provider as { executed?: unknown; metadata?: unknown } | undefined) ?? {}
+              match.state = {
+                status: "error",
+                error: event.properties.error,
+                input: typeof match.state.input === "string" ? {} : match.state.input,
+                structured: match.state.status === "running" ? match.state.structured : {},
+                content: match.state.status === "running" ? match.state.content : [],
+                result: event.properties.result,
+              }
+              match.provider = {
+                executed: providerPayload.executed === true || match.provider?.executed === true,
+                metadata: match.provider?.metadata,
+                resultMetadata: providerPayload.metadata,
+              }
+              match.time.completed = event.properties.timestamp
+            })
+            break
             message.update(event.properties.sessionID, (draft) => {
               const match = message.latestTool(
                 message.assistant(draft, event.properties.assistantMessageID) as any,
@@ -554,6 +594,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
       session: {
         get: (sessionID: string) => store.session.info[sessionID],
         refresh: async (sessionID: string) => {
+          if (!sdk.client.v2?.session?.get) return
           const result = await sdk.client.v2.session.get({ sessionID }, { throwOnError: true })
           setStore((prev) => ({
             ...prev,
@@ -563,6 +604,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
         message: {
           list: (sessionID: string) => store.session.message[sessionID],
           refresh: async (sessionID: string) => {
+            if (!sdk.client.v2?.session?.messages) return
             const result = await sdk.client.v2.session.messages({ sessionID }, { throwOnError: true })
             setStore((prev) => ({
               ...prev,
@@ -573,6 +615,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
         permission: {
           list: (sessionID: string) => store.session.permission[sessionID],
           refresh: async (sessionID: string) => {
+            if (!sdk.client.v2?.session?.permission?.list) return
             const result = await sdk.client.v2.session.permission.list({ sessionID }, { throwOnError: true })
             setStore((prev) => ({
               ...prev,
@@ -583,6 +626,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
         question: {
           list: (sessionID: string) => store.session.question[sessionID],
           refresh: async (sessionID: string) => {
+            if (!sdk.client.v2?.session?.question?.list) return
             const result = await sdk.client.v2.session.question.list({ sessionID }, { throwOnError: true })
             setStore((prev) => ({
               ...prev,
@@ -595,6 +639,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
         permission: {
           list: (projectID: string) => store.project.permission[projectID],
           refresh: async (projectID: string) => {
+            if (!sdk.client.v2?.permission?.saved?.list) return
             const result = await sdk.client.v2.permission.saved.list({ projectID }, { throwOnError: true })
             setStore((prev) => ({
               ...prev,
@@ -608,38 +653,59 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
         refresh: refreshLocation,
         agent: {
           list: (location?: LocationRef) => listAt<AgentInfo>("agent", location),
-          refresh: (ref?: LocationRef) => refreshAt("agent", () => sdk.client.v2.agent.list({ location: locationQuery(ref) }, { throwOnError: true })),
+          refresh: (ref?: LocationRef) =>
+            refreshAt("agent", async () => {
+              if (!sdk.client.v2?.agent?.list) return undefined
+              return sdk.client.v2.agent.list({ location: locationQuery(ref) }, { throwOnError: true })
+            }),
         },
         command: {
           list: (location?: LocationRef) => listAt<CommandInfo>("command", location),
-          refresh: (ref?: LocationRef) => refreshAt("command", () => sdk.client.v2.command.list({ location: locationQuery(ref) }, { throwOnError: true })),
+          refresh: (ref?: LocationRef) =>
+            refreshAt("command", async () => {
+              if (!sdk.client.v2?.command?.list) return undefined
+              return sdk.client.v2.command.list({ location: locationQuery(ref) }, { throwOnError: true })
+            }),
         },
         integration: {
           list: (location?: LocationRef) => listAt<IntegrationInfo>("integration", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("integration", () =>
-              sdk.client.v2.integration.list({ location: locationQuery(ref) }, { throwOnError: true }),
-            ),
+            refreshAt("integration", async () => {
+              if (!sdk.client.v2?.integration?.list) return undefined
+              return sdk.client.v2.integration.list({ location: locationQuery(ref) }, { throwOnError: true })
+            }),
         },
         model: {
           list: (location?: LocationRef) => listAt<ModelInfo>("model", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("model", () => sdk.client.v2.model.list({ location: locationQuery(ref) }, { throwOnError: true })),
+            refreshAt("model", async () => {
+              if (!sdk.client.v2?.model?.list) return undefined
+              return sdk.client.v2.model.list({ location: locationQuery(ref) }, { throwOnError: true })
+            }),
         },
         provider: {
           list: (location?: LocationRef) => listAt<ProviderInfo>("provider", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("provider", () => sdk.client.v2.provider.list({ location: locationQuery(ref) }, { throwOnError: true })),
+            refreshAt("provider", async () => {
+              if (!sdk.client.v2?.provider?.list) return undefined
+              return sdk.client.v2.provider.list({ location: locationQuery(ref) }, { throwOnError: true })
+            }),
         },
         reference: {
           list: (location?: LocationRef) => listAt<ReferenceInfo>("reference", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("reference", () => sdk.client.v2.reference.list({ location: locationQuery(ref) }, { throwOnError: true })),
+            refreshAt("reference", async () => {
+              if (!sdk.client.v2?.reference?.list) return undefined
+              return sdk.client.v2.reference.list({ location: locationQuery(ref) }, { throwOnError: true })
+            }),
         },
         skill: {
           list: (location?: LocationRef) => listAt<SkillInfo>("skill", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("skill", () => sdk.client.v2.skill.list({ location: locationQuery(ref) }, { throwOnError: true })),
+            refreshAt("skill", async () => {
+              if (!sdk.client.v2?.skill?.list) return undefined
+              return sdk.client.v2.skill.list({ location: locationQuery(ref) }, { throwOnError: true })
+            }),
         },
       },
     }

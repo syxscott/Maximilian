@@ -58,7 +58,10 @@ export const LANGUAGE_EXTENSIONS: Record<string, string> = {
   ".less": "less",
   ".lua": "lua",
   ".makefile": "makefile",
-  makefile: "makefile",
+  ".mk": "makefile",
+  // `path.extname("Makefile")` returns "" so the leading-dot key never
+  // matches; also accept the bare basename via a direct check below.
+  "": "makefile",
   ".md": "markdown",
   ".markdown": "markdown",
   ".m": "objective-c",

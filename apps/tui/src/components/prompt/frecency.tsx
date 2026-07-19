@@ -99,34 +99,34 @@ export const { use: useFrecency, provider: FrecencyProvider } = createSimpleCont
     const updateFrecency = useCallback(
       (filePath: string) => {
         const absolutePath = path.resolve(paths.cwd, filePath)
-        let persisted: Record<string, { frequency: number; lastOpen: number }> = data
-        setData((prev) => {
-          const existing = prev[absolutePath]
-          const next: Record<string, { frequency: number; lastOpen: number }> = {
-            ...prev,
-            [absolutePath]: { frequency: (existing?.frequency || 0) + 1, lastOpen: Date.now() },
-          }
-          if (Object.keys(next).length <= MAX_FRECENCY_ENTRIES) {
-            persisted = next
-            void appendText(frecencyPath, JSON.stringify({ path: absolutePath, ...next[absolutePath] }) + "\n").catch(
-              () => {},
-            )
-            return next
-          }
-          const sorted = Object.entries(next)
-            .sort(([, a], [, b]) => b.lastOpen - a.lastOpen)
-            .slice(0, MAX_FRECENCY_ENTRIES)
-          const trimmed = Object.fromEntries(sorted)
-          persisted = trimmed
-          void writeText(
+        // Compute the next map OUTSIDE of setData so side effects
+        // (disk writes) don't run twice under Strict Mode and the
+        // computed payload isn't lost when the updater is skipped
+        // during a concurrent transition.
+        const existing = data[absolutePath]
+        const next: Record<string, { frequency: number; lastOpen: number }> = {
+          ...data,
+          [absolutePath]: { frequency: (existing?.frequency || 0) + 1, lastOpen: Date.now() },
+        }
+        if (Object.keys(next).length <= MAX_FRECENCY_ENTRIES) {
+          setData(next)
+          void appendText(
             frecencyPath,
-            sorted
-              .map(([entryPath, entry]) => JSON.stringify({ path: entryPath, ...entry }))
-              .join("\n") + "\n",
+            JSON.stringify({ path: absolutePath, ...next[absolutePath] }) + "\n",
           ).catch(() => {})
-          return trimmed
-        })
-        void persisted
+          return
+        }
+        const sorted = Object.entries(next)
+          .sort(([, a], [, b]) => b.lastOpen - a.lastOpen)
+          .slice(0, MAX_FRECENCY_ENTRIES)
+        const trimmed = Object.fromEntries(sorted)
+        setData(trimmed)
+        void writeText(
+          frecencyPath,
+          sorted
+            .map(([entryPath, entry]) => JSON.stringify({ path: entryPath, ...entry }))
+            .join("\n") + "\n",
+        ).catch(() => {})
       },
       [data, frecencyPath, paths.cwd],
     )

@@ -342,54 +342,65 @@ export class DockerSandboxService extends SandboxServiceBase {
   }
 
   override async writeFile(path: string, content: string): Promise<void> {
-    // 修复 Bug 3c — 使用 docker run --rm 模式，写入后清理临时文件
+    // Write content to a host-side temp file, mount it read-only into the container,
+    // and copy it to the destination using argv-safe commands (no shell string interpolation).
     const { writeFile: fsWrite, unlink } = await import("node:fs/promises")
     const { tmpdir } = await import("node:os")
     const tmpPath = `${tmpdir()}/max-sandbox-write-${Math.random().toString(36).slice(2)}`
     await fsWrite(tmpPath, content, "utf-8")
     try {
-      // 使用 docker run 将内容 cat 进目标路径，避免 docker cp 问题
+      // Use install(1) which takes dst as argv — dst is never a shell string.
       const result = await this.runDocker(
-        ["run", "--rm", "--interactive", "-v", `${tmpPath}:/tmp/content`, this.image, "/bin/sh", "-c", `cat /tmp/content > "${path}" && rm -f /tmp/content`],
+        ["run", "--rm", "--interactive", "-v", `${tmpPath}:/tmp/content:ro`, this.image, "install", "-m", "0644", "/tmp/content", path],
         this.commandTimeout,
         Date.now(),
       )
       if (result.exitCode !== 0) throw new Error(`writeFile failed: ${result.stderr}`)
     } finally {
-      // 修复 Bug 3c — 确保临时文件被清理
       await unlink(tmpPath).catch(() => {})
     }
   }
 
   override async readFile(path: string): Promise<string> {
-    // 修复 Bug 3b/3c — 使用 docker run --rm 模式，临时文件路径作为文件（不是目录）挂载
+    // Mount the source file (or parent dir) as a read-only bind mount and copy via cat with dst as tmp mount.
     const { unlink, readFile: fsRead, writeFile: fsWrite } = await import("node:fs/promises")
     const { tmpdir } = await import("node:os")
     const tmpPath = `${tmpdir()}/max-sandbox-read-${Math.random().toString(36).slice(2)}`
-    // 先创建空文件作为挂载点
     await fsWrite(tmpPath, "", "utf-8")
-    const result = await this.runDocker(
-      ["run", "--rm", "--interactive", "-v", `${tmpPath}:/tmp/out`, this.image, "/bin/sh", "-c", `cat "${path}" > /tmp/out`],
-      this.commandTimeout,
-      Date.now(),
-    )
-    if (result.exitCode !== 0) throw new Error(`readFile failed: ${result.stderr}`)
     try {
-      return await fsRead(tmpPath, "utf-8")
+      // Bind-mount the parent dir of the file (read-only) so the path itself isn't interpolated.
+      const parentDir = path.replace(/[/\\][^/\\]*$/, "")
+      const result = await this.runDocker(
+        ["run", "--rm", "--interactive", "-v", `${parentDir}:/tmp/srcdir:ro`, this.image, "cat", path],
+        this.commandTimeout,
+        Date.now(),
+      )
+      if (result.exitCode !== 0) throw new Error(`readFile failed: ${result.stderr}`)
+      return result.stdout
     } finally {
-      // 修复 Bug 3c — 确保临时文件被清理
       await unlink(tmpPath).catch(() => {})
     }
   }
 
-  // 修复 Bug 1 — Shell Injection: 使用 spawn 参数传递 path，避免 shell 解析
+  // 修复 Bug 1/3a — 使用 docker run --rm（ephemeral container），路径作为 spawn 参数而非 shell 字符串
   override async remove(path: string): Promise<void> {
+    // Use docker run --rm so we don't need a running container.
+    // Mount the workspace directory to make host paths accessible inside the container.
+    // Path is passed as individual spawn args to prevent shell injection.
     const result = await this.runDocker(
-      ["exec", "--interactive", "--workdir", this.cwd, this.image, "rm", "-rf", "--", path],
+      [
+        "run", "--rm",
+        "--interactive",
+        "-v", `${this.cwd}:/workspace`,
+        "--workdir", "/workspace",
+        this.image,
+        "rm", "-rf", "--",
+        path,  // passed as argv, not interpolated into shell string
+      ],
       this.commandTimeout,
       Date.now(),
     )
-    if (result.exitCode !== 0) throw new Error(`rm failed inside docker: ${result.stderr}`)
+    if (result.exitCode !== 0) throw new Error(`remove failed: ${result.stderr}`)
   }
 
   override async isAvailable(): Promise<boolean> {

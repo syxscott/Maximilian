@@ -3,10 +3,13 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useExecutions, useExecutionGraph } from "@/lib/api/hooks"
+import { useLocale, t } from "@max/i18n"
 import { VirtualList } from "./VirtualList"
+import { layoutKahn } from "@/lib/graph-layout"
 import type { ExecutionTrace, UIGraph } from "../api"
 
 export function ExecutionCanvas() {
+  useLocale()
   const [selected, setSelected] = useState<string | null>(null)
   const { data: execData, isLoading: listLoading, error: listError } = useExecutions()
   const { data: graph, isLoading: graphLoading, error: graphError } = useExecutionGraph(selected)
@@ -17,20 +20,21 @@ export function ExecutionCanvas() {
     <div className="flex gap-6 h-full">
       <aside className="w-72 shrink-0 flex flex-col">
         <h2 className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-          Executions ({executions.length})
+          {t("execution.subtitle", { count: executions.length })}
         </h2>
         {listLoading ? (
-          <p className="text-muted-foreground text-sm">Loading executions...</p>
+          <p className="text-muted-foreground text-sm">{t("execution.loading")}</p>
         ) : listError ? (
-          <p className="text-sm text-destructive">Failed to load executions.</p>
+          <p className="text-sm text-destructive">{t("execution.failedToLoad")}</p>
         ) : executions.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No executions recorded yet.</p>
+          <p className="text-muted-foreground text-sm">{t("execution.empty")}</p>
         ) : (
           <VirtualList
             items={executions}
             itemHeight={96}
             height="calc(100vh - 12rem)"
             className="flex-1"
+            getItemKey={(ex) => ex.id}
             renderRow={(ex) => {
               const isSelected = selected === ex.id
               return (
@@ -48,8 +52,12 @@ export function ExecutionCanvas() {
                   </div>
                   <p className="text-sm line-clamp-2 text-foreground">{ex.userPrompt}</p>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{ex.assignedTeamGraph?.nodes?.length ?? 0} agents</span>
-                    <span>{ex.steps?.length ?? 0} steps</span>
+                    <span>
+                      {ex.assignedTeamGraph?.nodes?.length ?? 0} {t("execution.agents")}
+                    </span>
+                    <span>
+                      {ex.steps?.length ?? 0} {t("execution.steps")}
+                    </span>
                   </div>
                 </button>
               )
@@ -63,15 +71,15 @@ export function ExecutionCanvas() {
           <GraphCanvas graph={graph} />
         ) : graphError ? (
           <div className="h-full flex items-center justify-center text-sm text-destructive">
-            Failed to load graph.
+            {t("execution.graph.failedToLoad")}
           </div>
         ) : graphLoading ? (
           <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-            Loading graph...
+            {t("execution.graph.loading")}
           </div>
         ) : (
           <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-            Select an execution to view its agent graph.
+            {t("execution.graph.selectPrompt")}
           </div>
         )}
       </section>
@@ -89,64 +97,14 @@ function GraphCanvas({ graph }: { graph: UIGraph }) {
   const PAD = 40
 
   const { positions, totalW, totalH } = useMemo(() => {
-    const adj = new Map<string, string[]>()
-    for (const n of nodes) adj.set(n.id, [])
-    for (const e of edges) {
-      const list = adj.get(e.source)
-      if (list) list.push(e.target)
-    }
-
-    const inDegree = new Map(nodes.map((n) => [n.id, 0]))
-    for (const e of edges) inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1)
-
-    const layers: string[][] = []
-    const visited = new Set<string>()
-    let queue = nodes.filter((n) => (inDegree.get(n.id) ?? 0) === 0).map((n) => n.id)
-
-    while (queue.length > 0) {
-      layers.push(queue)
-      // Mark visited *before* descending so a cycle (e.g. A→B→A) doesn't
-      // re-push A into `next`, which previously produced overlapping
-      // layers and a confusing "remaining" column. The original code only
-      // added to `visited` after iterating the layer, so any node reached
-      // via a back-edge during the same layer pass re-entered the loop.
-      for (const id of queue) visited.add(id)
-      const next: string[] = []
-      for (const id of queue) {
-        for (const target of adj.get(id) ?? []) {
-          if (visited.has(target)) continue
-          const deg = (inDegree.get(target) ?? 1) - 1
-          inDegree.set(target, deg)
-          if (deg === 0 && !visited.has(target)) next.push(target)
-        }
-      }
-      queue = next
-    }
-    // Anything still unvisited after a clean pass must be part of a cycle
-    // (or an isolated component with no inbound edges we somehow missed).
-    // Deduplicate so the layout doesn't double-place shared targets.
-    const remainingSet = new Set<string>()
-    for (const n of nodes) {
-      if (!visited.has(n.id)) remainingSet.add(n.id)
-    }
-    const remaining = [...remainingSet]
-    if (remaining.length > 0) layers.push(remaining)
-
-    const pos = new Map<string, { x: number; y: number }>()
-    let maxH = 0
-    for (let col = 0; col < layers.length; col++) {
-      const layer = layers[col]
-      for (let row = 0; row < layer.length; row++) {
-        const x = PAD + col * (NODE_W + GAP_X)
-        const y = PAD + row * (NODE_H + GAP_Y)
-        pos.set(layer[row], { x, y })
-        maxH = Math.max(maxH, y + NODE_H + PAD)
-      }
-    }
-
-    const w = PAD + layers.length * NODE_W + Math.max(0, layers.length - 1) * GAP_X + PAD
-    const h = Math.max(maxH, 300)
-    return { positions: pos, totalW: w, totalH: h }
+    // Delegate to the pure-function layout (borrowed from voicetree's
+    // graph-model — now unit-testable in apps/dashboard/src/lib/graph-layout.test.ts).
+    const r = layoutKahn(
+      nodes.map((n) => ({ id: n.id, width: NODE_W, height: NODE_H })),
+      edges.map((e) => ({ source: e.source, target: e.target })),
+      { gapX: GAP_X, gapY: GAP_Y, padding: PAD },
+    );
+    return { positions: r.positions, totalW: r.width, totalH: r.height };
   }, [nodes, edges])
 
   return (
@@ -156,7 +114,7 @@ function GraphCanvas({ graph }: { graph: UIGraph }) {
         height={totalH}
         className="min-w-full min-h-full"
         role="img"
-        aria-label="Agent execution graph"
+        aria-label={t("execution.graph.ariaLabel")}
       >
         <defs>
           <marker

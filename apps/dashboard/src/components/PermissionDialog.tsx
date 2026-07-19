@@ -48,6 +48,17 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
   const trimmedComment = comment.trim()
   const commentMissing = requireComment && trimmedComment.length === 0
 
+  // Synchronous guard against double-clicks for the tool (non-approval) path.
+  // The approval path already has a `submitting` state machine below, but
+  // the tool permission buttons were unguarded: every click fired
+  // `onAnswer(...)` again. With a flaky network the user could race Allow
+  // then Deny, sending contradictory decisions to the backend.
+  function answerTool(decision: "allow" | "deny") {
+    if (submitting) return
+    setSubmitting(true)
+    void onAnswer(decision).finally(() => setSubmitting(false))
+  }
+
   async function submit(decision: "approve" | "reject") {
     if (!pending || pending.kind !== "approval") return
     if (submitting) return
@@ -192,13 +203,18 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
             <>
               <Button
                 variant="destructive"
-                onClick={() => void onAnswer("deny")}
+                onClick={() => answerTool("deny")}
+                disabled={submitting}
                 data-testid="perm-dialog-deny"
               >
                 <ShieldX className="h-4 w-4 mr-1" />
                 {t("permissions.deny")}
               </Button>
-              <Button onClick={() => void onAnswer("allow")} data-testid="perm-dialog-allow">
+              <Button
+                onClick={() => answerTool("allow")}
+                disabled={submitting}
+                data-testid="perm-dialog-allow"
+              >
                 <ShieldCheck className="h-4 w-4 mr-1" />
                 {t("permissions.allow")}
               </Button>

@@ -53,7 +53,7 @@ export function UsagePanel() {
       {summaryError && (
         <Card className="bg-destructive/10 border-destructive/30">
           <CardContent className="py-3 px-4 text-sm text-destructive">
-            Failed to load usage summary — evolution/metrics may be disabled.
+            {t("usage.summary.failedToLoad")}
           </CardContent>
         </Card>
       )}
@@ -158,13 +158,13 @@ function LatencyCard({ latency }: { latency: LatencyStats }) {
           </p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <MetricCard label="p50" value={formatMs(latency.p50Ms)} />
-            <MetricCard label="p95" value={formatMs(latency.p95Ms)} />
-            <MetricCard label="p99" value={formatMs(latency.p99Ms)} />
+            <MetricCard label={t("usage.latency.p50")} value={formatMs(latency.p50Ms)} />
+            <MetricCard label={t("usage.latency.p95")} value={formatMs(latency.p95Ms)} />
+            <MetricCard label={t("usage.latency.p99")} value={formatMs(latency.p99Ms)} />
             <MetricCard
-              label="avg"
+              label={t("usage.latency.avg")}
               value={formatMs(latency.avgMs)}
-              sub={`${latency.sampleCount} samples`}
+              sub={t("usage.latency.samples", { count: latency.sampleCount })}
             />
           </div>
         )}
@@ -183,7 +183,7 @@ function DailyTrendCard({ daily, range }: { daily: DailyUsageEntry[]; range: Usa
         <div className="flex items-center justify-between">
           <CardTitle className="text-base text-foreground">{t("usage.daily.title")}</CardTitle>
           <Badge variant="outline">
-            {range} · {totalReq} requests · {formatUsd(totalCost)}
+            {range} · {totalReq} {t("usage.metric.requests")} · {formatUsd(totalCost)}
           </Badge>
         </div>
       </CardHeader>
@@ -211,7 +211,7 @@ function DailyBars({ daily, maxCost }: { daily: DailyUsageEntry[]; maxCost: numb
       viewBox={`0 0 ${W} ${H}`}
       className="w-full h-32"
       role="img"
-      aria-label="Daily cost bar chart"
+      aria-label={t("usage.chart.daily.label")}
     >
       {daily.map((d, i) => {
         const x = padX + i * (innerW / Math.max(daily.length, 1))

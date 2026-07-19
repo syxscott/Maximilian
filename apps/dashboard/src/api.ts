@@ -163,6 +163,10 @@ export function buildTimelineTree(entries: TimelineEntry[]): TimelineEntry[] {
   // Sort by recordedAt so chronological parent→child links fall out naturally.
   const sorted = [...entries].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt))
 
+  // Walk in chronological order, maintaining a per-subject "last seen" pointer.
+  // O(n) total instead of O(n^2) per reverse-scan.
+  const lastBySubject = new Map<string, TimelineEntry & { children: TimelineEntry[] }>()
+
   for (const e of sorted) {
     const node = byId.get(e.id)!
     if (e.parentId && byId.has(e.parentId)) {
@@ -170,12 +174,11 @@ export function buildTimelineTree(entries: TimelineEntry[]): TimelineEntry[] {
     } else {
       // No explicit parent — attach to the previous event for the same subject
       // (or to the root if this is the first one).
-      const prev = [...byId.values()]
-        .reverse()
-        .find((n) => n.subject === e.subject && n.recordedAt < e.recordedAt)
+      const prev = lastBySubject.get(e.subject)
       if (prev) prev.children.push(node)
       else roots.push(node)
     }
+    lastBySubject.set(e.subject, node)
   }
   return roots
 }

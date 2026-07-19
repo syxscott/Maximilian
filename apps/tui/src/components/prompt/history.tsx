@@ -122,43 +122,52 @@ export const { use: usePromptHistory, provider: PromptHistoryProvider } = create
         const current = state.history.at(state.index)
         if (!current) return undefined
         if (current.input !== input && input.length) return
-        setState((prev) => {
-          const next = prev.index + direction
-          if (Math.abs(next) > prev.history.length) return prev
-          if (next > 0) return prev
-          return { ...prev, index: next }
-        })
-        if (state.index === 0) return { input: "", parts: [] }
-        return state.history.at(state.index)
+        // Compute the next index synchronously so the return value
+        // matches what the caller will see after the setState commit.
+        // The previous implementation returned `state.history.at(state.index)`
+        // which is the OLD index (because setState is async), so the
+        // caller always saw the prior history entry.
+        const nextIndex = state.index + direction
+        if (Math.abs(nextIndex) > state.history.length) return current
+        if (nextIndex > 0) return current
+        setState((prev) =>
+          Math.abs(prev.index + direction) > prev.history.length || prev.index + direction > 0
+            ? prev
+            : { ...prev, index: prev.index + direction },
+        )
+        if (nextIndex === 0) return { input: "", parts: [] }
+        return state.history.at(nextIndex)
       },
       [state],
     )
 
     const append = useCallback(
       (item: PromptInfo) => {
+        // Move side effects OUT of the setState updater — Strict Mode
+        // runs the updater twice and concurrent rendering may skip it,
+        // both of which would either duplicate the disk write or lose
+        // it entirely.
         const entry = structuredClone(item)
-        setState((prev) => {
-          if (isDuplicateEntry(prev.history.at(-1), entry)) {
-            return { ...prev, index: 0 }
-          }
-          let trimmed = false
-          const nextHistory = [...prev.history, entry]
-          if (nextHistory.length > MAX_HISTORY_ENTRIES) {
-            nextHistory.splice(0, nextHistory.length - MAX_HISTORY_ENTRIES)
-            trimmed = true
-          }
-          const final: HistoryState = { history: nextHistory, index: 0 }
-          if (trimmed) {
-            void writeText(historyPath, nextHistory.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(
-              () => {},
-            )
-          } else {
-            void appendText(historyPath, JSON.stringify(entry) + "\n").catch(() => {})
-          }
-          return final
-        })
+        if (isDuplicateEntry(state.history.at(-1), entry)) {
+          setState((prev) => ({ ...prev, index: 0 }))
+          return
+        }
+        const nextHistory = [...state.history, entry]
+        let trimmed = false
+        if (nextHistory.length > MAX_HISTORY_ENTRIES) {
+          nextHistory.splice(0, nextHistory.length - MAX_HISTORY_ENTRIES)
+          trimmed = true
+        }
+        setState({ history: nextHistory, index: 0 })
+        if (trimmed) {
+          void writeText(historyPath, nextHistory.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(
+            () => {},
+          )
+        } else {
+          void appendText(historyPath, JSON.stringify(entry) + "\n").catch(() => {})
+        }
       },
-      [historyPath],
+      [historyPath, state.history],
     )
 
     return { move, append }

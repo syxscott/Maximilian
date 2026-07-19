@@ -114,16 +114,19 @@ export const { use: usePromptStash, provider: PromptStashProvider } = createSimp
     )
 
     const pop = useCallback((): StashEntry | undefined => {
-      let popped: StashEntry | undefined
-      setEntries((prev) => {
-        if (prev.length === 0) return prev
-        popped = prev[prev.length - 1]
-        const next = prev.slice(0, -1)
-        persist(next)
-        return next
-      })
-      return popped
-    }, [stashPath])
+      // Snapshot the entry synchronously BEFORE dispatching the state
+      // update — the previous implementation captured `popped` inside
+      // a setEntries updater, which React Strict Mode runs twice, so
+      // the second invocation could see an empty array and clobber
+      // the snapshot with `undefined`. The outer state had already
+      // been mutated by the first run, losing the popped entry.
+      const snapshot = entries[entries.length - 1]
+      if (!snapshot) return undefined
+      const next = entries.slice(0, -1)
+      setEntries(next)
+      persist(next)
+      return snapshot
+    }, [entries, persist])
 
     const remove = useCallback(
       (index: number) => {

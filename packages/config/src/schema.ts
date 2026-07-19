@@ -96,6 +96,14 @@ export const ConfigSchema = z.object({
   // Event retention
   EVENT_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
 
+  // Durable event-log storage. When set, per-workspace append-only JSONL
+  // event logs are written under `<EVENTS_DIR>/{workspaceId}.jsonl`. The
+  // SSE replay endpoint (`/api/workspaces/:id/stream-durable`) reads
+  // from this log so a reconnecting client can resume from any point in
+  // history. Defaults to `<WORKSPACE_DIR>/events/` so events live next
+  // to workspace state by default.
+  EVENTS_DIR: z.string().optional(),
+
   // Logging
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])

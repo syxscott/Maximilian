@@ -19,10 +19,12 @@
 import * as Popover from "@radix-ui/react-popover"
 import { Loader2 } from "lucide-react"
 import { useLiveUsage } from "../hooks/useLiveUsage"
-import { formatTokens as fmtTokens, formatPercent as fmtPercent } from "@max/i18n"
+import { useLocale, t, formatTokens as fmtTokens, formatPercent as fmtPercent } from "@max/i18n"
 import { Sparkline } from "./_helpers/Sparkline"
 
 function fmtCost(n: number): string {
+  if (!Number.isFinite(n)) return "$0"
+  if (n < 0.0001) return `$${n.toExponential(2)}`
   return `$${n.toFixed(4)}`
 }
 
@@ -31,6 +33,7 @@ export interface LiveUsagePillProps {
 }
 
 export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
+  useLocale()
   const { data, isLoading, isError } = useLiveUsage()
 
   // First load: muted placeholder so the header height doesn't jump.
@@ -40,10 +43,10 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
         type="button"
         disabled
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-muted/30 text-xs text-muted-foreground cursor-default"
-        aria-label="Loading usage"
+        aria-label={t("usage.pill.ariaLoading")}
       >
         <Loader2 className="h-3 w-3 animate-spin" />
-        <span>usage…</span>
+        <span>{t("usage.pill.loading")}</span>
       </button>
     )
   }
@@ -67,11 +70,14 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
           type="button"
           onClick={onOpenUsage}
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs transition-colors ${pillClass}`}
-          aria-label="Open usage panel"
+          aria-label={t("usage.pill.ariaOpen")}
           title={
             isError
-              ? "Last poll failed — click to open Usage"
-              : `Today: ${data?.totalRequests ?? 0} requests · ${fmtTokens(data?.totalTokens ?? 0)} tokens`
+              ? t("usage.pill.error")
+              : t("usage.pill.today", {
+                  requests: data?.totalRequests ?? 0,
+                  tokens: fmtTokens(data?.totalTokens ?? 0),
+                })
           }
         >
           <span aria-hidden="true">💰</span>
@@ -82,7 +88,7 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
             <>
               <span className="text-muted-foreground">·</span>
               <span className="font-mono tabular-nums">
-                {fmtPercent(data?.cacheHitRate ?? 0, 0)} cache
+                {fmtPercent(data?.cacheHitRate ?? 0, 0)} {t("usage.pill.stat.cache")}
               </span>
             </>
           )}
@@ -95,15 +101,17 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
           className="z-50 rounded-md border border-border bg-popover p-4 shadow-md w-[320px] font-mono"
         >
           <div className="space-y-3">
-            <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground">Today</h4>
+            <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              {t("usage.popover.title")}
+            </h4>
             <Sparkline values={sparklineValues} width={288} height={48} />
             <div className="grid grid-cols-3 gap-3 text-[11px]">
-              <Stat label="cost" value={fmtCost(data?.totalCostUsd ?? 0)} />
-              <Stat label="tokens" value={fmtTokens(data?.totalTokens ?? 0)} />
-              <Stat label="cache" value={fmtPercent(data?.cacheHitRate ?? 0, 0)} />
+              <Stat label={t("usage.pill.stat.cost")} value={fmtCost(data?.totalCostUsd ?? 0)} />
+              <Stat label={t("usage.pill.stat.tokens")} value={fmtTokens(data?.totalTokens ?? 0)} />
+              <Stat label={t("usage.pill.stat.cache")} value={fmtPercent(data?.cacheHitRate ?? 0, 0)} />
             </div>
             <div className="text-[10px] text-muted-foreground pt-1 border-t border-border">
-              {data?.totalRequests ?? 0} requests · click pill for full dashboard
+              {t("usage.pill.tooltip.requests", { requests: data?.totalRequests ?? 0 })}
             </div>
           </div>
         </Popover.Content>

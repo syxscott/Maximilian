@@ -17,6 +17,8 @@ export interface ChatOptions {
   maxTokens?: number;
   stopSequences?: string[];
   jsonMode?: boolean;
+  /** Abort signal for cancelling this specific call. */
+  signal?: AbortSignal;
 }
 
 export interface ChatResponse {

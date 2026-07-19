@@ -1,4 +1,5 @@
 import { useMemo } from "react"
+import { useLocale, t } from "@max/i18n"
 
 export interface SparklineProps {
   values: number[]
@@ -17,8 +18,9 @@ export function Sparkline({
   stroke = "var(--mx-blue-600)",
   fill = "transparent",
   className,
-  ariaLabel = "sparkline",
+  ariaLabel,
 }: SparklineProps) {
+  useLocale()
   const points = useMemo(() => buildPoints(values, width, height), [values, width, height])
   return (
     <svg
@@ -27,7 +29,7 @@ export function Sparkline({
       viewBox={`0 0 ${width} ${height}`}
       className={className}
       role="img"
-      aria-label={ariaLabel}
+      aria-label={ariaLabel ?? t("sparkline.label")}
     >
       {points.length === 0 ? null : points.length === 1 ? (
         <circle cx={width / 2} cy={height / 2} r={2} fill={stroke} />
@@ -47,8 +49,17 @@ export function Sparkline({
 
 function buildPoints(values: number[], w: number, h: number) {
   if (values.length === 0) return []
-  const min = Math.min(...values)
-  const max = Math.max(...values)
+  // Linear scan for min/max instead of `Math.min(...values)` —
+  // spreading a 10k+ entry array blows the JS engine's argument stack
+  // with "Maximum call stack size exceeded". The single-pass loop is
+  // also faster on modern V8.
+  let min = values[0] ?? 0
+  let max = values[0] ?? 0
+  for (let i = 1; i < values.length; i++) {
+    const v = values[i] ?? 0
+    if (v < min) min = v
+    if (v > max) max = v
+  }
   const span = max - min || 1
   const stepX = values.length === 1 ? w : w / (values.length - 1)
   const padY = 4

@@ -11,6 +11,32 @@ export { GovernanceEngine, type GovernanceInput } from "./governance.js";
 export { MetaOrchestrator, type MetaOrchestratorDeps, type MetaCycleInput, type MetaCycleResult, type Phase8ProposalTrace, birthResultToBlueprint } from "./orchestrator.js";
 export { DigitalTwin, snapshotToSimulationInput, type CaptureInput, type TwinProposal } from "./digital-twin.js";
 export {
+  DigitalTwinUndoStack,
+  reverseDelta,
+  TwinDeltaTypeSchema,
+  TwinDeltaSchema,
+  DEFAULT_MAX_UNDO_SIZE,
+  type TwinDelta,
+  type TwinDeltaType,
+  type UndoEntry,
+  type UndoStackOptions,
+} from "./digital-twin-undo.js";
+export {
+  GraphUndoStack,
+  GraphController,
+  reverseDelta as reverseGraphDelta,
+  DEFAULT_MAX_UNDO_SIZE as DEFAULT_GRAPH_MAX_UNDO_SIZE,
+  type GraphOp,
+  type GraphDelta,
+  type GraphDeltaReverse,
+  type GraphSnapshot,
+  type GraphUndoStackOptions,
+} from "./graph-undo.js";
+export {
+  DigitalTwinSession,
+  type DigitalTwinSessionOptions,
+} from "./digital-twin-session.js";
+export {
   ProposalPipeline,
   createProposal,
   scoreProposal,
@@ -42,3 +68,12 @@ export {
   type TimelineEntry,
   type EvolutionTimeline,
 } from "./visualizer-adapter.js";
+export {
+  PersonaComposer,
+  BUILT_IN_PERSONAS,
+  HARD_RULES_FOOTER,
+  PERSONA_HEADER,
+  type Persona,
+  type PersonaId,
+  type PersonaComposerOptions,
+} from "./persona-composer.js";

@@ -23,22 +23,33 @@ function topoLevel(
   taskId: string,
   byId: Map<string, { dependsOn: string[] }>,
   cache = new Map<string, number>(),
+  visiting = new Set<string>(),
 ): number {
   if (cache.has(taskId)) return cache.get(taskId)!
+  // Cycle protection: a poisoned task with a self-cycle or A→B→A would
+  // otherwise recurse until the JS engine throws "Maximum call stack size
+  // exceeded" and unmounts the entire workspace sidebar. Treat already-
+  // visiting nodes as level 0 so the layout still renders.
+  if (visiting.has(taskId)) return 0
   const t = byId.get(taskId)
   if (!t || t.dependsOn.length === 0) {
     cache.set(taskId, 0)
     return 0
   }
-  const level = 1 + Math.max(...t.dependsOn.map((d) => topoLevel(d, byId, cache)))
+  visiting.add(taskId)
+  const level = 1 + Math.max(...t.dependsOn.map((d) => topoLevel(d, byId, cache, visiting)))
+  visiting.delete(taskId)
   cache.set(taskId, level)
   return level
 }
 
 function durationLabel(startedAt: string | undefined, completedAt: string | undefined): string {
   if (!startedAt) return ""
-  const end = completedAt ? new Date(completedAt).getTime() : Date.now()
-  const ms = end - new Date(startedAt).getTime()
+  const startMs = new Date(startedAt).getTime()
+  if (!Number.isFinite(startMs)) return ""
+  const endMs = completedAt ? new Date(completedAt).getTime() : Date.now()
+  if (!Number.isFinite(endMs)) return ""
+  const ms = endMs - startMs
   if (ms < 1000) return `${ms}ms`
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
   return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`
@@ -131,7 +142,7 @@ export function TaskPanel({ workspace }: Props) {
                   <span className="truncate flex-1">{task.description}</span>
                   {task.error && (
                     <span className="text-[10px] text-[color:var(--mx-red-600)] font-mono">
-                      error: {task.error}
+                      {t("task.error")}: {task.error}
                     </span>
                   )}
                   <span className="text-muted-foreground tabular-nums w-14 text-right">{dur}</span>

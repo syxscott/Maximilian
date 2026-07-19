@@ -134,29 +134,48 @@ export function App() {
           } else if (data.type === "event") {
             const ev = data.event as { type?: string } & Record<string, unknown>
             setEvents((prev) => [...prev, ev as RuntimeEvent])
+            // Pull fields via narrow validators so a malformed envelope can't
+            // shove `undefined` into a field that downstream code treats as a
+            // string. Previously a `permission-request` with `requestId: null`
+            // would open the dialog with `requestId === undefined`, and the
+            // matching `permission-resolved` (also missing requestId) would
+            // compare `undefined === undefined` and dismiss the *current*
+            // prompt instead of the older one.
+            const strField = (key: string) =>
+              typeof ev[key] === "string" ? (ev[key] as string) : undefined
+            const boolField = (key: string) =>
+              typeof ev[key] === "boolean" ? (ev[key] as boolean) : undefined
             if (ev.type === "permission-request") {
+              const requestId = strField("requestId")
+              if (!requestId) return
               setPendingPermission({
                 kind: "permission",
-                requestId: ev.requestId as string,
-                workspaceId: ev.workspaceId as string,
-                taskId: ev.taskId as string,
-                tool: ev.tool as string,
-                target: ev.target as string,
+                requestId,
+                workspaceId: strField("workspaceId") ?? "",
+                taskId: strField("taskId") ?? "",
+                tool: strField("tool") ?? "",
+                target: strField("target") ?? "",
               })
             } else if (ev.type === "permission-resolved") {
-              setPendingPermission((p) => (p && p.requestId === ev.requestId ? null : p))
+              const requestId = strField("requestId")
+              if (!requestId) return
+              setPendingPermission((p) => (p && p.requestId === requestId ? null : p))
             } else if (ev.type === "approval-request") {
+              const requestId = strField("requestId")
+              if (!requestId) return
               setPendingPermission({
                 kind: "approval",
-                requestId: ev.requestId as string,
-                workspaceId: ev.workspaceId as string,
-                taskId: ev.taskId as string,
-                prompt: ev.prompt as string,
-                reason: ev.reason as string | undefined,
-                requireComment: ev.requireComment as boolean | undefined,
+                requestId,
+                workspaceId: strField("workspaceId") ?? "",
+                taskId: strField("taskId") ?? "",
+                prompt: strField("prompt") ?? "",
+                reason: strField("reason"),
+                requireComment: boolField("requireComment"),
               })
             } else if (ev.type === "approval-resolved") {
-              setPendingPermission((p) => (p && p.requestId === ev.requestId ? null : p))
+              const requestId = strField("requestId")
+              if (!requestId) return
+              setPendingPermission((p) => (p && p.requestId === requestId ? null : p))
             }
           } else if (data.type === "done") {
             // Detach onerror before close: closing the EventSource fires a
@@ -285,9 +304,9 @@ export function App() {
               <span
                 className={`inline-block w-2 h-2 rounded-full ${health.status === "ok" ? "bg-green-500" : "bg-destructive"}`}
               />
-              <span>Telemetry: {health.telemetry}</span>
-              <span>Meta: {health.metaAgent}</span>
-              <span>{health.providers.length} providers</span>
+              <span>{t("app.footer.telemetry", { telemetry: health.telemetry })}</span>
+              <span>{t("app.footer.meta", { meta: health.metaAgent })}</span>
+              <span>{t("app.footer.providersCount", { count: health.providers.length })}</span>
             </div>
           ) : null}
           <LiveUsagePill onOpenUsage={() => setTab("usage")} />
@@ -366,13 +385,13 @@ export function App() {
       {/* Workspace footer */}
       {tab === "workspace" && (
         <footer className="px-6 py-1.5 text-xs flex gap-4 border-t border-border bg-muted/30 text-muted-foreground">
-          <span>Status: {workspace?.status ?? "idle"}</span>
+          <span>
+            {t("app.footer.status", { status: workspace?.status ?? t("statusAgent.idle") })}
+          </span>
           <span>
             {t("footer.workspace")}: {workspace?.id ?? t("footer.workspaceNone")}
           </span>
-          <span>
-            {t("task.title")}: {workspace?.plan?.tasks.length ?? 0}
-          </span>
+          <span>{t("app.footer.tasks", { count: workspace?.plan?.tasks.length ?? 0 })}</span>
         </footer>
       )}
     </div>

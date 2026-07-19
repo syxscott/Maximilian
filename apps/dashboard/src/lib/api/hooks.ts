@@ -93,7 +93,12 @@ export const failoverKeys = {
 /** Get provider health status (polled every 5s by dashboard). */
 export function useProviderHealth(providerId: string | null) {
   return useQuery({
-    queryKey: failoverKeys.health(providerId ?? ""),
+    // Use a distinct skip-key when no providerId is provided so the
+    // empty-string sentinel can't collide with a real provider id and
+    // doesn't pollute cache invalidations that walk the key prefix.
+    queryKey: providerId
+      ? failoverKeys.health(providerId)
+      : (["provider-health", "_skip"] as const),
     queryFn: ({ signal }) => chatApi.getProviderHealth(providerId!, signal),
     enabled: !!providerId,
     refetchInterval: 5_000,
@@ -104,7 +109,9 @@ export function useProviderHealth(providerId: string | null) {
 /** Get circuit breaker statistics for a provider. */
 export function useCircuitBreakerStats(providerId: string | null) {
   return useQuery({
-    queryKey: failoverKeys.circuitBreakerStats(providerId ?? ""),
+    queryKey: providerId
+      ? failoverKeys.circuitBreakerStats(providerId)
+      : (["circuit-breaker-stats", "_skip"] as const),
     queryFn: ({ signal }) => chatApi.getCircuitBreakerStats(providerId!, signal),
     enabled: !!providerId,
     refetchInterval: 5_000,

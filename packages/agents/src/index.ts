@@ -43,8 +43,12 @@ export function defaultAgentFactory(
         return new ReviewAgent(provider);
       case "general":
         return new BackendAgent(provider); // MVP fallback
-      default:
+      default: {
+        // "reviewer" from BUILT_IN_ROLES is not in the AgentRole enum.
+        const roleStr = role as string;
+        if (roleStr === "reviewer") return new ReviewAgent(provider);
         return undefined;
+      }
     }
   };
 }

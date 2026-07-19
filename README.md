@@ -24,7 +24,7 @@
   <img src="https://img.shields.io/badge/pnpm-9-F69220?style=for-the-badge&logo=pnpm&logoColor=white" alt="pnpm"/>
   <br>
   <img src="https://img.shields.io/badge/License-TBD-lightgrey?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/Tests-1283%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-1100%2B%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
   <img src="https://img.shields.io/badge/Packages-21%20%2B%204%20apps-7B1FA2?style=for-the-badge&logo=npm&logoColor=white" alt="Packages"/>
   <img src="https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
 </p>
@@ -153,9 +153,9 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
   <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
   <circle cx="50" cy="50" r="45" fill="none" stroke="#7c3aed" stroke-width="6"
           stroke-dasharray="283" stroke-dashoffset="14" transform="rotate(-90 50 50)" stroke-linecap="round"/>
-  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">1283</text>
+  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">1100+</text>
 </svg>
-<br><b>1283 Tests</b>
+<br><b>1100+ Tests</b>
 <br><sub>✅ 全部通过 / all green</sub>
 </td>
 <td align="center" width="14%">
@@ -687,7 +687,7 @@ curl http://localhost:3001/api/openapi.json | jq '.info.title'
 
 ```bash
 pnpm type-check          # 全包 TS 类型检查 (~15s)
-pnpm test                # 全包 vitest 单元测试 (~30s,~1283 tests)
+pnpm test                # 全包 vitest 单元测试 (~30s,~1100+ tests)
 pnpm --filter @max/api test  # 只跑某个包
 pnpm e2e                 # Playwright 端到端(需要 dashboard 先起)
 ```
@@ -1072,6 +1072,63 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 
 ---
 
+## 🔬 深度借鉴 / Deep Borrowings (22 项目研究 wave)
+
+<div align="center">
+
+> 2026-07 集中调研了 GitHub 上 22 个与 Maximilian 思路类似的项目,将其中可借鉴的模式全部落地实现。
+> July 2026: systematically researched 22 similar projects on GitHub and implemented every borrowable pattern.
+
+</div>
+
+本轮共新增 **~3800 行生产代码,68 个文件改动,50+ 新测试**,源自 22 个项目的 30+ 模式。
+
+### 🏆 高价值项目 / Top-Tier Sources
+
+| 项目                                                                                         | Stars  | 借鉴模式                                                          | 本仓位置                                                                          |
+| -------------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)                          | 37.8k★ | Teams-first 多 agent 编排 + Team Memory + readable delegation IDs | `packages/core/src/team-orchestrator.ts`                                          |
+| [cft0808/edict](https://github.com/cft0808/edict)                                            | 16.2k★ | 实时 dashboard + 三省六部制 agent 分工                            | SSE replay + `apps/dashboard` 实时流                                              |
+| [kyegomez/swarms](https://github.com/kyegomez/swarms)                                        | 6.9k★  | Provider Failover 优先级队列 + 自动切换 + 健康检查                | `packages/core/src/provider-failover.ts`                                          |
+| [sentient-agi/ROMA](https://github.com/sentient-agi/ROMA)                                    | 5.1k★  | 递归任务分解 + 不可变 TaskNode 状态机 + 深度守卫                  | `packages/core/src/{task-node,atomizer,recursive-phase-runner}.ts`                |
+| [VRSEN/agency-swarm](https://github.com/VRSEN/agency-swarm)                                  | 4.5k★  | 多 agent 角色委派 + 错误分类 + failover                           | `packages/core/src/provider-failover.ts`                                          |
+| [Kocoro-lab/Shannon](https://github.com/Kocoro-lab/Shannon)                                  | 2.1k★  | Redis Streams 事件日志 + SSE replay + 批量持久化                  | `apps/api/src/{event-log,sse-replay}.ts` + `packages/core/src/batched-persist.ts` |
+| [myclaude](https://github.com/stellarlinkco/myclaude)                                        | 2.7k★  | 多 vendor CLI 包装 + 敏感值日志脱敏                               | `packages/core/src/log-mask.ts`                                                   |
+| [voicetree](https://github.com/voicetreelab/voicetree)                                       | 894★   | CRDT 风格图 undo + reverseDelta + reconnect 语义                  | `packages/meta-system/src/graph-undo.ts`                                          |
+| [NousResearch/hermes-evolution](https://github.com/NousResearch/hermes-agent-self-evolution) | 4.7k★  | 自进化 prompt 突变 + 约束门 + 反事实 Δ 评估                       | `packages/evolution/src/{secret-scrub,constraint-gates,llm-judge}.ts`             |
+| [EverMind-AI/EvoAgentBench](https://github.com/EverMind-AI/EvoAgentBench)                    | 26★    | 自进化评测基线 + min-coverage 守卫                                | `packages/evolution/src/leaderboard.ts`                                           |
+| [framerslab/agentos](https://github.com/framerslab/agentos)                                  | 600★   | HEXACO+PAD 人格配置 + 语音覆盖 + prompt 注入                      | `packages/dags/src/personality-prompt.ts`                                         |
+| [Ranjan-Mayank/BrandBrain---AI](https://github.com/Ranjan-Mayank/BrandBrain---AI)            | 3★     | 多 persona 组合 + HARD RULES 隐藏内部路由                         | `packages/meta-system/src/persona-composer.ts`                                    |
+| [openai/swarm](https://github.com/openai/swarm)                                              | 21.8k★ | Routine + handoff 模式                                            | `packages/agents/src/role-play.ts`                                                |
+| [kdcokenny/opencode-workspace](https://github.com/kdcokenny/opencode-workspace)              | 537★   | OpenCode 多 agent harness + compaction 重注入                     | `apps/tui/src/command-palette.tsx`                                                |
+| [sdeonvacation/opencode-x](https://github.com/sdeonvacation/opencode-x)                      | 138★   | 窗口滚动 + 两步确认 + leader-key 模式                             | `apps/tui/src/components/destructive-confirm.tsx`                                 |
+| [thinkneo-ai/mcp-server](https://github.com/thinkneo-ai/mcp-server)                          | 3★     | MCP↔A2A 双协议桥 + agent card 自动生成                            | `packages/core/src/acp/{agent-card,well-known}.ts`                                |
+| [ibmlachezar/multi-agent-patterns](https://github.com/ibmlachezar/multi-agent-patterns)      | 1★     | 5 个 A2A 模式(发现/委派/桥接/联邦/事件网格)                       | `packages/core/src/acp/a2a-handler.ts`                                            |
+| [ajbarea/kourai-khryseai](https://github.com/ajbarea/kourai-khryseai)                        | 1★     | 10 个 A2A agent + CONFIRM_ORDER + pre-screen                      | `packages/core/src/acp/{quick-classify,redact}.ts`                                |
+| [a7ul/vibes](https://github.com/a7ul/vibes)                                                  | 12★    | pydantic-ai 风格 + per-tool approval + TestModel                  | `packages/autonomy/src/hitl.ts`                                                   |
+| [axar-ai/axar](https://github.com/axar-ai/axar)                                              | 162★   | 装饰器声明式 agent(已评估,未采用 TC39)                            | —                                                                                 |
+| [kingkillery/pk-pi-hermes-evolve](https://github.com/kingkillery/pk-pi-hermes-evolve)        | 9★     | TS + DSPY 双 backend 模式                                         | 参考 `packages/evolution` 双 scorer                                               |
+| [questflowai/awesome-a2a-hub](https://github.com/questflowai/awesome-a2a-hub)                | 26★    | A2A 生态基线 + card 字段长度约定                                  | `packages/core/src/acp/agent-card.ts`                                             |
+
+### 📊 本轮新增模块 / New Modules (W4–W6)
+
+| 模块                   | 文件                                                                                | 测试 | 借鉴                                     |
+| ---------------------- | ----------------------------------------------------------------------------------- | ---- | ---------------------------------------- |
+| A2A v0.3.0 完整协议    | `packages/core/src/acp/{agent-card,well-known,tracing,quick-classify,redact}.ts`    | 7    | mcp-server, kourai, multi-agent-patterns |
+| 进化真实突变           | `packages/evolution/src/{secret-scrub,constraint-gates,llm-judge}.ts`               | 52   | hermes-evolution, EvoAgentBench          |
+| 生产基础设施           | `packages/core/src/{circuit-breaker,log-mask,hot-reload-config,batched-persist}.ts` | 16   | Shannon, myclaude, agentos               |
+| Persona 组合           | `packages/meta-system/src/persona-composer.ts`                                      | 155  | BrandBrain                               |
+| 纯函数图布局           | `apps/dashboard/src/lib/graph-layout.ts`                                            | 6    | voicetree                                |
+| ROMA 递归 PhaseRunner  | `packages/core/src/recursive-phase-runner.ts`                                       | 7    | ROMA                                     |
+| HEXACO 人格            | `packages/dags/src/personality-prompt.ts`                                           | 33   | agentos                                  |
+| SSE replay + event-log | `apps/api/src/{event-log,sse-replay}.ts`                                            | 32   | Shannon                                  |
+| Digital Twin CRDT undo | `packages/meta-system/src/graph-undo.ts`                                            | 28   | voicetree                                |
+| Provider Failover      | `packages/core/src/provider-failover.ts`                                            | 13   | swarms, agency-swarm                     |
+| Teams-first 编排       | `packages/core/src/team-orchestrator.ts`                                            | 12   | oh-my-claudecode                         |
+| Dashboard i18n         | `apps/dashboard/src/components/*.tsx` + `packages/i18n`                             | —    | —                                        |
+
+---
+
 ## 🙏 致谢与借鉴 / Acknowledgements
 
 <div align="center">
@@ -1081,7 +1138,7 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 
 </div>
 
-Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (borrow / adapt) 了 27 个模块 / 模式**,源自 11 个开源项目。
+Maximilian 在 6 个开发 phase + 4 个 Kosmos wave + 22 项目研究 wave 中,共 **借鉴 / 改编 (borrow / adapt) 了 50+ 个模块 / 模式**,源自 30+ 个开源项目。
 每一个借鉴模块都在源码头部标注 `借鉴 <project>` 注释,便于追溯。
 
 下面按 **来源项目** 列出所有借鉴内容。每一项注明:**借鉴模块** → **本仓位置**。
@@ -1217,8 +1274,8 @@ Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (
 | Conductor                    | 1      | 3%   |
 | codebase-memory-mcp          | 1      | 3%   |
 
-**合计 27 个借鉴模式,源自 11 个项目。**
-**Total: 27 borrowed patterns from 11 projects.**
+**合计 50+ 个借鉴模式,源自 30+ 个项目。**
+**Total: 50+ borrowed patterns from 30+ projects.**
 
 ### 🙏 致敬 / Special Thanks
 

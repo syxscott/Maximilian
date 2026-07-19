@@ -15,6 +15,7 @@ export * from "./cost-control.js";
 export * from "./selector-adapter.js";
 export * from "./routing-bootstrap.js";
 export { Flow, type FlowResult, type FlowStatus, type StepFn, type StepContext, type StepOptions } from "./flow.js";
+export { EventBus, type EventFilter, type EventCallback, type SubscriptionHandle } from "./event-bus.js";
 export { StallDetector, type StallDetectorOptions, type ProgressSnapshot, type StallInfo, type ReplanStrategy } from "./stall-detection.js";
 export { EventStore, type StoredEvent, type EventReducer, workspaceStatusReducer } from "./event-sourcing.js";
 export { PluginManager, type Plugin, type HookName, type HookFn, type PluginContext } from "./plugin-system.js";
@@ -108,3 +109,95 @@ export {
   DEFAULT_CLAUDE_SKILLS_DIR,
   type ClaudeSkillsLoaderOptions,
 } from "./claude-skills.js";
+// Production-hardening utilities (borrowed from Shannon, myclaude, agentos).
+export {
+  CircuitBreaker,
+  CircuitOpenError,
+  type CircuitState,
+  type CircuitBreakerOptions,
+  type CircuitBreakerStats,
+} from "./circuit-breaker.js";
+// Multi-provider failover engine (borrowed from kyegomez/swarms + VRSEN/agency-swarm).
+export {
+  ProviderFailoverOrchestrator,
+  ProviderExhaustedError,
+  type ProviderFailoverConfig,
+  type LLMProvider,
+  type ProviderEntry,
+  type FailoverEvent,
+} from "./provider-failover.js";
+export {
+  maskHeaders,
+  maskBody,
+  maskString,
+} from "./log-mask.js";
+export {
+  HotReloadConfig,
+  type ConfigListener,
+  type HotReloadConfigOptions,
+} from "./hot-reload-config.js";
+export {
+  BatchedPersister,
+  type BatchedPersisterOptions,
+  type BatchedPersisterStats,
+} from "./batched-persist.js";
+// ROMA pattern — immutable TaskNode + validated state machine + depth guard
+// (borrowed from sentient-agi/ROMA task_node.py + atomizer.py).
+export {
+  TaskStatus,
+  NodeType,
+  TaskType,
+  TaskNodeImpl,
+  IllegalTransitionError,
+  createTaskNode,
+  transition,
+  withResult,
+  withError,
+  withChild,
+  withDependency,
+  shouldForceExecute,
+  canTransition,
+  isTerminal,
+  terminalStates,
+} from "./task-node.js";
+export type {
+  TaskNode,
+  TaskNodeOptions,
+  StateTransition,
+} from "./task-node.js";
+export {
+  atomizeTask,
+  buildSubTasks,
+  attachSubTasks,
+  aggregateResults,
+  defaultAtomize,
+} from "./atomizer.js";
+export type {
+  AtomizeFn,
+  AtomizeDecision,
+  SubTaskSpec,
+  BuildDagResult,
+} from "./atomizer.js";
+// ROMA recursive decomposition runner (borrowed from sentient-agi/ROMA
+// solve.py + atomizer.py + runtime.py). Opt-in via RecursivePhaseRunner.
+export {
+  RecursivePhaseRunner,
+  type RecursivePhaseDeps,
+  type RecursiveStats,
+  type RecursiveRunResult,
+  type RecursiveRunnerEvent,
+} from "./recursive-phase-runner.js";
+// Teams-First orchestration engine (borrowed from Yeachan-Heo/oh-my-claudecode
+// teams-first architecture: shared memory per team, delegation with readable IDs,
+// fallback chains across teams, human escalation when all exhausted).
+export { TeamOrchestrator, generateReadableId } from "./team-orchestrator.js";
+export type {
+  Team,
+  TeamMemory,
+  FactRecord,
+  DecisionRecord,
+  DelegationRequest,
+  DelegationResult,
+  TeamOrchestratorOptions,
+  TeamOrchestratorEvent,
+} from "./team-orchestrator.js";

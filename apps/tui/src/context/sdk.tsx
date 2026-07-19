@@ -45,6 +45,12 @@ export type SdkClient = {
       requestID: string
       directory: string
       workspace?: string
+      // Optional rationale for the decision. The Maximilian backend can
+      // echo this back to the agent so it can adapt (e.g. skip the
+      // tool it just got rejected). OpenCode's SDK surface doesn't
+      // model this yet, but we ship it as an optional field so the
+      // TUI can pass user feedback without a type-cast.
+      message?: string
     }) => void | Promise<void>
   }
   question?: {
@@ -141,7 +147,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
     const abortRef = useRef<AbortController | undefined>(undefined)
     if (!abortRef.current) abortRef.current = new AbortController()
     const abort = abortRef.current
-    let sse: AbortController | undefined
+    const sseRef = useRef<AbortController | undefined>(undefined)
 
     const sdk: SdkClient = createDefaultClient(props.url, {
       directory: props.directory,
@@ -192,9 +198,9 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
     }
 
     function startSSE() {
-      sse?.abort()
+      sseRef.current?.abort()
       const ctrl = new AbortController()
-      sse = ctrl
+      sseRef.current = ctrl
       void (async () => {
         // Track consecutive *failed* connect attempts so a stable connection
         // that closes cleanly (server restart, idle timeout) reconnects
@@ -263,17 +269,25 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
       // via /api/workspaces/:id/events), so the TUI defaults to no SSE —
       // otherwise we'd spin forever retrying a 404 on /global/event.
       if (props.events) {
+        // Stash the unsubscribe in a ref so the unmount cleanup can call it.
+        // Without this, the events source would hold a reference to a dead
+        // handleEvent closure after the provider unmounts, leaking memory
+        // across remounts (HMR, settings reopen, etc.).
         void props.events.subscribe(handleEvent).then((unsub) => {
-          // Best-effort cleanup: rely on GC if the provider is unmounted.
-          void unsub
+          eventsUnsubRef.current = unsub
         })
       } else if (props.enableSSE) {
         startSSE()
       }
     }
 
+    const eventsUnsubRef = useRef<(() => void) | undefined>(undefined)
     // Abort on unmount to prevent SSE/orphan-handler leaks.
-    useEffect(() => () => abort.abort(), [])
+    useEffect(() => () => {
+      eventsUnsubRef.current?.()
+      sseRef.current?.abort()
+      abort.abort()
+    }, [])
 
     return {
       client: sdk,

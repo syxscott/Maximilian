@@ -84,6 +84,29 @@ export type ModelHint = z.infer<typeof ModelHintSchema>;
 // AgentBlueprint
 // ============================================================================
 
+// ── Agent personality (borrowed from agentos research) ────────────────────────
+// Each trait lives 0..1. The system-prompt generator reads these to inject
+// tone directives. Missing/undefined traits are neutral (no injection).
+
+export const PersonalitySchema = z.object({
+  // HEXACO model: six universal trait axes.
+  honestyHumility: z.number().min(0).max(1).optional(),
+  emotionality: z.number().min(0).max(1).optional(),
+  extraversion: z.number().min(0).max(1).optional(),
+  agreeableness: z.number().min(0).max(1).optional(),
+  conscientiousness: z.number().min(0).max(1).optional(),
+  openness: z.number().min(0).max(1).optional(),
+  // PAD model: Pleasure / Arousal / Dominance for fine-grained affect.
+  pleasure: z.number().min(0).max(1).optional(),
+  arousal: z.number().min(0).max(1).optional(),
+  dominance: z.number().min(0).max(1).optional(),
+  // Voice / style overlays (free-form additions).
+  tone: z.enum(["formal", "casual", "playful", "stern", "neutral"]).optional(),
+  language: z.string().optional(), // e.g. "zh-CN", "en", "code-only"
+  customDirectives: z.array(z.string()).default([]),
+});
+export type Personality = z.infer<typeof PersonalitySchema>;
+
 export const AgentBlueprintSchema = z.object({
   id: z.string(),
   role: z.string(),                                    // logical role name
@@ -93,6 +116,14 @@ export const AgentBlueprintSchema = z.object({
   capabilities: z.array(z.string()).default([]),
   tools: z.array(ToolSpecSchema).default([]),
   preferredModels: z.array(ModelHintSchema).default([]),
+  personality: PersonalitySchema.default({}),
+  voice: z
+    .object({
+      enabled: z.boolean().default(false),
+      model: z.string().optional(),
+      speed: z.number().min(0.5).max(2).optional(),
+    })
+    .default({}),
   constraints: z
     .object({
       outputFormat: z.enum(["code", "json", "markdown", "free"]).default("free"),
@@ -118,6 +149,16 @@ export const AgentBlueprintSchema = z.object({
   metadata: z.record(z.unknown()).default({}),
 });
 export type AgentBlueprint = z.infer<typeof AgentBlueprintSchema>;
+
+/** Default personality (fully materialised through zod — use as spread base). */
+export function defaultPersonality(): Personality {
+  return PersonalitySchema.parse({});
+}
+
+/** Default voice config (fully materialised through zod — use as spread base). */
+export function defaultVoice(): AgentBlueprint["voice"] {
+  return AgentBlueprintSchema.shape.voice.parse({});
+}
 
 // ============================================================================
 // Team Graph

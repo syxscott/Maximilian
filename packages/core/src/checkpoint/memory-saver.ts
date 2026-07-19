@@ -37,19 +37,19 @@ export class MemoryCheckpointSaver implements BaseCheckpointSaver {
   private locks = new Map<string, Promise<void>>();
 
   private withLock<T>(threadId: string, fn: () => Promise<T>): Promise<T> {
-    // Acquire lock synchronously, then chain fn() after it.
-    // If lock is already held, the returned promise will resolve only after
-    // the current holder releases (via the spin-wait below).
-    // 修复 Bug7: capture release function before async gap so each call only deletes its own entry
-    const release = () => this.locks.delete(threadId);
-    const lock = new Promise<void>((resolve) => { resolve(); });
+    // Acquire a per-thread lock by chaining onto the existing promise for this thread.
+    // Each caller creates a resolved promise that chains after the previous one,
+    // so operations on the same thread are serialized.
+    const prev = this.locks.get(threadId) ?? Promise.resolve();
+    let releaseFn: () => void = () => {}
+    const lock = new Promise<void>((resolve) => { releaseFn = resolve })
+    this.locks.set(threadId, lock)
 
-    const prev = this.locks.get(threadId);
-    this.locks.set(threadId, lock);
-
-    const chain = (prev ?? Promise.resolve()).then(() => fn());
-    chain.then(release).catch(release);
-    return chain;
+    const chain = prev.then(() => fn()).finally(() => {
+      this.locks.delete(threadId)
+      releaseFn()
+    })
+    return chain as Promise<T>
   }
 
   private threadId(config: ConfigurableDict): string {
@@ -101,15 +101,17 @@ export class MemoryCheckpointSaver implements BaseCheckpointSaver {
       if (!this.parentIndex.has(tid)) {
         this.parentIndex.set(tid, new Map());
       }
-      // 修复 Bug8: deep clone channelValues to avoid mutating historical checkpoints
-      const clonedCheckpoint: Checkpoint = {
-        ...checkpoint,
-        channelValues: {
-          results: JSON.parse(JSON.stringify(checkpoint.channelValues["results"])),
-          tasks: JSON.parse(JSON.stringify(checkpoint.channelValues["tasks"])),
-          plan: JSON.parse(JSON.stringify(checkpoint.channelValues["plan"])),
-        },
-      };
+      // Deep clone the entire channelValues to prevent mutations from corrupting historical checkpoints.
+      let clonedCheckpoint: Checkpoint
+      try {
+        clonedCheckpoint = {
+          ...checkpoint,
+          channelValues: structuredClone(checkpoint.channelValues),
+        }
+      } catch {
+        // structuredClone can fail on non-cloneable values; fall back to shallow copy.
+        clonedCheckpoint = { ...checkpoint }
+      }
       this.store.get(tid)!.set(checkpoint.id, {
         checkpoint: clonedCheckpoint,
         metadata,

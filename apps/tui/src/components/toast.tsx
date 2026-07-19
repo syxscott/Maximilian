@@ -61,32 +61,30 @@ export function ToastProvider({ children }: ToastProviderProps) {
     }
   }, [])
 
-  const value = React.useMemo<ToastContextValue>(() => {
-    return {
-      currentToast,
-      show(options) {
-        clearTimer()
-        const next: ToastOptions = {
-          title: options.title,
-          message: options.message,
-          variant: options.variant,
-          duration: options.duration ?? DEFAULT_DURATION,
-        }
-        setCurrentToast(next)
-        timeoutRef.current = setTimeout(() => {
-          setCurrentToast(null)
-          timeoutRef.current = null
-        }, next.duration)
-      },
-      error(err) {
-        if (err instanceof Error) {
-          value.show({ variant: "error", message: err.message })
-          return
-        }
-        value.show({ variant: "error", message: "An unknown error has occurred" })
-      },
+  const show = React.useCallback((options: ToastInput) => {
+    clearTimer()
+    const next: ToastOptions = {
+      title: options.title,
+      message: options.message,
+      variant: options.variant,
+      duration: options.duration ?? DEFAULT_DURATION,
     }
-  }, [currentToast, clearTimer])
+    setCurrentToast(next)
+    timeoutRef.current = setTimeout(() => {
+      setCurrentToast(null)
+      timeoutRef.current = null
+    }, next.duration)
+  }, [clearTimer])
+
+  const error = React.useCallback((err: unknown) => {
+    const message = err instanceof Error ? err.message : "An unknown error has occurred"
+    show({ variant: "error", message })
+  }, [show])
+
+  const value = React.useMemo<ToastContextValue>(
+    () => ({ currentToast, show, error }),
+    [currentToast, show, error],
+  )
 
   React.useEffect(() => {
     return () => clearTimer()

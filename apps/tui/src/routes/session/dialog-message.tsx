@@ -67,7 +67,9 @@ export function DialogMessage(props: {
             const promptInfo = parts.reduce(
               (agg: PromptInfo, part: Record<string, unknown>) => {
                 if (part.type === "text") {
-                  if (!part.synthetic) agg.input += (part.text as string) ?? ""
+                  if (!part.synthetic && typeof part.text === "string") {
+                    agg.input += part.text
+                  }
                 }
                 if (part.type === "file") agg.parts.push(stripPromptPartIDs(part as PromptPart))
                 return agg
@@ -87,8 +89,8 @@ export function DialogMessage(props: {
 
           const parts = ((sync.data.part as Record<string, unknown[]>)?.[message.id as string] ?? []) as Array<Record<string, unknown>>
           const text = parts.reduce((agg: string, part: Record<string, unknown>) => {
-            if (part.type === "text" && !part.synthetic) {
-              agg += (part.text as string) ?? ""
+            if (part.type === "text" && !part.synthetic && typeof part.text === "string") {
+              agg += part.text
             }
             return agg
           }, "")
@@ -110,7 +112,9 @@ export function DialogMessage(props: {
           const prompt = parts.reduce(
             (agg: PromptInfo, part: Record<string, unknown>) => {
               if (part.type === "text") {
-                if (!part.synthetic) agg.input += (part.text as string) ?? ""
+                if (!part.synthetic && typeof part.text === "string") {
+                  agg.input += part.text
+                }
               }
               if (part.type === "file") agg.parts.push(part as PromptPart)
               return agg

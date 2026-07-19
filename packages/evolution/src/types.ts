@@ -152,6 +152,31 @@ export const LeaderboardEntrySchema = z.object({
   userSatisfaction: z.number().min(0).max(1),     // acceptance rate
   sampleSize: z.number().int().nonnegative(),
   lastUpdated: z.string(),
+  // Counterfactual dimensions (borrowed from EvoAgentBench):
+  // - baselineScore is the score *before* the most recent evolution
+  //   (paired-comparison), so the leaderboard can answer "did evolving
+  //   this agent pay off, net of cost?"
+  // - deltaScore = avgScore - baselineScore (signed, can be negative).
+  // - costDeltaUSD = signed cost delta vs the prior version; a small
+  //   accuracy gain bought with a large token/turn increase is flagged
+  //   rather than hidden.
+  baselineScore: z.number().min(0).max(10).optional(),
+  deltaScore: z.number().optional(),
+  costDeltaUSD: z.number().optional(),
+  /** Per-version history of from→to decisions. */
+  versionHistory: z
+    .array(
+      z.object({
+        fromVersion: z.string(),
+        toVersion: z.string(),
+        outcome: z.enum(["promoted", "discarded"]),
+        oldAvgScore: z.number(),
+        newAvgScore: z.number(),
+        triggeredAt: z.string(),
+        reason: z.string(),
+      }),
+    )
+    .default([]),
 });
 export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
 

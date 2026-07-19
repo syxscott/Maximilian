@@ -17,3 +17,4 @@ workspaces/
 # per-package copies are noise and not tracked.
 /**/pnpm-lock.yaml
 !pnpm-lock.yaml
+research/similar-projects/

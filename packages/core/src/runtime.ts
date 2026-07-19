@@ -713,41 +713,40 @@ export class AgentRuntime {
   // ── Interrupt / Resume ────────────────────────────────────────────────────
 
   /**
-   * Interrupt the current workspace execution (借鉴 LangGraph interrupt).
+   * Interrupt a workspace execution (借鉴 LangGraph interrupt).
    * Throws a RuntimeInterrupt that can be caught by the caller's outer loop.
-   * Use `resume()` to continue execution from the interrupt point.
+   * Use `resume(workspaceId, command)` to continue execution.
    *
+   * @param workspaceId - Target workspace
    * @param reason - Human-readable reason for the interrupt
    * @param payload - Optional opaque payload attached to the interrupt
    * @throws RuntimeInterrupt - always thrown; never returns normally
    */
-  interrupt(reason: string, payload?: unknown): never {
+  interrupt(workspaceId: string, reason: string, payload?: unknown): never {
     const interrupt_ = new RuntimeInterrupt(reason, payload)
-    this.activeInterrupt.set("current", interrupt_)
-    // 修复 Bug6: store a resolver in interruptResolvers before throwing so resume() can find it
+    this.activeInterrupt.set(workspaceId, interrupt_)
     let resolvePromise: (command: RuntimeCommand) => void = () => {}
     const p = new Promise<RuntimeCommand>((resolve) => { resolvePromise = resolve; })
-    this.interruptResolvers.set("current", resolvePromise)
-    // Avoid unhandled rejection in case resume is never called
-    p.catch(() => {})
+    this.interruptResolvers.set(workspaceId, resolvePromise)
+    p.catch(() => {}) // Avoid unhandled rejection in case resume is never called
     throw interrupt_
   }
 
   /**
    * Resume a workspace from an interrupt (借鉴 LangGraph resume).
    * The workspace must currently be in an interrupted state (i.e. a prior
-   * call to `interrupt()` was made and caught). This method resolves the
-   * parked interrupt with the given command.
+   * call to `interrupt(workspaceId, ...)` was made and caught).
    *
+   * @param workspaceId - Target workspace
    * @param command - The RuntimeCommand to apply on resume
    */
-  async resume(command: RuntimeCommand): Promise<void> {
-    const resolver = this.interruptResolvers.get("current")
+  async resume(workspaceId: string, command: RuntimeCommand): Promise<void> {
+    const resolver = this.interruptResolvers.get(workspaceId)
     if (!resolver) {
       throw new Error("no active interrupt to resume")
     }
-    this.interruptResolvers.delete("current")
-    this.activeInterrupt.delete("current")
+    this.interruptResolvers.delete(workspaceId)
+    this.activeInterrupt.delete(workspaceId)
     resolver(command)
   }
 

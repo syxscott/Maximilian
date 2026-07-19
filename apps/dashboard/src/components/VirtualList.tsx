@@ -51,10 +51,17 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
     )
   }
 
+  // react-window's `defaultHeight` only accepts a number; it sizes the
+  // scroll viewport *before* the CSS `height` is measured. For string
+  // heights like "calc(100vh - 12rem)" or "60vh" we estimate a sensible
+  // fallback so the initial paint isn't blank. The CSS `style.height`
+  // below takes over as soon as the resize observer fires.
+  const numericDefaultHeight = typeof height === "number" ? height : estimateHeight(height)
+
   return (
     <List
       className={className}
-      defaultHeight={typeof height === "number" ? height : 600}
+      defaultHeight={numericDefaultHeight}
       rowCount={items.length}
       rowHeight={itemHeight}
       rowProps={{}}
@@ -75,4 +82,39 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
       style={{ height: typeof height === "string" ? height : `${height}px` }}
     />
   )
+}
+
+/**
+ * Best-effort pixel estimate for a CSS height expression. Used only for
+ * react-window's pre-measure `defaultHeight`, so a rough heuristic is
+ * fine — the actual layout uses the CSS `style.height` we set below.
+ *
+ * Supports:
+ *   - "600px" → 600
+ *   - "60vh" → 60% of (heuristic) viewport (use 1024 as a sensible default
+ *     for desktop, capped at 1200)
+ *   - "calc(100vh - 12rem)" → vh portion only
+ *   - anything else → 600 fallback
+ */
+function estimateHeight(height: string | number): number {
+  if (typeof height === "number") return height
+  const trimmed = height.trim()
+  // Pure pixel value
+  const pxMatch = trimmed.match(/^(\d+(?:\.\d+)?)px$/)
+  if (pxMatch) return Math.round(parseFloat(pxMatch[1] ?? "0"))
+  // vh value (extract the percentage)
+  const vhMatch = trimmed.match(/(\d+(?:\.\d+)?)vh/)
+  if (vhMatch) {
+    const pct = parseFloat(vhMatch[1] ?? "0")
+    // Use a generous desktop estimate; the real viewport is read on the
+    // next render via the resize observer.
+    const approxViewport = 1024
+    return Math.min(1200, Math.max(120, Math.round((pct / 100) * approxViewport)))
+  }
+  // rem value
+  const remMatch = trimmed.match(/(\d+(?:\.\d+)?)rem/)
+  if (remMatch) {
+    return Math.round(parseFloat(remMatch[1] ?? "0") * 16)
+  }
+  return 600
 }

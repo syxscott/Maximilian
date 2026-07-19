@@ -16,10 +16,15 @@
 export * from "./types.js";
 export { MetricsStore } from "./metrics-store.js";
 export { ProfileStore } from "./profile-store.js";
-export { Leaderboard, aggregate } from "./leaderboard.js";
+export {
+  Leaderboard,
+  aggregate,
+  MIN_DOMAINS_FOR_OVERALL,
+  type AggregateOptions,
+} from "./leaderboard.js";
 export { ModelSelector, DEFAULT_SELECTOR_CONFIG } from "./selector.js";
 export { AgentMemoryStore, COMPRESSION_THRESHOLD } from "./memory.js";
-export { EvolutionEngine, DEFAULT_EVOLUTION_CONFIG } from "./evolution.js";
+export { EvolutionEngine, DEFAULT_EVOLUTION_CONFIG, type EvolutionEngineOptions } from "./evolution.js";
 export { EvolutionFacade } from "./facade.js";
 export { evolutionAwareFactory } from "./factory.js";
 export {
@@ -29,3 +34,25 @@ export {
   AB_SAMPLE_SIZE,
   PROMOTE_MARGIN,
 } from "./evolution.js";
+export {
+  validateCandidate,
+  PROMPT_GROWTH_MAX,
+  PROMPT_MIN_LEN,
+  PROMPT_MAX_LEN,
+  type GateResult,
+  type GateCode,
+  type CandidateLike,
+} from "./constraint-gates.js";
+export {
+  containsSecret,
+  findSecrets,
+  scrubSecrets,
+  type SecretMatch,
+} from "./secret-scrub.js";
+export {
+  defaultJudge,
+  toReviewScore,
+  type Judge,
+  type JudgeInput,
+  type JudgeOutput,
+} from "./llm-judge.js";

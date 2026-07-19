@@ -1,5 +1,7 @@
 export * from "./types.js";
 export type { AgentBlueprint as Blueprint } from "./types.js";
+export { defaultPersonality, defaultVoice } from "./types.js";
+export { personalityToPrompt, applyPersonality } from "./personality-prompt.js";
 export { CAPABILITY_LIBRARY, CapabilityLibrary } from "./capability-library.js";
 export { CapabilityAnalyzer } from "./capability-analyzer.js";
 export { BlueprintStore, newBlueprintId, newTeamId } from "./blueprint-store.js";

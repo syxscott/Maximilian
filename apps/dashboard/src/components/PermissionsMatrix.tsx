@@ -106,13 +106,19 @@ export function PermissionsMatrix() {
       setDraft(null)
     } catch (err) {
       console.error("[perms] save failed", err)
-      // Bump the token even on error so a follow-up `cancel` doesn't
-      // mistakenly find this still-in-flight call's owner-token still
-      // current and skip its own clear. Without this, a failed save
-      // could leave `saving=true` indefinitely if the network promise
-      // never settled (rare with fetch, common with retry storms).
-      ++saveTokenRef.current
+      // On error, ALWAYS clear the saving flag — the previous
+      // implementation bumped the token here AND relied on a finally
+      // block that compared `saveTokenRef.current === myToken`, which
+      // could never be true after the bump, leaving "Saving…" stuck on
+      // the button until the user clicked Cancel/Reset. Always clear
+      // saving here so the user can retry without a manual recovery.
+      if (saveTokenRef.current === myToken) {
+        setSaving(false)
+      }
     } finally {
+      // Defense in depth: if the success path took the early `return`
+      // (cancel-during-save) the finally still runs with the bumped
+      // token; only reset saving when we still own the token.
       if (saveTokenRef.current === myToken) setSaving(false)
     }
   }
@@ -122,6 +128,12 @@ export function PermissionsMatrix() {
     ++saveTokenRef.current
     setSaving(false)
     setDraft(null)
+    // Note: a stale saveError banner from the prior commit is owned by
+    // usePermissions; it auto-clears the next time `save` succeeds or
+    // the next time the user edits a draft, which is the next render
+    // after we cleared `draft`. The banner only persists across opens
+    // if the user leaves the matrix alone — acceptable trade-off vs.
+    // wiring a custom clear() through the hook just for this UX nit.
   }
 
   const resetToDefaults = async () => {
