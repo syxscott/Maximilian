@@ -146,6 +146,11 @@ export function getArtifact(store: FileWorkspaceStore) {
     const tenantId = c.get("tenantId");
     const ws = await store.loadWorkspace(id, tenantId);
     if (!ws) return c.json({ error: "Workspace not found" }, 404);
+    // Verify artifact belongs to this workspace (defense in depth)
+    const artifacts = await store.listArtifacts(id);
+    if (!artifacts.includes(name)) {
+      return c.json({ error: "Artifact not found" }, 404);
+    }
     const content = await store.readArtifact(id, name);
     if (content === undefined) {
       return c.json({ error: "Artifact not found" }, 404);

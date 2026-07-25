@@ -130,23 +130,20 @@ export function executionRoutes(deps: Deps) {
   return {
     listAll: async (c: Context) => {
       const tenantId = getTenantId(c)
-      const all = await store.listAll(tenantId)
       const cursor = c.req.query("cursor")
       const limit = Math.min(Math.max(Number(c.req.query("limit")) || 20, 1), 100)
 
-      let startIdx = 0
-      if (cursor) {
-        const cursorIdx = all.findIndex((e) => e.id === cursor)
-        if (cursorIdx < 0) {
-          return c.json({ error: "invalid_cursor", message: "Cursor not found" }, 400)
-        }
-        startIdx = cursorIdx + 1
+      // Use database-level keyset pagination instead of loading all records into memory
+      const items = await store.listAll({ tenantId, cursor, take: limit + 1 })
+
+      // If we got one more than the limit, there's a next page
+      const hasMore = items.length > limit
+      if (hasMore) {
+        items.pop() // Remove the extra item
       }
+      const nextCursor = hasMore && items.length > 0 ? items[items.length - 1]?.id : undefined
 
-      const items = all.slice(startIdx, startIdx + limit)
-      const nextCursor = startIdx + limit < all.length ? items[items.length - 1]?.id : undefined
-
-      return c.json({ items, nextCursor, total: all.length })
+      return c.json({ items, nextCursor })
     },
 
     get: async (c: Context) => {

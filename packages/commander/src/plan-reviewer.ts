@@ -51,8 +51,8 @@ function meanScore(scores: PlanReviewScore): number {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-function countTaskTypes(tasks: Array<{ type?: string }>): number {
-  const types = new Set(tasks.map((t) => t.type ?? "default"));
+function countTaskTypes(tasks: Array<{ agentRole?: string }>): number {
+  const types = new Set(tasks.map((t) => t.agentRole ?? "default"));
   return types.size;
 }
 
@@ -61,7 +61,7 @@ function countTaskTypes(tasks: Array<{ type?: string }>): number {
  * Returns feedback + suggestions if rejected.
  */
 export function reviewPlan(
-  plan: { id: string; tasks?: Array<{ type?: string; description?: string }> },
+  plan: { id: string; tasks?: Array<{ agentRole?: string; description?: string }> },
   priorPlans?: PlanReview[],
 ): PlanReview {
   const tasks = plan.tasks ?? [];
@@ -72,7 +72,7 @@ export function reviewPlan(
     relevance: 0.7,
     novelty: priorPlans && priorPlans.length > 0 ? 0.6 : 0.9,
     coverage: tasks.length >= MIN_TASKS ? 0.7 : 0.3,
-  }
+  };
 
   // 修复 Bug 20 — check per-dimension minimum AND overall mean
   const reasons: string[] = []
@@ -114,6 +114,7 @@ export function reviewPlan(
 /**
  * Revise a plan based on reviewer feedback.
  * Returns a revised plan id (or the same id if no revision needed).
+ * Enforces MAX_REVISE_LOOPS to prevent infinite revision cycles.
  */
 export function revisePlan(
   originalPlan: { id: string; tasks: Array<Record<string, unknown>> },
@@ -125,8 +126,14 @@ export function revisePlan(
   const revisedTasks = [...originalPlan.tasks];
   if (revisedTasks.length < MIN_TASKS) {
     // Duplicate existing tasks with modified descriptions
-    while (revisedTasks.length < MIN_TASKS) {
+    // Guard against empty tasks array to prevent errors
+    if (revisedTasks.length === 0) {
+      return { id: `${originalPlan.id}-revised`, tasks: [] };
+    }
+    let loops = 0;
+    while (revisedTasks.length < MIN_TASKS && loops < MAX_REVISE_LOOPS * MIN_TASKS) {
       revisedTasks.push({ ...revisedTasks[0], description: "Refined: " + (revisedTasks[0].description ?? "") });
+      loops++;
     }
   }
   return { id: `${originalPlan.id}-revised`, tasks: revisedTasks };

@@ -87,7 +87,7 @@ export function createRegistry(
         baseURL: preset.baseUrl,
         defaultModel: modelOverride || preset.defaultModel,
       });
-      resilient.push(withRetry(withCircuitBreaker(provider)));
+      resilient.push(withCircuitBreaker(withRetry(provider)));
       activePresetIds.push(preset.id);
     } catch (err) {
       // Skip providers with invalid config rather than crashing the registry.

@@ -5,7 +5,8 @@ describe("EventStore", () => {
   it("appends events with id, seq, and timestamp", () => {
     const store = new EventStore()
     const evt = store.append({ type: "test", aggregateId: "agg-1", data: { value: 42 } })
-    expect(evt.id).toMatch(/^evt-/)
+    // ID should be a valid UUID (using crypto.randomUUID)
+    expect(evt.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
     expect(evt.seq).toBe(1)
     expect(evt.timestamp).toBeDefined()
     expect(evt.data).toEqual({ value: 42 })

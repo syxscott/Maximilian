@@ -124,6 +124,9 @@ export function globToRegex(pattern: string): RegExp {
       body += "[^/]"
     } else if (".+^$()|{}[]\\".includes(c)) {
       body += "\\" + c
+    } else if (c === "[") {
+      // In character class, [ must be escaped but ] doesn't
+      body += "\\["
     } else {
       body += c
     }
@@ -139,6 +142,41 @@ export function globToRegex(pattern: string): RegExp {
 export function matchPattern(pattern: string, value: string): boolean {
   if (pattern === "" || pattern === "*") return true
   return globToRegex(pattern).test(value)
+}
+
+const DANGEROUS_PATTERNS = [
+  // Recursive remove, format, dd (disk write)
+  /^rm\s+-rf/i, /^dd\s+/i, /^mkfs/i, /^fdisk/i,
+  // Pipe to shell (remote code execution via curl/wget)
+  /^curl\s+.*\|\s*sh/i, /^wget\s+.*\|\s*sh/i,
+  /^curl\s+.*bash/i, /^wget\s+.*bash/i,
+  // Netcat reverse shell
+  /^nc\s+-e/i, /^nc\s+.*-c\s+/i, /^ncat\s+/i,
+  // Interactive bash
+  /^bash\s+-i/i, /^python\d*\s+-i/i,
+  // Fork bomb patterns
+  /^\s*:()\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*:\s*/i,
+  // base64 decode and pipe to shell
+  /^base64\s+-d.*\|\s*sh/i,
+  // eval with user input
+  /^eval\s+\$\(/i,
+  // File overwrite via redirect with sudo
+  /^sudo\s+.*>\s*\//i, /^sudo\s+.*\|\s*sh/i,
+];
+
+export function validateBashCommand(command: string): string {
+  // Split by common command separators to check all parts
+  const parts = command.trim().split(/\s*(?:[;&|&&|\|\||\n])\s*/)
+  for (const part of parts) {
+    const normalized = part.trim()
+    if (!normalized) continue
+    for (const pattern of DANGEROUS_PATTERNS) {
+      if (pattern.test(normalized)) {
+        throw new Error(`Dangerous command pattern detected: ${normalized}`)
+      }
+    }
+  }
+  return command
 }
 
 /** Extract the permission-relevant path/command from a tool input. */
@@ -164,7 +202,8 @@ export function extractTarget(tool: ToolName, input: unknown): string {
     }
     case "bash": {
       const c = obj.command
-      return typeof c === "string" ? c : ""
+      if (typeof c !== "string") return ""
+      return c
     }
   }
 }

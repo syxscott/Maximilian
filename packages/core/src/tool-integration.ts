@@ -49,6 +49,8 @@ export class ToolEnabledProvider {
    * Per-agent tool denylist (借鉴 cc-switch, wins over allowlist).
    */
   private deniedToolNames?: Set<string>
+  /** Cached tool instructions string, invalidated when tool sets change. */
+  private toolInstructionsCache?: string
 
   constructor(
     private provider: Provider,
@@ -61,6 +63,7 @@ export class ToolEnabledProvider {
    */
   setToolAllowlist(names: string[] | undefined): void {
     this.allowedToolNames = names ? new Set(names) : undefined
+    this.toolInstructionsCache = undefined // Invalidate cache
   }
 
   /**
@@ -69,6 +72,7 @@ export class ToolEnabledProvider {
    */
   setToolDenylist(names: string[] | undefined): void {
     this.deniedToolNames = names ? new Set(names) : undefined
+    this.toolInstructionsCache = undefined // Invalidate cache
   }
 
   /** Get tool definitions for the current scope, filtered by allow/deny. */
@@ -106,11 +110,14 @@ export class ToolEnabledProvider {
 
   /** Chat with tool definitions included. */
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<ToolEnabledResponse> {
-    // Inject tool definitions into the system message
-    const toolDefs = this.getToolDefinitions()
-    const toolInstructions = toolDefs.length > 0
-      ? `\n\nYou have access to the following tools:\n${toolDefs.map((t) => `- ${t.name}: ${t.description}`).join("\n")}\n\nTo use a tool, respond with a JSON block:\n\`\`\`tool\n{"name": "tool-name", "input": {...}}\n\`\`\``
-      : ""
+    // Use cached tool instructions if available
+    if (this.toolInstructionsCache === undefined) {
+      const toolDefs = this.getToolDefinitions()
+      this.toolInstructionsCache = toolDefs.length > 0
+        ? `\n\nYou have access to the following tools:\n${toolDefs.map((t) => `- ${t.name}: ${t.description}`).join("\n")}\n\nTo use a tool, respond with a JSON block:\n\`\`\`tool\n{"name": "tool-name", "input": {...}}\n\`\`\``
+        : ""
+    }
+    const toolInstructions = this.toolInstructionsCache
 
     const enhancedMessages = messages.map((m, i) =>
       i === 0 && m.role === "system"

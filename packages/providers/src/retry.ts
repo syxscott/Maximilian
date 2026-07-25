@@ -1,4 +1,4 @@
-import type { Provider, ChatMessage, ChatOptions, ChatResponse } from "./base.js";
+import type { Provider, ChatMessage, ChatOptions, ChatResponse, ChatChunk, EmbeddingResponse } from "./base.js";
 
 export interface RetryOptions {
   /** Max retry attempts (default: 3) */
@@ -50,13 +50,53 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
     throw lastError;
   }
 
+  async function* retryStream(messages: ChatMessage[], opts?: ChatOptions): AsyncIterable<ChatChunk> {
+    let lastError: unknown = new Error("Stream failed after all retry attempts");
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        for await (const chunk of provider.stream(messages, opts)) {
+          yield chunk;
+        }
+        // Stream completed successfully — exit the retry loop
+        return;
+      } catch (err) {
+        lastError = err;
+        if (!isRetryable(err, retryableStatuses) || attempt === maxAttempts - 1) {
+          throw err;
+        }
+        const delay = computeBackoff(attempt, baseDelay, maxDelay, jitter);
+        await sleep(delay);
+        // Continue to next attempt
+      }
+    }
+    throw lastError;
+  }
+
+  async function retryEmbeddings(input: string | string[], model?: string): Promise<EmbeddingResponse> {
+    if (!provider.embeddings) throw new Error("Provider does not support embeddings");
+    let lastError: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await provider.embeddings(input, model);
+      } catch (err) {
+        lastError = err;
+        if (!isRetryable(err, retryableStatuses) || attempt === maxAttempts - 1) {
+          throw err;
+        }
+        const delay = computeBackoff(attempt, baseDelay, maxDelay, jitter);
+        await sleep(delay);
+      }
+    }
+    throw lastError;
+  }
+
   return {
     get id() { return provider.id; },
     get name() { return provider.name; },
     get defaultModel() { return provider.defaultModel; },
     chat: retryChat,
-    stream: provider.stream.bind(provider),
-    embeddings: provider.embeddings?.bind(provider),
+    stream: retryStream,
+    embeddings: provider.embeddings ? retryEmbeddings : undefined,
     isConfigured: provider.isConfigured.bind(provider),
   };
 }

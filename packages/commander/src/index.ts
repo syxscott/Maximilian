@@ -26,6 +26,21 @@ import { getLogger } from "@max/telemetry";
 
 const log = getLogger("commander");
 
+/** Timeout for LLM calls in milliseconds. */
+const LLM_TIMEOUT_MS = 60_000;
+
+/**
+ * Sanitize user input to prevent prompt injection attacks.
+ * Escapes backticks and template syntax to prevent breaking prompt formatting.
+ */
+function sanitizeUserInput(input: string): string {
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/`/g, "\\`")
+    .replace(/\${/g, "\\${")
+    .slice(0, 10_000);
+}
+
 /**
  * Port for model selection. Mirrors ModelSelector from @max/evolution.
  */
@@ -301,7 +316,7 @@ export class Commander {
   preflight(plan: Plan): string[] {
     const warnings: string[] = [];
 
-    if (!plan.tasks || plan.tasks.length === 0) {
+    if (!Array.isArray(plan.tasks) || plan.tasks.length === 0) {
       warnings.push("Plan has no tasks");
       return warnings;
     }
@@ -341,34 +356,43 @@ export class Commander {
 
   private async callPlanner(userRequest: string): Promise<PlannerOutput> {
     const provider = this.resolveProvider();
+    const sanitizedRequest = sanitizeUserInput(userRequest);
     const messages: ChatMessage[] = [
       { role: "system", content: PLANNER_SYSTEM_PROMPT },
-      { role: "user", content: userRequest },
+      { role: "user", content: sanitizedRequest },
     ];
-    const response = await provider.chat(messages, {
-      temperature: 0.3,
-      maxTokens: 1500,
-      jsonMode: true,
-    });
+    const response = await Promise.race([
+      provider.chat(messages, {
+        temperature: 0.3,
+        maxTokens: 1500,
+        jsonMode: true,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Planner LLM call timed out")), LLM_TIMEOUT_MS)
+      ),
+    ]);
 
     const raw = response.content;
     const json = extractJson(raw);
     if (!json) throw new Error("Planner produced no JSON");
     const parsed = JSON.parse(json) as PlannerOutput;
 
+    if (typeof parsed.rationale !== "string") parsed.rationale = "No rationale provided";
+
     if (!parsed.tasks || !Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
       throw new Error("Planner JSON missing 'tasks'");
     }
 
     // Validate that last task is a review.
-    const last = parsed.tasks[parsed.tasks.length - 1];
+    const lastIndex = parsed.tasks.length - 1;
+    const last = parsed.tasks[lastIndex];
     if (!last || last.agentRole !== "review") {
+      // Build dependsOn using actual task IDs that will be assigned (task-1, task-2, ...)
+      const reviewDependsOn = parsed.tasks.map((_, i) => `task-${i + 1}`);
       parsed.tasks.push({
         agentRole: "review",
         description: "Review all generated artifacts",
-        dependsOn: parsed.tasks
-          .filter((_, i) => i < parsed.tasks.length)
-          .map((_, i) => `task-${i + 1}`),
+        dependsOn: reviewDependsOn,
       });
     }
 
@@ -408,8 +432,9 @@ export class Commander {
       .map((t) => `- [${t.id}] (${t.agentRole}, status=${t.status}) ${t.description}`)
       .join("\n");
 
+    const sanitizedRequest = sanitizeUserInput(userRequest);
     const userMessage =
-      `Original user request: ${userRequest}\n\n` +
+      `Original user request: ${sanitizedRequest}\n\n` +
       `Completed results (${completedResults.length}):\n${summary}\n\n` +
       `Remaining tasks to replan (${remainingTasks.length}):\n${remainingListing}\n\n` +
       `Return the revised remaining-task list as JSON.`;
@@ -420,11 +445,16 @@ export class Commander {
         { role: "system", content: REPLANNER_SYSTEM_PROMPT },
         { role: "user", content: userMessage },
       ];
-      const response = await provider.chat(messages, {
-        temperature: 0.3,
-        maxTokens: 1500,
-        jsonMode: true,
-      });
+      const response = await Promise.race([
+        provider.chat(messages, {
+          temperature: 0.3,
+          maxTokens: 1500,
+          jsonMode: true,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Replanner LLM call timed out")), LLM_TIMEOUT_MS)
+        ),
+      ]);
       const json = extractJson(response.content);
       if (!json) return null;
       const parsed = JSON.parse(json) as ReplanOutput;
@@ -435,7 +465,10 @@ export class Commander {
       // Materialize: assign sequential ids preserving the first remaining
       // task's prefix so existing plan ids stay valid for dependsOn refs.
       const startIdx = remainingTasks[0]?.id.match(/task-(\d+)/)?.[1];
-      const offset = startIdx ? Number(startIdx) - 1 : 0;
+      let offset = startIdx ? Number(startIdx) - 1 : 0;
+      if (Number.isNaN(offset)) {
+        offset = 0;
+      }
       const tasks: Task[] = parsed.tasks.map((t, i) => {
         const metadata: Record<string, unknown> = {};
         if (t.estimatedComplexity) metadata.estimatedComplexity = t.estimatedComplexity;
@@ -536,8 +569,46 @@ function extractJson(text: string): string | null {
     JSON.parse(text);
     return text;
   } catch {
-    // Try to find first {...} block.
-    const match = text.match(/\{[\s\S]*\}/);
-    return match ? match[0] : null;
+    // Find first { and match to the correct closing } using balanced counting
+    // to handle nested objects correctly
+    const firstBrace = text.indexOf("{");
+    if (firstBrace === -1) return null;
+
+    let depth = 0;
+    let endBrace = -1;
+    let inString = false;
+    let escaped = false;
+    for (let i = firstBrace; i < text.length; i++) {
+      const c = text[i]!;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (c === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (c === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (c === "{") depth++;
+      if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          endBrace = i;
+          break;
+        }
+      }
+    }
+    if (endBrace === -1) return null;
+    const jsonStr = text.slice(firstBrace, endBrace + 1);
+    try {
+      JSON.parse(jsonStr);
+      return jsonStr;
+    } catch {
+      return null;
+    }
   }
 }

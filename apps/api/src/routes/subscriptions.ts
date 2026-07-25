@@ -138,24 +138,36 @@ export async function publishEvent(
         deliveredAt: new Date().toISOString(),
       })
       const sig = createHmac("sha256", sub.secret).update(body).digest("hex")
-      try {
-        const res = await fetch(sub.target, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-maximilian-event": eventName,
-            "x-maximilian-signature": `sha256=${sig}`,
-          },
-          body,
-          signal: AbortSignal.timeout(10_000),
-        })
-        sub.lastDeliveredAt = new Date().toISOString()
-        sub.totalDeliveries++
-        if (!res.ok) sub.totalFailures++
-      } catch (err) {
-        sub.totalFailures++
-        console.warn(`[subscription ${sub.id}] webhook delivery failed:`, (err as Error).message)
+
+      // Retry delivery up to 3 times with exponential backoff
+      const maxRetries = 3
+      let lastError: Error | undefined
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const res = await fetch(sub.target, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-maximilian-event": eventName,
+              "x-maximilian-signature": `sha256=${sig}`,
+            },
+            body,
+            signal: AbortSignal.timeout(10_000),
+          })
+          sub.lastDeliveredAt = new Date().toISOString()
+          sub.totalDeliveries++
+          if (!res.ok) sub.totalFailures++
+          return // Success, no need to retry
+        } catch (err) {
+          lastError = err as Error
+          sub.totalFailures++
+          // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+          if (attempt < maxRetries - 1) {
+            await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)))
+          }
+        }
       }
+      console.warn(`[subscription ${sub.id}] webhook delivery failed after ${maxRetries} attempts:`, lastError?.message)
     }),
   )
 }

@@ -9,6 +9,13 @@ import { promises as fs } from "node:fs"
 import path from "node:path"
 import { ExecutionRecordSchema, type ExecutionRecord } from "./types.js"
 
+// In-memory locks for appendUserFeedback to prevent race conditions
+interface LockEntry {
+  promise: Promise<void>
+  resolve: () => void
+}
+const feedbackLocks = new Map<string, LockEntry>();
+
 export class ExecutionStore {
   constructor(private rootDir: string) {}
 
@@ -33,9 +40,23 @@ export class ExecutionStore {
     return existing
   }
 
-  async listAll(tenantId?: string): Promise<ExecutionRecord[]> {
-    const all = await this.readAll()
-    return tenantId ? all.filter((r) => !r.tenantId || r.tenantId === tenantId) : all
+  async listAll(tenantIdOrOptions?: string | { tenantId?: string; cursor?: string; take?: number; skip?: number }): Promise<ExecutionRecord[]> {
+    const opts = typeof tenantIdOrOptions === 'string' ? { tenantId: tenantIdOrOptions } : tenantIdOrOptions
+    const { tenantId, take, skip } = opts ?? {}
+    let all = await this.readAll()
+    // Filter by tenantId
+    if (tenantId !== undefined) {
+      all = all.filter((r) => r.tenantId === tenantId)
+    }
+    // Apply skip offset
+    if (skip !== undefined) {
+      all = all.slice(skip)
+    }
+    // Apply take limit
+    if (take !== undefined) {
+      all = all.slice(0, take)
+    }
+    return all
   }
 
   async listForWorkspace(workspaceId: string, tenantId?: string): Promise<ExecutionRecord[]> {
@@ -59,14 +80,41 @@ export class ExecutionStore {
     rating?: number,
     tenantId?: string,
   ): Promise<ExecutionRecord> {
-    const existing = await this.get(executionId, tenantId)
-    if (!existing) throw new Error(`Execution ${executionId} not found`)
-    const updated: ExecutionRecord = {
-      ...existing,
-      userFeedback: [...existing.userFeedback, { at: new Date().toISOString(), text, rating }],
+    // Wait for any concurrent append to this execution to complete first.
+    // Note: This is an in-memory lock and only works within a single process.
+    // For multi-process deployments, use a distributed lock (Redis, database, etc.)
+    // Use a lock entry object to properly manage lock ownership transfer.
+    interface LockEntry {
+      promise: Promise<void>
+      resolve: () => void
     }
-    await this.save(updated)
-    return updated
+    while (feedbackLocks.has(executionId)) {
+      const entry = feedbackLocks.get(executionId) as LockEntry | undefined
+      if (entry) {
+        await entry.promise
+      }
+    }
+    let resolveLock: () => void
+    const promise = new Promise<void>((resolve) => {
+      resolveLock = resolve
+    })
+    const entry: LockEntry = { promise, resolve: resolveLock! }
+    feedbackLocks.set(executionId, entry)
+
+    try {
+      const existing = await this.get(executionId, tenantId)
+      if (!existing) throw new Error(`Execution ${executionId} not found`)
+      const updated: ExecutionRecord = {
+        ...existing,
+        userFeedback: [...existing.userFeedback, { at: new Date().toISOString(), text, rating }],
+      }
+      await this.save(updated)
+      return updated
+    } finally {
+      // Delete lock first, then resolve to ensure proper ownership transfer
+      feedbackLocks.delete(executionId)
+      entry.resolve()
+    }
   }
 
   private async getRaw(id: string): Promise<ExecutionRecord | undefined> {

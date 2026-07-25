@@ -741,9 +741,14 @@ export class AgentRuntime {
    * @param command - The RuntimeCommand to apply on resume
    */
   async resume(workspaceId: string, command: RuntimeCommand): Promise<void> {
+    // Verify the workspace is actually in an interrupted state
+    if (!this.activeInterrupt.has(workspaceId)) {
+      throw new Error(`workspace ${workspaceId} is not in an interrupted state`)
+    }
     const resolver = this.interruptResolvers.get(workspaceId)
     if (!resolver) {
-      throw new Error("no active interrupt to resume")
+      // This shouldn't happen if activeInterrupt is set, but guard against it
+      throw new Error(`workspace ${workspaceId} has no resolver (inconsistent state)`)
     }
     this.interruptResolvers.delete(workspaceId)
     this.activeInterrupt.delete(workspaceId)
@@ -1412,6 +1417,8 @@ export class AgentRuntime {
           // runtime also races execution against this signal (see below)
           // so even agents that ignore ctx.signal don't block the wave loop.
           signal: this.runningWorkspaces.get(workspace.id)?.signal,
+          workspaceId: workspace.id,
+          planId: workspace.plan?.id,
         }
 
         try {
@@ -1626,7 +1633,16 @@ export class AgentRuntime {
     // timeout covers the case where the user simply never responds and
     // the workspace isn't explicitly aborted.
     const workspaceSignal = this.runningWorkspaces.get(workspace.id)?.signal
-    const timeoutSignal = approval.timeoutMs ? AbortSignal.timeout(approval.timeoutMs) : undefined
+    // Polyfill AbortSignal.timeout for Node < 18.11
+    const timeoutSignal = approval.timeoutMs
+      ? ("timeout" in AbortSignal
+          ? AbortSignal.timeout(approval.timeoutMs)
+          : (() => {
+              const controller = new AbortController();
+              setTimeout(() => controller.abort(), approval.timeoutMs);
+              return controller.signal;
+            })())
+      : undefined
     const signals = [workspaceSignal, timeoutSignal].filter(
       (s): s is AbortSignal => s !== undefined,
     )
@@ -1635,7 +1651,17 @@ export class AgentRuntime {
         ? await responsePromise
         : await raceWithAbort(
             responsePromise,
-            signals.length === 1 ? signals[0] : AbortSignal.any(signals),
+            signals.length === 1
+              ? signals[0]
+              // Polyfill AbortSignal.any for Node < 20
+              : ("any" in AbortSignal
+                  ? AbortSignal.any(signals)
+                  : signals.reduce((acc, s) => {
+                      const combined = new AbortController();
+                      s.addEventListener("abort", () => combined.abort());
+                      acc.addEventListener("abort", () => combined.abort());
+                      return combined.signal;
+                    })),
             workspace.id,
           ).catch((err) => {
             // Clean up the parked resolver so a late user response doesn't
@@ -1691,19 +1717,27 @@ export class AgentRuntime {
     // Without this, abort() only flips the AbortController but the
     // `await awaitPermission(...)` call inside runTask keeps the task
     // (and the workspace) pinned in `executing` until process exit.
-    // NOTE: iterating a Map and deleting the current key is safe in JS —
-    // the iterator advances correctly after delete.
+    // Collect keys first, then delete to avoid iterator invalidation issues.
+    const permissionKeysToDelete: string[] = []
     for (const [id, entry] of this.permissionResolvers) {
       if (entry.meta.workspaceId === workspaceId) {
         entry.reject(new Error(`workspace ${workspaceId} aborted`))
-        this.permissionResolvers.delete(id)
+        permissionKeysToDelete.push(id)
       }
     }
+    for (const key of permissionKeysToDelete) {
+      this.permissionResolvers.delete(key)
+    }
+
+    const approvalKeysToDelete: string[] = []
     for (const [id, entry] of this.approvalResolvers) {
       if (entry.meta.workspaceId === workspaceId) {
         entry.reject(new Error(`workspace ${workspaceId} aborted`))
-        this.approvalResolvers.delete(id)
+        approvalKeysToDelete.push(id)
       }
+    }
+    for (const key of approvalKeysToDelete) {
+      this.approvalResolvers.delete(key)
     }
   }
 

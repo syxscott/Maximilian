@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { orgEvents, orgEventsArchive } from "../schema.js";
@@ -101,27 +101,40 @@ export class PgOrgMemory {
   }
 
   async archiveOlderThan(cutoff: Date): Promise<ArchiveResult> {
-    const rows = await this.db
-      .select()
-      .from(orgEvents)
-      .where(and(lt(orgEvents.at, cutoff), isNull(orgEvents.archivedAt)));
-    if (rows.length === 0) return { archived: 0 };
-
     const archivedAt = new Date();
-    await this.db.insert(orgEventsArchive).values(rows.map((row) => ({
-      id: row.id,
-      tenantId: row.tenantId,
-      type: row.type,
-      subject: row.subject,
-      payload: row.payload,
-      at: row.at,
-      archivedAt,
-      archiveBucket: bucketFor(row.at),
-    }))).onConflictDoNothing();
+    const rows = await this.db.transaction(async (tx) => {
+      // SELECT FOR UPDATE SKIP LOCKED prevents two workers from selecting
+      // the same rows to archive, avoiding duplicate processing.
+      const rows = await tx
+        .select()
+        .from(orgEvents)
+        .where(and(lt(orgEvents.at, cutoff), isNull(orgEvents.archivedAt)))
+        .for("update", { skipLocked: true });
 
-    await this.db
-      .delete(orgEvents)
-      .where(and(lt(orgEvents.at, cutoff), isNull(orgEvents.archivedAt)));
+      if (rows.length === 0) return [];
+
+      await tx
+        .insert(orgEventsArchive)
+        .values(rows.map((row) => ({
+          id: row.id,
+          tenantId: row.tenantId,
+          type: row.type,
+          subject: row.subject,
+          payload: row.payload,
+          at: row.at,
+          archivedAt,
+          archiveBucket: bucketFor(row.at),
+        })))
+        .onConflictDoNothing();
+
+      // Delete only the rows we selected, not any new rows that might have
+      // been inserted during this transaction with matching conditions.
+      await tx
+        .delete(orgEvents)
+        .where(inArray(orgEvents.id, rows.map((r) => r.id)));
+
+      return rows;
+    });
 
     return { archived: rows.length };
   }

@@ -411,12 +411,14 @@ export class MetaOrchestrator {
       });
     }
 
-    // 7. Final governance check.
+    // 7. Final governance check — include births that were successfully applied.
     const finalCaps = await this.deps.registry.listAll();
+    const birthBlueprints = births.map(birthResultToBlueprint);
+    const allBlueprints = [...input.blueprints, ...birthBlueprints];
     const governance = this.deps.governance.check({
       graphs: input.graphs,
       capabilities: finalCaps,
-      blueprints: input.blueprints,
+      blueprints: allBlueprints,
     });
     if (!governance.allowed && !blockedBy.includes(governance.reason)) {
       blockedBy.push(governance.reason);

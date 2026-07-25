@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, or } from "drizzle-orm"
+import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm"
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
 import { executions, executionsArchive } from "../schema.js"
 
@@ -27,6 +27,12 @@ interface ExecutionRecord {
 interface ExecutionListOptions {
   includeArchived?: boolean
   tenantId?: string
+  /** Number of records to skip (for pagination). Mutually exclusive with cursor. */
+  skip?: number
+  /** Maximum records to return. If combined with skip, enables offset pagination. */
+  take?: number
+  /** Cursor ID for keyset pagination. Mutually exclusive with skip. */
+  cursor?: string
 }
 
 interface ArchiveResult {
@@ -112,14 +118,29 @@ export class PgExecutionStore {
     return archived[0] ? rowToExecution(archived[0]) : undefined
   }
 
-  async listAll(tenantId?: string): Promise<ExecutionRecord[]> {
+  async listAll(tenantIdOrOptions?: string | ExecutionListOptions): Promise<ExecutionRecord[]> {
+    const opts: ExecutionListOptions = typeof tenantIdOrOptions === 'string'
+      ? { tenantId: tenantIdOrOptions }
+      : tenantIdOrOptions ?? {}
+    const { tenantId, skip, take, cursor } = opts
+
     const tenantFilter = tenantId
       ? or(eq(executions.tenantId, tenantId), isNull(executions.tenantId))
       : undefined
-    const liveWhere = tenantFilter
-      ? and(isNull(executions.archivedAt), tenantFilter)
-      : isNull(executions.archivedAt)
-    const rows = await this.db.select().from(executions).where(liveWhere)
+    const archivedFilter = isNull(executions.archivedAt)
+    const liveWhere = tenantFilter ? and(archivedFilter, tenantFilter) : archivedFilter
+
+    // Build query with optional cursor
+    const baseQuery = cursor
+      ? this.db.select().from(executions).where(and(liveWhere, gt(executions.id, cursor))).orderBy(executions.id)
+      : this.db.select().from(executions).where(liveWhere).orderBy(executions.id)
+
+    const rows = take !== undefined
+      ? skip !== undefined
+        ? await baseQuery.limit(take).offset(skip)
+        : await baseQuery.limit(take)
+      : await baseQuery
+
     return rows.map(rowToExecution)
   }
 
@@ -157,43 +178,45 @@ export class PgExecutionStore {
   }
 
   async archiveOlderThan(cutoff: Date): Promise<ArchiveResult> {
-    const rows = await this.db
-      .select()
-      .from(executions)
-      .where(and(lt(executions.startedAt, cutoff), isNull(executions.archivedAt)))
-    if (rows.length === 0) return { archived: 0 }
-
     const archivedAt = new Date()
-    await this.db
-      .insert(executionsArchive)
-      .values(
-        rows.map((row) => ({
-          id: row.id,
-          tenantId: row.tenantId,
-          taskId: row.taskId,
-          workspaceId: row.workspaceId,
-          agentRole: row.agentRole,
-          blueprintId: row.blueprintId,
-          blueprintVersion: row.blueprintVersion,
-          graphId: row.graphId,
-          modelAssignment: row.modelAssignment,
-          artifacts: row.artifacts,
-          review: row.review,
-          userFeedback: row.userFeedback,
-          startedAt: row.startedAt,
-          completedAt: row.completedAt,
-          durationMs: row.durationMs,
-          status: row.status,
-          error: row.error,
-          archivedAt,
-          archiveBucket: bucketFor(row.startedAt),
-        })),
-      )
-      .onConflictDoNothing()
+    const rows = await this.db.transaction(async (tx) => {
+      // Atomically delete and return the rows to archive.
+      const deleted = await tx
+        .delete(executions)
+        .where(and(lt(executions.startedAt, cutoff), isNull(executions.archivedAt)))
+        .returning()
 
-    await this.db
-      .delete(executions)
-      .where(and(lt(executions.startedAt, cutoff), isNull(executions.archivedAt)))
+      if (deleted.length === 0) return []
+
+      await tx
+        .insert(executionsArchive)
+        .values(
+          deleted.map((row) => ({
+            id: row.id,
+            tenantId: row.tenantId,
+            taskId: row.taskId,
+            workspaceId: row.workspaceId,
+            agentRole: row.agentRole,
+            blueprintId: row.blueprintId,
+            blueprintVersion: row.blueprintVersion,
+            graphId: row.graphId,
+            modelAssignment: row.modelAssignment,
+            artifacts: row.artifacts,
+            review: row.review,
+            userFeedback: row.userFeedback,
+            startedAt: row.startedAt,
+            completedAt: row.completedAt,
+            durationMs: row.durationMs,
+            status: row.status,
+            error: row.error,
+            archivedAt,
+            archiveBucket: bucketFor(row.startedAt),
+          })),
+        )
+        .onConflictDoNothing()
+
+      return deleted
+    })
 
     return { archived: rows.length }
   }
@@ -208,17 +231,23 @@ export class PgExecutionStore {
     rating?: number,
     tenantId?: string,
   ): Promise<ExecutionRecord> {
-    const existing = await this.get(executionId, tenantId)
-    if (!existing) throw new Error(`execution ${executionId} not found`)
-    const feedback = [...existing.userFeedback, { at: new Date().toISOString(), text, rating }]
-    // When tenantId is provided, only match that tenant — do NOT expose legacy
-    // NULL-tenantId records to all callers (cross-tenant write leak).
+    // Single UPDATE with array concatenation avoids read-write race.
     const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
     const where = tenantFilter
       ? and(eq(executions.id, executionId), tenantFilter)
       : eq(executions.id, executionId)
-    await this.db.update(executions).set({ userFeedback: feedback }).where(where)
-    return { ...existing, userFeedback: feedback }
+
+    const newEntry = { at: new Date().toISOString(), text, rating }
+    const updated = await this.db
+      .update(executions)
+      .set({
+        userFeedback: sql`${executions.userFeedback} || ${JSON.stringify([newEntry])}::jsonb`,
+      })
+      .where(where)
+      .returning()
+
+    if (updated.length === 0) throw new Error(`execution ${executionId} not found`)
+    return rowToExecution(updated[0])
   }
 }
 

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { computeCost } from "@max/core";
 import { metrics } from "../schema.js";
@@ -69,26 +69,35 @@ export class PgMetricsStore {
       });
   }
 
-  async get(taskId: string): Promise<MetricRecord | undefined> {
+  async get(taskId: string, tenantId?: string): Promise<MetricRecord | undefined> {
+    const tenantFilter = tenantId ? eq(metrics.tenantId, tenantId) : undefined;
+    const where = tenantFilter
+      ? and(eq(metrics.taskId, taskId), tenantFilter)
+      : eq(metrics.taskId, taskId);
     const rows = await this.db
       .select()
       .from(metrics)
-      .where(eq(metrics.taskId, taskId))
+      .where(where)
       .limit(1);
     if (rows.length === 0) return undefined;
     return rowToMetric(rows[0]);
   }
 
-  async listAll(): Promise<MetricRecord[]> {
-    const rows = await this.db.select().from(metrics);
+  async listAll(tenantId?: string): Promise<MetricRecord[]> {
+    // When tenantId is provided, filter by it. When undefined, return only
+    // legacy records with no tenantId (NULL) for backward compatibility.
+    const where = tenantId
+      ? eq(metrics.tenantId, tenantId)
+      : isNull(metrics.tenantId);
+    const rows = await this.db.select().from(metrics).where(where);
     return rows.map(rowToMetric);
   }
 
-  async listForRole(role: string): Promise<MetricRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(metrics)
-      .where(eq(metrics.agentRole, role));
+  async listForRole(role: string, tenantId?: string): Promise<MetricRecord[]> {
+    const where = tenantId
+      ? and(eq(metrics.agentRole, role), eq(metrics.tenantId, tenantId))
+      : eq(metrics.agentRole, role);
+    const rows = await this.db.select().from(metrics).where(where);
     return rows.map(rowToMetric);
   }
 

@@ -369,7 +369,8 @@ export class DockerSandboxService extends SandboxServiceBase {
     await fsWrite(tmpPath, "", "utf-8")
     try {
       // Bind-mount the parent dir of the file (read-only) so the path itself isn't interpolated.
-      const parentDir = path.replace(/[/\\][^/\\]*$/, "")
+      // Handle root-level files by using "." as parent dir
+      const parentDir = path.match(/^[/\\]/) ? "." : path.replace(/[/\\][^/\\]*$/, "")
       const result = await this.runDocker(
         ["run", "--rm", "--interactive", "-v", `${parentDir}:/tmp/srcdir:ro`, this.image, "cat", path],
         this.commandTimeout,
@@ -384,6 +385,15 @@ export class DockerSandboxService extends SandboxServiceBase {
 
   // 修复 Bug 1/3a — 使用 docker run --rm（ephemeral container），路径作为 spawn 参数而非 shell 字符串
   override async remove(path: string): Promise<void> {
+    // Validate path to prevent command injection
+    // Only allow alphanumeric, dots, underscores, hyphens, and path separators
+    if (!/^[a-zA-Z0-9._\-\/]+$/.test(path)) {
+      throw new Error(`Invalid path characters in: ${path}`)
+    }
+    // Ensure path doesn't try to escape workspace directory
+    if (path.includes("..")) {
+      throw new Error(`Path traversal attempt detected: ${path}`)
+    }
     // Use docker run --rm so we don't need a running container.
     // Mount the workspace directory to make host paths accessible inside the container.
     // Path is passed as individual spawn args to prevent shell injection.
