@@ -106,3 +106,36 @@ export function toolToJsonSchema(tool: AnyTool): JsonSchema {
     },
   }
 }
+
+// ── Structured Output (借鉴 opencode - session/prompt.ts STRUCTURED_OUTPUT_*) ──
+
+/**
+ * 借鉴 opencode - StructuredOutput 工具
+ * 用于强制 LLM 在最后一轮调用此工具返回结构化答案(由 Zod schema 验证)。
+ * 失败时由 runtime 重试。
+ */
+export function structuredOutputTool<T>(
+  name: string,
+  schema: import("zod").ZodType<T>,
+  description = "Return final structured response",
+): Tool<unknown, T> & { readonly zodSchema: import("zod").ZodType<T> } {
+  return Object.freeze({
+    name,
+    description,
+    inputSchema: { type: "object" } as JsonSchema, // Zod schema is the real validator
+    outputSchema: { type: "object" } as JsonSchema,
+    zodSchema: schema,
+    execute: async (input: unknown): Promise<T> => schema.parse(input),
+  })
+}
+
+/**
+ * 借鉴 opencode - 检查 LLM 是否调用了 StructuredOutput 工具
+ * 用于检测 plan 评审、最终决策等关键节点是否已完成。
+ */
+export function isStructuredOutputCall(
+  toolName: string,
+  expectedName: string,
+): boolean {
+  return toolName === expectedName
+}
