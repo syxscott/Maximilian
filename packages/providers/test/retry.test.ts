@@ -209,3 +209,53 @@ describe("withRetry with server headers (借鉴 opencode)", () => {
     expect(chat).toHaveBeenCalledTimes(2)
   })
 })
+
+// 修复 HIGH 5 - RETRY_MAX_DELAY_NO_HEADERS 必须生效
+describe("withRetry cap on baseDelay (借鉴 opencode - RETRY_MAX_DELAY_NO_HEADERS)", () => {
+  it(
+    "clamps baseDelay to 30s when no server hint given",
+    async () => {
+      const err = Object.assign(new Error("rate limit"), { statusCode: 429 })
+      const chat = vi
+        .fn()
+        .mockRejectedValueOnce(err)
+        .mockRejectedValueOnce(err)
+        .mockResolvedValueOnce({ content: "ok", model: "m" })
+      // baseDelay=60000 (60s) 大于 RETRY_MAX_DELAY_NO_HEADERS (30s)
+      const p = withRetry(makeProvider(chat), {
+        maxAttempts: 3,
+        baseDelay: 60_000,
+        maxDelay: 120_000,
+        jitter: false,
+        headers: () => undefined,
+      })
+      const start = Date.now()
+      await p.chat(messages)
+      const elapsed = Date.now() - start
+      // capped: 30000 + 60000 = 90000ms 总退避(因为 maxDelay 120000 没触发)
+      expect(elapsed).toBeLessThan(95_000)
+      expect(elapsed).toBeGreaterThan(80_000)
+      expect(chat).toHaveBeenCalledTimes(3)
+    },
+    100_000,
+  )
+
+  it("server hint overrides the 30s cap", async () => {
+    const err = Object.assign(new Error("rate limit"), { statusCode: 429 })
+    const chat = vi
+      .fn()
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce({ content: "ok", model: "m" })
+    const p = withRetry(makeProvider(chat), {
+      maxAttempts: 2,
+      baseDelay: 60_000,
+      maxDelay: 120_000,
+      headers: () => ({ "retry-after-ms": "100" }),
+    })
+    const start = Date.now()
+    await p.chat(messages)
+    const elapsed = Date.now() - start
+    // server 给了 100ms,即使 baseDelay=60000 也只等 100ms
+    expect(elapsed).toBeLessThan(2000)
+  })
+})

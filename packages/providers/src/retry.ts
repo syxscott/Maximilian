@@ -186,9 +186,10 @@ function resolveDelay(
     // server 给出了重试窗口,默认尊重 server 但不超过 maxDelay 上限
     return Math.min(serverMs, maxDelay)
   }
-  // 没有 server 提示时,使用 cap = min(headers default, maxDelay)
-  void RETRY_MAX_DELAY_NO_HEADERS // 占位常量,确保与 opencode 对齐
-  return computeBackoff(attempt, baseDelay, maxDelay, jitter)
+  // 修复 HIGH 5 - 没有 server 提示时,把 baseDelay 钳到 RETRY_MAX_DELAY_NO_HEADERS
+  // (借鉴 opencode - 防止本地 config 设了超大 baseDelay 后无限退避)
+  const cappedBase = Math.min(baseDelay, RETRY_MAX_DELAY_NO_HEADERS)
+  return computeBackoff(attempt, cappedBase, maxDelay, jitter)
 }
 
 function isRetryable(err: unknown, retryableStatuses: number[]): boolean {
