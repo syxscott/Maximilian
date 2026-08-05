@@ -47,6 +47,11 @@ export interface ProgressSnapshot {
    * extra LLM call.
    */
   recentOutputs?: string[]
+  /**
+   * 借鉴 opencode - SessionProcessor DOOM_LOOP_THRESHOLD: 最近 5 步调用的工具名,
+   * 用于检测"同一工具被连续调用 DOOM_LOOP_THRESHOLD 次"的死循环模式。
+   */
+  recentToolCalls?: string[]
 }
 
 export interface StallInfo {
@@ -65,8 +70,19 @@ export interface StallInfo {
  * progress). Borrowing autogen Magentic-One's three-state signal
  * (借鉴 D) lets us distinguish slow-but-progressing from genuinely
  * looping.
+ *
+ * 借鉴 opencode - SessionProcessor.DOOM_LOOP_THRESHOLD: "tool-loop-detected"
+ * 表示同一工具被连续调用 DOOM_LOOP_THRESHOLD 次(如 bash bash bash)。
  */
-export type StallReason = "idle" | "loop-detected"
+export type StallReason = "idle" | "loop-detected" | "tool-loop-detected"
+
+/** 借鉴 opencode - DOOM_LOOP_THRESHOLD=3 (SessionProcessor.ts) */
+export const DOOM_LOOP_THRESHOLD = 3
+
+export interface ToolLoopInfo {
+  tool: string
+  count: number
+}
 
 export type ReplanStrategy = "replan" | "skip-stalled" | "abort"
 
@@ -81,6 +97,8 @@ export class StallDetector {
   private recentHashes: string[] = []
   /** How many of the most recent rounds must match for loop-detected. */
   private static readonly LOOP_WINDOW = 3
+  /** 借鉴 opencode - 滑动 buffer,保存最近调用的工具名(最多 5 个) */
+  private toolCallBuffer: string[] = []
 
   constructor(options?: StallDetectorOptions) {
     this.maxIdleRounds = options?.maxIdleRounds ?? 3
@@ -94,10 +112,37 @@ export class StallDetector {
   observe(snapshot: ProgressSnapshot): boolean {
     this.totalRounds++
 
+    // 借鉴 opencode - DOOM_LOOP: 同一工具连续 DOOM_LOOP_THRESHOLD 次
+    // 优先于其他检测(因为它是明确错误,不是减速)
+    if (snapshot.recentToolCalls && snapshot.recentToolCalls.length > 0) {
+      this.toolCallBuffer = [...this.toolCallBuffer, ...snapshot.recentToolCalls].slice(
+        -DOOM_LOOP_THRESHOLD,
+      )
+
+      if (
+        this.toolCallBuffer.length >= DOOM_LOOP_THRESHOLD &&
+        this.toolCallBuffer.every((t) => t === this.toolCallBuffer[0])
+      ) {
+        if (!this.stalled) {
+          this.stalled = true
+          this.stallInfo = {
+            idleRounds: this.idleRounds,
+            detectedAt: Date.now(),
+            totalRounds: this.totalRounds,
+            reason: "tool-loop-detected",
+          }
+          this.onStall?.(this.stallInfo)
+          return true
+        }
+        return false
+      }
+    }
+
     if (snapshot.completedTasks > 0 || snapshot.newResults > 0) {
       // Progress was made — reset idle counter and clear loop buffer.
       this.idleRounds = 0
       this.recentHashes = []
+      this.toolCallBuffer = []
       if (this.stalled) {
         this.stalled = false
         this.stallInfo = null
@@ -119,6 +164,7 @@ export class StallDetector {
       this.recentHashes.length === StallDetector.LOOP_WINDOW &&
       this.recentHashes.every((h) => h === this.recentHashes[0])
     ) {
+      // Loop detected — treat as one idle round
       this.idleRounds++
       if (!this.stalled) {
         this.stalled = true
@@ -134,6 +180,7 @@ export class StallDetector {
       return false
     }
 
+    // Regular idle round (no progress, no loop detected)
     this.idleRounds++
 
     if (this.idleRounds >= this.maxIdleRounds && !this.stalled) {
@@ -149,6 +196,20 @@ export class StallDetector {
     }
 
     return false
+  }
+
+  /**
+   * 借鉴 opencode - DOOM_LOOP 检测的备用入口,接受最后一次工具名直接喂入。
+   * runtime 在每轮 tool 调用后调用,避免每个 snapshot 都重复传 recentToolCalls。
+   */
+  recordToolCall(toolName: string): void {
+    this.toolCallBuffer = [...this.toolCallBuffer, toolName].slice(-DOOM_LOOP_THRESHOLD)
+  }
+
+  /** 借鉴 opencode - 当前是否处于 doom-loop 状态 */
+  isInDoomLoop(): boolean {
+    if (this.toolCallBuffer.length < DOOM_LOOP_THRESHOLD) return false
+    return this.toolCallBuffer.every((t) => t === this.toolCallBuffer[0])
   }
 
   /** Whether the system is currently stalled. */
@@ -180,6 +241,7 @@ export class StallDetector {
     this.stalled = false
     this.stallInfo = null
     this.recentHashes = []
+    this.toolCallBuffer = [] // 借鉴 opencode - reset 也清空 doom buffer
   }
 
   /** Get the current idle round count. */
