@@ -17,6 +17,8 @@ export const TaskStatus = z.enum([
   "completed",
   "failed",
   "skipped",
+  // 借鉴 opencode - SessionTodo.Info.status 增加 cancelled
+  "cancelled",
 ]);
 export type TaskStatus = z.infer<typeof TaskStatus>;
 
@@ -200,6 +202,18 @@ export interface TaskPriority {
   priority: "high" | "medium" | "low";
   /** Optional revised scope/description for the task. */
   newScope?: string;
+}
+
+/**
+ * 借鉴 opencode - SessionTodo.Info
+ * 单条 todo 项,带有优先级、状态、position(便于排序)。
+ */
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+  priority: "high" | "medium" | "low";
+  position: number;
 }
 
 // ============================================================================

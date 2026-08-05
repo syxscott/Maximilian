@@ -45,6 +45,8 @@ export {
   type SessionStatusState,
   type RetryAction,
 } from "./session-status.js"
+// TodoList state machine (借鉴 opencode - SessionTodo)
+export { TodoStore } from "./todo.js"
 export {
   EventStore,
   type StoredEvent,
