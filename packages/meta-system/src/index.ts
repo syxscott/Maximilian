@@ -11,6 +11,19 @@ export { GovernanceEngine, type GovernanceInput } from "./governance.js";
 export { MetaOrchestrator, type MetaOrchestratorDeps, type MetaCycleInput, type MetaCycleResult, type Phase8ProposalTrace, birthResultToBlueprint } from "./orchestrator.js";
 export { DigitalTwin, snapshotToSimulationInput, type CaptureInput, type TwinProposal } from "./digital-twin.js";
 export {
+  OpencodeDigitalTwin,
+  type OpencodeDigitalTwinOptions,
+  type OpencodeExecutorLike,
+  type SimulationOutcome,
+  type SimulatedStep,
+} from "./digital-twin.js";
+export {
+  MetaSystemOpencodeBridge,
+  type MetaSystemOpencodeBridgeOptions,
+  type TeamState,
+  type BridgeTeamStatus,
+} from "./opencode-bridge.js";
+export {
   DigitalTwinUndoStack,
   reverseDelta,
   TwinDeltaTypeSchema,

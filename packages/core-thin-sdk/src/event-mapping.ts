@@ -15,7 +15,7 @@
  * without halting the bridge.
  */
 
-import type { StoredEvent } from "@max/core";
+import type { StoredEventLike } from "./event-store-iface.js";
 
 /**
  * A subset of the opencode event envelope that mappers consume.
@@ -719,4 +719,4 @@ export function isOpencodeEvent(value: unknown): value is OpencodeEvent {
 }
 
 /** Convenience re-export so callers can use `StoredEvent` from one place. */
-export type { StoredEvent };
+export type { StoredEventLike as StoredEvent };

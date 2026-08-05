@@ -19,7 +19,7 @@
 
 export type ConfigListener<T = unknown> = (
   key: string,
-  newValue: T,
+  newValue: T | undefined,
   oldValue: T | undefined,
 ) => void | Promise<void>;
 

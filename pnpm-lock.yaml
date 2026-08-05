@@ -122,6 +122,9 @@ importers:
       '@max/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@max/core-thin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/core-thin-sdk
       '@max/dags':
         specifier: workspace:*
         version: link:../../packages/dags
@@ -549,6 +552,9 @@ importers:
       '@max/telemetry':
         specifier: workspace:*
         version: link:../telemetry
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -640,9 +646,6 @@ importers:
 
   packages/core-thin-sdk:
     dependencies:
-      '@max/core':
-        specifier: workspace:*
-        version: link:../core
       '@max/telemetry':
         specifier: workspace:*
         version: link:../telemetry
@@ -721,6 +724,9 @@ importers:
       '@max/core':
         specifier: workspace:*
         version: link:../core
+      '@max/core-thin-sdk':
+        specifier: workspace:*
+        version: link:../core-thin-sdk
       '@max/providers':
         specifier: workspace:*
         version: link:../providers
@@ -789,6 +795,9 @@ importers:
       '@max/core':
         specifier: workspace:*
         version: link:../core
+      '@max/core-thin-sdk':
+        specifier: workspace:*
+        version: link:../core-thin-sdk
       '@max/dags':
         specifier: workspace:*
         version: link:../dags
@@ -820,6 +829,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.32.1
         version: 0.32.1
+      '@max/llm':
+        specifier: workspace:*
+        version: link:../llm
       '@max/telemetry':
         specifier: workspace:*
         version: link:../telemetry

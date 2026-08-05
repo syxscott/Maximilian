@@ -2116,6 +2116,79 @@ const approvals = approvalRoutes({
 api.use("/approvals/*", requireAuthMiddleware())
 api.openapi(answerApprovalRoute, approvals.answer)
 
+// Phase 4c — Opencode bridge observation routes (read-only).
+// The supervisor + EventBridge are injected when present (Phase 4b wiring),
+// otherwise the routes still serve a useful view from the EventStore alone.
+import {
+  opencodeRoutes,
+  listOpencodeSessionsRoute,
+  getOpencodeSessionRoute,
+  opencodeHealthRoute,
+  opencodeEventsRoute,
+} from "./routes/opencode.js"
+import { getOpencodeStateStore } from "./opencode-state-store.js"
+import type { EventBridge } from "@max/core-thin-sdk"
+
+let opencodeBridge: EventBridge | undefined
+const opencodeRouter = opencodeRoutes({
+  // `supervisor` and `opencodeBridge` are set by Phase 4b once it boots
+  // the opencode serve process. Until then the health endpoint reports
+  // `not_configured` and the session list falls back to the rebuilt
+  // EventStore projection.
+  bridgeSnapshot: () => {
+    if (!opencodeBridge) {
+      return {
+        state: "not_configured",
+        metrics: {
+          eventsReceived: 0,
+          eventsMapped: 0,
+          eventsAppended: 0,
+          eventsDropped: 0,
+          reconnects: 0,
+          heartbeatTimeouts: 0,
+        },
+      }
+    }
+    const m = opencodeBridge.getMetrics()
+    return {
+      state: opencodeBridge.getState(),
+      metrics: {
+        eventsReceived: m.eventsReceived,
+        eventsMapped: m.eventsMapped,
+        eventsAppended: m.eventsAppended,
+        eventsDropped: m.eventsDropped,
+        reconnects: m.reconnects,
+        heartbeatTimeouts: m.heartbeatTimeouts,
+      },
+    }
+  },
+})
+
+// Exported so Phase 4b can wire the live supervisor + bridge into this
+// module without a circular import.
+export function __registerOpencodeBridge(bridge: EventBridge | undefined): void {
+  opencodeBridge = bridge
+  if (bridge) {
+    const stateStore = getOpencodeStateStore()
+    // Mirror every persisted event into the projection store. The bridge
+    // already buffers + dedupes; the projection is a passive consumer.
+    bridge.on("error", (err) => log.warn({ err }, "opencode bridge error"))
+    log.info(
+      {
+        eventsReceived: bridge.getMetrics().eventsReceived,
+        state: bridge.getState(),
+      },
+      "opencode bridge registered",
+    )
+    void stateStore
+  }
+}
+
+api.openapi(listOpencodeSessionsRoute, opencodeRouter.listSessions)
+api.openapi(getOpencodeSessionRoute, opencodeRouter.getSession)
+api.openapi(opencodeHealthRoute, opencodeRouter.health)
+api.openapi(opencodeEventsRoute, opencodeRouter.events)
+
 // Mount the API routes under both /api/ and /api/v1/
 app.route("/api", api)
 app.route("/api/v1", api)
@@ -2160,6 +2233,7 @@ app.get("/api/openapi.json", (c) =>
         { name: "usage", description: "Token usage, cost, and latency aggregation" },
         { name: "governance", description: "HITL proposal approval/rejection" },
         { name: "approvals", description: "Runtime human approval checkpoints" },
+        { name: "opencode", description: "Opencode bridge observation (sessions, health, SSE)" },
         { name: "permissions", description: "OpenCode-style tool permission configuration" },
         { name: "system", description: "Health, readiness, providers" },
       ],

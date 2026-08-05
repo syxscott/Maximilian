@@ -96,6 +96,7 @@ export {
   type EventBridgeSdk,
   type EventBridgeOptions,
   type EventBridgeMetrics,
+  type MappedEventInfo,
 } from "./event-bridge.js";
 
 export {

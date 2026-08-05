@@ -8,16 +8,46 @@
  * reconnect attempts don't share state.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-import { EventStore } from "@max/core";
 import {
   EventBridge,
   OPENCODE_EVENT_MAP,
   buildMappingIndex,
   mapOpencodeEvent,
+  type EventStoreLike,
   type OpencodeEvent,
-} from "../src/index.js";
+} from "../src/index.js"
+
+/** Test-only EventStore stub. The real @max/core EventStore is not
+ *  available in this package (would create a cycle) so we implement the
+ *  structural EventStoreLike interface here. */
+class FakeEventStore implements EventStoreLike {
+  public events: any[] = []
+  private seqs = new Map<string, number>()
+  append(params: { type: string; aggregateId: string; data: unknown }) {
+    const seq = (this.seqs.get(params.aggregateId) ?? 0) + 1
+    this.seqs.set(params.aggregateId, seq)
+    const e = {
+      id: `ev-${seq}-${params.aggregateId}`,
+      type: params.type,
+      aggregateId: params.aggregateId,
+      data: params.data,
+      timestamp: new Date().toISOString(),
+      seq,
+    }
+    this.events.push(e)
+    return e
+  }
+  recentForWorkspace(workspaceId: string, limit = 100) {
+    return this.events.filter((e) => e.aggregateId === workspaceId).slice(-limit)
+  }
+  getEvents(aggregateId: string, fromSeq?: number) {
+    return this.events.filter(
+      (e) => e.aggregateId === aggregateId && (fromSeq === undefined || e.seq > fromSeq),
+    )
+  }
+}
 import type { EventBridgeSdk } from "../src/event-bridge.js";
 
 // Pump-driven async iterables cause vitest's unhandled-rejection
@@ -385,7 +415,7 @@ describe("EventBridge", () => {
   const bridges: EventBridge[] = [];
 
   beforeEach(() => {
-    store = new EventStore();
+    store = new FakeEventStore();
     bridges.length = 0;
   });
 

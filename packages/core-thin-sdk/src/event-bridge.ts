@@ -19,7 +19,7 @@
  */
 
 import { EventEmitter } from "node:events";
-import type { EventStore } from "@max/core";
+import type { EventStoreLike } from "./event-store-iface.js";
 
 import {
   OPENCODE_EVENT_MAP,
@@ -135,12 +135,41 @@ export declare interface EventBridge {
   on(event: "reconnect", listener: (info: { attempt: number; delayMs: number }) => void): this;
   on(event: "drop", listener: (info: { type: string; reason: string }) => void): this;
   on(event: "state", listener: (state: BridgeState) => void): this;
+  /**
+   * Fires synchronously after a successful mapping and before the draft is
+   * appended to the EventStore. Use {@link EventBridge.subscribe} to
+   * register; the callback receives the opencode envelope plus the
+   * already-mapped draft so consumers (e.g. MetaSystemOpencodeBridge) can
+   * react to specific event types without polling the store.
+   *
+   * 借鉴 opencode: opencode's internal EventBus exposes a similar
+   * observer hook so downstream reducers can subscribe to raw envelopes
+   * without re-deriving them from the EventStore.
+   */
+  on(
+    event: "mapped",
+    listener: (info: MappedEventInfo) => void,
+  ): this;
   on(event: string, listener: (...args: unknown[]) => void): this;
+}
+
+/**
+ * Payload delivered to `EventBridge.subscribe()` callbacks. Includes both
+ * the raw opencode envelope and the mapped draft so consumers can choose
+ * which representation to match on.
+ */
+export interface MappedEventInfo {
+  /** The original opencode event type, e.g. "session.idle". */
+  opencodeType: string;
+  /** The raw opencode envelope (before mapping). */
+  sourceEvent: OpencodeEvent;
+  /** The mapped draft that will be appended to the EventStore. */
+  draft: MappedEventDraft;
 }
 
 export class EventBridge extends EventEmitter {
   private readonly sdk: EventBridgeSdk;
-  private readonly store: EventStore;
+  private readonly store: EventStoreLike;
   private readonly workspaceId: string;
   private readonly subscribeQuery: { directory?: string };
   private readonly heartbeatTimeoutMs: number;
@@ -170,7 +199,7 @@ export class EventBridge extends EventEmitter {
     backpressureWaits: 0,
   };
 
-  constructor(opts: { sdk: EventBridgeSdk; eventStore: EventStore; workspaceId?: string } & EventBridgeOptions) {
+  constructor(opts: { sdk: EventBridgeSdk; eventStore: EventStoreLike; workspaceId?: string } & EventBridgeOptions) {
     super();
     if (!opts.sdk) throw new Error("EventBridge: `sdk` is required");
     if (!opts.eventStore) throw new Error("EventBridge: `eventStore` is required");
@@ -316,6 +345,42 @@ export class EventBridge extends EventEmitter {
     }
     this.metrics.eventsMapped += 1;
     this.enqueue({ draft, sourceEvent: event, enqueuedAt: Date.now(), attempts: 0 });
+    // Notify live subscribers (e.g. MetaSystemOpencodeBridge) so they can
+    // react in real-time without polling the EventStore. Listener errors
+    // are caught and surfaced through the bridge's `error` channel —
+    // they don't break the append pipeline.
+    this.emit("mapped", {
+      opencodeType: event.type ?? "",
+      sourceEvent: event,
+      draft,
+    });
+  }
+
+  /**
+   * Register a callback for mapped events as they flow through the bridge.
+   * The callback fires synchronously after a successful mapping, before
+   * the draft is appended to the EventStore.
+   *
+   * Returns an unsubscribe function. Multiple subscribers are supported;
+   * each receives every event (no per-subscriber filtering at this layer —
+   * filter inside the callback by `opencodeType` or `draft.type`).
+   *
+   * 借鉴 opencode: the opencode EventBus exposes a similar observer hook
+   * so downstream reducers can subscribe to raw envelopes without
+   * re-deriving them from the EventStore.
+   */
+  subscribe(callback: (info: MappedEventInfo) => void): () => void {
+    const listener = (info: MappedEventInfo): void => {
+      try {
+        callback(info);
+      } catch (err) {
+        this.failWith(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+    this.on("mapped", listener);
+    return () => {
+      this.off("mapped", listener);
+    };
   }
 
   private enqueue(item: BufferedEvent): void {
@@ -508,7 +573,7 @@ function describe(err: unknown): string {
 
 export function createEventBridge(opts: {
   sdk: EventBridgeSdk;
-  eventStore: EventStore;
+  eventStore: EventStoreLike;
   workspaceId?: string;
 } & EventBridgeOptions): EventBridge {
   return new EventBridge(opts);

@@ -12,6 +12,7 @@
   "dependencies": {
     "@max/autonomy": "workspace:*",
     "@max/core": "workspace:*",
+    "@max/core-thin-sdk": "workspace:*",
     "@max/telemetry": "workspace:*",
     "@max/dags": "workspace:*",
     "@max/evolution": "workspace:*",
