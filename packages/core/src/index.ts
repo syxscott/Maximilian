@@ -47,6 +47,8 @@ export {
 } from "./session-status.js"
 // TodoList state machine (借鉴 opencode - SessionTodo)
 export { TodoStore } from "./todo.js"
+// OpencodeExecutor: Phase 2 — Maximilian Task → opencode serve 适配器
+export { OpencodeExecutor, type OpencodeExecutorOptions, type ExecuteResult } from "./opencode-executor.js"
 // SkillDiscovery (借鉴 opencode - SkillDiscovery)
 export {
   pullSkillIndex,

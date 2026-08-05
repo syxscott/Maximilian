@@ -16,6 +16,7 @@
     "@max/telemetry": "workspace:*",
     "@max/llm": "workspace:*",
     "@max/tools": "workspace:*",
+    "@max/core-thin-sdk": "workspace:*",
     "zod": "^3.23.8"
   },
   "devDependencies": {

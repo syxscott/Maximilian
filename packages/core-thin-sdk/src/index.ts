@@ -3,6 +3,27 @@
 // Re-exports types and the process supervision primitives (`Supervisor`,
 // `healthCheck`) used by Maximilian to embed / monitor `opencode serve`.
 
+// HTTP client + SDK + session pool
+export { OpencodeHttpClient } from "./client.js"
+export { SessionPool } from "./session-pool.js"
+// SDK function surface (also re-exported as a namespace for `import * as`).
+export {
+  health,
+  createSession,
+  getSession,
+  listSessions,
+  deleteSession,
+  sendPrompt,
+  streamPrompt,
+  compactSession,
+  abortSession,
+  revertMessage,
+  waitSession,
+  listMessages,
+  subscribeEvents,
+  OpencodeSdk,
+} from "./sdk.js"
+
 export type {
   AgentPart,
   AssistantMessage,
