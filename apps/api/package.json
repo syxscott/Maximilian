@@ -20,6 +20,7 @@
     "@max/commander": "workspace:*",
     "@max/config": "workspace:*",
     "@max/core": "workspace:*",
+    "@max/core-thin-sdk": "workspace:*",
     "@max/dags": "workspace:*",
     "@max/database": "workspace:*",
     "@max/evolution": "workspace:*",
