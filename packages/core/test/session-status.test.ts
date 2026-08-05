@@ -72,10 +72,21 @@ describe("SessionStatus FSM (借鉴 opencode)", () => {
     expect((s as { action: RetryAction }).action.link).toBe("https://opencode.ai/go")
   })
 
-  it("busy transitions return bare type", () => {
+  it("busy transitions return bare type (no info spread)", () => {
     const t = new SessionStatusTracker()
     const s = t.transition("busy")
     expect(s.type).toBe("busy")
+  })
+
+  it("busy transition ignores any passed info (no type-unsafe spread)", () => {
+    // 借鉴 opencode - busy 不携带 attempt/message/next,这些字段仅 retry 使用
+    const t = new SessionStatusTracker()
+    // @ts-expect-error - 故意传入 retry 字段,验证 busy 不接收
+    const s = t.transition("busy", { attempt: 5, message: "x", next: 1000 })
+    expect(s.type).toBe("busy")
+    expect((s as Record<string, unknown>).attempt).toBeUndefined()
+    expect((s as Record<string, unknown>).message).toBeUndefined()
+    expect((s as Record<string, unknown>).next).toBeUndefined()
   })
 
   it("reset returns to idle", () => {

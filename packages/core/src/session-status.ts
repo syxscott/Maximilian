@@ -58,7 +58,7 @@ export class SessionStatusTracker {
   /**
    * 借鉴 opencode - 执行转移。
    * @param to 目标状态
-   * @param info 仅 retry/busy 需要;idle 不需要 info
+   * @param info 仅 retry 需要;idle/busy 不需要 info
    * @returns 完整的 SessionStatus(供前端使用)
    * @throws 非法转移
    */
@@ -70,7 +70,9 @@ export class SessionStatusTracker {
     }
     this.state = to
     if (to === "idle") return { type: "idle" }
-    return { type: to, ...(info ?? {}) } as SessionStatus
+    // 借鉴 opencode - busy 不携带 info,只有 retry 才带 attempt/message/next
+    if (to === "retry") return { type: "retry", ...(info ?? {}) } as SessionStatus
+    return { type: "busy" }
   }
 
   /** 重置到 idle(用于失败后重新尝试) */
