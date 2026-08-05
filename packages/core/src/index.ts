@@ -40,13 +40,26 @@ export { DOOM_LOOP_THRESHOLD, type ToolLoopInfo } from "./stall-detection.js"
 // Session Status FSM (借鉴 opencode - SessionStatus)
 export {
   SessionStatusTracker,
-  canTransition,
+  canTransition as canTransitionSessionStatus,
   type SessionStatus,
   type SessionStatusState,
   type RetryAction,
 } from "./session-status.js"
 // TodoList state machine (借鉴 opencode - SessionTodo)
 export { TodoStore } from "./todo.js"
+// SkillDiscovery (借鉴 opencode - SkillDiscovery)
+export {
+  pullSkillIndex,
+  downloadFile,
+  discoverSkills,
+  DEFAULT_SKILL_CACHE_DIR,
+  CACHE_TTL_MS,
+  SKILL_CONCURRENCY,
+  FILE_CONCURRENCY,
+  type PullOptions,
+  type SkillIndex,
+  type SkillIndexEntry,
+} from "./skill-discovery.js"
 export {
   EventStore,
   type StoredEvent,
