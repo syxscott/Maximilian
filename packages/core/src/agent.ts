@@ -31,6 +31,10 @@ export interface AgentContext {
    * cancels the in-flight HTTP request.
    */
   signal?: AbortSignal
+  /** Workspace id the agent is running on behalf of. */
+  workspaceId?: string
+  /** Plan id the agent is currently executing. */
+  planId?: string
 }
 
 export abstract class Agent {

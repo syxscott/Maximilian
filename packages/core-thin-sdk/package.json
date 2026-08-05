@@ -1,0 +1,28 @@
+{
+  "name": "@max/core-thin-sdk",
+  "version": "0.1.0",
+  "description": "Thin HTTP+SSE client for the opencode HTTP/SSE protocol. Zero runtime deps; uses native fetch.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./supervisor": "./src/supervisor.ts",
+    "./health": "./src/health.ts",
+    "./event-bridge": "./src/event-bridge.ts",
+    "./event-mapping": "./src/event-mapping.ts"
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@max/core": "workspace:*",
+    "@max/telemetry": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}

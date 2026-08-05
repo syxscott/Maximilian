@@ -635,6 +635,25 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.20.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.49.0)
 
+  packages/core-thin-sdk:
+    dependencies:
+      '@max/core':
+        specifier: workspace:*
+        version: link:../core
+      '@max/telemetry':
+        specifier: workspace:*
+        version: link:../telemetry
+    devDependencies:
+      '@types/node':
+        specifier: ^22.9.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.49.0)
+
   packages/dags:
     dependencies:
       '@max/core':
