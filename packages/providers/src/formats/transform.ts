@@ -13,7 +13,7 @@
  * 通用 registry + 默认 transform,允许 future provider 直接 register 即可。
  */
 
-import type { ChatMessage, ToolDefinition } from "@max/llm"
+import type { Message as ChatMessage, ToolDefinition } from "@max/llm"
 
 export interface WireFormat {
   systemBlocks: unknown[]

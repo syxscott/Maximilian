@@ -132,11 +132,12 @@ export class CircuitBreaker {
   }
 
   recordFailure(): void {
+    // Prune old failures before adding new one to respect windowMs
+    this.pruneFailures();
     this.totalFailures += 1;
     const at = Date.now();
     this.lastFailureAt = at;
     this.failures.push({ at });
-    this.pruneFailures();
 
     if (this.state === "half-open") {
       // Probe failed — go straight back to open with a fresh cool-down.

@@ -646,9 +646,6 @@ importers:
 
   packages/core-thin-sdk:
     dependencies:
-      '@max/core':
-        specifier: workspace:*
-        version: link:../core
       '@max/telemetry':
         specifier: workspace:*
         version: link:../telemetry
@@ -832,6 +829,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.32.1
         version: 0.32.1
+      '@max/llm':
+        specifier: workspace:*
+        version: link:../llm
       '@max/telemetry':
         specifier: workspace:*
         version: link:../telemetry

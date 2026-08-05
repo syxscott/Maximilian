@@ -19,7 +19,7 @@
  */
 
 import { EventEmitter } from "node:events";
-import type { EventStore } from "@max/core";
+import type { EventStoreLike } from "./event-store-iface.js";
 
 import {
   OPENCODE_EVENT_MAP,
@@ -169,7 +169,7 @@ export interface MappedEventInfo {
 
 export class EventBridge extends EventEmitter {
   private readonly sdk: EventBridgeSdk;
-  private readonly store: EventStore;
+  private readonly store: EventStoreLike;
   private readonly workspaceId: string;
   private readonly subscribeQuery: { directory?: string };
   private readonly heartbeatTimeoutMs: number;
@@ -199,7 +199,7 @@ export class EventBridge extends EventEmitter {
     backpressureWaits: 0,
   };
 
-  constructor(opts: { sdk: EventBridgeSdk; eventStore: EventStore; workspaceId?: string } & EventBridgeOptions) {
+  constructor(opts: { sdk: EventBridgeSdk; eventStore: EventStoreLike; workspaceId?: string } & EventBridgeOptions) {
     super();
     if (!opts.sdk) throw new Error("EventBridge: `sdk` is required");
     if (!opts.eventStore) throw new Error("EventBridge: `eventStore` is required");
@@ -573,7 +573,7 @@ function describe(err: unknown): string {
 
 export function createEventBridge(opts: {
   sdk: EventBridgeSdk;
-  eventStore: EventStore;
+  eventStore: EventStoreLike;
   workspaceId?: string;
 } & EventBridgeOptions): EventBridge {
   return new EventBridge(opts);

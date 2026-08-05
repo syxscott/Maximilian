@@ -56,6 +56,8 @@ export abstract class Agent {
 
   readonly id: string
   readonly createdAt: string
+  /** Role identifier this agent was created for (used by RolePlaying factory). */
+  roleId?: string
 
   /** Expose provider so external callers (e.g. RolePlaying) can send chat messages. */
   get provider(): Provider {
@@ -126,13 +128,11 @@ export abstract class Agent {
 
   /**
    * Resolve the effective provider to use for LLM calls.
-   * Returns the override provider when set, otherwise the default provider.
+   * Returns the default provider. Subclasses that need to support model
+   * overrides should override this method and check modelOverride, using
+   * a provider registry to resolve the correct provider.
    */
   protected getEffectiveProvider(): Provider {
-    // When a model override is set and the override provider is available,
-    // the caller should use a registry to resolve it. Here we return the
-    // default provider; concrete agents that need to switch providers must
-    // inject a provider registry at construction time.
     return this._provider
   }
 
