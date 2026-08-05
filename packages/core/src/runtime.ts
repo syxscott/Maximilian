@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto"
 import { Agent, type AgentContext } from "./agent.js"
 import { withSpan, getLogger } from "@max/telemetry"
+import { OpencodeExecutor } from "./opencode-executor.js"
 
 const log = getLogger("core:runtime")
 import { runToolLoop, type ToolEnabledProvider } from "./tool-integration.js"
@@ -258,6 +259,18 @@ export interface RuntimeOptions {
    */
   maxIdleRoundsBeforeStall?: number
   /**
+   * 借鉴 opencode - Use the opencode serve sidecar as the LLM/tool kernel.
+   * When set, every agent task is submitted to opencode via
+   * {@link OpencodeExecutor} instead of running in-process. Requires
+   * a reachable `opencode serve` at `baseUrl` (see `@max/core-thin-sdk`
+   * Supervisor for process management).
+   */
+  opencode?: {
+    baseUrl: string
+    /** Use a fixed workspaceId for all tasks (default: workspace.id) */
+    workspaceId?: string
+  }
+  /**
    * Optional checkpoint saver for time-travel debugging and workspace forking.
    * When provided, the runtime snapshots state after each wave, enabling
    * getHistory(), rewindTo(), and forkFrom(). Without this, those methods
@@ -424,6 +437,11 @@ export class AgentRuntime {
   private interruptResolvers = new Map<string, (command: RuntimeCommand) => void>()
   /** The currently active interrupt for a workspace (if interrupted). */
   private activeInterrupt = new Map<string, RuntimeInterrupt>()
+  /**
+   * 借鉴 opencode - When set, tasks are routed through opencode serve.
+   * Lazily created from RuntimeOptions.opencode on first use.
+   */
+  private opencodeExecutor?: OpencodeExecutor
 
   constructor(
     private factory: AgentFactory,
@@ -443,6 +461,11 @@ export class AgentRuntime {
     this.checkpointSaver = options?.checkpointSaver
     this.selfCritique = options?.selfCritique
     this.taskPrioritizer = options?.taskPrioritizer
+    if (options?.opencode) {
+      this.opencodeExecutor = new OpencodeExecutor({
+        baseUrl: options.opencode.baseUrl,
+      })
+    }
   }
 
   on(listener: RuntimeListener): () => void {
@@ -1437,28 +1460,49 @@ export class AgentRuntime {
 
           // Ref to capture last tool call info for self-critique observation
           const lastActionRef = { toolName: "", input: undefined as unknown }
-          const final = toolProvider
-            ? await raceWithAbort(
-                runToolLoopAndSubmit(
-                  agent,
-                  task,
-                  ctx,
-                  toolProvider,
-                  workspace.id,
-                  this.emit.bind(this),
-                  (requestId, meta) => this.awaitPermission(requestId, meta),
-                  lastActionRef,
-                  this.getSteeringMessages.bind(this),
-                  this.getFollowUpMessages.bind(this),
-                ),
-                ctx.signal,
+          // 借鉴 opencode - when opencode executor is set, route the entire task
+          // through the sidecar kernel and return early. This bypasses
+          // agent.execute + runToolLoop; opencode handles LLM + tools itself.
+          let final: Awaited<ReturnType<typeof agent.submitResult>> | undefined
+          if (this.opencodeExecutor) {
+            const workspaceId = workspace.id
+            const out = await raceWithAbort(
+              this.opencodeExecutor.executeTask(task, workspaceId),
+              ctx.signal,
+              workspace.id,
+            )
+            final = out.result
+            lastActionRef.toolName = "opencode-session"
+            lastActionRef.input = { sessionId: out.sessionId, durationMs: out.durationMs }
+            // Skip the in-process execution paths below.
+            // (fall through to result handling)
+          } else if (toolProvider) {
+            final = await raceWithAbort(
+              runToolLoopAndSubmit(
+                agent,
+                task,
+                ctx,
+                toolProvider,
                 workspace.id,
-              )
-            : await raceWithAbort(
-                agent.execute(task, ctx).then((r) => agent.submitResult(r)),
-                ctx.signal,
-                workspace.id,
-              )
+                this.emit.bind(this),
+                (requestId, meta) => this.awaitPermission(requestId, meta),
+                lastActionRef,
+                this.getSteeringMessages.bind(this),
+                this.getFollowUpMessages.bind(this),
+              ),
+              ctx.signal,
+              workspace.id,
+            )
+          } else {
+            final = await raceWithAbort(
+              agent.execute(task, ctx).then((r) => agent.submitResult(r)),
+              ctx.signal,
+              workspace.id,
+            )
+          }
+          if (!final) {
+            throw new Error("agent runtime: no result after executeTask (opencode + in-process both failed silently)")
+          }
 
           // Self-critique observation: evaluate the last action's quality
           // (借鉴 AutoGPT self-critique — fires after each tool execution).
