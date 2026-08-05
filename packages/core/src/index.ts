@@ -37,6 +37,14 @@ export {
 } from "./stall-detection.js"
 // 借鉴 opencode - DOOM_LOOP 同工具循环拦截
 export { DOOM_LOOP_THRESHOLD, type ToolLoopInfo } from "./stall-detection.js"
+// Session Status FSM (借鉴 opencode - SessionStatus)
+export {
+  SessionStatusTracker,
+  canTransition,
+  type SessionStatus,
+  type SessionStatusState,
+  type RetryAction,
+} from "./session-status.js"
 export {
   EventStore,
   type StoredEvent,
