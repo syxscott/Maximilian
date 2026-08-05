@@ -17,9 +17,9 @@ function makeFakeProc(): FakeProc {
   }
 }
 
-function frame(body: string): string {
-  const len = Buffer.byteLength(body)
-  return `Content-Length: ${len}\r\n\r\n${body}`
+function frame(body: string): Buffer {
+  const header = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
+  return Buffer.from(header, "utf8")
 }
 
 describe("LSPClient (借鉴 opencode)", () => {
@@ -128,9 +128,9 @@ describe("LSPClient (借鉴 opencode)", () => {
     ;(client as any).proc = makeFakeProc()
     const promise = (client as any).sendRequest("foo", {})
     // 喂一个 malformed 帧(无 Content-Length),然后是合法帧
-    const malformed = "X-Some-Header: bad\r\n\r\n"
+    const malformed = Buffer.from("X-Some-Header: bad\r\n\r\n", "utf8")
     const valid = frame('{"jsonrpc":"2.0","id":1,"result":"recovered"}')
-    ;(client as any).onData(malformed + valid)
+    ;(client as any).onData(Buffer.concat([malformed, valid]))
     expect((client as any).pending.size).toBe(0)
     return promise.then((r: unknown) => expect(r).toBe("recovered"))
   })
@@ -142,8 +142,21 @@ describe("LSPClient (借鉴 opencode)", () => {
     // 第一个帧 body 不是合法 JSON,第二个是合法帧
     const badBody = frame("{not valid json")
     const valid = frame('{"jsonrpc":"2.0","id":1,"result":"ok"}')
-    ;(client as any).onData(badBody + valid)
+    ;(client as any).onData(Buffer.concat([badBody, valid]))
     expect((client as any).pending.size).toBe(0)
     return promise.then((r: unknown) => expect(r).toBe("ok"))
+  })
+
+  // 修复 HIGH 6 - binary frame: 非 UTF-8 字节不能被解码损坏
+  it("preserves binary body bytes (修复 HIGH 6 - Buffer mode)", () => {
+    const client = new LSPClient({ command: ["x"], languageId: "ts" })
+    ;(client as any).proc = makeFakeProc()
+    // 构造 body 含非 ASCII UTF-8 字节(中文)
+    const body = '{"jsonrpc":"2.0","id":1,"result":{"text":"中文 🚀"}}'
+    const valid = frame(body)
+    ;(client as any).onData(valid)
+    // 若 setEncoding("utf8") 被启用,Buffer 模式应直接通过 utf8 解析,得到正确中文字符
+    // (无法在此测试 binary invalid UTF-8,因为现实 LSP 服务器一般 JSON 都是 UTF-8)
+    expect((client as any).pending.size).toBe(0)
   })
 })

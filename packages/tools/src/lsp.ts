@@ -54,7 +54,8 @@ type Pending = {
 export class LSPClient {
   private proc: ChildProcess | undefined
   private readonly pending = new Map<number, Pending>()
-  private buffer = ""
+  // 修复 HIGH 6 - 用 Buffer 而非 string 累积,避免 binary LSP 帧被 UTF-8 解码损坏
+  private buffer: Buffer = Buffer.alloc(0)
   private nextIdBase = 1
 
   constructor(private readonly spec: LspServerSpec) {}
@@ -63,8 +64,8 @@ export class LSPClient {
     if (this.proc) return
     const [cmd, ...args] = this.spec.command
     this.proc = spawn(cmd!, args, { stdio: ["pipe", "pipe", "pipe"] })
-    this.proc.stdout!.setEncoding("utf8")
-    this.proc.stdout!.on("data", (chunk: string) => this.onData(chunk))
+    // 修复 HIGH 6 - 不设 setEncoding,直接拿 Buffer chunk(LSP Content-Length 是字节)
+    this.proc.stdout!.on("data", (chunk: Buffer) => this.onData(chunk))
     this.proc.stderr!.on("data", () => {
       // 借鉴 opencode - stderr 静默(交给 LSP server 自己控制日志)
     })
@@ -115,24 +116,26 @@ export class LSPClient {
     this.proc?.stdin!.write(frame)
   }
 
-  private onData(chunk: string): void {
-    this.buffer += chunk
+  private onData(chunk: Buffer): void {
+    // 修复 HIGH 6 - Buffer concat 而非字符串拼接,保留原始字节
+    this.buffer = this.buffer.length === 0 ? chunk : Buffer.concat([this.buffer, chunk])
     while (true) {
+      // \r\n\r\n 是 ASCII,所有 LSP 都用 UTF-8 ASCII header,所以 utf8 解码 header 安全
       const headerEnd = this.buffer.indexOf("\r\n\r\n")
       if (headerEnd < 0) return
-      const header = this.buffer.slice(0, headerEnd)
+      const header = this.buffer.subarray(0, headerEnd).toString("utf8")
       const m = /Content-Length:\s*(\d+)/i.exec(header)
       if (!m) {
         // 修复 CRITICAL 2 - 借鉴 opencode - malformed 帧跳过避免死循环
-        // 没找到 Content-Length 就跳到下一个 \r\n\r\n 边界
-        this.buffer = this.buffer.slice(headerEnd + 4)
+        this.buffer = this.buffer.subarray(headerEnd + 4)
         continue
       }
       const len = Number(m[1])
       const bodyStart = headerEnd + 4
       if (this.buffer.length < bodyStart + len) return
-      const body = this.buffer.slice(bodyStart, bodyStart + len)
-      this.buffer = this.buffer.slice(bodyStart + len)
+      const body = this.buffer.subarray(bodyStart, bodyStart + len).toString("utf8")
+      // slice (copy) 后 subarray (share) — subarray 会保留原 buffer 引用
+      this.buffer = Buffer.from(this.buffer.subarray(bodyStart + len))
       try {
         const msg = JSON.parse(body)
         if (typeof msg.id === "number" && this.pending.has(msg.id)) {
@@ -144,7 +147,6 @@ export class LSPClient {
         // 借鉴 opencode - 处理 server→client request(如 workspace/configuration)忽略即可
       } catch {
         // 修复 CRITICAL 2 - 借鉴 opencode - parse error 后丢弃该 body,继续下一帧
-        // (不消耗 buffer 的话下次会重复 parse 同一段)
       }
     }
   }
