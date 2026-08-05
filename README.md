@@ -1256,6 +1256,30 @@ Maximilian 在 6 个开发 phase + 4 个 Kosmos wave + 22 项目研究 wave 中,
 | ----------------------------------- | ---------------------------------- |
 | File-based repo-scoped memory store | `packages/core/src/repo-memory.ts` |
 
+### 🌐 [opencode](https://github.com/anomalyco/opencode) — 15 patterns (Wave 5)
+
+> anomalyco 的 AI coding tool,以 TypeScript + Effect-TS + LSP + git-based snapshot 著称。Maximilian 此前已借鉴 opencode 的 Tools 层(7 个文件)和 UI 层(`packages/ui-react/`);本 Wave 进一步借鉴 15 个内核增强模式。
+
+| 借鉴模块 (Borrowed)                                          | 本仓位置 (In this repo)                                       | 原始文件 (Origin)                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| ModelStatus — `alpha/beta/deprecated/active` 状态枚举        | `packages/core/src/model-router.ts`                           | `opencode/packages/opencode/src/provider/model-status.ts`             |
+| DOOM_LOOP_THRESHOLD=3 — 同工具循环拦截                       | `packages/core/src/stall-detection.ts`                        | `opencode/packages/opencode/src/session/processor.ts`                 |
+| Retry-with-Headers — `retry-after`/`retry-after-ms` 解析     | `packages/providers/src/retry.ts`                             | `opencode/packages/opencode/src/session/retry.ts`                      |
+| SessionStatus FSM — `idle/retry/busy` 有限状态机             | `packages/core/src/session-status.ts`                         | `opencode/packages/opencode/src/session/status.ts`                    |
+| TodoList 状态机 — `pending/in_progress/completed/cancelled`  | `packages/core/src/todo.ts`                                   | `opencode/packages/opencode/src/session/todo.ts`                      |
+| Subagent PermissionScope 派生                                | `packages/tools/src/permission.ts`                            | `opencode/packages/opencode/src/agent/subagent-permissions.ts`        |
+| StructuredOutput tool — Zod schema 强制收尾                  | `packages/llm/src/tool.ts`                                    | `opencode/packages/opencode/src/session/prompt.ts`                    |
+| SkillDiscovery — URL 拉 SKILL.md 索引 + 7d 缓存              | `packages/core/src/skill-discovery.ts`                        | `opencode/packages/opencode/src/skill/discovery.ts`                   |
+| ProviderTransform — 中间件 registry + 默认 anthropic/openai  | `packages/providers/src/formats/transform.ts`                 | `opencode/packages/opencode/src/provider/transform.ts`                |
+| SnapshotSaver — git-based patch + revert                     | `packages/core/src/checkpoint/snapshot-saver.ts`              | `opencode/packages/opencode/src/snapshot/index.ts`                    |
+| BackgroundJob — start/extend/wait/promote/cancel 生命周期   | `packages/queue/src/background-job.ts`                        | `opencode/packages/core/src/background-job.ts`                        |
+| Context Compaction — token-budget prune + tool output 截断   | `packages/core/src/compaction.ts`                             | `opencode/packages/opencode/src/session/compaction.ts`                |
+| WorkspaceAdapter — local/remote 后端抽象                      | `packages/workspace/src/adapter.ts`                           | `opencode/packages/opencode/src/control-plane/workspace-adapter-runtime.ts` |
+| InstanceState — per-project scope + LIFO finalizer           | `packages/core/src/instance-state.ts`                         | `opencode/packages/opencode/src/effect/instance-state.ts`             |
+| LSP Client — JSON-RPC over stdio + Content-Length 帧解析     | `packages/tools/src/lsp.ts`                                   | `opencode/packages/opencode/src/lsp/client.ts`                        |
+
+> **累计借鉴 opencode 22 个模块**(Tools 层 7 + UI 层 + Wave 5 新增 15)。
+
 ---
 
 ### 📊 借鉴统计 / Borrowing Stats
