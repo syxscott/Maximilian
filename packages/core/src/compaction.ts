@@ -10,7 +10,7 @@
  * 同时把超长 tool output 截断到 TOOL_OUTPUT_MAX_CHARS。
  */
 
-import type { ChatMessage } from "@max/llm"
+import type { Message } from "@max/llm"
 
 // 借鉴 opencode - PRUNE_MINIMUM / PRUNE_PROTECT / TOOL_OUTPUT_MAX_CHARS / DEFAULT_TAIL_TURNS
 export const PRUNE_MINIMUM = 20_000
@@ -56,10 +56,10 @@ export function isOverflow(usage: TokenUsage, cfg: CompactionConfig): boolean {
  *   3. 头部插入 system 摘要,告诉 LLM "N 条早期消息被省略"
  */
 export function compactMessages(
-  messages: ChatMessage[],
+  messages: Message[],
   cfg: CompactionConfig,
-  estimateTokens: (m: ChatMessage) => number,
-): ChatMessage[] {
+  estimateTokens: (m: Message) => number,
+): Message[] {
   const preserveRecent =
     cfg.preserveRecentTokens ??
     Math.min(
@@ -75,7 +75,7 @@ export function compactMessages(
   const truncated = messages.map((m) => truncateToolOutput(m, toolCap))
 
   // 借鉴 opencode - 从尾部往前累加 token,直到达到 preserveRecent
-  const tail: ChatMessage[] = []
+  const tail: Message[] = []
   let tailTokens = 0
   for (let i = truncated.length - 1; i >= 0; i--) {
     const m = truncated[i]!
@@ -90,25 +90,35 @@ export function compactMessages(
   // 借鉴 opencode - 头部用一条 system summary 替代
   if (tail.length < truncated.length) {
     const dropped = truncated.length - tail.length
-    const head: ChatMessage = {
+    const head: Message = {
       role: "system",
-      content:
-        `[借鉴 opencode Compaction] ${dropped} 条早期消息已被摘要省略;` +
-        `后续为最近 ${tail.length} 条对话。`,
-    } as ChatMessage
+      content: [
+        {
+          type: "text" as const,
+          text:
+            `[借鉴 opencode Compaction] ${dropped} 条早期消息已被摘要省略;` +
+            `后续为最近 ${tail.length} 条对话。`,
+        },
+      ],
+    } as unknown as Message
     return [head, ...tail]
   }
   return tail
 }
 
-function truncateToolOutput(m: ChatMessage, max: number): ChatMessage {
+function truncateToolOutput(m: Message, max: number): Message {
   if (m.role !== "tool") return m
   const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content)
   if (text.length <= max) return m
   return {
     ...m,
-    content:
-      text.slice(0, max) +
-      `\n\n[借鉴 opencode Compaction] 截断 ${text.length - max} 字符`,
-  }
+    content: [
+      {
+        type: "text" as const,
+        text:
+          text.slice(0, max) +
+          `\n\n[借鉴 opencode Compaction] 截断 ${text.length - max} 字符`,
+      },
+    ],
+  } as unknown as Message
 }

@@ -8,10 +8,10 @@ import {
   DEFAULT_TAIL_TURNS,
   type CompactionConfig,
 } from "../src/compaction.js"
-import type { ChatMessage } from "@max/llm"
+import type { Message } from "@max/llm"
 
-const mk = (role: ChatMessage["role"], content: string): ChatMessage =>
-  ({ role, content } as ChatMessage)
+const mk = (role: Message["role"], content: string): Message =>
+  ({ role, content } as Message)
 
 const cfg: CompactionConfig = {
   contextWindow: 100_000,
@@ -38,7 +38,7 @@ describe("Context Compaction (借鉴 opencode)", () => {
   })
 
   it("compactMessages keeps tail + adds summary header when over budget", () => {
-    const msgs: ChatMessage[] = [
+    const msgs: Message[] = [
       mk("user", "q1"),
       mk("assistant", "a1"),
       mk("user", "q2"),
@@ -46,15 +46,15 @@ describe("Context Compaction (借鉴 opencode)", () => {
       mk("user", "q3"),
       mk("assistant", "a3"),
     ]
-    // 设 preserveRecent=30 触发截断
     const out = compactMessages(msgs, { ...cfg, preserveRecentTokens: 30 }, () => 10)
     expect(out[0]!.role).toBe("system")
-    expect((out[0]!.content as string)).toContain("Compaction")
+    const headText = JSON.stringify(out[0]!.content)
+    expect(headText).toContain("Compaction")
     expect(out.length).toBeLessThan(msgs.length + 1)
   })
 
   it("compactMessages passes through unchanged when within budget", () => {
-    const msgs: ChatMessage[] = [mk("user", "q1"), mk("assistant", "a1")]
+    const msgs: Message[] = [mk("user", "q1"), mk("assistant", "a1")]
     const out = compactMessages(msgs, cfg, () => 100)
     expect(out).toEqual(msgs)
   })
@@ -67,10 +67,9 @@ describe("Context Compaction (借鉴 opencode)", () => {
       () => 100,
     )
     const toolMsg = out.find((m) => m.role === "tool")!
-    expect((toolMsg.content as string).length).toBeLessThanOrEqual(
-      TOOL_OUTPUT_MAX_CHARS + 100,
-    )
-    expect((toolMsg.content as string)).toContain("Compaction")
+    const toolText = JSON.stringify(toolMsg.content)
+    expect(toolText.length).toBeLessThanOrEqual(TOOL_OUTPUT_MAX_CHARS + 200)
+    expect(toolText).toContain("Compaction")
   })
 
   it("small tool output passes through unchanged", () => {
@@ -97,7 +96,7 @@ describe("Context Compaction (借鉴 opencode)", () => {
   })
 
   it("preserves at least DEFAULT_TAIL_TURNS even when over budget", () => {
-    const msgs: ChatMessage[] = Array.from({ length: 20 }, (_, i) =>
+    const msgs: Message[] = Array.from({ length: 20 }, (_, i) =>
       mk(i % 2 === 0 ? "user" : "assistant", `m${i}-${"x".repeat(100)}`),
     )
     const out = compactMessages(msgs, { ...cfg, preserveRecentTokens: 30 }, () => 100)
