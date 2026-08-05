@@ -56,3 +56,29 @@ export {
   type JudgeInput,
   type JudgeOutput,
 } from "./llm-judge.js";
+// Phase 3b — opencode trace + variant runner
+export {
+  OpencodeTraceCollector,
+  TraceSchema,
+  MessageSchema,
+  ToolCallSchema,
+  TokensSchema,
+  type Trace,
+  type Message,
+  type ToolCall,
+  type Tokens,
+  type TraceCollectorSdk,
+  type OpencodeTraceCollectorOptions,
+} from "./opencode-trace-collector.js";
+export {
+  VariantRunner,
+  identityMutator,
+  type VariantMutator,
+  type VariantJudge,
+  type VariantScore,
+  type VariantRun,
+  type VariantRunOptions,
+  type VariantRunReport,
+  type LeaderboardRow,
+  type VariantExecutor,
+} from "./variant-runner.js";
