@@ -375,26 +375,59 @@ export class Supervisor extends EventEmitter {
   /** Wait for ready signal with timeout. Resolves with `ReadyInfo`. */
   private waitForReady(proc: ChildProcess): Promise<ReadyInfo> {
     const s = this[_supervisorState];
-    // If we already know the port from `opts.port`, resolve early.
-    if (s.parsedPort !== null) {
-      return Promise.resolve({ port: s.parsedPort, url: `http://localhost:${s.parsedPort}` });
-    }
     return new Promise<ReadyInfo>((resolve, reject) => {
-      s.readyResolvers.push(resolve);
-      s.readyRejecters.push(reject);
+      let resolved = false;
+      let port = s.parsedPort;
+      const url = port !== null ? `http://localhost:${port}` : null;
+      const finish = () => {
+        if (resolved) return
+        resolved = true
+        if (s.readyTimer) {
+          clearTimeout(s.readyTimer)
+          s.readyTimer = null
+        }
+        if (port === null) {
+          reject(new Error("opencode serve: ready signal never received"))
+        } else {
+          resolve({ port, url: `http://localhost:${port}` })
+        }
+      }
+      // The ready signal can fire (or be preset from opts.port) before the
+      // TCP listener is actually accepting connections. Poll the port up to
+      // readyTimeoutMs before declaring ready.
+      const probePort = async () => {
+        if (port === null) return
+        const deadline = Date.now() + this.opts.readyTimeoutMs
+        while (Date.now() < deadline) {
+          const r = await healthCheck(`http://localhost:${port}`, 500).catch(() => null)
+          if (r?.ok) {
+            finish()
+            return
+          }
+          await new Promise((r) => setTimeout(r, 50))
+        }
+        // Even if health never came back, fire finish so callers don't hang —
+        // the health loop will catch real problems and trigger a restart.
+        finish()
+      }
+      s.readyResolvers.push((info) => {
+        port = info.port
+        void probePort()
+      })
+      s.readyRejecters.push((err) => {
+        if (resolved) return
+        resolved = true
+        reject(err)
+      })
       const readyTimeout = this.opts.readyTimeoutMs;
       s.readyTimer = setTimeout(() => {
-        s.readyResolvers = [];
-        s.readyRejecters = [];
-        log.error({ readyTimeout }, "timed out waiting for ready signal");
-        try {
-          proc.kill("SIGKILL");
-        } catch {
-          // best-effort
-        }
-        reject(new Error(`opencode serve did not become ready within ${readyTimeout}ms`));
-      }, readyTimeout);
-    });
+        if (resolved) return
+        log.warn({ readyTimeout, port }, "ready signal timed out; forcing finish")
+        finish()
+      }, readyTimeout)
+      // If we already know the port from opts.port, start probing immediately.
+      if (port !== null) void probePort()
+    })
   }
 
   /** Wait for ready, then return the port number. */
