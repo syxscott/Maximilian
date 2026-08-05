@@ -119,4 +119,46 @@ describe("BackgroundJobRegistry (借鉴 opencode)", () => {
     expect(info.completedAt).toBeDefined()
     expect(info.completedAt!).toBeGreaterThanOrEqual(before)
   })
+
+  // 修复 HIGH 4 - wait() 必须立即返回已完成结果(不再挂起)
+  it("wait() returns immediately for already-completed job (no race)", async () => {
+    const reg = new BackgroundJobRegistry()
+    const { id, done } = reg.start({ type: "test", run: async () => "ok" })
+    await done // 先等完成
+    const waited = await reg.wait(id) // 现在调用 wait,不应该挂起
+    expect(waited?.status).toBe("completed")
+    expect(waited?.output).toBe("ok")
+  })
+
+  it("start() with same id extends to new run (after previous completes)", async () => {
+    // 借鉴 opencode - extend 语义:同 id 再次 start 会开新 run
+    const reg = new BackgroundJobRegistry()
+    const { id, done } = reg.start({ type: "test", run: async () => "first" })
+    await done
+    // 再次 start() 同 id — extend,新 run
+    const second = reg.start({ id, type: "test", run: async () => "second" })
+    const result = await second.done
+    expect(result.output).toBe("second")
+  })
+
+  it("wait() with timeout still works for running jobs", async () => {
+    const reg = new BackgroundJobRegistry()
+    const { id } = reg.start({
+      type: "test",
+      run: () => new Promise(() => {}), // 永不完成
+    })
+    const result = await reg.wait(id, 30)
+    expect(result).toBeUndefined()
+  })
+
+  it("cancel() exposes result to wait()", async () => {
+    const reg = new BackgroundJobRegistry()
+    const { id } = reg.start({
+      type: "test",
+      run: () => new Promise(() => {}),
+    })
+    reg.cancel(id)
+    const result = await reg.wait(id)
+    expect(result?.status).toBe("cancelled")
+  })
 })

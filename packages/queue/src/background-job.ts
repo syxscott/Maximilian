@@ -30,16 +30,18 @@ export interface JobInfo {
 
 type Active = {
   info: JobInfo
+  /** 已完成结果缓存,wait() 立即返回。修复 HIGH 4 race condition */
+  lastResult?: JobInfo
+  /** 等待当前 run 的 resolveDone;runJob 完成时被调用 */
   resolveDone: (info: JobInfo) => void
-  rejectDone: (err: unknown) => void
 }
 
 /**
  * 借鉴 opencode - 进程内 BackgroundJobRegistry
  * - start(): 注册 job,返回 id 和 done Promise
  * - extend(): 把同一个 id 上的新 run() 链接到现有 job(用于阶段续传)
- * - wait(): 等待某个 id 完成
- * - cancel(): 标记为 cancelled(若 job 仍在 running,run() 仍会跑完但结果被丢弃)
+ * - wait(): 等待某个 id 完成(若已完成立即返回)
+ * - cancel(): 标记为 cancelled
  * - list() / get(): 查询
  */
 export class BackgroundJobRegistry {
@@ -57,10 +59,13 @@ export class BackgroundJobRegistry {
     if (existing) {
       // 借鉴 opencode - extend: 若 id 已存在,链接新的 run 到现有 active
       void this.extendRun(id, opts.run)
-      return { id, done: new Promise<JobInfo>((res, rej) => {
-        existing.resolveDone = res
-        existing.rejectDone = rej
-      }) }
+      // 修复 HIGH 4 - 等待新的 run 完成;extendRun 会重置 lastResult 和 resolveDone
+      return {
+        id,
+        done: new Promise<JobInfo>((res) => {
+          existing.resolveDone = res
+        }),
+      }
     }
 
     const info: JobInfo = {
@@ -75,11 +80,7 @@ export class BackgroundJobRegistry {
     const done = new Promise<JobInfo>((res) => {
       resolveDone = res
     })
-    const active: Active = {
-      info,
-      resolveDone,
-      rejectDone: () => {},
-    }
+    const active: Active = { info, resolveDone }
     this.jobs.set(id, active)
 
     void this.runJob(active, opts.run)
@@ -92,13 +93,14 @@ export class BackgroundJobRegistry {
       active.info.status = "completed"
       active.info.completedAt = Date.now()
       active.info.output = output
-      active.resolveDone({ ...active.info })
     } catch (err) {
       active.info.status = "error"
       active.info.completedAt = Date.now()
       active.info.error = err instanceof Error ? err.message : String(err)
-      active.resolveDone({ ...active.info })
     } finally {
+      // 修复 HIGH 4 - 先缓存结果再 resolve,这样后续 wait() 立即能拿到
+      active.lastResult = { ...active.info }
+      active.resolveDone(active.lastResult)
       // 借鉴 opencode - 完成后保留 60s 便于查询
       setTimeout(() => this.jobs.delete(active.info.id), 60_000)
     }
@@ -107,17 +109,24 @@ export class BackgroundJobRegistry {
   private async extendRun(id: string, run: () => Promise<string>): Promise<void> {
     const active = this.jobs.get(id)
     if (!active) return
+    // 修复 HIGH 4 - 重置前先清掉 lastResult,否则新 start() 拿到旧值
+    active.lastResult = undefined
     active.info.status = "running"
     active.info.completedAt = undefined
     active.info.error = undefined
+    active.info.output = undefined
     void this.runJob(active, run)
   }
 
-  /** 借鉴 opencode - wait(id, timeout?) */
+  /** 借鉴 opencode - wait(id, timeout?). 已完成立即返回缓存的 lastResult */
   async wait(id: string, timeoutMs?: number): Promise<JobInfo | undefined> {
     const job = this.jobs.get(id)
     if (!job) return undefined
-    const done = new Promise<JobInfo>((res) => job.resolveDone = res)
+    // 修复 HIGH 4 - 已完成时直接返回缓存,避免挂起
+    if (job.lastResult) return job.lastResult
+    const done = new Promise<JobInfo>((res) => {
+      job.resolveDone = res
+    })
     if (timeoutMs === undefined) return done
     return Promise.race([
       done,
@@ -133,7 +142,8 @@ export class BackgroundJobRegistry {
     if (!job) return false
     job.info.status = "cancelled"
     job.info.completedAt = Date.now()
-    job.resolveDone({ ...job.info })
+    job.lastResult = { ...job.info }
+    job.resolveDone(job.lastResult)
     return true
   }
 
