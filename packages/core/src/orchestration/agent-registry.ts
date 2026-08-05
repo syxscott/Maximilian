@@ -19,6 +19,10 @@
  */
 
 import { randomUUID } from "node:crypto"
+import {
+  deriveSubagentScope,
+  type PermissionScope,
+} from "@max/tools/permission"
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -36,6 +40,19 @@ export interface AgentLike extends AgentLifecycleHook {
   metadata?: Record<string, unknown>
   /** 消息接收处理器 */
   receiver?: (from: string, payload: unknown) => Promise<void> | void
+  /**
+   * 借鉴 opencode - agent/subagent-permissions
+   * 父 agent 的 id;子 agent 在 register 时会自动 derive scope。
+   */
+  parentId?: string
+  /**
+   * 借鉴 opencode - subagent scope 收窄声明(子 agent 注册时使用)
+   */
+  narrowScope?: Partial<PermissionScope>
+  /**
+   * 借鉴 opencode - 派生出的实际生效 scope;由 registerWithScope 计算后回填
+   */
+  scope?: PermissionScope
 }
 
 export interface AgentMessage<P = unknown> {
@@ -120,8 +137,26 @@ export class AgentRegistry {
         throw new Error(`Agent metadata exceeds ${this.maxMetadataBytes} bytes`)
       }
     }
+    // 借鉴 opencode - subagent-permissions: 若指定 parentId,自动 derive scope
+    let derivedScope: PermissionScope | undefined
+    if (agent.parentId) {
+      const parent = this.agents.get(agent.parentId)
+      if (!parent) {
+        throw new Error(`Parent agent ${agent.parentId} not found (借鉴 opencode)`)
+      }
+      // 父级若还没有 scope(根 agent),赋予默认 scope
+      const parentScope = parent.scope ?? {
+        allowedTools: [],
+        forbiddenPaths: [],
+        requireApproval: false,
+      }
+      derivedScope = deriveSubagentScope(parentScope, agent.narrowScope ?? {})
+    }
     // Store a frozen copy to prevent caller mutation of registered state.
-    const frozen: Readonly<AgentLike> = Object.freeze({ ...agent })
+    const frozen: Readonly<AgentLike> = Object.freeze({
+      ...agent,
+      scope: derivedScope ?? agent.scope,
+    })
     this.agents.set(agent.id, frozen)
     if (!this.byType.has(agent.type)) {
       this.byType.set(agent.type, new Set())

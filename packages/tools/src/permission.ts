@@ -281,3 +281,60 @@ export function validatePermissions(raw: unknown): Permissions {
 function isENOENT(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { code?: string }).code === "ENOENT"
 }
+
+// 借鉴 opencode - agent/subagent-permissions
+// 子 agent 默认继承父 agent 的权限,然后显式收窄(去掉一些工具或加上禁止路径)。
+// 用于 AgentRegistry 在注册 child agent 时收紧作用域,防止权限蔓延。
+
+/**
+ * 借鉴 opencode - subagent permission scope.
+ * 表示一个 agent(根或子)生效的权限边界。
+ */
+export interface PermissionScope {
+  /** 父 scope id;undefined 表示根 agent */
+  parentId?: string
+  /** 允许的工具集;空数组表示继承父级,["*"] 表示全部 */
+  allowedTools: ReadonlyArray<string>
+  /** 禁止的路径前缀(在父级基础上叠加) */
+  forbiddenPaths: ReadonlyArray<string>
+  /** 子 agent 是否需要用户审批(默认 false) */
+  requireApproval: boolean
+}
+
+/**
+ * 借鉴 opencode - deriveSubagentScope
+ * 父 scope + 子 agent 的收窄 → 实际生效的子 scope。
+ * 规则:
+ *  - allowedTools: 子 agent 不指定 → 继承父;指定 → 完全替换(子需明确列举)
+ *  - forbiddenPaths: 父子并集(子不能放宽父的禁止)
+ *  - requireApproval: 子可要求审批即使父不需要
+ */
+export function deriveSubagentScope(
+  parent: PermissionScope,
+  narrow: Partial<PermissionScope>,
+): PermissionScope {
+  return {
+    parentId: parent.parentId,
+    allowedTools: narrow.allowedTools ?? parent.allowedTools,
+    forbiddenPaths: [
+      ...new Set([...parent.forbiddenPaths, ...(narrow.forbiddenPaths ?? [])]),
+    ],
+    requireApproval: narrow.requireApproval ?? parent.requireApproval,
+  }
+}
+
+/**
+ * 借鉴 opencode - scope 是否允许该工具(用于 resolvePermission 之前先校验)
+ */
+export function scopeAllowsTool(scope: PermissionScope, tool: string): boolean {
+  if (scope.allowedTools.length === 0) return true // 继承父级,信任父 resolvePermission
+  if (scope.allowedTools.includes("*")) return true
+  return scope.allowedTools.includes(tool)
+}
+
+/**
+ * 借鉴 opencode - scope 是否禁止该路径(检查 forbiddenPaths 任意前缀匹配)
+ */
+export function scopeForbidsPath(scope: PermissionScope, path: string): boolean {
+  return scope.forbiddenPaths.some((prefix) => path.startsWith(prefix))
+}

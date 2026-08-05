@@ -119,3 +119,80 @@ describe("AgentRegistry", () => {
     });
   });
 });
+
+// 借鉴 opencode - subagent-permissions 派生
+import type { PermissionScope } from "@max/tools/permission"
+
+describe("AgentRegistry (借鉴 opencode - subagent scope)", () => {
+  it("root agent registers without scope (inherits parent's if any)", async () => {
+    const reg = new AgentRegistry()
+    reg.register({ id: "root", type: "orchestrator" })
+    const r = reg.get("root")
+    expect(r?.id).toBe("root")
+    expect(r?.scope).toBeUndefined()
+  })
+
+  it("child agent derives scope from parent on register", () => {
+    const reg = new AgentRegistry()
+    const parentScope: PermissionScope = {
+      allowedTools: ["read", "bash"],
+      forbiddenPaths: ["/etc"],
+      requireApproval: false,
+    }
+    reg.register({
+      id: "parent",
+      type: "orchestrator",
+      scope: parentScope,
+    })
+    reg.register({
+      id: "child",
+      type: "executor",
+      parentId: "parent",
+      narrowScope: { forbiddenPaths: ["/var"], requireApproval: true },
+    })
+    const child = reg.get("child")
+    expect(child?.scope).toBeDefined()
+    expect(child?.scope!.parentId).toBeUndefined() // 父级本身是 root
+    expect(child?.scope!.allowedTools).toEqual(["read", "bash"]) // 继承
+    expect([...child!.scope!.forbiddenPaths].sort()).toEqual(["/etc", "/var"]) // 并集
+    expect(child?.scope!.requireApproval).toBe(true) // 子可要求审批
+  })
+
+  it("child can narrow allowed tools explicitly", () => {
+    const reg = new AgentRegistry()
+    reg.register({
+      id: "parent",
+      type: "orchestrator",
+      scope: { allowedTools: ["*"], forbiddenPaths: [], requireApproval: false },
+    })
+    reg.register({
+      id: "child",
+      type: "worker",
+      parentId: "parent",
+      narrowScope: { allowedTools: ["read"] },
+    })
+    expect(reg.get("child")?.scope!.allowedTools).toEqual(["read"])
+  })
+
+  it("register with missing parent throws", () => {
+    const reg = new AgentRegistry()
+    expect(() =>
+      reg.register({ id: "child", type: "worker", parentId: "ghost" }),
+    ).toThrow(/Parent agent ghost not found/)
+  })
+
+  it("child without narrowScope inherits parent verbatim", () => {
+    const reg = new AgentRegistry()
+    const parentScope: PermissionScope = {
+      allowedTools: ["read"],
+      forbiddenPaths: ["/etc"],
+      requireApproval: true,
+    }
+    reg.register({ id: "p", type: "o", scope: parentScope })
+    reg.register({ id: "c", type: "w", parentId: "p" })
+    const childScope = reg.get("c")?.scope!
+    expect(childScope.allowedTools).toEqual(parentScope.allowedTools)
+    expect(childScope.forbiddenPaths).toEqual(parentScope.forbiddenPaths)
+    expect(childScope.requireApproval).toBe(true)
+  })
+})
