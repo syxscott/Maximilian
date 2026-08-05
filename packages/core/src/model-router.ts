@@ -12,39 +12,48 @@
  *   3. Speed tiebreak — prefer faster models when other signals are equal.
  */
 
-import type { AgentRole } from "./types.js";
+import type { AgentRole } from "./types.js"
 
 // ---------------------------------------------------------------------------
 // Public interfaces
 // ---------------------------------------------------------------------------
 
-export type CostTier = "low" | "mid" | "high";
-export type SpeedTier = "fast" | "medium" | "slow";
-export type TaskType = "code" | "reasoning" | "creative" | "general" | "data";
-export type TaskComplexity = "simple" | "medium" | "complex";
+export type CostTier = "low" | "mid" | "high"
+export type SpeedTier = "fast" | "medium" | "slow"
+export type TaskType = "code" | "reasoning" | "creative" | "general" | "data"
+export type TaskComplexity = "simple" | "medium" | "complex"
+
+/**
+ * Model Status (借鉴 opencode - ModelStatus).
+ * 模型在目录中的生命周期状态。`deprecated` 模型会被 ModelRouter 自动跳过;
+ * `alpha`/`beta` 仍参与路由打分(operator 自行决定是否启用)。
+ */
+export type ModelStatus = "alpha" | "beta" | "deprecated" | "active"
 
 export interface ModelProfile {
   /** Provider id, e.g. "anthropic", "openai". */
-  provider: string;
+  provider: string
   /** Model name, e.g. "claude-3-haiku-20240307". */
-  model: string;
+  model: string
   /** Task types this model excels at. */
-  strengths: TaskType[];
+  strengths: TaskType[]
   /** Cost classification. */
-  costTier: CostTier;
+  costTier: CostTier
   /** Speed classification. */
-  speedTier: SpeedTier;
+  speedTier: SpeedTier
+  /** 借鉴 opencode - 默认 "active";deprecated 会被路由器自动跳过 */
+  status?: ModelStatus
 }
 
 export interface TaskCharacteristics {
-  complexity: TaskComplexity;
-  type: TaskType;
-  agentRole: AgentRole;
+  complexity: TaskComplexity
+  type: TaskType
+  agentRole: AgentRole
 }
 
 export interface ModelSelection {
-  provider: string;
-  model: string;
+  provider: string
+  model: string
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +103,7 @@ const DEFAULT_PROFILES: ModelProfile[] = [
     costTier: "mid",
     speedTier: "medium",
   },
-];
+]
 
 // ---------------------------------------------------------------------------
 // Scoring helpers
@@ -102,11 +111,11 @@ const DEFAULT_PROFILES: ModelProfile[] = [
 
 /** Score: does the profile's strengths cover the task type? 0-12. */
 function strengthScore(profile: ModelProfile, taskType: TaskType): number {
-  if (!profile.strengths.includes(taskType)) return 0;
+  if (!profile.strengths.includes(taskType)) return 0
   // Small bonus when the task type is the profile's primary strength (first
   // in the array). This breaks ties between models that both cover the type
   // but where one specialises in it (e.g. o1 for reasoning vs opus for code).
-  return profile.strengths[0] === taskType ? 12 : 10;
+  return profile.strengths[0] === taskType ? 12 : 10
 }
 
 /**
@@ -117,11 +126,11 @@ function strengthScore(profile: ModelProfile, taskType: TaskType): number {
  */
 function costScore(profile: ModelProfile, complexity: TaskComplexity): number {
   const matrix: Record<TaskComplexity, Record<CostTier, number>> = {
-    simple:  { low: 10, mid: 5, high: 1 },
-    medium:  { low: 5,  mid: 10, high: 5 },
-    complex: { low: 1,  mid: 5, high: 10 },
-  };
-  return matrix[complexity][profile.costTier];
+    simple: { low: 10, mid: 5, high: 1 },
+    medium: { low: 5, mid: 10, high: 5 },
+    complex: { low: 1, mid: 5, high: 10 },
+  }
+  return matrix[complexity][profile.costTier]
 }
 
 /**
@@ -130,11 +139,11 @@ function costScore(profile: ModelProfile, complexity: TaskComplexity): number {
  */
 function speedBonus(profile: ModelProfile, complexity: TaskComplexity): number {
   const matrix: Record<TaskComplexity, Record<SpeedTier, number>> = {
-    simple:  { fast: 3, medium: 1, slow: 0 },
-    medium:  { fast: 1, medium: 3, slow: 1 },
+    simple: { fast: 3, medium: 1, slow: 0 },
+    medium: { fast: 1, medium: 3, slow: 1 },
     complex: { fast: 0, medium: 1, slow: 3 },
-  };
-  return matrix[complexity][profile.speedTier];
+  }
+  return matrix[complexity][profile.speedTier]
 }
 
 // ---------------------------------------------------------------------------
@@ -142,11 +151,11 @@ function speedBonus(profile: ModelProfile, complexity: TaskComplexity): number {
 // ---------------------------------------------------------------------------
 
 export class ModelRouter {
-  private profiles: ModelProfile[] = [];
+  private profiles: ModelProfile[] = []
 
   constructor(profiles?: ModelProfile[]) {
     if (profiles) {
-      this.profiles = [...profiles];
+      this.profiles = [...profiles]
     }
   }
 
@@ -154,17 +163,17 @@ export class ModelRouter {
   registerProfile(profile: ModelProfile): void {
     const idx = this.profiles.findIndex(
       (p) => p.provider === profile.provider && p.model === profile.model,
-    );
+    )
     if (idx >= 0) {
-      this.profiles[idx] = profile;
+      this.profiles[idx] = profile
     } else {
-      this.profiles.push(profile);
+      this.profiles.push(profile)
     }
   }
 
   /** Return all registered profiles (defensive copy). */
   getProfiles(): ModelProfile[] {
-    return [...this.profiles];
+    return [...this.profiles]
   }
 
   /**
@@ -177,25 +186,33 @@ export class ModelRouter {
   selectModel(task: TaskCharacteristics): ModelSelection {
     if (this.profiles.length === 0) {
       // Absolute fallback — no profiles registered.
-      return { provider: "anthropic", model: "claude-3-haiku-20240307" };
+      return { provider: "anthropic", model: "claude-3-haiku-20240307" }
     }
 
-    let bestProfile = this.profiles[0];
-    let bestScore = -1;
+    // 借鉴 opencode - 跳过 deprecated 模型,它们不应进入打分池
+    const eligible = this.profiles.filter((p) => (p.status ?? "active") !== "deprecated")
 
-    for (const profile of this.profiles) {
+    if (eligible.length === 0) {
+      // 所有候选都被 deprecated 标记 — 退回硬编码 fallback
+      return { provider: "anthropic", model: "claude-3-haiku-20240307" }
+    }
+
+    let bestProfile = eligible[0]
+    let bestScore = -1
+
+    for (const profile of eligible) {
       const score =
         strengthScore(profile, task.type) +
         costScore(profile, task.complexity) +
-        speedBonus(profile, task.complexity);
+        speedBonus(profile, task.complexity)
 
       if (score > bestScore) {
-        bestScore = score;
-        bestProfile = profile;
+        bestScore = score
+        bestProfile = profile
       }
     }
 
-    return { provider: bestProfile!.provider, model: bestProfile!.model };
+    return { provider: bestProfile!.provider, model: bestProfile!.model }
   }
 }
 
@@ -208,12 +225,12 @@ function roleToTaskType(role: AgentRole): TaskType {
   switch (role) {
     case "frontend":
     case "backend":
-      return "code";
+      return "code"
     case "review":
-      return "reasoning";
+      return "reasoning"
     case "general":
     default:
-      return "general";
+      return "general"
   }
 }
 
@@ -229,38 +246,52 @@ function roleToTaskType(role: AgentRole): TaskType {
  *      didn't provide an estimate (e.g. legacy plans, untrusted input).
  */
 export function deriveTaskCharacteristics(task: {
-  agentRole: AgentRole;
-  description: string;
-  metadata?: Record<string, unknown>;
+  agentRole: AgentRole
+  description: string
+  metadata?: Record<string, unknown>
 }): TaskCharacteristics {
   // Trust the planner-provided complexity when it's a valid value.
-  const declared = task.metadata?.estimatedComplexity;
-  let complexity: TaskComplexity;
+  const declared = task.metadata?.estimatedComplexity
+  let complexity: TaskComplexity
   if (declared === "simple" || declared === "medium" || declared === "complex") {
-    complexity = declared;
+    complexity = declared
   } else {
     // Keyword + length fallback.
-    const desc = task.description.toLowerCase();
+    const desc = task.description.toLowerCase()
     const complexKeywords = [
-      "refactor", "architect", "design system", "migration",
-      "performance", "security", "distributed", "scale",
-      "complex", "multi-step", "end-to-end",
-    ];
+      "refactor",
+      "architect",
+      "design system",
+      "migration",
+      "performance",
+      "security",
+      "distributed",
+      "scale",
+      "complex",
+      "multi-step",
+      "end-to-end",
+    ]
     const simpleKeywords = [
-      "fix typo", "rename", "update readme", "change color",
-      "simple", "quick", "trivial", "bump version",
-    ];
+      "fix typo",
+      "rename",
+      "update readme",
+      "change color",
+      "simple",
+      "quick",
+      "trivial",
+      "bump version",
+    ]
 
     if (complexKeywords.some((kw) => desc.includes(kw))) {
-      complexity = "complex";
+      complexity = "complex"
     } else if (simpleKeywords.some((kw) => desc.includes(kw))) {
-      complexity = "simple";
+      complexity = "simple"
     } else if (task.description.length > 500) {
-      complexity = "complex";
+      complexity = "complex"
     } else if (task.description.length < 80) {
-      complexity = "simple";
+      complexity = "simple"
     } else {
-      complexity = "medium";
+      complexity = "medium"
     }
   }
 
@@ -268,7 +299,7 @@ export function deriveTaskCharacteristics(task: {
     complexity,
     type: roleToTaskType(task.agentRole),
     agentRole: task.agentRole,
-  };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -277,5 +308,5 @@ export function deriveTaskCharacteristics(task: {
 
 /** Create a ModelRouter pre-loaded with sensible default profiles. */
 export function createDefaultModelRouter(): ModelRouter {
-  return new ModelRouter(DEFAULT_PROFILES);
+  return new ModelRouter(DEFAULT_PROFILES)
 }
