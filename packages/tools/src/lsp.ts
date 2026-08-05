@@ -122,7 +122,12 @@ export class LSPClient {
       if (headerEnd < 0) return
       const header = this.buffer.slice(0, headerEnd)
       const m = /Content-Length:\s*(\d+)/i.exec(header)
-      if (!m) return
+      if (!m) {
+        // 修复 CRITICAL 2 - 借鉴 opencode - malformed 帧跳过避免死循环
+        // 没找到 Content-Length 就跳到下一个 \r\n\r\n 边界
+        this.buffer = this.buffer.slice(headerEnd + 4)
+        continue
+      }
       const len = Number(m[1])
       const bodyStart = headerEnd + 4
       if (this.buffer.length < bodyStart + len) return
@@ -138,7 +143,8 @@ export class LSPClient {
         }
         // 借鉴 opencode - 处理 server→client request(如 workspace/configuration)忽略即可
       } catch {
-        // 借鉴 opencode - parse error 静默
+        // 修复 CRITICAL 2 - 借鉴 opencode - parse error 后丢弃该 body,继续下一帧
+        // (不消耗 buffer 的话下次会重复 parse 同一段)
       }
     }
   }

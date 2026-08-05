@@ -121,4 +121,29 @@ describe("LSPClient (借鉴 opencode)", () => {
     expect(written).toMatch(/^Content-Length: \d+\r\n\r\n/)
     expect(written).toContain('"jsonrpc":"2.0"')
   })
+
+  // 修复 CRITICAL 2 - 借鉴 opencode - malformed 帧必须能跳过不能死循环
+  it("skips frame missing Content-Length (no infinite loop)", () => {
+    const client = new LSPClient({ command: ["x"], languageId: "ts" })
+    ;(client as any).proc = makeFakeProc()
+    const promise = (client as any).sendRequest("foo", {})
+    // 喂一个 malformed 帧(无 Content-Length),然后是合法帧
+    const malformed = "X-Some-Header: bad\r\n\r\n"
+    const valid = frame('{"jsonrpc":"2.0","id":1,"result":"recovered"}')
+    ;(client as any).onData(malformed + valid)
+    expect((client as any).pending.size).toBe(0)
+    return promise.then((r: unknown) => expect(r).toBe("recovered"))
+  })
+
+  it("recovers from bad JSON body (no infinite loop)", () => {
+    const client = new LSPClient({ command: ["x"], languageId: "ts" })
+    ;(client as any).proc = makeFakeProc()
+    const promise = (client as any).sendRequest("foo", {})
+    // 第一个帧 body 不是合法 JSON,第二个是合法帧
+    const badBody = frame("{not valid json")
+    const valid = frame('{"jsonrpc":"2.0","id":1,"result":"ok"}')
+    ;(client as any).onData(badBody + valid)
+    expect((client as any).pending.size).toBe(0)
+    return promise.then((r: unknown) => expect(r).toBe("ok"))
+  })
 })
