@@ -1,10 +1,23 @@
 // Tool integration — bridges @max/tools with AgentRuntime
 // Adds tool execution capability to agents without modifying the base Agent class
+// 借鉴 pi: beforeToolCall/afterToolCall hooks, parallel execution, truncated message safety
 
 import type { AnyTool, ToolDefinition } from "@max/llm"
-import { createToolRegistry, type ToolRegistry, type ExecuteInput, isPermissionRequestError } from "@max/tools"
+import {
+  createToolRegistry,
+  type ToolRegistry,
+  type ExecuteInput,
+  isPermissionRequestError,
+} from "@max/tools"
 import type { Provider, ChatMessage, ChatOptions } from "@max/providers"
 import type { AgentContext, Agent } from "./agent.js"
+import type {
+  BeforeToolCallContext,
+  BeforeToolCallResult,
+  AfterToolCallContext,
+  AfterToolCallResult,
+  ToolExecutionMode,
+} from "./types.js"
 
 // Re-export `createToolRegistry` so consumers / tests can build a registry
 // synchronously and pass it to a `ToolEnabledProvider` without going through
@@ -18,12 +31,27 @@ export interface ToolCall {
   id: string
   name: string
   input: unknown
+  /**
+   * Optional per-tool execution mode override (借鉴 pi).
+   * When set, this tool's execution is controlled by this mode rather than
+   * the global toolExecution option.
+   */
+  executionMode?: ToolExecutionMode
+}
+
+/** Result of a finalized tool call (借鉴 pi). */
+export interface FinalizedToolCallOutcome {
+  toolCall: ToolCall
+  result: unknown
+  isError: boolean
 }
 
 export interface ToolEnabledResponse {
   content: string
   toolCalls: ToolCall[]
   model: string
+  /** Why the model stopped generating. "length" means output was truncated (借鉴 pi). */
+  stopReason?: string
   usage?: {
     promptTokens: number
     completionTokens: number
@@ -90,7 +118,10 @@ export class ToolEnabledProvider {
   async executeTool(
     call: ToolCall,
     context: { sessionID: string; agent: string; assistantMessageID: string },
-  ): Promise<{ result: unknown; output?: { structured: unknown; content: ReadonlyArray<{ type: string; text?: string }> } }> {
+  ): Promise<{
+    result: unknown
+    output?: { structured: unknown; content: ReadonlyArray<{ type: string; text?: string }> }
+  }> {
     const materialization = this.registry.materialize()
     const input: ExecuteInput = {
       sessionID: context.sessionID,
@@ -101,10 +132,15 @@ export class ToolEnabledProvider {
     const settlement = await materialization.settle(input)
     return {
       result: settlement.result,
-      output: settlement.output ? {
-        structured: settlement.output.structured,
-        content: settlement.output.content.map(c => ({ type: c.type, text: "text" in c ? c.text : undefined })),
-      } : undefined,
+      output: settlement.output
+        ? {
+            structured: settlement.output.structured,
+            content: settlement.output.content.map((c) => ({
+              type: c.type,
+              text: "text" in c ? c.text : undefined,
+            })),
+          }
+        : undefined,
     }
   }
 
@@ -113,16 +149,15 @@ export class ToolEnabledProvider {
     // Use cached tool instructions if available
     if (this.toolInstructionsCache === undefined) {
       const toolDefs = this.getToolDefinitions()
-      this.toolInstructionsCache = toolDefs.length > 0
-        ? `\n\nYou have access to the following tools:\n${toolDefs.map((t) => `- ${t.name}: ${t.description}`).join("\n")}\n\nTo use a tool, respond with a JSON block:\n\`\`\`tool\n{"name": "tool-name", "input": {...}}\n\`\`\``
-        : ""
+      this.toolInstructionsCache =
+        toolDefs.length > 0
+          ? `\n\nYou have access to the following tools:\n${toolDefs.map((t) => `- ${t.name}: ${t.description}`).join("\n")}\n\nTo use a tool, respond with a JSON block:\n\`\`\`tool\n{"name": "tool-name", "input": {...}}\n\`\`\``
+          : ""
     }
     const toolInstructions = this.toolInstructionsCache
 
     const enhancedMessages = messages.map((m, i) =>
-      i === 0 && m.role === "system"
-        ? { ...m, content: m.content + toolInstructions }
-        : m,
+      i === 0 && m.role === "system" ? { ...m, content: m.content + toolInstructions } : m,
     )
 
     const response = await this.provider.chat(enhancedMessages, options)
@@ -170,13 +205,17 @@ export class ToolEnabledProvider {
     // First attempt: direct parse
     try {
       return JSON.parse(raw)
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
 
     // Repair attempt 1: remove trailing commas
     try {
       const cleaned = raw.replace(/,\s*([}\]])/g, "$1")
       return JSON.parse(cleaned)
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
 
     // Repair attempt 2: fix single quotes → double quotes
     // Only when the input doesn't already contain double quotes (avoids
@@ -186,7 +225,9 @@ export class ToolEnabledProvider {
         const cleaned = raw.replace(/'/g, '"')
         return JSON.parse(cleaned)
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
 
     // Repair attempt 3: close truncated JSON
     try {
@@ -199,7 +240,9 @@ export class ToolEnabledProvider {
       for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += "]"
       for (let i = 0; i < openBraces - closeBraces; i++) fixed += "}"
       return JSON.parse(fixed)
-    } catch { /* give up */ }
+    } catch {
+      /* give up */
+    }
 
     return null
   }
@@ -241,10 +284,18 @@ export class ToolEnabledProvider {
     yield* this.provider.stream(messages, options)
   }
 
-  get id(): string { return this.provider.id }
-  get name(): string { return this.provider.name }
-  get defaultModel(): string { return this.provider.defaultModel }
-  isConfigured(): boolean { return this.provider.isConfigured() }
+  get id(): string {
+    return this.provider.id
+  }
+  get name(): string {
+    return this.provider.name
+  }
+  get defaultModel(): string {
+    return this.provider.defaultModel
+  }
+  isConfigured(): boolean {
+    return this.provider.isConfigured()
+  }
 }
 
 // ── Tool-Enabled Agent Context ──
@@ -364,10 +415,279 @@ export interface ToolLoopOptions {
    * with an error.
    */
   ownedFiles?: string[]
+  /**
+   * Tool execution mode (借鉴 pi).
+   * - "sequential": each tool call is prepared, executed, and finalized before the next one starts.
+   * - "parallel": tool calls are prepared sequentially, then allowed tools execute concurrently.
+   *   `tool_execution_end` is emitted in tool completion order after each tool is finalized,
+   *   while tool-result message artifacts are emitted later in assistant source order.
+   * Default: "sequential" (preserves existing behavior).
+   */
+  toolExecution?: ToolExecutionMode
+  /**
+   * Called before a tool is executed, after arguments have been validated (借鉴 pi).
+   *
+   * Return `{ block: true }` to prevent execution. The loop emits an error
+   * tool result instead. A blocked result can also set `terminate: true` to
+   * participate in the batch early-termination rule.
+   */
+  beforeToolCall?: (context: BeforeToolCallContext) => BeforeToolCallResult | undefined
+  /**
+   * Called after a tool finishes executing, before `tool_execution_end` is emitted (借鉴 pi).
+   *
+   * Return an `AfterToolCallResult` to override parts of the executed tool result:
+   * - `content` replaces the full content array
+   * - `details` replaces the full details payload
+   * - `isError` replaces the error flag
+   * - `usage` replaces the tool result usage
+   * - `terminate` replaces the early-termination hint
+   *
+   * Any omitted fields keep their original values.
+   */
+  afterToolCall?: (context: AfterToolCallContext) => AfterToolCallResult | undefined
 }
 
 /** Tools that write files and are subject to ownedFiles gating. */
 const FILE_WRITE_TOOLS = new Set(["write", "edit"])
+
+// ── Tool Execution Helpers (借鉴 pi) ──
+
+/**
+ * Execute tool calls sequentially (借鉴 pi).
+ * Each tool is prepared, executed, and finalized before the next one starts.
+ */
+async function executeToolCallsSequential(
+  provider: ToolEnabledProvider,
+  currentMessages: ChatMessage[],
+  toolCalls: ToolCall[],
+  options: ChatOptions & ToolLoopOptions,
+  round: number,
+  allToolCalls: ToolCall[],
+  toolBudget: { value: number },
+): Promise<void> {
+  for (const call of toolCalls) {
+    if (toolBudget.value <= 0) break
+    toolBudget.value--
+    const result = await executeSingleToolCall(provider, call, options, round)
+    if (result.skip) continue
+    currentMessages.push({
+      role: "user",
+      content: `[Tool Result: ${call.name}]\n${JSON.stringify(result.output, null, 2)}`,
+    })
+    allToolCalls.push(call)
+  }
+}
+
+/**
+ * Execute tool calls in parallel (借鉴 pi).
+ * Tools are prepared sequentially, then allowed tools execute concurrently.
+ * tool_execution_end is emitted in completion order, but tool-result messages
+ * are emitted in assistant source order.
+ */
+async function executeToolCallsParallel(
+  provider: ToolEnabledProvider,
+  currentMessages: ChatMessage[],
+  toolCalls: ToolCall[],
+  options: ChatOptions & ToolLoopOptions,
+  round: number,
+  allToolCalls: ToolCall[],
+  toolBudget: { value: number },
+): Promise<void> {
+  const results: Array<{ call: ToolCall; output: unknown; skip: boolean }> = []
+
+  for (const call of toolCalls) {
+    if (toolBudget.value <= 0) break
+    toolBudget.value--
+  }
+
+  // Execute all tools concurrently
+  const executions = toolCalls
+    .slice(0, (options.maxToolCalls ?? 30) - toolBudget.value)
+    .map((call) => executeSingleToolCall(provider, call, options, round))
+  const settled = await Promise.allSettled(executions)
+
+  for (let i = 0; i < settled.length; i++) {
+    const outcome = settled[i]
+    const call = toolCalls[i]
+    if (outcome.status === "rejected") {
+      results.push({ call, output: { error: String(outcome.reason) }, skip: false })
+    } else {
+      results.push({ call, output: outcome.value.output, skip: outcome.value.skip })
+    }
+  }
+
+  // Emit tool results in assistant source order
+  for (const { call, output, skip } of results) {
+    if (skip) continue
+    currentMessages.push({
+      role: "user",
+      content: `[Tool Result: ${call.name}]\n${JSON.stringify(output, null, 2)}`,
+    })
+    allToolCalls.push(call)
+  }
+}
+
+/**
+ * Execute a single tool call with before/after hooks (借鉴 pi).
+ * Returns the result output and whether the call was skipped/blocked.
+ */
+async function executeSingleToolCall(
+  provider: ToolEnabledProvider,
+  call: ToolCall,
+  options: ChatOptions & ToolLoopOptions,
+  round: number,
+): Promise<{ output: unknown; skip: boolean }> {
+  const startedAt = Date.now()
+
+  // beforeToolCall hook (借鉴 pi)
+  if (options.beforeToolCall) {
+    const beforeResult = options.beforeToolCall({
+      assistantMessage: {},
+      toolCall: call,
+      args: call.input,
+      context: {},
+    })
+    if (beforeResult?.block) {
+      const reason = beforeResult.reason ?? "Tool execution was blocked"
+      options.emitEvent?.({
+        type: "tool-end",
+        workspaceId: options.workspaceId ?? "",
+        taskId: options.taskId ?? "",
+        toolName: call.name,
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        error: reason,
+      })
+      options.onToolResult?.(call, { error: reason })
+      if (beforeResult.terminate) {
+        return { output: { error: reason }, skip: true }
+      }
+      return { output: { error: reason }, skip: false }
+    }
+  }
+
+  options.onToolCall?.(call)
+  options.emitEvent?.({
+    type: "tool-start",
+    workspaceId: options.workspaceId ?? "",
+    taskId: options.taskId ?? "",
+    toolName: call.name,
+    input: call.input,
+  })
+
+  let ok = true
+  let errorMessage: string | undefined
+  let result: Awaited<ReturnType<typeof provider.executeTool>> | undefined
+
+  // Tool cache lookup (借鉴 crewAI)
+  let cacheHit = false
+  if (options.toolCache) {
+    const cacheKey = `${call.name}|${stableStringify(call.input)}`
+    const cached = options.toolCache.get(cacheKey)
+    if (cached !== undefined) {
+      result = { result: cached } as typeof result
+      cacheHit = true
+    }
+  }
+
+  try {
+    // ownedFiles permission gate
+    if (options.ownedFiles && options.ownedFiles.length > 0 && FILE_WRITE_TOOLS.has(call.name)) {
+      const input = call.input as Record<string, unknown>
+      const filePath = typeof input?.path === "string" ? input.path : undefined
+      if (filePath) {
+        const isOwned = options.ownedFiles.some((prefix) => filePath.startsWith(prefix))
+        if (!isOwned) {
+          throw new Error(
+            `File "${filePath}" is not in task's ownedFiles: [${options.ownedFiles.join(", ")}]`,
+          )
+        }
+      }
+    }
+    if (!cacheHit) {
+      result = await provider.executeTool(call, {
+        sessionID: "default",
+        agent: "agent",
+        assistantMessageID: `msg-${round}`,
+      })
+    }
+  } catch (err) {
+    if (isPermissionRequestError(err) && options.awaitPermission) {
+      const reqErr = err
+      options.emitEvent?.({
+        type: "permission-request",
+        workspaceId: options.workspaceId ?? "",
+        taskId: options.taskId ?? "",
+        requestId: reqErr.requestId,
+        tool: reqErr.tool,
+        target: reqErr.target,
+      })
+      await options.awaitPermission(reqErr.requestId, {
+        workspaceId: options.workspaceId ?? "",
+        taskId: options.taskId ?? "",
+        tool: reqErr.tool,
+        target: reqErr.target,
+      })
+      result = await provider.executeTool(call, {
+        sessionID: "default",
+        agent: "agent",
+        assistantMessageID: `msg-${round}`,
+      })
+    } else {
+      ok = false
+      errorMessage = err instanceof Error ? err.message : String(err)
+      options.emitEvent?.({
+        type: "tool-end",
+        workspaceId: options.workspaceId ?? "",
+        taskId: options.taskId ?? "",
+        toolName: call.name,
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        error: errorMessage,
+      })
+      throw err
+    }
+  }
+
+  // Cache write
+  if (ok && result && options.toolCache) {
+    const cacheKey = `${call.name}|${stableStringify(call.input)}`
+    options.toolCache.set(cacheKey, result.result)
+  }
+
+  if (!result) {
+    return { output: { error: "No result" }, skip: false }
+  }
+
+  let output = result.output?.structured ?? result.result
+
+  // afterToolCall hook (借鉴 pi)
+  if (options.afterToolCall) {
+    const afterResult = options.afterToolCall({
+      assistantMessage: {},
+      toolCall: call,
+      args: call.input,
+      result,
+      isError: !ok,
+      context: {},
+    })
+    if (afterResult) {
+      output = afterResult.content ?? output
+    }
+  }
+
+  options.onToolResult?.(call, output)
+  options.emitEvent?.({
+    type: "tool-end",
+    workspaceId: options.workspaceId ?? "",
+    taskId: options.taskId ?? "",
+    toolName: call.name,
+    ok: true,
+    durationMs: Date.now() - startedAt,
+  })
+
+  return { output, skip: false }
+}
 
 /**
  * Run a tool execution loop: send messages, execute tool calls, repeat.
@@ -382,8 +702,8 @@ export async function runToolLoop(
   const maxToolCalls = options.maxToolCalls ?? 30
   const refundOnProgress = options.refundOnProgress ?? false
   const allToolCalls: ToolCall[] = []
-  let toolBudget = maxToolCalls
-  let currentMessages = [...messages]
+  const toolBudget = { value: maxToolCalls }
+  const currentMessages = [...messages]
 
   for (let round = 0; round < maxRounds; round++) {
     // Steering injection (借鉴 openclaw): if external messages are pending,
@@ -410,7 +730,11 @@ export async function runToolLoop(
       if (options.getFollowUpMessages) {
         const followUps = options.getFollowUpMessages()
         if (followUps && followUps.length > 0) {
-          const followUpMessages = [...currentMessages, { role: "assistant" as const, content: response.content }, ...followUps]
+          const followUpMessages = [
+            ...currentMessages,
+            { role: "assistant" as const, content: response.content },
+            ...followUps,
+          ]
           const followUpResponse = await provider.chat(followUpMessages, options)
           return { response: followUpResponse, allToolCalls }
         }
@@ -419,11 +743,11 @@ export async function runToolLoop(
     }
 
     // Check budget before executing tool calls
-    if (response.toolCalls.length > toolBudget) {
+    if (response.toolCalls.length > toolBudget.value) {
       // Truncate to remaining budget
-      response.toolCalls.length = toolBudget
+      response.toolCalls.length = toolBudget.value
     }
-    if (toolBudget <= 0) {
+    if (toolBudget.value <= 0) {
       return { response, allToolCalls }
     }
 
@@ -433,144 +757,59 @@ export async function runToolLoop(
       role: "assistant",
       content: response.content,
     })
-    for (const call of response.toolCalls) {
-      if (toolBudget <= 0) break
-      toolBudget--
 
-      options.onToolCall?.(call)
-      if (options.emitEvent && options.workspaceId && options.taskId) {
-        options.emitEvent({
-          type: "tool-start",
-          workspaceId: options.workspaceId,
-          taskId: options.taskId,
-          toolName: call.name,
-          input: call.input,
-        })
-      }
-
-      const startedAt = Date.now()
-      let ok = true
-      let errorMessage: string | undefined
-      let result: Awaited<ReturnType<typeof provider.executeTool>> | undefined
-      // Tool cache lookup (借鉴 crewAI cache_handler): if the same
-      // tool+input has been called before in this loop, return the
-      // cached output without re-executing.
-      let cacheHit = false
-      if (options.toolCache) {
-        const cacheKey = `${call.name}|${stableStringify(call.input)}`
-        const cached = options.toolCache.get(cacheKey)
-        if (cached !== undefined) {
-          result = { result: cached } as typeof result
-          cacheHit = true
-        }
-      }
-      try {
-        // ownedFiles permission gate: enforce write/edit tools only touch owned paths
-        if (options.ownedFiles && options.ownedFiles.length > 0 && FILE_WRITE_TOOLS.has(call.name)) {
-          const input = call.input as Record<string, unknown>
-          const filePath = typeof input?.path === "string" ? input.path : undefined
-          if (filePath) {
-            const isOwned = options.ownedFiles.some(prefix => filePath.startsWith(prefix))
-            if (!isOwned) {
-              throw new Error(
-                `File "${filePath}" is not in task's ownedFiles: [${options.ownedFiles.join(", ")}]`,
-              )
-            }
-          }
-        }
-        if (!cacheHit) {
-          result = await provider.executeTool(call, {
-            sessionID: "default",
-            agent: "agent",
-            assistantMessageID: `msg-${round}`,
-          })
-        }
-      } catch (err) {
-        // Permission gate: the user (or default policy) said "ask". Park the
-        // call until the runtime's awaitPermission promise resolves. If no
-        // awaitPermission is provided, treat it as a deny to keep the loop
-        // bounded.
-        if (isPermissionRequestError(err) && options.awaitPermission) {
-          const reqErr = err
-          options.emitEvent?.({
-            type: "permission-request",
-            workspaceId: options.workspaceId ?? "",
-            taskId: options.taskId ?? "",
-            requestId: reqErr.requestId,
-            tool: reqErr.tool,
-            target: reqErr.target,
-          })
-          const decision = await options.awaitPermission(reqErr.requestId, {
-            workspaceId: options.workspaceId ?? "",
-            taskId: options.taskId ?? "",
-            tool: reqErr.tool,
-            target: reqErr.target,
-          })
-          // Re-execute with the user's decision (allow or deny). The gate
-          // now has the new config; on "deny" the executor raises
-          // PermissionDeniedError which we surface below.
-          result = await provider.executeTool(call, {
-            sessionID: "default",
-            agent: "agent",
-            assistantMessageID: `msg-${round}`,
-          })
-        } else {
-          ok = false
-          errorMessage = err instanceof Error ? err.message : String(err)
-          if (options.emitEvent && options.workspaceId && options.taskId) {
-            options.emitEvent({
-              type: "tool-end",
-              workspaceId: options.workspaceId,
-              taskId: options.taskId,
-              toolName: call.name,
-              ok: false,
-              durationMs: Date.now() - startedAt,
-              error: errorMessage,
-            })
-          }
-          throw err
-        }
-      }
-
-      // Write successful results to the cache (after the gate so denied
-      // calls don't pollute it). Cache misses return undefined and are
-      // skipped by the read path.
-      if (ok && result && options.toolCache) {
-        const cacheKey = `${call.name}|${stableStringify(call.input)}`
-        options.toolCache.set(cacheKey, result.result)
-      }
-
-      if (!result) {
-        // Defensive: the catch block either re-throws or assigns result
-        // via the permission re-execute. Reaching here means we got
-        // neither — bail rather than dereference undefined.
-        break
-      }
-
-      options.onToolResult?.(call, result.result)
-      allToolCalls.push(call)
-
-      if (options.emitEvent && options.workspaceId && options.taskId) {
-        options.emitEvent({
+    // Truncated message safety (借鉴 pi): when stopReason === "length", the
+    // output was cut off by the token limit so every tool call in the
+    // message may carry truncated arguments. Fail them all instead of
+    // executing potentially incomplete calls.
+    if (response.stopReason === "length") {
+      for (const call of response.toolCalls) {
+        const errorMsg = `Tool call "${call.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`
+        options.emitEvent?.({
           type: "tool-end",
-          workspaceId: options.workspaceId,
-          taskId: options.taskId,
+          workspaceId: options.workspaceId ?? "",
+          taskId: options.taskId ?? "",
           toolName: call.name,
-          ok: true,
-          durationMs: Date.now() - startedAt,
+          ok: false,
+          durationMs: 0,
+          error: errorMsg,
         })
+        currentMessages.push({
+          role: "user",
+          content: `[Tool Result: ${call.name}]\n${JSON.stringify({ error: errorMsg })}`,
+        })
+        allToolCalls.push(call)
       }
+    } else {
+      // Determine execution mode
+      const execMode: ToolExecutionMode = options.toolExecution ?? "sequential"
 
-      // Add tool result to messages
-      currentMessages.push({
-        role: "user",
-        content: `[Tool Result: ${call.name}]\n${JSON.stringify(result.output?.structured ?? result.result, null, 2)}`,
-      })
+      if (execMode === "parallel") {
+        await executeToolCallsParallel(
+          provider,
+          currentMessages,
+          response.toolCalls,
+          options,
+          round,
+          allToolCalls,
+          toolBudget,
+        )
+      } else {
+        await executeToolCallsSequential(
+          provider,
+          currentMessages,
+          response.toolCalls,
+          options,
+          round,
+          allToolCalls,
+          toolBudget,
+        )
+      }
     }
 
     // Refund one tool call if the LLM made progress (hermes-agent pattern)
-    if (refundOnProgress && response.toolCalls.length > 0 && toolBudget < maxToolCalls) {
-      toolBudget = Math.min(toolBudget + 1, maxToolCalls)
+    if (refundOnProgress && response.toolCalls.length > 0 && toolBudget.value < maxToolCalls) {
+      toolBudget.value = Math.min(toolBudget.value + 1, maxToolCalls)
     }
   }
 
@@ -584,7 +823,11 @@ export async function runToolLoop(
   if (options.getFollowUpMessages) {
     const followUps = options.getFollowUpMessages()
     if (followUps && followUps.length > 0) {
-      const followUpMessages = [...currentMessages, { role: "assistant" as const, content: finalResponse.content }, ...followUps]
+      const followUpMessages = [
+        ...currentMessages,
+        { role: "assistant" as const, content: finalResponse.content },
+        ...followUps,
+      ]
       const followUpResponse = await provider.chat(followUpMessages, options)
       return { response: followUpResponse, allToolCalls }
     }
@@ -620,9 +863,10 @@ function levenshtein(a: string, b: string): number {
   for (let j = 0; j <= n; j++) dp[0]![j] = j
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      dp[i]![j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1]![j - 1]!
-        : 1 + Math.min(dp[i - 1]![j]!, dp[i]![j - 1]!, dp[i - 1]![j - 1]!)
+      dp[i]![j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1]![j - 1]!
+          : 1 + Math.min(dp[i - 1]![j]!, dp[i]![j - 1]!, dp[i - 1]![j - 1]!)
     }
   }
   return dp[m]![n]!

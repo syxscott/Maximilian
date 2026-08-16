@@ -48,7 +48,11 @@ export {
 // TodoList state machine (借鉴 opencode - SessionTodo)
 export { TodoStore } from "./todo.js"
 // OpencodeExecutor: Phase 2 — Maximilian Task → opencode serve 适配器
-export { OpencodeExecutor, type OpencodeExecutorOptions, type ExecuteResult } from "./opencode-executor.js"
+export {
+  OpencodeExecutor,
+  type OpencodeExecutorOptions,
+  type ExecuteResult,
+} from "./opencode-executor.js"
 // SkillDiscovery (借鉴 opencode - SkillDiscovery)
 export {
   pullSkillIndex,
@@ -257,3 +261,7 @@ export type {
   TeamOrchestratorOptions,
   TeamOrchestratorEvent,
 } from "./team-orchestrator.js"
+
+// Session export (borrowed from pi export-html template)
+export { exportSessionToHtml } from "./session-export.js"
+export type { ExportSessionOptions } from "./session-export.js"

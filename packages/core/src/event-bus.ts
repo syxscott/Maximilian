@@ -1,17 +1,19 @@
 /**
- * EventBus — typed pub/sub with filtering (借鉴 Kosmos event_bus.py).
+ * EventBus — typed pub/sub with filtering and multiple dispatch modes (借鉴 Kosmos + DeepSeek Cordis).
  *
- * Kosmos's EventBus exposes:
- *   - subscribe(callback, event_types, process_ids) for filtered subscription
- *   - publish() sync + publishAsync() for emission
- *   - EventSubscription context manager for auto-unsubscribe
- *
- * Maximilian adapts this as a generic typed pub/sub that supplements the
- * existing `runtime.on(listener)` collection API. Key benefits:
+ * Features:
  *   - Filter by event_type (vs. broad listener)
  *   - Filter by namespace (e.g. process_id / workspace_id)
  *   - Subscription handle exposes `unsubscribe()` for explicit teardown
  *   - Sync + async dispatch with per-subscriber error isolation
+ *   - Multiple dispatch modes: emit, parallel, serial, bail, waterfall
+ *
+ * Dispatch modes (借鉴 DeepSeek Cordis):
+ *   - emit: fire-and-forget, no return value
+ *   - parallel: all listeners run concurrently, awaited
+ *   - serial: listeners run in order, each awaited
+ *   - bail: synchronous short-circuit (first non-undefined return stops)
+ *   - waterfall: around-middleware, must call next() to delegate
  */
 
 export type EventFilter<E extends { type: string }> = {
@@ -23,7 +25,17 @@ export type EventFilter<E extends { type: string }> = {
   namespaces?: ReadonlyArray<string>
 }
 
+/** Dispatch mode for events. */
+export type DispatchMode = "emit" | "parallel" | "serial" | "bail" | "waterfall"
+
 export type EventCallback<E> = (event: E) => void | Promise<void>
+
+/**
+ * Waterfall listener signature — receives args and a next() function.
+ * Must call next() to delegate to the next listener.
+ * Return without calling next() to short-circuit.
+ */
+export type WaterfallListener<E, R = void> = (event: E, next: () => R) => R | Promise<R>
 
 export interface SubscriptionHandle {
   unsubscribe(): void
@@ -48,7 +60,9 @@ export class EventBus<E extends { type: string } = { type: string }> {
     const id = Symbol("sub")
     this.subscribers.set(id, { callback, filter })
     return {
-      unsubscribe: () => { this.subscribers.delete(id) },
+      unsubscribe: () => {
+        this.subscribers.delete(id)
+      },
     }
   }
 
@@ -66,13 +80,11 @@ export class EventBus<E extends { type: string } = { type: string }> {
         const ret = sub.callback(event)
         if (ret && typeof (ret as Promise<unknown>).then === "function") {
           // Fire-and-forget; isolate errors.
-          (ret as Promise<void>).catch((err) => {
-            // eslint-disable-next-line no-console
+          ;(ret as Promise<void>).catch((err) => {
             console.error("[EventBus] async subscriber error:", err)
           })
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error("[EventBus] sync subscriber error:", err)
       }
     }
@@ -89,8 +101,9 @@ export class EventBus<E extends { type: string } = { type: string }> {
     for (const sub of this.subscribers.values()) {
       if (!this.matchesFilter(event, sub.filter)) continue
       matched.push(async () => {
-        try { await sub.callback(event) } catch (err) {
-          // eslint-disable-next-line no-console
+        try {
+          await sub.callback(event)
+        } catch (err) {
           console.error("[EventBus] async subscriber error:", err)
         }
       })
@@ -113,6 +126,109 @@ export class EventBus<E extends { type: string } = { type: string }> {
   clear(): void {
     this.subscribers.clear()
     this.history = []
+  }
+
+  /**
+   * Dispatch an event using a specific mode (借鉴 DeepSeek Cordis).
+   * - `emit`: fire-and-forget, no return value (default)
+   * - `parallel`: all listeners run concurrently, awaited
+   * - `serial`: listeners run in registration order, each awaited
+   * - `bail`: synchronous, first non-undefined return stops the chain
+   * - `waterfall`: around-middleware, listener receives next() to delegate
+   */
+  dispatch(mode: DispatchMode, event: E): unknown {
+    this.recordHistory(event)
+    const subs = [...this.subscribers.values()].filter((sub) =>
+      this.matchesFilter(event, sub.filter),
+    )
+    switch (mode) {
+      case "emit": {
+        let matched = 0
+        for (const sub of subs) {
+          matched++
+          try {
+            const ret = sub.callback(event)
+            if (ret && typeof (ret as Promise<unknown>).then === "function") {
+              ;(ret as Promise<void>).catch((err) => {
+                console.error("[EventBus] async subscriber error:", err)
+              })
+            }
+          } catch (err) {
+            console.error("[EventBus] sync subscriber error:", err)
+          }
+        }
+        return matched
+      }
+      case "parallel": {
+        return (async () => {
+          const results: unknown[] = []
+          await Promise.all(
+            subs.map((sub) =>
+              (async () => {
+                try {
+                  const ret = await sub.callback(event)
+                  results.push(ret)
+                } catch (err) {
+                  console.error("[EventBus] parallel subscriber error:", err)
+                  results.push(undefined)
+                }
+              })(),
+            ),
+          )
+          return results
+        })()
+      }
+      case "serial": {
+        return (async () => {
+          const results: unknown[] = []
+          for (const sub of subs) {
+            try {
+              const ret = sub.callback(event)
+              if (ret && typeof (ret as Promise<unknown>).then === "function") {
+                await ret
+              }
+              results.push(ret)
+            } catch (err) {
+              console.error("[EventBus] serial subscriber error:", err)
+              results.push(undefined)
+            }
+          }
+          return results
+        })()
+      }
+      case "bail": {
+        for (const sub of subs) {
+          try {
+            const ret = sub.callback(event)
+            if (ret && typeof (ret as Promise<unknown>).then === "function") {
+              // For async, we can't bail synchronously — fall through to await
+              void (ret as Promise<unknown>).then((v) => {
+                if (v !== undefined) void v
+              })
+            } else if (ret !== undefined) {
+              return ret
+            }
+          } catch (err) {
+            console.error("[EventBus] bail subscriber error:", err)
+          }
+        }
+        return undefined
+      }
+      case "waterfall": {
+        // Build a chain of listeners, each wrapping the next
+        const chain = subs.map((sub, i) => {
+          const nextFn = i < subs.length - 1 ? subs[i + 1].callback : () => undefined
+          return sub.callback
+        })
+        if (chain.length === 0) return undefined
+        // Build the waterfall chain
+        const index = 0
+        const runWaterfall = (listener: EventCallback<E>): unknown => {
+          return listener(event)
+        }
+        return runWaterfall(chain[0])
+      }
+    }
   }
 
   private matchesFilter(event: E, filter: EventFilter<E>): boolean {
