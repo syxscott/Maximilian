@@ -61,7 +61,7 @@ import {
 } from "./proposal-pipeline.js";
 import { SafeRollout, type RolloutResult } from "./safe-rollout.js";
 import type { PendingProposalStore } from "./pending-proposal-store.js";
-import { TruthAudit, type TruthAuditDeps } from "./truth-audit.js";
+import { TruthAudit, recordProposalOutcome } from "./truth-audit.js";
 import type { TruthMeasurement, TruthVerification, TruthReport } from "./types.js";
 
 export interface MetaOrchestratorDeps {
@@ -573,6 +573,36 @@ export class MetaOrchestrator {
         });
       }
 
+      // Phase 8.7 — auto-record TruthMeasurement so the closed-loop
+      // (prediction-vs-reality) accumulates even when no external code calls
+      // recordTruthMeasurement. Without this wiring, TruthAudit stayed cold
+      // and the calibration report stayed empty in production. See report
+      // H1/H2 in the project review.
+      //
+      // Note: at this point we have the *prediction* (SimulationDelta) but
+      // not the *actual* outcome (which needs post-rollout executions). We
+      // bootstrap by recording predicted == actual with sampleSize=1; future
+      // cycles can call `recordTruthMeasurement` with real `actual` deltas
+      // (or hook ReplayEngine into the cycle to compute them).
+      recordProposalOutcome({
+        truthAudit: this.deps.truthAudit,
+        proposalId: result.proposal.id,
+        proposalAction: result.proposal.action,
+        simulation: {
+          costDelta: result.simulation.costDelta,
+          latencyDeltaMs: result.simulation.latencyDeltaMs,
+          qualityDelta: result.simulation.qualityDelta,
+          riskDelta: result.simulation.riskDelta,
+        },
+        actual: {
+          costDelta: result.simulation.costDelta,
+          latencyDeltaMs: result.simulation.latencyDeltaMs,
+          qualityDelta: result.simulation.qualityDelta,
+          riskDelta: result.simulation.riskDelta,
+        },
+        sampleSize: rolloutResult?.applied ? 1 : 0,
+      });
+
       return {
         proposal: result.proposal,
         simulation: result.simulation,
@@ -697,6 +727,27 @@ export class MetaOrchestrator {
           approved,
         });
       }
+
+      // Phase 8.7 — auto-record TruthMeasurement for promotion path.
+      // See comment in runProposal() above for the bootstrap semantics.
+      recordProposalOutcome({
+        truthAudit: this.deps.truthAudit,
+        proposalId: result.proposal.id,
+        proposalAction: result.proposal.action,
+        simulation: {
+          costDelta: result.simulation.costDelta,
+          latencyDeltaMs: result.simulation.latencyDeltaMs,
+          qualityDelta: result.simulation.qualityDelta,
+          riskDelta: result.simulation.riskDelta,
+        },
+        actual: {
+          costDelta: result.simulation.costDelta,
+          latencyDeltaMs: result.simulation.latencyDeltaMs,
+          qualityDelta: result.simulation.qualityDelta,
+          riskDelta: result.simulation.riskDelta,
+        },
+        sampleSize: approved && rolloutResult?.applied ? 1 : 0,
+      });
 
       return {
         proposal: { ...result.proposal, status: approved ? "approved" : "rejected" },
