@@ -1,0 +1,9 @@
+{
+  "_comment": "Phase 12 baseline. Provisional — replace after first nightly load.yml run on main. Uses stub provider (OPENAI_API_KEY=sk-fake) so this measures Maximilian overhead, not real LLM latency.",
+  "p95_ms": 1800,
+  "endpoint": "POST /api/chat (stub provider)",
+  "v_us": 10,
+  "duration_s": 20,
+  "measured_at": "2026-08-18",
+  "commit": "ed68f05"
+}

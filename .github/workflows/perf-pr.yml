@@ -95,33 +95,56 @@ jobs:
           k6 run \
             --vus 20 \
             --duration 30s \
-            --summary-export=perf-summary.json \
+            --summary-export=perf-summary-read.json \
             benchmarks/load/k6-read.js
+          # Phase 12 — also exercise the chat path (POST /api/chat) since
+          # that's the latency-sensitive endpoint for the SLO-2 P95 ≤ 2s
+          # budget. The chat script uses the fake OPENAI_API_KEY which
+          # short-circuits to a stub provider, so we're measuring
+          # Maximilian overhead not LLM latency.
+          k6 run \
+            --vus 10 \
+            --duration 20s \
+            --summary-export=perf-summary-chat.json \
+            benchmarks/load/k6-chat.js
 
       - name: Compare to baseline
         id: compare
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Fetch the most recent perf-summary.json from main
-          BASELINE_URL="https://raw.githubusercontent.com/${{ github.repository }}/main/benchmarks/load/baselines/p95-read-ms.json"
-          BASELINE=$(curl -sf "$BASELINE_URL" || echo '{"p95_ms": 200}')
-          BASELINE_P95=$(echo "$BASELINE" | jq -r '.p95_ms // 200')
-          CURRENT_P95=$(jq -r '.metrics.http_req_duration.values["p(95)"] // 99999' perf-summary.json)
-          DELTA=$(echo "scale=1; ($CURRENT_P95 - $BASELINE_P95) / $BASELINE_P95 * 100" | bc)
-          echo "baseline=${BASELINE_P95}ms current=${CURRENT_P95}ms delta=${DELTA}%"
-          echo "delta=${DELTA}" >> "$GITHUB_OUTPUT"
-          if (( $(echo "$DELTA > 20" | bc -l) )); then
-            echo "::error::perf regression > 20% (${DELTA}%)"
-            exit 1
-          fi
+          # Phase 12 — compare both read and chat p95. Each script has
+          # its own baseline file. A regression in either fails the
+          # check.
+          compare_script() {
+            local summary=$1
+            local baseline_path=$2
+            local label=$3
+            local baseline_url="https://raw.githubusercontent.com/${{ github.repository }}/main/benchmarks/load/baselines/${baseline_path}"
+            local baseline_p95
+            baseline_p95=$(curl -sf "$baseline_url" | jq -r '.p95_ms // 99999')
+            local current_p95
+            current_p95=$(jq -r '.metrics.http_req_duration.values["p(95)"] // 99999' "$summary")
+            local delta
+            delta=$(echo "scale=1; ($current_p95 - $baseline_p95) / $baseline_p95 * 100" | bc)
+            echo "${label}: baseline=${baseline_p95}ms current=${current_p95}ms delta=${delta}%"
+            echo "${label}_delta=${delta}" >> "$GITHUB_OUTPUT"
+            if (( $(echo "$delta > 20" | bc -l) )); then
+              echo "::error::perf regression > 20% on ${label} (${delta}%)"
+              return 1
+            fi
+          }
+          compare_script perf-summary-read.json p95-read-ms.json read
+          compare_script perf-summary-chat.json p95-chat-ms.json chat
 
       - name: Upload summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: perf-summary
-          path: perf-summary.json
+          path: |
+            perf-summary-read.json
+            perf-summary-chat.json
           retention-days: 14
 
       - name: Comment on PR
