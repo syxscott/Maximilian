@@ -201,7 +201,12 @@ export class OpencodeDagExecutor {
           return
         }
         try {
-          const res = await executor.executeTask(task, workspaceId)
+          // M2-fix: pass the abort signal so an aborted DAG run
+          // cancels the in-flight opencode session via
+          // OpencodeSdk.abortSession (set up inside the executor).
+          // Without this, onAbort() would only flip the local flag —
+          // the opencode server would keep running the LLM call.
+          const res = await executor.executeTask(task, workspaceId, signal ?? undefined)
           sessionId = res.sessionId
           const finished: TaskResult = {
             taskId: task.id,

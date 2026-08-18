@@ -160,6 +160,20 @@ describe("OpencodeAcpAdapter", () => {
     expect(payload.taskId).toBe("task-1");
   });
 
+  it("H7 regression: runSend rejects when taskId/messageId/id are all missing", async () => {
+    // H7-fix: previously the adapter fell back to `translation.agent`
+    // when no explicit ID was provided, which silently invented a
+    // taskId and collapsed unrelated A2A requests. Now it rejects.
+    const dryAdapter = new OpencodeAcpAdapter({ client, eventBus: bus, dryRun: true });
+    const msg = makeSendMsg();
+    // Strip every ID source the adapter looks at.
+    msg.params.taskId = undefined;
+    msg.params.messageId = undefined;
+    msg.id = "";
+
+    await expect(dryAdapter.runSend(msg)).rejects.toThrow(/missing taskId/);
+  });
+
   // ── runSend (live, mocked) ──────────────────────────────────────────
 
   it("runSend creates a session, sends the prompt, and reports completed status", async () => {

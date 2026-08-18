@@ -1504,42 +1504,73 @@ export class AgentRuntime {
           let final: Awaited<ReturnType<typeof agent.submitResult>> | undefined
           if (this.opencodeExecutor) {
             const workspaceId = workspace.id
-            const out = await raceWithAbort(
-              this.opencodeExecutor.executeTask(task, workspaceId),
-              ctx.signal,
-              workspace.id,
-            )
-            final = out.result
-            lastActionRef.toolName = "opencode-session"
-            lastActionRef.input = { sessionId: out.sessionId, durationMs: out.durationMs }
-            // Skip the in-process execution paths below.
-            // (fall through to result handling)
-          } else if (toolProvider) {
-            final = await raceWithAbort(
-              runToolLoopAndSubmit(
-                agent,
-                task,
-                ctx,
-                toolProvider,
+            // H5-fix: if opencode sidecar is unreachable (connection
+            // refused, timeout, 5xx), fall through to the in-process
+            // paths below so the task doesn't silently die. We treat
+            // opencode as a *preferred* executor, not a hard
+            // dependency — until Phase 4 removes the in-process paths.
+            let opencodeFailed = false
+            try {
+              const out = await raceWithAbort(
+                this.opencodeExecutor.executeTask(task, workspaceId),
+                ctx.signal,
                 workspace.id,
-                this.emit.bind(this),
-                (requestId, meta) => this.awaitPermission(requestId, meta),
-                lastActionRef,
-                this.getSteeringMessages.bind(this),
-                this.getFollowUpMessages.bind(this),
-                undefined, // toolExecution (借鉴 pi)
-                undefined, // beforeToolCall (借鉴 pi)
-                undefined, // afterToolCall (借鉴 pi)
-              ),
-              ctx.signal,
-              workspace.id,
-            )
-          } else {
-            final = await raceWithAbort(
-              agent.execute(task, ctx).then((r) => agent.submitResult(r)),
-              ctx.signal,
-              workspace.id,
-            )
+              )
+              final = out.result
+              lastActionRef.toolName = "opencode-session"
+              lastActionRef.input = { sessionId: out.sessionId, durationMs: out.durationMs }
+              // Skip the in-process execution paths below on success.
+              // (fall through to result handling)
+            } catch (err) {
+              // Distinguish abort from opencode failure: if the runtime
+              // was aborted, propagate the abort; otherwise fall back.
+              if ((err as Error)?.name === "AbortError" || ctx.signal?.aborted) {
+                throw err
+              }
+              log.warn(
+                { err, taskId: task.id, workspaceId },
+                "opencode executor failed; falling back to in-process execution",
+              )
+              opencodeFailed = true
+            }
+            if (!opencodeFailed && final !== undefined) {
+              // Success path — skip in-process execution.
+              // (controlled by the opencodeFailed flag)
+            } else if (!opencodeFailed) {
+              // final is undefined (shouldn't happen if no exception)
+              throw new Error("opencode executor returned no result without erroring")
+            }
+          }
+          // In-process fallback (Phase 3): if opencode failed or isn't
+          // configured, route through agent's tool loop or plain execute.
+          if (final === undefined) {
+            if (toolProvider) {
+              final = await raceWithAbort(
+                runToolLoopAndSubmit(
+                  agent,
+                  task,
+                  ctx,
+                  toolProvider,
+                  workspace.id,
+                  this.emit.bind(this),
+                  (requestId, meta) => this.awaitPermission(requestId, meta),
+                  lastActionRef,
+                  this.getSteeringMessages.bind(this),
+                  this.getFollowUpMessages.bind(this),
+                  undefined, // toolExecution (借鉴 pi)
+                  undefined, // beforeToolCall (借鉴 pi)
+                  undefined, // afterToolCall (借鉴 pi)
+                ),
+                ctx.signal,
+                workspace.id,
+              )
+            } else {
+              final = await raceWithAbort(
+                agent.execute(task, ctx).then((r) => agent.submitResult(r)),
+                ctx.signal,
+                workspace.id,
+              )
+            }
           }
           if (!final) {
             throw new Error(

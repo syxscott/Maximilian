@@ -70,8 +70,20 @@ export class OpencodeExecutor {
    * 提交 task 到 opencode 并等待响应。
    *
    * 当前实现是同步 sendPrompt(non-streaming);Phase 3 升级为 streaming + 实时事件。
+   *
+   * @param signal Optional AbortSignal — M2-fix: when the runtime (or
+   *               the DAG executor) aborts a task, we propagate the
+   *               abort into the opencode session via
+   *               `OpencodeSdk.abortSession` so the in-flight LLM call
+   *               is cancelled and the session isn't leaked server-side.
+   *               Without this, an aborted task would still be running
+   *               in opencode until natural completion, burning tokens.
    */
-  async executeTask(task: Task, workspaceId: string): Promise<ExecuteResult> {
+  async executeTask(
+    task: Task,
+    workspaceId: string,
+    signal?: AbortSignal,
+  ): Promise<ExecuteResult> {
     const t0 = Date.now()
     // 1. 取得/创建 opencode session
     const entry = this.usePool
@@ -82,12 +94,40 @@ export class OpencodeExecutor {
         }
     const sessionId = entry.session.id
 
+    // M2-fix: when the runtime aborts, ask opencode to abort the
+    // in-flight session so the LLM call doesn't keep burning tokens
+    // server-side. The fire-and-forget pattern is intentional — we
+    // don't want abort handling to delay the AbortError surface to
+    // the caller.
+    let abortHandler: (() => void) | undefined
+    if (signal) {
+      if (signal.aborted) {
+        // Already aborted before we even started — short-circuit
+        throw new DOMException("opencode execute aborted", "AbortError")
+      }
+      abortHandler = () => {
+        void OpencodeSdk.abortSession(this.client, sessionId).catch(() => {
+          // Swallow: the in-flight LLM call will return its error
+          // anyway, and abortSession may fail if the session already
+          // settled. Best-effort cleanup.
+        })
+      }
+      signal.addEventListener("abort", abortHandler, { once: true })
+    }
+
     // 2. 把 task 翻译成 opencode prompt
     const prompt = `${task.description}`
     // 3. 调 opencode SDK
-    const res = await OpencodeSdk.sendPrompt(this.client, sessionId, {
-      parts: [{ type: "text", text: prompt }],
-    })
+    let res: any
+    try {
+      res = await OpencodeSdk.sendPrompt(this.client, sessionId, {
+        parts: [{ type: "text", text: prompt }],
+      })
+    } finally {
+      if (signal && abortHandler) {
+        signal.removeEventListener("abort", abortHandler)
+      }
+    }
 
     // 4. 提取 assistant 文本作为 Maximilian result
     const outputText = (res.parts ?? [])
@@ -96,13 +136,28 @@ export class OpencodeExecutor {
       .join("\n")
       .trim()
 
+    // M1-fix: when opencode returns no parts at all, the previous
+    // behavior stuffed "(empty response from opencode)" into the
+    // output text, which then looks like a real (if useless) answer
+    // to downstream consumers (review tasks, commander replan, etc.).
+    // A sentinel string in `output` is indistinguishable from a real
+    // short response. Move the signal to `metadata.error` instead
+    // so callers can detect it structurally without parsing the
+    // output. The empty output is preserved verbatim (empty string)
+    // so the result shape stays consistent.
     const result: Result = {
       id: `r-${task.id}`,
       taskId: task.id,
       agentRole: task.agentRole,
       agentId: "opencode-serve",
-      output: outputText || "(empty response from opencode)",
-      metadata: { sessionId, executor: "opencode" },
+      output: outputText,
+      metadata: {
+        sessionId,
+        executor: "opencode",
+        ...(outputText.length === 0
+          ? { error: "opencode returned no text parts" }
+          : {}),
+      },
       createdAt: new Date().toISOString(),
       durationMs: Date.now() - t0,
     }
