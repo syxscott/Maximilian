@@ -189,7 +189,12 @@ describe("OpencodePermissionTranslator.toMaximilianToolInput", () => {
     expect(result.target).toBe("/var/log/app.log");
   });
 
-  it("unknown action falls back to bash", () => {
+  it("unknown action returns null tool so caller can fail-closed (H2 regression)", () => {
+    // H2-fix: an unknown opencode tool name must NOT silently route to
+    // bash. The previous behavior masked tools that didn't match bash's
+    // dangerous-pattern check (e.g. an MCP tool with no command field
+    // would fall through to `bash: "ask"`). The caller now sees
+    // `tool: null` and is expected to deny.
     const event: OpencodePermissionAskedEvent = {
       type: "permission.v2.asked",
       id: "req-5",
@@ -198,7 +203,7 @@ describe("OpencodePermissionTranslator.toMaximilianToolInput", () => {
       resources: ["some cmd"],
     };
     const result = t.toMaximilianToolInput(event);
-    expect(result.tool).toBe("bash");
+    expect(result.tool).toBeNull();
     expect(result.target).toBe("some cmd");
   });
 
@@ -290,6 +295,59 @@ describe("OpencodePermissionTranslator.applyReplyToPermissions", () => {
       patterns: [],
     });
     expect(next).toBe(base);
+  });
+
+  it("H3 regression: 'always' cannot overwrite an existing deny rule", () => {
+    // H3-fix: a user clicking "always" on a one-off prompt must not
+    // silently grant blanket access to a path the policy already
+    // denies. Without the fix, `merged[pattern] = "allow"` would
+    // clobber `"/root/**": "deny"` when the new pattern has the
+    // same key. The expected behavior is to skip the conflicting
+    // pattern and leave the deny intact at its existing key.
+    const base: Permissions = {
+      defaults: { ...DEFAULT_PERMISSIONS.defaults },
+      patterns: {
+        read: {
+          "/root/**": "deny",
+          "/home/user/docs/**": "allow",
+        },
+      },
+    };
+    const next = t.applyReplyToPermissions(base, "read", {
+      decision: "allow",
+      persist: true,
+      // opencode sent us a pattern that overlaps with an existing deny.
+      patterns: ["/root/**", "/home/user/docs/**"],
+    });
+    // /root/** is the existing deny — "always" must NOT overwrite it
+    expect(next.patterns.read?.["/root/**"]).toBe("deny");
+    // /home/user/docs/** is an existing allow → stays allow
+    expect(next.patterns.read?.["/home/user/docs/**"]).toBe("allow");
+
+    // And the deny actually still applies at match time, even for
+    // a target that matches the "would-be" allow pattern. resolvePermission
+    // iterates patterns in insertion order, so the deny at /root/**
+    // wins for any /root/** target.
+    const decision = resolvePermission("read", { path: "/root/anything" }, next);
+    expect(decision).toBe("deny");
+  });
+
+  it("H3 regression: 'always' with no overlap leaves all existing rules intact", () => {
+    const base: Permissions = {
+      defaults: { ...DEFAULT_PERMISSIONS.defaults },
+      patterns: { read: { "/etc/**": "deny", "/var/**": "deny" } },
+    };
+    const next = t.applyReplyToPermissions(base, "read", {
+      decision: "allow",
+      persist: true,
+      patterns: ["/tmp/**", "/scratch/**"],
+    });
+    expect(next.patterns.read).toEqual({
+      "/etc/**": "deny",
+      "/var/**": "deny",
+      "/tmp/**": "allow",
+      "/scratch/**": "allow",
+    });
   });
 });
 

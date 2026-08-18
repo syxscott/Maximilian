@@ -77,18 +77,24 @@ describe("SandboxToOpencodePlugin — Workspace profile", () => {
     expect(manifest.options.network).toEqual({ mode: "allow" });
   });
 
-  it("emits allow rules for each allowed command", () => {
+  it("emits bash allow rules for each allowed command plus file-tool allow rules from paths.allow", () => {
+    // M3-fix: in addition to the bash allow rules, the file-tool
+    // permission ruleset now receives allow rules for paths.allow.
+    // This test focuses on bash; the file-tool part is covered in
+    // the dedicated M3 describe block below.
     const allowRules = manifest.options.permission.filter((r) => r.action === "allow");
     // Workspace allows git, npm, pnpm, yarn, node, make, gcc, g++, cargo, rustc
-    // (note: 'npm' appears twice in the source — we de-dup at the
-    // translator level via the rule shape)
     expect(allowRules.length).toBeGreaterThan(0);
     expect(allowRules.map((r) => r.pattern)).toEqual(
       expect.arrayContaining(["git", "npm", "pnpm", "yarn", "node", "make", "cargo"]),
     );
-    for (const rule of allowRules) {
-      expect(rule.permission).toBe("bash");
-    }
+    const bashAllowRules = allowRules.filter((r) => r.permission === "bash");
+    expect(bashAllowRules.length).toBeGreaterThan(0);
+    // After M3: 5 file-tool allow rules for paths.allow=["**"]
+    const fileAllowRules = allowRules.filter((r) =>
+      ["read", "write", "edit", "glob", "grep"].includes(r.permission),
+    );
+    expect(fileAllowRules.length).toBe(5);
   });
 
   it("does NOT include limits (none set on workspace)", () => {
@@ -131,9 +137,21 @@ describe("SandboxToOpencodePlugin — ReadOnly profile", () => {
     );
   });
 
-  it("does NOT emit allow rules (no allowCommands on ReadOnly)", () => {
+  it("does NOT emit bash allow rules (no allowCommands on ReadOnly), but emits file-tool allow rules from paths.allow", () => {
+    // M3-fix: paths.allow=["**"] now propagates to the file-tool
+    // permission ruleset. Bash allow rules remain zero (ReadOnly has
+    // no allowedCommands).
     const allowRules = manifest.options.permission.filter((r) => r.action === "allow");
-    expect(allowRules).toHaveLength(0);
+    expect(allowRules).toHaveLength(5);
+    const bashAllowRules = allowRules.filter((r) => r.permission === "bash");
+    expect(bashAllowRules).toHaveLength(0);
+    const fileAllowRules = allowRules.filter((r) =>
+      ["read", "write", "edit", "glob", "grep"].includes(r.permission),
+    );
+    expect(fileAllowRules).toHaveLength(5);
+    for (const r of fileAllowRules) {
+      expect(r.pattern).toBe("**");
+    }
   });
 });
 
@@ -178,11 +196,23 @@ describe("SandboxToOpencodePlugin — Strict profile", () => {
     workspaceId: WORKSPACE,
   });
 
-  it("emits a single wildcard deny rule for bash", () => {
+  it("emits a single wildcard deny rule for bash plus file-tool deny rules from path policy", () => {
+    // M3-fix: in addition to the bash wildcard deny, the file tools
+    // (read/write/edit/glob/grep) must each receive a deny rule for
+    // "**" because paths.deny=["**"]. The first rule is the bash
+    // wildcard deny (already-existing behavior); the rest are the
+    // file-tool rules added by M3.
     const denyRules = manifest.options.permission.filter((r) => r.action === "deny");
-    expect(denyRules).toEqual([
-      { permission: "bash", pattern: "*", action: "deny" },
-    ]);
+    expect(denyRules[0]).toEqual({ permission: "bash", pattern: "*", action: "deny" });
+    // After M3: 5 file-tool deny rules (one per file tool)
+    const fileDenyRules = denyRules.filter((r) =>
+      ["read", "write", "edit", "glob", "grep"].includes(r.permission),
+    );
+    expect(fileDenyRules).toHaveLength(5);
+    for (const r of fileDenyRules) {
+      expect(r.pattern).toBe("**");
+      expect(r.action).toBe("deny");
+    }
   });
 
   it("carries the small resource limits", () => {
@@ -260,9 +290,25 @@ describe("SandboxToOpencodePlugin — custom profile", () => {
     expect(manifest.options.paths.deny).toEqual(["/workspace/.env"]);
     expect(manifest.options.network).toEqual({ mode: "read-only" });
     expect(manifest.options.limits).toBeUndefined();
+    // M3-fix: bash allow rules are still emitted, and now file-tool
+    // rules are too. Order: deny rules (per file tool) → bash allow
+    // rules → file-tool allow rules.
     expect(manifest.options.permission).toEqual([
+      // /workspace/.env deny × 5 file tools
+      { permission: "read", pattern: "/workspace/.env", action: "deny" },
+      { permission: "write", pattern: "/workspace/.env", action: "deny" },
+      { permission: "edit", pattern: "/workspace/.env", action: "deny" },
+      { permission: "glob", pattern: "/workspace/.env", action: "deny" },
+      { permission: "grep", pattern: "/workspace/.env", action: "deny" },
+      // bash allow-list
       { permission: "bash", pattern: "ls", action: "allow" },
       { permission: "bash", pattern: "cat", action: "allow" },
+      // /workspace/** allow × 5 file tools
+      { permission: "read", pattern: "/workspace/**", action: "allow" },
+      { permission: "write", pattern: "/workspace/**", action: "allow" },
+      { permission: "edit", pattern: "/workspace/**", action: "allow" },
+      { permission: "glob", pattern: "/workspace/**", action: "allow" },
+      { permission: "grep", pattern: "/workspace/**", action: "allow" },
     ]);
     expect(manifest.summary.hasNetworkRestriction).toBe(true);
     expect(manifest.summary.hasLimits).toBe(false);
@@ -336,5 +382,91 @@ describe("SandboxToOpencodePlugin — JSON round-trip", () => {
       const parsed = JSON.parse(json) as OpencodePluginManifest
       expect(parsed.options.profile).toBe(name)
     }
+  });
+});
+
+// ── M3: PathPolicy translates into file-tool permission rules ────────────
+
+describe("SandboxToOpencodePlugin — M3 path policy → file-tool rules", () => {
+  const t = new SandboxToOpencodePlugin();
+  const FILE_TOOLS = ["read", "write", "edit", "glob", "grep"] as const;
+
+  it("Strict profile emits deny rules for all five file tools", () => {
+    // The Strict profile denies everything via paths.deny=["**"]. M3
+    // requires that this deny propagates to the file-tool permission
+    // ruleset so opencode's read/write/edit/glob/grep honor the
+    // restriction. Before M3, only bash deny rules were emitted.
+    const manifest = t.generateByName({
+      name: SandboxProfileName.Strict,
+      workspaceId: WORKSPACE,
+    });
+    for (const tool of FILE_TOOLS) {
+      const denyRule = manifest.options.permission.find(
+        (r) => r.permission === tool && r.pattern === "**" && r.action === "deny",
+      );
+      expect(denyRule).toBeDefined();
+    }
+  });
+
+  it("Workspace profile emits deny rules for /etc/**, /root/**, /sys/**, /proc/** on all file tools", () => {
+    const manifest = t.generateByName({
+      name: SandboxProfileName.Workspace,
+      workspaceId: WORKSPACE,
+    });
+    const denyPatterns = ["/etc/**", "/root/**", "/sys/**", "/proc/**"];
+    for (const tool of FILE_TOOLS) {
+      for (const pattern of denyPatterns) {
+        const rule = manifest.options.permission.find(
+          (r) => r.permission === tool && r.pattern === pattern && r.action === "deny",
+        );
+        expect(rule, `missing deny rule for ${tool}:${pattern}`).toBeDefined();
+      }
+    }
+  });
+
+  it("Workspace profile emits allow rule for /** on all file tools", () => {
+    const manifest = t.generateByName({
+      name: SandboxProfileName.Workspace,
+      workspaceId: WORKSPACE,
+    });
+    for (const tool of FILE_TOOLS) {
+      const allowRule = manifest.options.permission.find(
+        (r) => r.permission === tool && r.pattern === "**" && r.action === "allow",
+      );
+      expect(allowRule, `missing /** allow rule for ${tool}`).toBeDefined();
+    }
+  });
+
+  it("custom profile with paths emits file-tool rules in deny-then-allow order", () => {
+    const profile: SandboxProfile = {
+      name: SandboxProfileName.Off,
+      paths: { allow: ["**"], deny: ["/secret/**"] },
+    };
+    const manifest = t.generate({ profile, workspaceId: WORKSPACE });
+    // For each file tool, deny for /secret/** must appear BEFORE
+    // allow for /** so opencode's first-match-wins honors the deny.
+    for (const tool of FILE_TOOLS) {
+      const denyIdx = manifest.options.permission.findIndex(
+        (r) => r.permission === tool && r.pattern === "/secret/**" && r.action === "deny",
+      );
+      const allowIdx = manifest.options.permission.findIndex(
+        (r) => r.permission === tool && r.pattern === "**" && r.action === "allow",
+      );
+      expect(denyIdx).toBeGreaterThanOrEqual(0);
+      expect(allowIdx).toBeGreaterThanOrEqual(0);
+      expect(denyIdx, `${tool}: /secret/** deny must precede /** allow`).toBeLessThan(allowIdx);
+    }
+  });
+
+  it("profile with no paths emits zero file-tool rules", () => {
+    const profile: SandboxProfile = {
+      name: SandboxProfileName.Off,
+      // no `paths` field
+    };
+    const manifest = t.generate({ profile, workspaceId: WORKSPACE });
+    const fileRules = manifest.options.permission.filter((r) =>
+      FILE_TOOLS.includes(r.permission as (typeof FILE_TOOLS)[number]),
+    );
+    expect(fileRules).toEqual([]);
   });
 });
