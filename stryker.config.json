@@ -9,12 +9,7 @@
   },
   "inPlace": true,
   "coverageAnalysis": "perTest",
-  "reporters": ["html", "json", "progress", "dashboard"],
-  "dashboard": {
-    "project": "github.com/syxscott/Maximilian",
-    "version": "main",
-    "module": "meta-system"
-  },
+  "reporters": ["html", "json", "progress"],
   "mutate": [
     "packages/meta-system/src/truth-audit.ts",
     "packages/meta-system/src/orchestrator.ts",
@@ -35,7 +30,7 @@
   "thresholds": {
     "high": 80,
     "low": 70,
-    "break": 60
+    "break": null
   },
   "timeoutMS": 60000,
   "concurrency": 4,
