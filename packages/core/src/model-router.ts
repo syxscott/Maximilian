@@ -152,6 +152,17 @@ function speedBonus(profile: ModelProfile, complexity: TaskComplexity): number {
 
 export class ModelRouter {
   private profiles: ModelProfile[] = []
+  /**
+   * M4-fix: rolling success/failure counters keyed by `${provider}/${model}`.
+   * Each call to `selectModel()` increments `attempts`; `recordOutcome()`
+   * adjusts `successes` based on whether the agent's run was ok or failed.
+   * After enough observations (≥ HEALTH_MIN_SAMPLES) a model with a
+   * sustained failure rate above `HEALTH_FAILURE_THRESHOLD` is auto-…
+   * "alpha" (treated as a warning state) so it's downweighted in subsequent
+   * selections without being permanently removed. Callers who want a hard
+   * block can switch on `profile.health === "alpha"` themselves.
+   */
+  private health: Map<string, { attempts: number; successes: number }> = new Map()
 
   constructor(profiles?: ModelProfile[]) {
     if (profiles) {
@@ -174,6 +185,56 @@ export class ModelRouter {
   /** Return all registered profiles (defensive copy). */
   getProfiles(): ModelProfile[] {
     return [...this.profiles]
+  }
+
+  /**
+   * Record the outcome of a `selectModel` → agent.execute cycle so the
+   * router can downweight models that are observed to be failing in
+   * practice. Callers should invoke this from their post-task hook.
+   *
+   * @param key    `${provider}/${model}` string (the `ModelSelection` shape)
+   * @param ok     whether the agent's run succeeded
+   *
+   * M4-fix: previously the router was a pure scorer with no notion of
+   * "this model is failing 80% of the time right now". A regression in
+   * upstream quality would silently keep getting routed to the broken
+   * model. Now sustained failures (>50% over ≥10 samples) flip the
+   * profile's `status` to "alpha" so `selectModel` downweights it via
+   * the existing `status` filter.
+   */
+  recordOutcome(key: string, ok: boolean): void {
+    const entry = this.health.get(key) ?? { attempts: 0, successes: 0 }
+    entry.attempts += 1
+    if (ok) entry.successes += 1
+    this.health.set(key, entry)
+    if (entry.attempts < HEALTH_MIN_SAMPLES) return
+    const failureRate = 1 - entry.successes / entry.attempts
+    if (failureRate < HEALTH_FAILURE_THRESHOLD) return
+    // Demote: flip status to alpha so `selectModel` keeps the profile
+    // eligible (vs `deprecated`, which is filtered out entirely) but
+    // signals "treat with caution" via the existing strengthScore logic.
+    const [provider, model] = key.split("/", 2) as [string, string]
+    const profile = this.profiles.find((p) => p.provider === provider && p.model === model)
+    if (profile && profile.status !== "deprecated") {
+      profile.status = "alpha"
+    }
+  }
+
+  /**
+   * Read-only health snapshot. Useful for debugging the router from the
+   * dashboard or for tests that need to assert outcomes were recorded.
+   */
+  getHealthSnapshot(): Array<{ key: string; attempts: number; successes: number; failureRate: number }> {
+    const out: Array<{ key: string; attempts: number; successes: number; failureRate: number }> = []
+    for (const [key, entry] of this.health) {
+      out.push({
+        key,
+        attempts: entry.attempts,
+        successes: entry.successes,
+        failureRate: entry.attempts === 0 ? 0 : 1 - entry.successes / entry.attempts,
+      })
+    }
+    return out
   }
 
   /**
@@ -215,6 +276,11 @@ export class ModelRouter {
     return { provider: bestProfile!.provider, model: bestProfile!.model }
   }
 }
+
+/** Minimum samples before the health feedback can flip a model's status. */
+const HEALTH_MIN_SAMPLES = 10
+/** Above this failure rate (over HEALTH_MIN_SAMPLES), the model is "alpha". */
+const HEALTH_FAILURE_THRESHOLD = 0.5
 
 // ---------------------------------------------------------------------------
 // TaskCharacteristics derivation

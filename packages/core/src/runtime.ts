@@ -1485,10 +1485,16 @@ export class AgentRuntime {
         // If a ModelRouter is configured, derive task characteristics and
         // set the model override on the agent so it can prefer the selected
         // provider/model when making LLM calls.
+        // M4-fix: also capture the selection in `lastSelectionRef` so the
+        // post-execute hook can call `modelRouter.recordOutcome()` with
+        // success/failure, feeding the health feedback loop that demotes
+        // models with sustained failure rates.
+        const lastSelectionRef: { key: string | undefined } = { key: undefined }
         if (this.modelRouter) {
           const taskChars = deriveTaskCharacteristics(task)
           const selection = this.modelRouter.selectModel(taskChars)
           agent.setModelOverride(selection.provider, selection.model)
+          lastSelectionRef.key = `${selection.provider}/${selection.model}`
           span?.setAttribute("task.modelRouter.provider", selection.provider)
           span?.setAttribute("task.modelRouter.model", selection.model)
         }
@@ -1659,6 +1665,17 @@ export class AgentRuntime {
             )
           }
 
+          // M4-fix: feed the ModelRouter the success signal so sustained
+          // failures flip a model's status to "alpha" (downweighted in
+          // future selections). Reaching this point means we have a
+          // `Result` — the task ran to completion, so count it as a
+          // success for the selected model. Failure paths (catch blocks
+          // below) record `ok=false` so the demotion math gets the right
+          // signal.
+          if (this.modelRouter && lastSelectionRef.key) {
+            this.modelRouter.recordOutcome(lastSelectionRef.key, true)
+          }
+
           // Self-critique observation: evaluate the last action's quality
           // (借鉴 AutoGPT self-critique — fires after each tool execution).
           if (this.selfCritique && lastActionRef.toolName) {
@@ -1749,6 +1766,15 @@ export class AgentRuntime {
           task.status = "failed"
           task.error = err instanceof Error ? err.message : String(err)
           task.completedAt = new Date().toISOString()
+
+          // M4-fix: feed the ModelRouter the failure outcome. We check
+          // `lastSelectionRef.key` (captured above when ModelRouter was
+          // consulted) so the router's rolling failure counter reflects
+          // the same model that *would* have handled this task. If the
+          // router wasn't used, this is a no-op.
+          if (this.modelRouter && lastSelectionRef.key) {
+            this.modelRouter.recordOutcome(lastSelectionRef.key, false)
+          }
 
           // Append a failed observation to the ledger.
           const failedObs: LedgerEntry = {
@@ -1866,6 +1892,28 @@ export class AgentRuntime {
             // Clean up the parked resolver so a late user response doesn't
             // resolve an already-rejected promise (harmless but noisy).
             this.approvalResolvers.delete(requestId)
+            // M10-fix: emit an `approval-resolved` event so any UI / SSE
+            // listener waiting for the answer learns the approval
+            // terminated. Previously a timeout or abort would surface as
+            // a thrown error inside `runApprovalTask`, but the
+            // dashboard's parked approval request would never receive a
+            // resolution event — leaving it pinned as "awaiting" until
+            // the user manually closed it. We classify the outcome as
+            // `denied` because the user never explicitly approved, and
+            // include the reason for the dashboard's audit log.
+            const reason = timeoutSignal?.aborted
+              ? `approval timed out after ${approval.timeoutMs}ms`
+              : err instanceof Error
+                ? err.message
+                : "approval aborted"
+            this.emit({
+              type: "approval-resolved",
+              workspaceId: workspace.id,
+              taskId: task.id,
+              requestId,
+              decision: "reject",
+              comment: reason,
+            })
             if (timeoutSignal?.aborted) {
               throw new Error(`approval timed out after ${approval.timeoutMs}ms`)
             }

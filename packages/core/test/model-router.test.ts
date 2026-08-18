@@ -511,4 +511,73 @@ describe("Runtime ModelRouter integration", () => {
     // t2 (complex code) -> opus
     expect(agents[1].capturedOverride!.model).toBe("claude-3-opus-20240229")
   })
+
+  // ── M4: health feedback demotes sustained-failure models ───────────
+
+  it("M4 regression: recordOutcome tracks attempts and flips status to alpha on failure", () => {
+    const router = new ModelRouter([
+        {
+          provider: "anthropic",
+          model: "claude-3-haiku-20240307",
+          costTier: "low",
+          speedTier: "fast",
+          strengths: { code: 5, reasoning: 5, creative: 5, general: 7, data: 5 },
+        },
+      ])
+    // Record 10 failures in a row — should flip to "alpha" status.
+    for (let i = 0; i < 10; i++) {
+      router.recordOutcome("anthropic/claude-3-haiku-20240307", false)
+    }
+    const snapshot = router.getHealthSnapshot()
+    expect(snapshot).toHaveLength(1)
+    expect(snapshot[0]?.attempts).toBe(10)
+    expect(snapshot[0]?.successes).toBe(0)
+    expect(snapshot[0]?.failureRate).toBe(1)
+
+    // After demotion, the model is still selectable (status "alpha" is
+    // *not* filtered out by selectModel — only "deprecated" is). The
+    // demotion signal is informational; subsequent callers can branch on
+    // the alpha status themselves.
+    const profiles = router.getProfiles()
+    expect(profiles[0]?.status).toBe("alpha")
+  })
+
+  it("M4 regression: recordOutcome under HEALTH_MIN_SAMPLES does not flip status", () => {
+    const router = new ModelRouter([
+      {
+        provider: "anthropic",
+        model: "claude-3-haiku-20240307",
+        costTier: "low",
+        speedTier: "fast",
+        strengths: { code: 5, reasoning: 5, creative: 5, general: 7, data: 5 },
+      },
+    ])
+    // 9 failures — under the 10-sample threshold, no flip should occur.
+    for (let i = 0; i < 9; i++) {
+      router.recordOutcome("anthropic/claude-3-haiku-20240307", false)
+    }
+    expect(router.getProfiles()[0]?.status).toBeUndefined()
+  })
+
+  it("M4 regression: 50/50 success/failure does flip (failureRate at threshold counts as failure)", () => {
+    // The threshold is `failureRate >= HEALTH_FAILURE_THRESHOLD` (0.5).
+    // Exactly half = at boundary = counts as failing. This is intentional:
+    // a model succeeding on half its tasks is unhealthy and should be
+    // demoted. The test pins the boundary semantics so a future
+    // refactor that flips `<` / `<=` to `<` doesn't silently change it.
+    const router = new ModelRouter([
+      {
+        provider: "anthropic",
+        model: "claude-3-haiku-20240307",
+        costTier: "low",
+        speedTier: "fast",
+        strengths: { code: 5, reasoning: 5, creative: 5, general: 7, data: 5 },
+      },
+    ])
+    for (let i = 0; i < 5; i++) {
+      router.recordOutcome("anthropic/claude-3-haiku-20240307", true)
+      router.recordOutcome("anthropic/claude-3-haiku-20240307", false)
+    }
+    expect(router.getProfiles()[0]?.status).toBe("alpha")
+  })
 })
