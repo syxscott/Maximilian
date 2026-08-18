@@ -188,4 +188,192 @@ describe("AgentRuntime — opencode executor (Phase 2)", () => {
     // in-process path runs StubAgent.execute → returns Result with output "ok"
     expect(out.results[0].output).toBe("ok")
   })
+
+  // ── H4: preflight cache hit skips the duplicate opencode call ──────────
+
+  it("H4 regression: runtime honours task.metadata.preflightResult and skips executeTask when present", async () => {
+    // H4-fix: commander pre-flight already ran the task through opencode
+    // and stashed the result in `task.metadata.preflightResult`. Previously
+    // the runtime re-ran it, doubling cost. Now it hydrates a Result from
+    // the cache without making a second network call.
+    let promptCalled = false
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const path = String(url).replace(/^https?:\/\/[^/]+/, "")
+      const method = init?.method ?? "GET"
+      if (path === "/api/session" && method === "POST") {
+        return makeOk({
+          data: {
+            id: "ses_preflight",
+            title: "t",
+            projectID: "p",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            time: { created: 1, updated: 1 },
+          },
+        })
+      }
+      if (path === "/api/session/ses_preflight/prompt" && method === "POST") {
+        promptCalled = true
+        return makeOk({ data: null })
+      }
+      if (path === "/api/session/ses_preflight/wait" && method === "POST") {
+        return new Response(null, { status: 204 })
+      }
+      if (path === "/api/session/ses_preflight/message" && method === "GET") {
+        return makeOk({
+          data: [
+            {
+              id: "m1",
+              role: "assistant",
+              sessionID: "ses_preflight",
+              parts: [{ id: "p1", type: "text", text: { text: "fresh run" } }],
+            },
+          ],
+        })
+      }
+      return makeOk({ data: null }, 404)
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const factory: AgentFactory = () =>
+      new StubAgent(new StubProvider(), { throwOnExecute: true })
+    const sink = makeSink()
+    const rt = new AgentRuntime(factory, sink, {
+      maxConcurrency: 1,
+      opencode: { baseUrl: "http://opencode.test" },
+    })
+
+    // Construct a task with a well-formed preflightResult. The runtime
+    // must hydrate from this instead of calling /prompt a second time.
+    const task: Task = {
+      id: "task-preflight",
+      description: "echo hello",
+      agentRole: "general",
+      dependsOn: [],
+      status: "pending",
+      metadata: {
+        preflightResult: {
+          sessionId: "ses_cached",
+          executor: "opencode",
+          durationMs: 1234,
+          outputPreview: "echo hello (from preflight cache)",
+        },
+      },
+    } as Task
+    const plan: Plan = {
+      id: "plan-preflight-cache",
+      workspaceId: "ws-preflight",
+      userRequest: "test",
+      rationale: "",
+      tasks: [task],
+      createdAt: new Date().toISOString(),
+    } as Plan
+    const ws: Workspace = {
+      id: "ws-preflight",
+      plan,
+      status: "pending" as WorkspaceStatus,
+      createdAt: new Date().toISOString(),
+      results: [],
+    } as Workspace
+
+    const out = await rt.execute(ws)
+    expect(promptCalled).toBe(false) // the network call must be skipped
+    expect(out.results).toHaveLength(1)
+    expect(out.results[0].output).toBe("echo hello (from preflight cache)")
+    expect(out.results[0].metadata).toMatchObject({
+      sessionId: "ses_cached",
+      executor: "opencode-preflight",
+      prefetched: true,
+      durationMs: 1234,
+    })
+  })
+
+  it("H4 regression: malformed preflightResult is ignored and runtime falls through to executeTask", async () => {
+    // If preflight metadata is corrupt or missing fields, the runtime must
+    // not crash — it should ignore the cache and execute normally.
+    let promptCalled = false
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const path = String(url).replace(/^https?:\/\/[^/]+/, "")
+      const method = init?.method ?? "GET"
+      if (path === "/api/session" && method === "POST") {
+        return makeOk({
+          data: {
+            id: "ses_fresh",
+            title: "t",
+            projectID: "p",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            time: { created: 1, updated: 1 },
+          },
+        })
+      }
+      if (path === "/api/session/ses_fresh/prompt" && method === "POST") {
+        promptCalled = true
+        return makeOk({ data: null })
+      }
+      if (path === "/api/session/ses_fresh/wait" && method === "POST") {
+        return new Response(null, { status: 204 })
+      }
+      if (path === "/api/session/ses_fresh/message" && method === "GET") {
+        return makeOk({
+          data: [
+            {
+              id: "m1",
+              role: "assistant",
+              sessionID: "ses_fresh",
+              parts: [{ id: "p1", type: "text", text: { text: "fresh ok" } }],
+            },
+          ],
+        })
+      }
+      return makeOk({ data: null }, 404)
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const factory: AgentFactory = () =>
+      new StubAgent(new StubProvider(), { throwOnExecute: true })
+    const sink = makeSink()
+    const rt = new AgentRuntime(factory, sink, {
+      maxConcurrency: 1,
+      opencode: { baseUrl: "http://opencode.test" },
+    })
+
+    // Three flavours of "malformed preflight metadata" — none should crash,
+    // and each should fall through to a real executeTask call.
+    const flavours = [
+      {},
+      { preflightResult: "not-an-object" },
+      { preflightResult: { executor: "opencode" } }, // missing sessionId / durationMs / outputPreview
+    ]
+    for (const [i, badMeta] of flavours.entries()) {
+      promptCalled = false
+      const task: Task = {
+        id: `task-bad-${i}`,
+        description: "echo hello",
+        agentRole: "general",
+        dependsOn: [],
+        status: "pending",
+        metadata: badMeta,
+      } as Task
+      const plan: Plan = {
+        id: `plan-bad-${i}`,
+        workspaceId: `ws-bad-${i}`,
+        userRequest: "test",
+        rationale: "",
+        tasks: [task],
+        createdAt: new Date().toISOString(),
+      } as Plan
+      const ws: Workspace = {
+        id: `ws-bad-${i}`,
+        plan,
+        status: "pending" as WorkspaceStatus,
+        createdAt: new Date().toISOString(),
+        results: [],
+      } as Workspace
+      const out = await rt.execute(ws)
+      expect(promptCalled).toBe(true)
+      expect(out.results).toHaveLength(1)
+      expect(out.results[0].output).toBe("fresh ok")
+    }
+  })
 })

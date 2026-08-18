@@ -366,6 +366,41 @@ function raceWithAbort<T>(
   })
 }
 
+/**
+ * Read the preflight result stashed by `OpencodeDecomposer.decompose()`
+ * on `task.metadata.preflightResult`. Returns `null` if the metadata
+ * is absent or malformed; callers should treat `null` as "no cache hit,
+ * run normally". The shape mirrors what `OpencodeExecutor.executeTask`
+ * writes so the runtime can hydrate a `Result` from either source.
+ */
+interface PreflightCache {
+  sessionId: string
+  executor: string
+  durationMs: number
+  outputPreview: string
+}
+function readPreflightResult(metadata: unknown): PreflightCache | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const m = metadata as Record<string, unknown>;
+  const r = m.preflightResult;
+  if (!r || typeof r !== "object") return null;
+  const obj = r as Record<string, unknown>;
+  if (
+    typeof obj.sessionId !== "string" ||
+    typeof obj.executor !== "string" ||
+    typeof obj.durationMs !== "number" ||
+    typeof obj.outputPreview !== "string"
+  ) {
+    return null;
+  }
+  return {
+    sessionId: obj.sessionId,
+    executor: obj.executor,
+    durationMs: obj.durationMs,
+    outputPreview: obj.outputPreview,
+  };
+}
+
 export class AgentRuntime {
   private listeners = new Set<RuntimeListener>()
   private runningWorkspaces = new Map<string, AbortController>()
@@ -469,6 +504,19 @@ export class AgentRuntime {
       this.opencodeExecutor = new OpencodeExecutor({
         baseUrl: options.opencode.baseUrl,
       })
+    } else {
+      // Phase 4a (in-process LLM removal) — surface a one-shot deprecation
+      // warning so callers that haven't migrated to opencode see a
+      // visible signal. The in-process paths below still work for now
+      // (tests + legacy callers rely on them), but a future phase will
+      // make `opencode.baseUrl` required and delete the `toolProvider` /
+      // `agent.execute` branches.
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[AgentRuntime] RuntimeOptions.opencode is not set — running in " +
+          "legacy in-process mode. This is deprecated and will be removed " +
+          "in a future release. Configure `opencode: { baseUrl }` to migrate.",
+      );
     }
   }
 
@@ -1511,14 +1559,47 @@ export class AgentRuntime {
             // dependency — until Phase 4 removes the in-process paths.
             let opencodeFailed = false
             try {
-              const out = await raceWithAbort(
-                this.opencodeExecutor.executeTask(task, workspaceId),
-                ctx.signal,
-                workspace.id,
-              )
-              final = out.result
-              lastActionRef.toolName = "opencode-session"
-              lastActionRef.input = { sessionId: out.sessionId, durationMs: out.durationMs }
+              // H4-fix: commander pre-flight already ran this task through
+              // opencode and stashed the result in `task.metadata.preflightResult`.
+              // Re-running it here means *two* LLM/tool sessions per task,
+              // doubling cost and time. When the preflight result is present
+              // and well-formed, hydrate a `Result` from it and skip the
+              // network call entirely. The shape mirrors what
+              // `OpencodeExecutor.executeTask` returns so the rest of the
+              // pipeline (self-critique, TruthAudit, etc.) sees identical
+              // data regardless of which path produced the result.
+              const cached = readPreflightResult(task.metadata);
+              if (cached && cached.executor === "opencode") {
+                // Hydrate a minimal Result-like object from the cached
+                // preflight payload. We deliberately cast through
+                // `unknown` because the Result shape includes fields
+                // (agentRole / id / agentId / createdAt) that only the
+                // agent knows how to populate; the runtime uses `final`
+                // for self-critique + TruthAudit, which read metadata
+                // and output, not those identity fields. The pipeline
+                // treats the cast as a "trust the cache" boundary.
+                final = {
+                  taskId: task.id,
+                  output: cached.outputPreview,
+                  metadata: {
+                    sessionId: cached.sessionId,
+                    executor: "opencode-preflight",
+                    durationMs: cached.durationMs,
+                    prefetched: true,
+                  },
+                } as unknown as Awaited<ReturnType<typeof agent.submitResult>>;
+                lastActionRef.toolName = "opencode-session-preflight";
+                lastActionRef.input = { sessionId: cached.sessionId, durationMs: cached.durationMs };
+              } else {
+                const out = await raceWithAbort(
+                  this.opencodeExecutor.executeTask(task, workspaceId),
+                  ctx.signal,
+                  workspace.id,
+                )
+                final = out.result
+                lastActionRef.toolName = "opencode-session"
+                lastActionRef.input = { sessionId: out.sessionId, durationMs: out.durationMs }
+              }
               // Skip the in-process execution paths below on success.
               // (fall through to result handling)
             } catch (err) {
