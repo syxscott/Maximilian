@@ -92,6 +92,11 @@ export class SessionPool {
     this.map.delete(workspaceId);
   }
 
+  /** Whether the pool has a cached session for `workspaceId`. */
+  has(workspaceId: string): boolean {
+    return this.map.has(workspaceId);
+  }
+
   /** Delete the session server-side and drop it from the cache. */
   async destroy(workspaceId: string): Promise<void> {
     const entry = this.map.get(workspaceId);

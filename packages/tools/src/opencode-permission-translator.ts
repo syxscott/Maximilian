@@ -239,15 +239,26 @@ export class OpencodePermissionTranslator {
    * translation and a `suggested` hint so the caller can decide
    * whether to actually invoke the resolver (e.g. skip when
    * `event.source` already tells us the answer).
+   *
+   * H2-fix: when the opencode event names a tool Maximilian does not
+   * recognize (a future MCP tool, an upgraded plugin, or a malicious
+   * emit), the translator returns `tool: null` so the caller can
+   * fail-closed (default `deny`). Previously this defaulted to
+   * `bash`, which routed the request through bash's dangerous-pattern
+   * check — but an empty/missing command field silently fell through
+   * to `bash: "ask"`, which is *less* restrictive than `deny`. For
+   * tools Maximilian cannot classify, deny is the only safe default.
    */
   toMaximilianToolInput(
     event: OpencodePermissionAskedEvent,
-  ): { tool: ToolName; target: string; input: Record<string, unknown> } {
+  ): { tool: ToolName | null; target: string; input: Record<string, unknown> } {
     const tool = pickToolName(event)
     const target = pickTarget(event)
     // Construct an `input` object that Maximilian's `extractTarget`
     // understands. bash uses `command`; file tools use `path`; glob/grep
-    // fall back to `path` first then `pattern`.
+    // fall back to `path` first then `pattern`. For an unknown tool
+    // (`tool === null`) we still emit a best-effort `input` based on
+    // the target, but the caller MUST treat `null` as "deny".
     const input: Record<string, unknown> = (() => {
       if (tool === "bash") return { command: target }
       return { path: target }
@@ -262,6 +273,13 @@ export class OpencodePermissionTranslator {
    *
    * Returns a *new* `Permissions` object; the input is not mutated.
    * Patterns are de-duplicated and merged with any existing entries.
+   *
+   * Security: an existing `deny` rule for a pattern is **never**
+   * overwritten by an `allow`. Without this guard, a user clicking
+   * "always" on a one-off prompt (e.g. opencode's auto-popup for a
+   * command that happens to also match a deny rule from earlier)
+   * would silently grant blanket access to a path the policy
+   * explicitly forbids. The fix is fail-closed: deny wins.
    */
   applyReplyToPermissions(
     base: Permissions,
@@ -276,6 +294,17 @@ export class OpencodePermissionTranslator {
     const existing = next.patterns[tool] ?? {}
     const merged: Record<string, Permission> = { ...existing }
     for (const pattern of translated.patterns) {
+      // H3-fix: never overwrite an existing deny. "always" from a
+      // user prompt cannot grant access to a path the policy has
+      // explicitly forbidden. Skip the pattern (and log) instead.
+      if (merged[pattern] === "deny") {
+        // Use console.warn — telemetry may not be initialized at this
+        // boundary. Production should monitor this via the audit log.
+        console.warn(
+          `[OpencodePermissionTranslator] ignoring "always" reply for ${tool}:${pattern} — pattern is already denied`,
+        )
+        continue
+      }
       // "always" → "allow" so future matches skip the prompt.
       merged[pattern] = "allow"
     }
@@ -311,11 +340,18 @@ export interface TranslatedReply {
  * Map opencode's `event.action` (or `event.metadata.action`) to a
  * Maximilian `ToolName`. We accept a narrow allow-list because the
  * Maximilian permission resolver only knows six tools; anything else
- * falls back to "bash" so a future opencode tool still gets routed
- * through the dangerous-command path instead of silently bypassing
- * permission checks.
+ * returns `null` so the caller can fail-closed (default `deny`).
+ *
+ * H2-fix rationale: the previous behavior defaulted unknown tools to
+ * `bash`, which routed the request through `bash`'s dangerous-pattern
+ * check — but an empty `command` field silently fell through to
+ * `bash: "ask"`, which is *less* restrictive than `deny`. A
+ * permissive unknown tool could bypass permission checks entirely
+ * (e.g. an MCP tool that doesn't write to disk but reads
+ * `~/.ssh/id_rsa` would be asked once, then allowed). Returning
+ * `null` makes the caller explicitly decide.
  */
-function pickToolName(event: OpencodePermissionAskedEvent): ToolName {
+function pickToolName(event: OpencodePermissionAskedEvent): ToolName | null {
   const candidate =
     event.action ??
     (typeof event.metadata?.["tool"] === "string"
@@ -330,9 +366,10 @@ function pickToolName(event: OpencodePermissionAskedEvent): ToolName {
     case "grep":
       return candidate
     default:
-      // Unknown tool → default to bash so DANGEROUS_PATTERNS still
-      // run against the command string before it executes.
-      return "bash"
+      // Unknown tool → null so caller denies by default. Do NOT
+      // silently coerce to "bash"; that path is less restrictive
+      // than deny for empty-target events.
+      return null
   }
 }
 

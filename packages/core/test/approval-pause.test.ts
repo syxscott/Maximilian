@@ -113,4 +113,31 @@ describe("AgentRuntime approval pause/resume", () => {
     expect(outcome.ok).toBe(false);
     expect(outcome.reason).toBe("unknown");
   });
+
+  // ── M10: timeout emits approval-resolved so dashboard unparks ─────
+
+  it("M10 regression: approval timeout emits an `approval-resolved` event with decision: reject", async () => {
+    const events: RuntimeEvent[] = [];
+    const runtime = new AgentRuntime(() => undefined, makeSink());
+    runtime.on((e) => events.push(e));
+    const ws = makeApprovalWorkspace();
+    const task = ws.plan!.tasks[0]!;
+    task.metadata = {
+      kind: "approval",
+      approval: {
+        prompt: "Sign off",
+        requireComment: false,
+        timeoutMs: 50, // tiny timeout — should fire almost immediately
+      },
+    };
+    await runtime.execute(ws);
+    // After the timeout, we expect exactly one approval-resolved event
+    // with decision: "reject" and a comment that mentions the timeout.
+    const resolved = events.filter((e) => e.type === "approval-resolved");
+    expect(resolved).toHaveLength(1);
+    const r = resolved[0]!;
+    if (r.type !== "approval-resolved") throw new Error("not resolved");
+    expect(r.decision).toBe("reject");
+    expect(r.comment).toMatch(/timed out/i);
+  });
 });

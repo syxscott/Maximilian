@@ -51,6 +51,24 @@ export class ReplayEngine {
       e.blueprintId === input.proposal.subject
     );
 
+    // M8-fix: when zero executions match the proposal's subject or target,
+    // there is no signal to reason over — emit an outcome with
+    // `affectedExecutions: 0` and skip the simulation/delta math so a
+    // caller never sees a fabricated `baselineQuality=0` (which would
+    // later be misread as "all our agents score 0, so this proposal must
+    // be a +∞ improvement"). The caller can branch on `affectedExecutions`
+    // to decide whether to apply the proposal at all.
+    if (affected.length === 0) {
+      return ReplayOutcomeSchema.parse({
+        proposalId: input.proposal.id,
+        baselineQuality: 0,
+        simulatedQuality: 0,
+        qualityDelta: 0,
+        affectedExecutions: 0,
+        at: new Date().toISOString(),
+      });
+    }
+
     const scored = affected
       .map((e) => e.review?.score)
       .filter((s): s is number => s !== undefined);

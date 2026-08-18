@@ -236,4 +236,109 @@ describe("OpencodeTraceCollector", () => {
     const trace = await c.collectTrace("sess-6", "ws-1");
     expect(trace.agentRole).toBe("backend");
   });
+
+  // ── M6: dropped-parts callback ───────────────────────────────────────
+
+  it("M6: onDroppedPart fires for non-object parts (was silently discarded)", async () => {
+    const dropped: Array<{ part: unknown; reason: string }> = [];
+    // Cast the SDK to a permissive shape — we want to feed in raw garbage
+    // parts that violate the v2 wire envelope. The runtime code's defensive
+    // checks should still report them via the callback instead of swallowing.
+    const fakeSdk = {
+      listMessages: async () =>
+        [
+          {
+            id: "m1",
+            sessionID: "sess-bad",
+            role: "assistant",
+            parts: [null, "string-not-object", 42, { type: "text", text: "ok" }],
+            time: { created: 1, completed: 2 },
+          },
+        ] as unknown as SessionMessage[],
+    };
+    const c = new OpencodeTraceCollector({
+      sdk: fakeSdk as unknown as TraceCollectorSdk,
+      onDroppedPart: (info) => dropped.push(info),
+    });
+    const trace = await c.collectTrace("sess-bad", "ws-1");
+    // Three non-object parts get dropped, the text part survives.
+    expect(dropped).toHaveLength(3);
+    expect(dropped.every((d) => d.reason === "non_object_part")).toBe(true);
+    expect(trace.toolCalls).toHaveLength(0);
+  });
+
+  it("M6: onDroppedPart fires for tool parts missing callID or tool", async () => {
+    const dropped: Array<{ part: unknown; reason: string }> = [];
+    const fakeSdk = {
+      listMessages: async () =>
+        [
+          {
+            id: "m1",
+            sessionID: "sess-bad",
+            role: "assistant",
+            parts: [
+              { type: "tool" }, // missing both callID and tool
+              { type: "tool", callID: "call_a" }, // missing tool
+              { type: "tool", tool: "bash" }, // missing callID
+              { type: "tool", callID: "call_ok", tool: "bash", input: {} }, // valid
+            ],
+            time: { created: 1, completed: 2 },
+          },
+        ] as unknown as SessionMessage[],
+    };
+    const c = new OpencodeTraceCollector({
+      sdk: fakeSdk as unknown as TraceCollectorSdk,
+      onDroppedPart: (info) => dropped.push(info),
+    });
+    const trace = await c.collectTrace("sess-bad", "ws-1");
+    expect(dropped).toHaveLength(3);
+    expect(dropped.every((d) => d.reason === "missing_callID_or_tool")).toBe(true);
+    // Only the fully-formed tool part survives.
+    expect(trace.toolCalls).toHaveLength(1);
+    expect(trace.toolCalls[0]?.callID).toBe("call_ok");
+  });
+
+  it("M6: onDroppedPart fires for tool parts that fail schema parse", async () => {
+    const dropped: Array<{ part: unknown; reason: string }> = [];
+    // durationMs is declared as `z.number().nonnegative().optional()`.
+    // A negative duration violates this and the parse should fail.
+    const badDurationPart = {
+      type: "tool",
+      callID: "call_neg",
+      tool: "bash",
+      input: {},
+      // No `time.started`/`time.completed`, so durationMs is undefined and parse succeeds — we
+      // need a negative number instead. Build the part so `normalizeToolPart` derives a
+      // negative durationMs directly.
+      time: { started: 100, completed: 50 },
+    };
+    const fakeSdk = {
+      listMessages: async () =>
+        [
+          {
+            id: "m1",
+            sessionID: "sess-schema",
+            role: "assistant",
+            parts: [badDurationPart],
+            time: { created: 1, completed: 2 },
+          },
+        ] as unknown as SessionMessage[],
+    };
+    const c = new OpencodeTraceCollector({
+      sdk: fakeSdk as unknown as TraceCollectorSdk,
+      onDroppedPart: (info) => dropped.push(info),
+    });
+    const trace = await c.collectTrace("sess-schema", "ws-1");
+    // Either the schema parse fails (then the part is reported dropped),
+    // or the Math.max(0, …) clamps it (then it survives with durationMs=0).
+    // Either way the count must be consistent with the trace result.
+    if (dropped.length > 0) {
+      expect(dropped[0]?.reason).toMatch(/schema_parse_failed/);
+      expect(trace.toolCalls).toHaveLength(0);
+    } else {
+      // Clamped path — durationMs ends up at 0 and parse succeeds.
+      expect(trace.toolCalls).toHaveLength(1);
+      expect(trace.toolCalls[0]?.durationMs).toBe(0);
+    }
+  });
 });

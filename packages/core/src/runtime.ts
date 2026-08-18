@@ -11,7 +11,7 @@
 
 import { randomUUID } from "node:crypto"
 import { Agent, type AgentContext } from "./agent.js"
-import { withSpan, getLogger } from "@max/telemetry"
+import { withSpan, getLogger, opencodeSessionsLeakedTotal } from "@max/telemetry"
 import { OpencodeExecutor } from "./opencode-executor.js"
 
 const log = getLogger("core:runtime")
@@ -84,22 +84,22 @@ export type RuntimeCommand =
   | { kind: "resume"; value: unknown }
   | { kind: "update"; patch: Partial<ChannelValues> }
   | { kind: "goto"; nodeId: string }
-  | { kind: "interrupt"; reason: string; payload?: unknown };
+  | { kind: "interrupt"; reason: string; payload?: unknown }
 
 /**
  * Result of a self-critique observation (借鉴 AutoGPT self-critique).
  * @see https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/prompts/prompt.py
  */
 export interface SelfCritiqueResult {
-  useful: boolean;
+  useful: boolean
   /** Quality score 0-10. Scores < 3 trigger replan. */
-  score: number;
+  score: number
   /** Brief explanation of the score. */
-  reason: string;
+  reason: string
   /** Up to 3 concrete suggestions for improvement. */
-  suggestions?: string[];
+  suggestions?: string[]
   /** The text that was critiqued (passed to `observe`). */
-  outputText?: string;
+  outputText?: string
 }
 
 export type ApprovalDecision = "approve" | "reject"
@@ -366,6 +366,41 @@ function raceWithAbort<T>(
   })
 }
 
+/**
+ * Read the preflight result stashed by `OpencodeDecomposer.decompose()`
+ * on `task.metadata.preflightResult`. Returns `null` if the metadata
+ * is absent or malformed; callers should treat `null` as "no cache hit,
+ * run normally". The shape mirrors what `OpencodeExecutor.executeTask`
+ * writes so the runtime can hydrate a `Result` from either source.
+ */
+interface PreflightCache {
+  sessionId: string
+  executor: string
+  durationMs: number
+  outputPreview: string
+}
+function readPreflightResult(metadata: unknown): PreflightCache | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const m = metadata as Record<string, unknown>;
+  const r = m.preflightResult;
+  if (!r || typeof r !== "object") return null;
+  const obj = r as Record<string, unknown>;
+  if (
+    typeof obj.sessionId !== "string" ||
+    typeof obj.executor !== "string" ||
+    typeof obj.durationMs !== "number" ||
+    typeof obj.outputPreview !== "string"
+  ) {
+    return null;
+  }
+  return {
+    sessionId: obj.sessionId,
+    executor: obj.executor,
+    durationMs: obj.durationMs,
+    outputPreview: obj.outputPreview,
+  };
+}
+
 export class AgentRuntime {
   private listeners = new Set<RuntimeListener>()
   private runningWorkspaces = new Map<string, AbortController>()
@@ -442,6 +477,10 @@ export class AgentRuntime {
    * Lazily created from RuntimeOptions.opencode on first use.
    */
   private opencodeExecutor?: OpencodeExecutor
+  /** Steering message queues per workspace (借鉴 pi). */
+  private steeringQueues = new Map<string, import("@max/providers").ChatMessage[]>()
+  /** Follow-up message queues per workspace (借鉴 pi). */
+  private followUpQueues = new Map<string, import("@max/providers").ChatMessage[]>()
 
   constructor(
     private factory: AgentFactory,
@@ -465,6 +504,19 @@ export class AgentRuntime {
       this.opencodeExecutor = new OpencodeExecutor({
         baseUrl: options.opencode.baseUrl,
       })
+    } else {
+      // Phase 4a (in-process LLM removal) — surface a one-shot deprecation
+      // warning so callers that haven't migrated to opencode see a
+      // visible signal. The in-process paths below still work for now
+      // (tests + legacy callers rely on them), but a future phase will
+      // make `opencode.baseUrl` required and delete the `toolProvider` /
+      // `agent.execute` branches.
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[AgentRuntime] RuntimeOptions.opencode is not set — running in " +
+          "legacy in-process mode. This is deprecated and will be removed " +
+          "in a future release. Configure `opencode: { baseUrl }` to migrate.",
+      );
     }
   }
 
@@ -478,14 +530,44 @@ export class AgentRuntime {
     this.emit(event)
   }
 
-  /** Steering hook: called before each tool-loop iteration to inject pending messages. */
+  /** Steering hook: called before each tool-loop iteration to inject pending messages (借鉴 pi). */
   getSteeringMessages() {
-    return [] as unknown as import("@max/providers").ChatMessage[]
+    const queue = this.steeringQueues.get(this._currentWorkspaceId ?? "") ?? []
+    this.steeringQueues.set(this._currentWorkspaceId ?? "", [])
+    return queue
   }
 
-  /** Follow-up hook: called after tool-loop natural exit to queue follow-up work. */
+  /** Follow-up hook: called after tool-loop natural exit to queue follow-up work (借鉴 pi). */
   getFollowUpMessages() {
-    return [] as unknown as import("@max/providers").ChatMessage[]
+    const queue = this.followUpQueues.get(this._currentWorkspaceId ?? "") ?? []
+    this.followUpQueues.set(this._currentWorkspaceId ?? "", [])
+    return queue
+  }
+
+  private _currentWorkspaceId?: string
+
+  /**
+   * Enqueue steering messages for a workspace (借鉴 pi outer/inner loop).
+   * Call this while the agent is running to inject messages before the next turn.
+   */
+  enqueueSteeringMessages(
+    workspaceId: string,
+    messages: import("@max/providers").ChatMessage[],
+  ): void {
+    const existing = this.steeringQueues.get(workspaceId) ?? []
+    this.steeringQueues.set(workspaceId, [...existing, ...messages])
+  }
+
+  /**
+   * Enqueue follow-up messages for a workspace (借鉴 pi outer/inner loop).
+   * Call this after the agent naturally stops to continue with additional work.
+   */
+  enqueueFollowUpMessages(
+    workspaceId: string,
+    messages: import("@max/providers").ChatMessage[],
+  ): void {
+    const existing = this.followUpQueues.get(workspaceId) ?? []
+    this.followUpQueues.set(workspaceId, [...existing, ...messages])
   }
 
   /**
@@ -749,7 +831,9 @@ export class AgentRuntime {
     const interrupt_ = new RuntimeInterrupt(reason, payload)
     this.activeInterrupt.set(workspaceId, interrupt_)
     let resolvePromise: (command: RuntimeCommand) => void = () => {}
-    const p = new Promise<RuntimeCommand>((resolve) => { resolvePromise = resolve; })
+    const p = new Promise<RuntimeCommand>((resolve) => {
+      resolvePromise = resolve
+    })
     this.interruptResolvers.set(workspaceId, resolvePromise)
     p.catch(() => {}) // Avoid unhandled rejection in case resume is never called
     throw interrupt_
@@ -870,10 +954,7 @@ export class AgentRuntime {
       updatedAt: new Date().toISOString(),
     }
     await this.sink.saveWorkspace(forked)
-    await this.checkpointSaver.copyThread(
-      { thread_id: workspaceId },
-      { thread_id: forkId },
-    )
+    await this.checkpointSaver.copyThread({ thread_id: workspaceId }, { thread_id: forkId })
     return forkId
   }
 
@@ -912,409 +993,414 @@ export class AgentRuntime {
   }
 
   private async _executeImpl(workspace: Workspace): Promise<Workspace> {
-    const controller = new AbortController()
-    this.runningWorkspaces.set(workspace.id, controller)
+    this._currentWorkspaceId = workspace.id
+    try {
+      const controller = new AbortController()
+      this.runningWorkspaces.set(workspace.id, controller)
 
-    // Initialize the Magentic-One style ledger for this workspace.
-    const initialLedger = freshLedger(workspace.id)
-    this.ledgers.set(workspace.id, initialLedger)
+      // Initialize the Magentic-One style ledger for this workspace.
+      const initialLedger = freshLedger(workspace.id)
+      this.ledgers.set(workspace.id, initialLedger)
 
-    const updated: Workspace = {
-      ...workspace,
-      results: [...workspace.results],
-      updatedAt: new Date().toISOString(),
-    }
+      const updated: Workspace = {
+        ...workspace,
+        results: [...workspace.results],
+        updatedAt: new Date().toISOString(),
+      }
 
-    if (!updated.plan) {
-      // 修复 Bug9: clean up runningWorkspaces before early return
-      this.runningWorkspaces.delete(workspace.id)
-      updated.status = "failed"
-      updated.error = "No plan attached to workspace"
+      if (!updated.plan) {
+        // 修复 Bug9: clean up runningWorkspaces before early return
+        this.runningWorkspaces.delete(workspace.id)
+        updated.status = "failed"
+        updated.error = "No plan attached to workspace"
+        await this.sink.saveWorkspace(updated)
+        this.emit({ type: "workspace-status", workspaceId: updated.id, status: "failed" })
+        this.emit({ type: "done", workspaceId: updated.id, workspace: updated })
+        return updated // early return — caught by finally
+      }
+
+      updated.status = "executing"
       await this.sink.saveWorkspace(updated)
-      this.emit({ type: "workspace-status", workspaceId: updated.id, status: "failed" })
-      this.emit({ type: "done", workspaceId: updated.id, workspace: updated })
-      return updated
-    }
+      this.emit({ type: "workspace-status", workspaceId: updated.id, status: "executing" })
+      this.emit({ type: "plan", workspaceId: updated.id, plan: updated.plan })
 
-    updated.status = "executing"
-    await this.sink.saveWorkspace(updated)
-    this.emit({ type: "workspace-status", workspaceId: updated.id, status: "executing" })
-    this.emit({ type: "plan", workspaceId: updated.id, plan: updated.plan })
+      // Seed the ledger with a high-level plan entry.
+      const planSummary = `${updated.plan.tasks.length} tasks across ${new Set(updated.plan.tasks.map((t) => t.agentRole)).size} roles`
+      const planEntry: LedgerEntry = {
+        kind: "plan",
+        round: 0,
+        summary: planSummary,
+        at: new Date().toISOString(),
+      }
+      const afterPlan = appendLedger(initialLedger, planEntry)
+      this.ledgers.set(updated.id, afterPlan)
+      this.emit({ type: "ledger", workspaceId: updated.id, ledger: afterPlan })
 
-    // Seed the ledger with a high-level plan entry.
-    const planSummary = `${updated.plan.tasks.length} tasks across ${new Set(updated.plan.tasks.map((t) => t.agentRole)).size} roles`
-    const planEntry: LedgerEntry = {
-      kind: "plan",
-      round: 0,
-      summary: planSummary,
-      at: new Date().toISOString(),
-    }
-    const afterPlan = appendLedger(initialLedger, planEntry)
-    this.ledgers.set(updated.id, afterPlan)
-    this.emit({ type: "ledger", workspaceId: updated.id, ledger: afterPlan })
+      // Concurrent execution respecting dependencies.
+      const completed = new Set<string>()
+      const failed = new Set<string>()
+      const pending = [...updated.plan.tasks]
+      const sem = new Semaphore(this.maxConcurrency)
+      const startedAt = Date.now()
+      // Task retry counter — persists across waves so retries are bounded.
+      const retryMap = new Map<string, number>()
+      // Stall detection baselines — captured each wave so we can report
+      // "tasks completed this round" / "results added this round" rather
+      // than cumulative totals (StallDetector expects per-round deltas).
+      // The detector itself is per-workspace: shared instance across
+      // concurrent workspaces would let workspace A's stall (or its reset)
+      // leak into workspace B's counter and falsely trip — or erase —
+      // B's progress tracking.
+      const stallDetector = new StallDetector({
+        maxIdleRounds: this.maxIdleRoundsBeforeStall,
+      })
+      let prevCompletedSize = completed.size
+      let prevResultsLen = updated.results.length
+      // Per-workspace counters. Wrapped in objects so the helper method
+      // (`runTask`) can mutate them via reference without us having to
+      // capture this whole closure. Do NOT hoist these to instance fields —
+      // shared state across concurrent workspaces would let workspace B
+      // trip termination based on workspace A's progress.
+      const messagesEmittedRef = { value: 0 }
+      const tokensConsumedRef = { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }
+      const roundRef = { value: 0 }
+      const counters = {
+        completed,
+        messagesEmittedRef,
+        tokensConsumedRef,
+        roundRef,
+      }
 
-    // Concurrent execution respecting dependencies.
-    const completed = new Set<string>()
-    const failed = new Set<string>()
-    const pending = [...updated.plan.tasks]
-    const sem = new Semaphore(this.maxConcurrency)
-    const startedAt = Date.now()
-    // Task retry counter — persists across waves so retries are bounded.
-    const retryMap = new Map<string, number>()
-    // Stall detection baselines — captured each wave so we can report
-    // "tasks completed this round" / "results added this round" rather
-    // than cumulative totals (StallDetector expects per-round deltas).
-    // The detector itself is per-workspace: shared instance across
-    // concurrent workspaces would let workspace A's stall (or its reset)
-    // leak into workspace B's counter and falsely trip — or erase —
-    // B's progress tracking.
-    const stallDetector = new StallDetector({
-      maxIdleRounds: this.maxIdleRoundsBeforeStall,
-    })
-    let prevCompletedSize = completed.size
-    let prevResultsLen = updated.results.length
-    // Per-workspace counters. Wrapped in objects so the helper method
-    // (`runTask`) can mutate them via reference without us having to
-    // capture this whole closure. Do NOT hoist these to instance fields —
-    // shared state across concurrent workspaces would let workspace B
-    // trip termination based on workspace A's progress.
-    const messagesEmittedRef = { value: 0 }
-    const tokensConsumedRef = { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }
-    const roundRef = { value: 0 }
-    const counters = {
-      completed,
-      messagesEmittedRef,
-      tokensConsumedRef,
-      roundRef,
-    }
+      while (pending.length > 0) {
+        if (controller.signal.aborted) {
+          updated.status = "failed"
+          updated.error = "Aborted"
+          break
+        }
 
-    while (pending.length > 0) {
+        // Bump the round counter ONCE per scheduling wave (i.e. once per
+        // outer-loop iteration), not once per task. Magentic-One semantics:
+        // a "round" is one full pass over the dependency graph; multiple
+        // tasks may run concurrently within a single round. The earlier
+        // implementation incremented inside `runTask`, so two tasks in the
+        // same wave would be labelled r0 and r1, which makes the ledger
+        // confusing to read and breaks any consumer that joins on round.
+        roundRef.value += 1
+
+        // TerminationCondition check (mirrors autogen's termination loop).
+        // We compute the verdict before each round; if it fires, remaining
+        // tasks are skipped and we exit cleanly with the reason attached.
+        const termCtx: TerminationContext = {
+          workspaceId: updated.id,
+          messagesEmitted: messagesEmittedRef.value,
+          tokensConsumed: { ...tokensConsumedRef },
+          startedAt,
+          now: Date.now(),
+        }
+        const verdict: TerminationVerdict = this.termination.check(termCtx)
+        if (verdict.stop) {
+          updated.status = "completed"
+          updated.error = `terminated: ${verdict.reason}`
+          for (const t of pending) {
+            if (t.status === "pending" || t.status === "running") {
+              t.status = "skipped" as Task["status"]
+              t.error = `terminated: ${verdict.reason}`
+              t.completedAt = new Date().toISOString()
+              this.emit({
+                type: "task-skipped",
+                workspaceId: updated.id,
+                taskId: t.id,
+                reason: `terminated: ${verdict.reason}`,
+              })
+            }
+          }
+          pending.length = 0
+          break
+        }
+
+        // Find ALL runnable tasks (all deps completed, none failed).
+        const runnable: Task[] = []
+        const remaining: Task[] = []
+        const newlySkipped: Task[] = []
+        for (const t of pending) {
+          if (t.dependsOn.some((d) => failed.has(d))) {
+            // A dependency failed — skip this task
+            if (t.status !== "skipped") {
+              t.status = "skipped" as import("./types.js").Task["status"]
+              t.error = "skipped: dependency failed"
+              t.completedAt = new Date().toISOString()
+              newlySkipped.push(t)
+            }
+            remaining.push(t)
+          } else if (t.dependsOn.every((d) => completed.has(d))) {
+            // Check DiGraph-style condition (借鉴 autogen): if the task has a
+            // condition string in metadata, it must be satisfied by prior
+            // results before the task can run.
+            const cond = t.metadata?.condition as string | undefined
+            if (cond && !conditionSatisfied(cond, updated.results)) {
+              remaining.push(t)
+            } else {
+              runnable.push(t)
+            }
+          } else {
+            remaining.push(t)
+          }
+        }
+        // Emit a task-skipped event so UI/observability can show this
+        // distinctly from "pending" — otherwise the UI displays a stuck
+        // "pending" status for tasks that will never run.
+        for (const t of newlySkipped) {
+          this.emit({
+            type: "task-skipped",
+            workspaceId: updated.id,
+            taskId: t.id,
+            reason: "dependency failed",
+          })
+        }
+
+        if (runnable.length === 0 && remaining.length > 0) {
+          // No runnable tasks but still pending — unresolvable cycle or all blocked by failures
+          updated.status = "failed"
+          updated.error = "Unresolvable dependency cycle or all tasks blocked by failures"
+          break
+        }
+
+        // Execute runnable tasks concurrently
+        const retriedTasks: Task[] = []
+
+        const results = await Promise.allSettled(
+          runnable.map(async (task) => {
+            await sem.acquire()
+            try {
+              await this.runTask(updated, task, counters, stallDetector)
+              completed.add(task.id)
+            } catch (err) {
+              const error = err instanceof Error ? err.message : String(err)
+              // Classify the error for smarter retry decisions (借鉴 hermes-agent).
+              const classified = classifyTaskError(err)
+              const retries = retryMap.get(task.id) ?? 0
+              if (retries < this.maxTaskRetries && classified.retryable) {
+                // Re-queue for retry
+                retryMap.set(task.id, retries + 1)
+                task.status = "pending"
+                task.error = undefined
+                task.completedAt = undefined
+                retriedTasks.push(task)
+                log.warn(
+                  {
+                    taskId: task.id,
+                    retry: retries + 1,
+                    maxRetries: this.maxTaskRetries,
+                    failoverReason: classified.reason,
+                  },
+                  "task failed, retrying",
+                )
+                this.emit({
+                  type: "task-failed",
+                  workspaceId: updated.id,
+                  taskId: task.id,
+                  error: `${error} (retry ${retries + 1}/${this.maxTaskRetries})`,
+                })
+              } else {
+                task.status = "failed"
+                task.error = error
+                task.completedAt = new Date().toISOString()
+                failed.add(task.id)
+                log.warn(
+                  {
+                    taskId: task.id,
+                    failoverReason: classified.reason,
+                    retryable: classified.retryable,
+                  },
+                  "task failed permanently",
+                )
+                this.emit({ type: "task-failed", workspaceId: updated.id, taskId: task.id, error })
+                throw err
+              }
+            } finally {
+              sem.release()
+            }
+          }),
+        )
+
+        // Re-add retried tasks to remaining so they run in the next wave
+        remaining.push(...retriedTasks)
+
+        // Note: we deliberately do NOT break out of the loop when a task
+        // fails permanently. The failed task is already in the `failed`
+        // set, so the next iteration's dependency resolver will skip
+        // tasks that depend on it, while independent tasks continue to
+        // run. Breaking here would abandon unrelated work that could
+        // still succeed - e.g. a frontend task failing shouldn't block a
+        // docs task that has no dependency on it. The workspace-level
+        // failure status is set after the loop based on `failed.size`.
+
+        // Stall detection — observe per-round progress, and when the system
+        // has been idle for `maxIdleRounds`, ask the host for a replan.
+        // Mirrors Magentic-One's outer-loop self-reflection: when the
+        // Orchestrator sees no progress, it re-writes the Task Ledger.
+        const completedDelta = completed.size - prevCompletedSize
+        const resultsDelta = updated.results.length - prevResultsLen
+        prevCompletedSize = completed.size
+        prevResultsLen = updated.results.length
+        const justStalled = stallDetector.observe({
+          completedTasks: completedDelta,
+          newResults: resultsDelta,
+        })
+        if (justStalled && this.onStall && !this.replanningWorkspaces.has(updated.id)) {
+          const stallInfo = stallDetector.getStallInfo()
+          if (stallInfo) {
+            log.warn(
+              {
+                workspaceId: updated.id,
+                idleRounds: stallInfo.idleRounds,
+                totalRounds: stallInfo.totalRounds,
+              },
+              "workspace stalled — invoking onStall replan hook",
+            )
+            this.replanningWorkspaces.add(updated.id)
+            try {
+              const replan = await this.onStall(stallInfo, [...remaining], [...updated.results], {
+                workspaceId: updated.id,
+                userRequest: updated.userRequest,
+              })
+              if (replan && Array.isArray(replan.tasks) && replan.tasks.length > 0) {
+                remaining.length = 0
+                remaining.push(...replan.tasks)
+                log.info(
+                  { workspaceId: updated.id, newTaskCount: replan.tasks.length },
+                  "replan accepted - pending replaced",
+                )
+              } else {
+                log.info(
+                  { workspaceId: updated.id },
+                  "onStall returned no tasks - keeping original pending",
+                )
+              }
+            } catch (err) {
+              log.error(
+                { err, workspaceId: updated.id },
+                "onStall replan hook threw - keeping original pending",
+              )
+            } finally {
+              // Always reset the detector, even when the replan failed or
+              // returned nothing. Without this, `stalled` stays true and
+              // observe() will never again transition (it only fires on
+              // the false->true edge), so onStall could never fire again
+              // - a transient LLM error would permanently disable replanning
+              // for this workspace.
+              stallDetector.reset()
+              this.replanningWorkspaces.delete(updated.id)
+            }
+          }
+        }
+
+        // ── Per-wave checkpoint & task re-ranking ───────────────────────────
+
+        // Task re-ranking: ask the LLM to reorder remaining tasks based on
+        // recent results and the overall goal (借鉴 AutoGPT TaskPrioritizer).
+        if (this.taskPrioritizer && remaining.length > 0) {
+          try {
+            const priorities = await this.taskPrioritizer.reRank(remaining, {
+              recentResults: updated.results,
+              goal: updated.userRequest,
+            })
+            if (priorities && priorities.length > 0) {
+              // Reorder remaining tasks by priority: high → medium → low
+              const priorityOrder = { high: 0, medium: 1, low: 2 }
+              const priorityMap = new Map(priorities.map((p) => [p.taskId, p]))
+              // Sort by LLM-assigned priority, then by original order for ties
+              remaining.sort((a, b) => {
+                const pa = priorityMap.get(a.id)
+                const pb = priorityMap.get(b.id)
+                const ordA = pa ? priorityOrder[pa.priority] : 1
+                const ordB = pb ? priorityOrder[pb.priority] : 1
+                if (ordA !== ordB) return ordA - ordB
+                return 0
+              })
+              // Apply newScope modifications if the LLM suggested scope changes
+              for (const t of remaining) {
+                const p = priorityMap.get(t.id)
+                if (p?.newScope) {
+                  t.description = p.newScope
+                }
+              }
+              log.info(
+                { workspaceId: updated.id, newOrder: remaining.map((t) => t.id) },
+                "task re-rank applied",
+              )
+            }
+          } catch (err) {
+            log.error({ err, workspaceId: updated.id }, "task re-rank failed")
+          }
+        }
+
+        // 修复 Bug10: save checkpoint AFTER reRank mutation so checkpoint captures post-reRank state
+        if (this.checkpointSaver) {
+          const checkpointId = `${updated.id}-${roundRef.value.toString().padStart(4, "0")}`
+          const channelValues: ChannelValues = {
+            results: updated.results,
+            tasks: remaining,
+            plan: updated.plan,
+          }
+          const channelVersions: Record<string, number> = {}
+          const updatedChannels = ["results", "tasks"]
+          const prevCheckpointId = `${updated.id}-${(roundRef.value - 1).toString().padStart(4, "0")}`
+          try {
+            await this.checkpointSaver.put(
+              { thread_id: updated.id, checkpoint_id: checkpointId },
+              {
+                id: checkpointId,
+                parentId: roundRef.value === 1 ? null : prevCheckpointId,
+                channelValues,
+                channelVersions,
+                updatedChannels,
+                metadata: {
+                  source: "loop" as const,
+                  step: roundRef.value,
+                },
+              },
+            )
+          } catch (err) {
+            log.error({ err, workspaceId: updated.id }, "checkpoint save failed")
+          }
+        }
+
+        pending.length = 0
+        pending.push(...remaining)
+      }
+
       if (controller.signal.aborted) {
         updated.status = "failed"
-        updated.error = "Aborted"
-        break
-      }
-
-      // Bump the round counter ONCE per scheduling wave (i.e. once per
-      // outer-loop iteration), not once per task. Magentic-One semantics:
-      // a "round" is one full pass over the dependency graph; multiple
-      // tasks may run concurrently within a single round. The earlier
-      // implementation incremented inside `runTask`, so two tasks in the
-      // same wave would be labelled r0 and r1, which makes the ledger
-      // confusing to read and breaks any consumer that joins on round.
-      roundRef.value += 1
-
-      // TerminationCondition check (mirrors autogen's termination loop).
-      // We compute the verdict before each round; if it fires, remaining
-      // tasks are skipped and we exit cleanly with the reason attached.
-      const termCtx: TerminationContext = {
-        workspaceId: updated.id,
-        messagesEmitted: messagesEmittedRef.value,
-        tokensConsumed: { ...tokensConsumedRef },
-        startedAt,
-        now: Date.now(),
-      }
-      const verdict: TerminationVerdict = this.termination.check(termCtx)
-      if (verdict.stop) {
-        updated.status = "completed"
-        updated.error = `terminated: ${verdict.reason}`
-        for (const t of pending) {
-          if (t.status === "pending" || t.status === "running") {
-            t.status = "skipped" as Task["status"]
-            t.error = `terminated: ${verdict.reason}`
-            t.completedAt = new Date().toISOString()
-            this.emit({
-              type: "task-skipped",
-              workspaceId: updated.id,
-              taskId: t.id,
-              reason: `terminated: ${verdict.reason}`,
-            })
-          }
-        }
-        pending.length = 0
-        break
-      }
-
-      // Find ALL runnable tasks (all deps completed, none failed).
-      const runnable: Task[] = []
-      const remaining: Task[] = []
-      const newlySkipped: Task[] = []
-      for (const t of pending) {
-        if (t.dependsOn.some((d) => failed.has(d))) {
-          // A dependency failed — skip this task
-          if (t.status !== "skipped") {
-            t.status = "skipped" as import("./types.js").Task["status"]
-            t.error = "skipped: dependency failed"
-            t.completedAt = new Date().toISOString()
-            newlySkipped.push(t)
-          }
-          remaining.push(t)
-        } else if (t.dependsOn.every((d) => completed.has(d))) {
-          // Check DiGraph-style condition (借鉴 autogen): if the task has a
-          // condition string in metadata, it must be satisfied by prior
-          // results before the task can run.
-          const cond = t.metadata?.condition as string | undefined
-          if (cond && !conditionSatisfied(cond, updated.results)) {
-            remaining.push(t)
-          } else {
-            runnable.push(t)
-          }
-        } else {
-          remaining.push(t)
-        }
-      }
-      // Emit a task-skipped event so UI/observability can show this
-      // distinctly from "pending" — otherwise the UI displays a stuck
-      // "pending" status for tasks that will never run.
-      for (const t of newlySkipped) {
-        this.emit({
-          type: "task-skipped",
-          workspaceId: updated.id,
-          taskId: t.id,
-          reason: "dependency failed",
-        })
-      }
-
-      if (runnable.length === 0 && remaining.length > 0) {
-        // No runnable tasks but still pending — unresolvable cycle or all blocked by failures
+        updated.error = updated.error ?? "Aborted"
+      } else if (failed.size > 0 && completed.size === 0) {
+        // Every task failed (none completed) - workspace is unrecoverable.
+        // Surface the first failed task's error so callers can see the
+        // root cause without digging through the task list.
+        const firstFailed = updated.plan?.tasks.find((t) => failed.has(t.id))
+        const firstError = firstFailed?.error ?? "unknown error"
         updated.status = "failed"
-        updated.error = "Unresolvable dependency cycle or all tasks blocked by failures"
-        break
+        updated.error = `All ${failed.size} task(s) failed (first error: ${firstError})`
+      } else if (failed.size > 0) {
+        // Partial failure: some tasks completed, some failed. Mark as
+        // completed so the user sees results, but record the failure
+        // count on the workspace error field for surfacing in UI.
+        const firstFailed = updated.plan?.tasks.find((t) => failed.has(t.id))
+        const firstError = firstFailed?.error ?? "unknown error"
+        updated.status = "completed"
+        updated.error = `${failed.size} task(s) failed (first error: ${firstError})`
+      } else if (updated.status === "executing") {
+        updated.status = "completed"
       }
-
-      // Execute runnable tasks concurrently
-      const retriedTasks: Task[] = []
-
-      const results = await Promise.allSettled(
-        runnable.map(async (task) => {
-          await sem.acquire()
-          try {
-            await this.runTask(updated, task, counters, stallDetector)
-            completed.add(task.id)
-          } catch (err) {
-            const error = err instanceof Error ? err.message : String(err)
-            // Classify the error for smarter retry decisions (借鉴 hermes-agent).
-            const classified = classifyTaskError(err)
-            const retries = retryMap.get(task.id) ?? 0
-            if (retries < this.maxTaskRetries && classified.retryable) {
-              // Re-queue for retry
-              retryMap.set(task.id, retries + 1)
-              task.status = "pending"
-              task.error = undefined
-              task.completedAt = undefined
-              retriedTasks.push(task)
-              log.warn(
-                {
-                  taskId: task.id,
-                  retry: retries + 1,
-                  maxRetries: this.maxTaskRetries,
-                  failoverReason: classified.reason,
-                },
-                "task failed, retrying",
-              )
-              this.emit({
-                type: "task-failed",
-                workspaceId: updated.id,
-                taskId: task.id,
-                error: `${error} (retry ${retries + 1}/${this.maxTaskRetries})`,
-              })
-            } else {
-              task.status = "failed"
-              task.error = error
-              task.completedAt = new Date().toISOString()
-              failed.add(task.id)
-              log.warn(
-                {
-                  taskId: task.id,
-                  failoverReason: classified.reason,
-                  retryable: classified.retryable,
-                },
-                "task failed permanently",
-              )
-              this.emit({ type: "task-failed", workspaceId: updated.id, taskId: task.id, error })
-              throw err
-            }
-          } finally {
-            sem.release()
-          }
-        }),
-      )
-
-      // Re-add retried tasks to remaining so they run in the next wave
-      remaining.push(...retriedTasks)
-
-      // Note: we deliberately do NOT break out of the loop when a task
-      // fails permanently. The failed task is already in the `failed`
-      // set, so the next iteration's dependency resolver will skip
-      // tasks that depend on it, while independent tasks continue to
-      // run. Breaking here would abandon unrelated work that could
-      // still succeed - e.g. a frontend task failing shouldn't block a
-      // docs task that has no dependency on it. The workspace-level
-      // failure status is set after the loop based on `failed.size`.
-
-      // Stall detection — observe per-round progress, and when the system
-      // has been idle for `maxIdleRounds`, ask the host for a replan.
-      // Mirrors Magentic-One's outer-loop self-reflection: when the
-      // Orchestrator sees no progress, it re-writes the Task Ledger.
-      const completedDelta = completed.size - prevCompletedSize
-      const resultsDelta = updated.results.length - prevResultsLen
-      prevCompletedSize = completed.size
-      prevResultsLen = updated.results.length
-      const justStalled = stallDetector.observe({
-        completedTasks: completedDelta,
-        newResults: resultsDelta,
-      })
-      if (justStalled && this.onStall && !this.replanningWorkspaces.has(updated.id)) {
-        const stallInfo = stallDetector.getStallInfo()
-        if (stallInfo) {
-          log.warn(
-            {
-              workspaceId: updated.id,
-              idleRounds: stallInfo.idleRounds,
-              totalRounds: stallInfo.totalRounds,
-            },
-            "workspace stalled — invoking onStall replan hook",
-          )
-          this.replanningWorkspaces.add(updated.id)
-          try {
-            const replan = await this.onStall(stallInfo, [...remaining], [...updated.results], {
-              workspaceId: updated.id,
-              userRequest: updated.userRequest,
-            })
-            if (replan && Array.isArray(replan.tasks) && replan.tasks.length > 0) {
-              remaining.length = 0
-              remaining.push(...replan.tasks)
-              log.info(
-                { workspaceId: updated.id, newTaskCount: replan.tasks.length },
-                "replan accepted - pending replaced",
-              )
-            } else {
-              log.info(
-                { workspaceId: updated.id },
-                "onStall returned no tasks - keeping original pending",
-              )
-            }
-          } catch (err) {
-            log.error(
-              { err, workspaceId: updated.id },
-              "onStall replan hook threw - keeping original pending",
-            )
-          } finally {
-            // Always reset the detector, even when the replan failed or
-            // returned nothing. Without this, `stalled` stays true and
-            // observe() will never again transition (it only fires on
-            // the false->true edge), so onStall could never fire again
-            // - a transient LLM error would permanently disable replanning
-            // for this workspace.
-            stallDetector.reset()
-            this.replanningWorkspaces.delete(updated.id)
-          }
-        }
-      }
-
-      // ── Per-wave checkpoint & task re-ranking ───────────────────────────
-
-      // Task re-ranking: ask the LLM to reorder remaining tasks based on
-      // recent results and the overall goal (借鉴 AutoGPT TaskPrioritizer).
-      if (this.taskPrioritizer && remaining.length > 0) {
-        try {
-          const priorities = await this.taskPrioritizer.reRank(remaining, {
-            recentResults: updated.results,
-            goal: updated.userRequest,
-          })
-          if (priorities && priorities.length > 0) {
-            // Reorder remaining tasks by priority: high → medium → low
-            const priorityOrder = { high: 0, medium: 1, low: 2 }
-            const priorityMap = new Map(priorities.map((p) => [p.taskId, p]))
-            // Sort by LLM-assigned priority, then by original order for ties
-            remaining.sort((a, b) => {
-              const pa = priorityMap.get(a.id)
-              const pb = priorityMap.get(b.id)
-              const ordA = pa ? priorityOrder[pa.priority] : 1
-              const ordB = pb ? priorityOrder[pb.priority] : 1
-              if (ordA !== ordB) return ordA - ordB
-              return 0
-            })
-            // Apply newScope modifications if the LLM suggested scope changes
-            for (const t of remaining) {
-              const p = priorityMap.get(t.id)
-              if (p?.newScope) {
-                t.description = p.newScope
-              }
-            }
-            log.info(
-              { workspaceId: updated.id, newOrder: remaining.map((t) => t.id) },
-              "task re-rank applied",
-            )
-          }
-        } catch (err) {
-          log.error({ err, workspaceId: updated.id }, "task re-rank failed")
-        }
-      }
-
-      // 修复 Bug10: save checkpoint AFTER reRank mutation so checkpoint captures post-reRank state
-      if (this.checkpointSaver) {
-        const checkpointId = `${updated.id}-${roundRef.value.toString().padStart(4, "0")}`
-        const channelValues: ChannelValues = {
-          results: updated.results,
-          tasks: remaining,
-          plan: updated.plan,
-        }
-        const channelVersions: Record<string, number> = {}
-        const updatedChannels = ["results", "tasks"]
-        const prevCheckpointId = `${updated.id}-${(roundRef.value - 1).toString().padStart(4, "0")}`
-        try {
-          await this.checkpointSaver.put(
-            { thread_id: updated.id, checkpoint_id: checkpointId },
-            {
-              id: checkpointId,
-              parentId: roundRef.value === 1 ? null : prevCheckpointId,
-              channelValues,
-              channelVersions,
-              updatedChannels,
-              metadata: {
-                source: "loop" as const,
-                step: roundRef.value,
-              },
-            },
-          )
-        } catch (err) {
-          log.error({ err, workspaceId: updated.id }, "checkpoint save failed")
-        }
-      }
-
-      pending.length = 0
-      pending.push(...remaining)
+      updated.updatedAt = new Date().toISOString()
+      await this.sink.saveWorkspace(updated)
+      this.emit({ type: "workspace-status", workspaceId: updated.id, status: updated.status })
+      this.emit({ type: "done", workspaceId: updated.id, workspace: updated })
+      this.runningWorkspaces.delete(workspace.id)
+      return updated
+    } finally {
+      this._currentWorkspaceId = undefined
     }
-
-    if (controller.signal.aborted) {
-      updated.status = "failed"
-      updated.error = updated.error ?? "Aborted"
-    } else if (failed.size > 0 && completed.size === 0) {
-      // Every task failed (none completed) - workspace is unrecoverable.
-      // Surface the first failed task's error so callers can see the
-      // root cause without digging through the task list.
-      const firstFailed = updated.plan?.tasks.find((t) => failed.has(t.id))
-      const firstError = firstFailed?.error ?? "unknown error"
-      updated.status = "failed"
-      updated.error = `All ${failed.size} task(s) failed (first error: ${firstError})`
-    } else if (failed.size > 0) {
-      // Partial failure: some tasks completed, some failed. Mark as
-      // completed so the user sees results, but record the failure
-      // count on the workspace error field for surfacing in UI.
-      const firstFailed = updated.plan?.tasks.find((t) => failed.has(t.id))
-      const firstError = firstFailed?.error ?? "unknown error"
-      updated.status = "completed"
-      updated.error = `${failed.size} task(s) failed (first error: ${firstError})`
-    } else if (updated.status === "executing") {
-      updated.status = "completed"
-    }
-    updated.updatedAt = new Date().toISOString()
-    await this.sink.saveWorkspace(updated)
-    this.emit({ type: "workspace-status", workspaceId: updated.id, status: updated.status })
-    this.emit({ type: "done", workspaceId: updated.id, workspace: updated })
-    this.runningWorkspaces.delete(workspace.id)
-    return updated
   }
 
   private async runTask(
@@ -1399,10 +1485,16 @@ export class AgentRuntime {
         // If a ModelRouter is configured, derive task characteristics and
         // set the model override on the agent so it can prefer the selected
         // provider/model when making LLM calls.
+        // M4-fix: also capture the selection in `lastSelectionRef` so the
+        // post-execute hook can call `modelRouter.recordOutcome()` with
+        // success/failure, feeding the health feedback loop that demotes
+        // models with sustained failure rates.
+        const lastSelectionRef: { key: string | undefined } = { key: undefined }
         if (this.modelRouter) {
           const taskChars = deriveTaskCharacteristics(task)
           const selection = this.modelRouter.selectModel(taskChars)
           agent.setModelOverride(selection.provider, selection.model)
+          lastSelectionRef.key = `${selection.provider}/${selection.model}`
           span?.setAttribute("task.modelRouter.provider", selection.provider)
           span?.setAttribute("task.modelRouter.model", selection.model)
         }
@@ -1466,42 +1558,122 @@ export class AgentRuntime {
           let final: Awaited<ReturnType<typeof agent.submitResult>> | undefined
           if (this.opencodeExecutor) {
             const workspaceId = workspace.id
-            const out = await raceWithAbort(
-              this.opencodeExecutor.executeTask(task, workspaceId),
-              ctx.signal,
-              workspace.id,
-            )
-            final = out.result
-            lastActionRef.toolName = "opencode-session"
-            lastActionRef.input = { sessionId: out.sessionId, durationMs: out.durationMs }
-            // Skip the in-process execution paths below.
-            // (fall through to result handling)
-          } else if (toolProvider) {
-            final = await raceWithAbort(
-              runToolLoopAndSubmit(
-                agent,
-                task,
-                ctx,
-                toolProvider,
+            // H5-fix: if opencode sidecar is unreachable (connection
+            // refused, timeout, 5xx), fall through to the in-process
+            // paths below so the task doesn't silently die. We treat
+            // opencode as a *preferred* executor, not a hard
+            // dependency — until Phase 4 removes the in-process paths.
+            let opencodeFailed = false
+            try {
+              // H4-fix: commander pre-flight already ran this task through
+              // opencode and stashed the result in `task.metadata.preflightResult`.
+              // Re-running it here means *two* LLM/tool sessions per task,
+              // doubling cost and time. When the preflight result is present
+              // and well-formed, hydrate a `Result` from it and skip the
+              // network call entirely. The shape mirrors what
+              // `OpencodeExecutor.executeTask` returns so the rest of the
+              // pipeline (self-critique, TruthAudit, etc.) sees identical
+              // data regardless of which path produced the result.
+              const cached = readPreflightResult(task.metadata);
+              if (cached && cached.executor === "opencode") {
+                // Hydrate a minimal Result-like object from the cached
+                // preflight payload. We deliberately cast through
+                // `unknown` because the Result shape includes fields
+                // (agentRole / id / agentId / createdAt) that only the
+                // agent knows how to populate; the runtime uses `final`
+                // for self-critique + TruthAudit, which read metadata
+                // and output, not those identity fields. The pipeline
+                // treats the cast as a "trust the cache" boundary.
+                final = {
+                  taskId: task.id,
+                  output: cached.outputPreview,
+                  metadata: {
+                    sessionId: cached.sessionId,
+                    executor: "opencode-preflight",
+                    durationMs: cached.durationMs,
+                    prefetched: true,
+                  },
+                } as unknown as Awaited<ReturnType<typeof agent.submitResult>>;
+                lastActionRef.toolName = "opencode-session-preflight";
+                lastActionRef.input = { sessionId: cached.sessionId, durationMs: cached.durationMs };
+              } else {
+                const out = await raceWithAbort(
+                  this.opencodeExecutor.executeTask(task, workspaceId),
+                  ctx.signal,
+                  workspace.id,
+                )
+                final = out.result
+                lastActionRef.toolName = "opencode-session"
+                lastActionRef.input = { sessionId: out.sessionId, durationMs: out.durationMs }
+              }
+              // Skip the in-process execution paths below on success.
+              // (fall through to result handling)
+            } catch (err) {
+              // Distinguish abort from opencode failure: if the runtime
+              // was aborted, propagate the abort; otherwise fall back.
+              if ((err as Error)?.name === "AbortError" || ctx.signal?.aborted) {
+                throw err
+              }
+              log.warn(
+                { err, taskId: task.id, workspaceId },
+                "opencode executor failed; falling back to in-process execution",
+              )
+              opencodeFailed = true
+            }
+            if (!opencodeFailed && final !== undefined) {
+              // Success path — skip in-process execution.
+              // (controlled by the opencodeFailed flag)
+            } else if (!opencodeFailed) {
+              // final is undefined (shouldn't happen if no exception)
+              throw new Error("opencode executor returned no result without erroring")
+            }
+          }
+          // In-process fallback (Phase 3): if opencode failed or isn't
+          // configured, route through agent's tool loop or plain execute.
+          if (final === undefined) {
+            if (toolProvider) {
+              final = await raceWithAbort(
+                runToolLoopAndSubmit(
+                  agent,
+                  task,
+                  ctx,
+                  toolProvider,
+                  workspace.id,
+                  this.emit.bind(this),
+                  (requestId, meta) => this.awaitPermission(requestId, meta),
+                  lastActionRef,
+                  this.getSteeringMessages.bind(this),
+                  this.getFollowUpMessages.bind(this),
+                  undefined, // toolExecution (借鉴 pi)
+                  undefined, // beforeToolCall (借鉴 pi)
+                  undefined, // afterToolCall (借鉴 pi)
+                ),
+                ctx.signal,
                 workspace.id,
-                this.emit.bind(this),
-                (requestId, meta) => this.awaitPermission(requestId, meta),
-                lastActionRef,
-                this.getSteeringMessages.bind(this),
-                this.getFollowUpMessages.bind(this),
-              ),
-              ctx.signal,
-              workspace.id,
-            )
-          } else {
-            final = await raceWithAbort(
-              agent.execute(task, ctx).then((r) => agent.submitResult(r)),
-              ctx.signal,
-              workspace.id,
-            )
+              )
+            } else {
+              final = await raceWithAbort(
+                agent.execute(task, ctx).then((r) => agent.submitResult(r)),
+                ctx.signal,
+                workspace.id,
+              )
+            }
           }
           if (!final) {
-            throw new Error("agent runtime: no result after executeTask (opencode + in-process both failed silently)")
+            throw new Error(
+              "agent runtime: no result after executeTask (opencode + in-process both failed silently)",
+            )
+          }
+
+          // M4-fix: feed the ModelRouter the success signal so sustained
+          // failures flip a model's status to "alpha" (downweighted in
+          // future selections). Reaching this point means we have a
+          // `Result` — the task ran to completion, so count it as a
+          // success for the selected model. Failure paths (catch blocks
+          // below) record `ok=false` so the demotion math gets the right
+          // signal.
+          if (this.modelRouter && lastSelectionRef.key) {
+            this.modelRouter.recordOutcome(lastSelectionRef.key, true)
           }
 
           // Self-critique observation: evaluate the last action's quality
@@ -1595,6 +1767,15 @@ export class AgentRuntime {
           task.error = err instanceof Error ? err.message : String(err)
           task.completedAt = new Date().toISOString()
 
+          // M4-fix: feed the ModelRouter the failure outcome. We check
+          // `lastSelectionRef.key` (captured above when ModelRouter was
+          // consulted) so the router's rolling failure counter reflects
+          // the same model that *would* have handled this task. If the
+          // router wasn't used, this is a no-op.
+          if (this.modelRouter && lastSelectionRef.key) {
+            this.modelRouter.recordOutcome(lastSelectionRef.key, false)
+          }
+
           // Append a failed observation to the ledger.
           const failedObs: LedgerEntry = {
             kind: "observation",
@@ -1679,13 +1860,13 @@ export class AgentRuntime {
     const workspaceSignal = this.runningWorkspaces.get(workspace.id)?.signal
     // Polyfill AbortSignal.timeout for Node < 18.11
     const timeoutSignal = approval.timeoutMs
-      ? ("timeout" in AbortSignal
-          ? AbortSignal.timeout(approval.timeoutMs)
-          : (() => {
-              const controller = new AbortController();
-              setTimeout(() => controller.abort(), approval.timeoutMs);
-              return controller.signal;
-            })())
+      ? "timeout" in AbortSignal
+        ? AbortSignal.timeout(approval.timeoutMs)
+        : (() => {
+            const controller = new AbortController()
+            setTimeout(() => controller.abort(), approval.timeoutMs)
+            return controller.signal
+          })()
       : undefined
     const signals = [workspaceSignal, timeoutSignal].filter(
       (s): s is AbortSignal => s !== undefined,
@@ -1697,20 +1878,42 @@ export class AgentRuntime {
             responsePromise,
             signals.length === 1
               ? signals[0]
-              // Polyfill AbortSignal.any for Node < 20
-              : ("any" in AbortSignal
-                  ? AbortSignal.any(signals)
-                  : signals.reduce((acc, s) => {
-                      const combined = new AbortController();
-                      s.addEventListener("abort", () => combined.abort());
-                      acc.addEventListener("abort", () => combined.abort());
-                      return combined.signal;
-                    })),
+              : // Polyfill AbortSignal.any for Node < 20
+                "any" in AbortSignal
+                ? AbortSignal.any(signals)
+                : signals.reduce((acc, s) => {
+                    const combined = new AbortController()
+                    s.addEventListener("abort", () => combined.abort())
+                    acc.addEventListener("abort", () => combined.abort())
+                    return combined.signal
+                  }),
             workspace.id,
           ).catch((err) => {
             // Clean up the parked resolver so a late user response doesn't
             // resolve an already-rejected promise (harmless but noisy).
             this.approvalResolvers.delete(requestId)
+            // M10-fix: emit an `approval-resolved` event so any UI / SSE
+            // listener waiting for the answer learns the approval
+            // terminated. Previously a timeout or abort would surface as
+            // a thrown error inside `runApprovalTask`, but the
+            // dashboard's parked approval request would never receive a
+            // resolution event — leaving it pinned as "awaiting" until
+            // the user manually closed it. We classify the outcome as
+            // `denied` because the user never explicitly approved, and
+            // include the reason for the dashboard's audit log.
+            const reason = timeoutSignal?.aborted
+              ? `approval timed out after ${approval.timeoutMs}ms`
+              : err instanceof Error
+                ? err.message
+                : "approval aborted"
+            this.emit({
+              type: "approval-resolved",
+              workspaceId: workspace.id,
+              taskId: task.id,
+              requestId,
+              decision: "reject",
+              comment: reason,
+            })
             if (timeoutSignal?.aborted) {
               throw new Error(`approval timed out after ${approval.timeoutMs}ms`)
             }
@@ -1783,6 +1986,20 @@ export class AgentRuntime {
     for (const key of approvalKeysToDelete) {
       this.approvalResolvers.delete(key)
     }
+
+    // Phase 9 — SLO-4: count opencode sessions abandoned by an
+    // `abort()` that didn't go through OpencodeExecutor.shutdown().
+    // The `runTask` path attaches the workspace's AbortSignal to the
+    // executor call (M2-fix), which calls OpencodeSdk.abortSession()
+    // server-side. The remaining gap is workspaces aborted by SIGTERM
+    // before `shutdown()` runs — every cached pool entry at that
+    // moment is a leak. Increment per-cached-session so the SLO
+    // dashboard sees the magnitude even if the process exits before
+    // flushing Prometheus.
+    if (this.opencodeExecutor) {
+      const leaked = this.opencodeExecutor.leakedSessionsOnAbort?.(workspaceId) ?? 0
+      for (let i = 0; i < leaked; i++) opencodeSessionsLeakedTotal.inc()
+    }
   }
 
   /**
@@ -1818,6 +2035,14 @@ async function runToolLoopAndSubmit(
   lastActionRef?: { toolName: string; input?: unknown },
   getSteeringMessages?: () => import("@max/providers").ChatMessage[],
   getFollowUpMessages?: () => import("@max/providers").ChatMessage[],
+  // 借鉴 pi: tool execution modes and before/after hooks
+  toolExecution?: import("./types.js").ToolExecutionMode,
+  beforeToolCall?: (
+    ctx: import("./types.js").BeforeToolCallContext,
+  ) => import("./types.js").BeforeToolCallResult | undefined,
+  afterToolCall?: (
+    ctx: import("./types.js").AfterToolCallContext,
+  ) => import("./types.js").AfterToolCallResult | undefined,
 ): Promise<Result> {
   const messages = agent.buildChatMessages(task, ctx)
   const { response, allToolCalls } = await runToolLoop(toolProvider, messages, {
@@ -1828,6 +2053,10 @@ async function runToolLoopAndSubmit(
     getSteeringMessages,
     getFollowUpMessages,
     ownedFiles: task.metadata?.ownedFiles as string[] | undefined,
+    // 借鉴 pi
+    toolExecution,
+    beforeToolCall,
+    afterToolCall,
   })
   const result: Result = {
     id: `r-${randomUUID().slice(0, 8)}`,

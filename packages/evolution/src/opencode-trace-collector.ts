@@ -129,13 +129,24 @@ export interface OpencodeTraceCollectorOptions {
   sdk?: TraceCollectorSdk;
   /** Inject `agentRole` into every produced trace. Useful for downstream sorting. */
   agentRole?: AgentRole;
+  /**
+   * M6-fix: optional callback for parts that get dropped during
+   * normalization (non-object, missing callID/tool, schema parse
+   * failure). The previous behavior silently discarded these, which
+   * made schema regressions invisible. Surfacing them via a callback
+   * (typically wired to a Pino logger or OTel counter) preserves
+   * debuggability without changing the returned tool-calls shape.
+   */
+  onDroppedPart?: (info: { part: unknown; reason: string }) => void;
 }
 
 export class OpencodeTraceCollector {
   private readonly sdk: TraceCollectorSdk;
   private readonly agentRole?: AgentRole;
+  private readonly onDroppedPart?: (info: { part: unknown; reason: string }) => void;
 
   constructor(opts: OpencodeTraceCollectorOptions = {}) {
+    this.onDroppedPart = opts.onDroppedPart;
     if (opts.sdk) {
       this.sdk = opts.sdk;
     } else {
@@ -213,7 +224,7 @@ export class OpencodeTraceCollector {
       const parts = (m as { parts?: unknown }).parts;
       if (Array.isArray(parts)) {
         for (const part of parts) {
-          const tool = normalizeToolPart(part);
+          const tool = normalizeToolPart(part, this.onDroppedPart);
           if (tool) {
             toolCalls.set(tool.callID, tool);
           }
@@ -289,8 +300,18 @@ function normalizeMessage(m: SessionMessage): Message {
   });
 }
 
-function normalizeToolPart(part: unknown): ToolCall | undefined {
-  if (!part || typeof part !== "object") return undefined;
+function normalizeToolPart(
+  part: unknown,
+  onDropped?: (info: { part: unknown; reason: string }) => void,
+): ToolCall | undefined {
+  if (!part || typeof part !== "object") {
+    // M6-fix: record dropped parts (was silently discarded). Callers
+    // can attach an `onDropped` callback to surface these via the
+    // observability pipeline so a degraded schema doesn't lose
+    // tool-call evidence entirely.
+    onDropped?.({ part, reason: "non_object_part" });
+    return undefined;
+  }
   const p = part as {
     type?: string;
     callID?: string;
@@ -302,19 +323,33 @@ function normalizeToolPart(part: unknown): ToolCall | undefined {
     time?: { started?: number; completed?: number };
   };
   if (p.type !== "tool") return undefined;
-  if (typeof p.callID !== "string" || typeof p.tool !== "string") return undefined;
+  if (typeof p.callID !== "string" || typeof p.tool !== "string") {
+    onDropped?.({ part, reason: "missing_callID_or_tool" });
+    return undefined;
+  }
 
   let durationMs: number | undefined;
   if (typeof p.time?.started === "number" && typeof p.time?.completed === "number") {
     durationMs = Math.max(0, p.time.completed - p.time.started);
   }
 
-  return ToolCallSchema.parse({
-    callID: p.callID,
-    tool: p.tool,
-    input: p.input,
-    output: p.output,
-    error: p.error,
-    durationMs,
-  });
+  try {
+    return ToolCallSchema.parse({
+      callID: p.callID,
+      tool: p.tool,
+      input: p.input,
+      output: p.output,
+      error: p.error,
+      durationMs,
+    });
+  } catch (err) {
+    // Schema validation failed — record the part as dropped with the
+    // parse error message for debugging. Still returns undefined so
+    // callers can skip the bad record.
+    onDropped?.({
+      part,
+      reason: `schema_parse_failed: ${(err as Error).message}`,
+    });
+    return undefined;
+  }
 }

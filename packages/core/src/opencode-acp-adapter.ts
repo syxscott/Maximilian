@@ -203,7 +203,21 @@ export class OpencodeAcpAdapter {
     msg: AcpA2AMessage,
   ): Promise<{ response: AcpA2AResponse; sessionID: string; assistant?: AssistantMessage }> {
     const translation = this.translateSend(msg);
-    const taskId = msg.params.taskId ?? msg.params.messageId ?? msg.id ?? translation.agent;
+    // H7-fix: previously we folded taskId → messageId → id → agent
+    // in sequence, silently inventing a "taskId" from the agent role
+    // when all explicit IDs were missing. That collapsed two
+    // unrelated A2A requests from the same agent into a single
+    // session, hiding bugs and corrupting routing. Now we reject
+    // explicitly when no real ID is supplied.
+    const taskId =
+      msg.params.taskId ?? msg.params.messageId ?? msg.id ?? null;
+    if (!taskId) {
+      throw new Error(
+        `OpencodeAcpAdapter.runSend: missing taskId (params.taskId=${String(
+          msg.params.taskId,
+        )}, params.messageId=${String(msg.params.messageId)}, id=${String(msg.id)})`,
+      );
+    }
     const existingSessionID = this.taskSessionMap.get(taskId);
 
     if (this.dryRun) {

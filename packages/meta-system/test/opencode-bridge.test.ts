@@ -358,7 +358,13 @@ describe("MetaSystemOpencodeBridge", () => {
 
   // ── plugin.added ───────────────────────────────────────────────────
 
-  it("registers a plugin capability across all known teams", async () => {
+  it("M9: registers a plugin capability only for the explicit session it was scoped to", async () => {
+    // M9-fix: plugin.added is workspace-scoped. The previous behavior
+    // broadcast to every team in `this.states`, polluting unrelated
+    // teams. The fix scopes registration to the explicit sessionId
+    // (when present). For an unscoped event (no sessionID), no team
+    // state is mutated — the capability is recorded as a derived
+    // event for observability instead.
     bridge = new MetaSystemOpencodeBridge({
       eventBridge,
       eventStore: store,
@@ -372,17 +378,35 @@ describe("MetaSystemOpencodeBridge", () => {
     pump.push(opencodeEvent("session.created", { sessionID: "ses_p1", agent: "frontend" }));
     await waitFor(() => bridge.getTeamState("ses_p1") !== undefined);
 
-    // Now register a plugin.
+    // Register a plugin WITHOUT a session scope.
     pump.push(opencodeEvent("plugin.added", { name: "lint-bot", role: "lint" }));
-    await waitFor(() => {
-      const s = bridge.getTeamState("team-seeded");
-      return s?.pluginCapabilities.includes("lint") ?? false;
-    });
 
+    // Give the event loop a tick to process.
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Neither seeded nor fresh teams should have the capability
+    // (the broadcast was the bug we're fixing).
     const seeded = bridge.getTeamState("team-seeded");
     const fresh = bridge.getTeamState("ses_p1");
-    expect(seeded?.pluginCapabilities).toContain("lint");
-    expect(fresh?.pluginCapabilities).toContain("lint");
+    expect(seeded?.pluginCapabilities ?? []).not.toContain("lint");
+    expect(fresh?.pluginCapabilities ?? []).not.toContain("lint");
+
+    // A plugin event WITH sessionID scopes to that one team.
+    pump.push(
+      opencodeEvent("plugin.added", {
+        sessionID: "ses_p1",
+        name: "scoped-plugin",
+        role: "scoped",
+      }),
+    );
+    await waitFor(() =>
+      bridge.getTeamState("ses_p1")?.pluginCapabilities.includes("scoped") ?? false,
+    );
+    expect(bridge.getTeamState("ses_p1")?.pluginCapabilities).toContain("scoped");
+    // The seeded team is still untouched.
+    expect(bridge.getTeamState("team-seeded")?.pluginCapabilities ?? []).not.toContain(
+      "scoped",
+    );
 
     pump.end();
   });

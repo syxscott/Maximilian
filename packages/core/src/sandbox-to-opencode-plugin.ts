@@ -181,17 +181,34 @@ function translateNetwork(network: NetworkPolicy | undefined): OpencodePluginNet
 
 /**
  * Build the `permission.ruleset` array from the profile's
- * allowed/denied command lists.
+ * allowed/denied command lists AND its path policy.
  *
  * The translator emits one rule per command; order is deny-then-allow
  * so a deny on a specific command always shadows a broad allow.
  * Deny-list patterns are first because the opencode plugin evaluates
  * them in array order (same as Maximilian).
+ *
+ * M3-fix: the path policy (`paths.allow` / `paths.deny`) now emits
+ * rules for the file tools (read, write, edit, glob, grep) too.
+ * Previously only bash commands were translated, which left opencode
+ * with NO enforcement of file-path restrictions — a Maximilian
+ * Strict profile (deny "/etc/**", "/root/**") would still let
+ * opencode's read/write/edit/glob/grep reach those paths because
+ * opencode's per-tool permission ruleset was empty for those tools.
+ *
+ * Order: bash deny → file-tool deny → bash allow → file-tool allow.
+ * File-tool rules come *after* bash deny because the plugin reads
+ * rules in array order; putting bash deny first keeps the existing
+ * command-deny precedence (no behavior change for bash callers).
  */
 function translatePermissionRules(profile: SandboxProfile): OpencodePluginPermissionRuleset {
   const rules: OpencodePluginPermissionRuleset = []
+  const paths = profile.paths
+  // The five file/shell-glob tools that read or mutate files. bash is
+  // handled separately via allowedCommands/deniedCommands.
+  const FILE_TOOLS = ["read", "write", "edit", "glob", "grep"] as const
 
-  // 1) Explicit denies first.
+  // 1) Explicit bash denies first.
   for (const cmd of profile.deniedCommands ?? []) {
     if (cmd === "*") {
       // "deny everything" — emit a single wildcard rule and stop. An
@@ -203,11 +220,31 @@ function translatePermissionRules(profile: SandboxProfile): OpencodePluginPermis
     rules.push({ permission: "bash", pattern: cmd, action: "deny" })
   }
 
-  // 2) Then allow-list. If empty, do NOT emit a blanket "*" allow — the
-  // plugin should fall back to opencode's default permission config,
-  // which already gates write/edit/etc.
+  // 2) Path policy denies → emit per-file-tool deny rules. A
+  // `deny: ["/etc/**", "/root/**"]` becomes a deny rule for each of
+  // the five file tools at each pattern, so opencode's read/write/
+  // edit/glob/grep paths all honor the same restrictions.
+  for (const pattern of paths?.deny ?? []) {
+    for (const tool of FILE_TOOLS) {
+      rules.push({ permission: tool, pattern, action: "deny" })
+    }
+  }
+
+  // 3) Then bash allow-list. If empty, do NOT emit a blanket "*" allow —
+  // the plugin should fall back to opencode's default permission
+  // config, which already gates write/edit/etc.
   for (const cmd of profile.allowedCommands ?? []) {
     rules.push({ permission: "bash", pattern: cmd, action: "allow" })
+  }
+
+  // 4) Path policy allows → emit per-file-tool allow rules. Same logic
+  // as (2): each pattern → rule per tool. Order matters: deny-first
+  // means a specific deny on "/etc/**" shadows any blanket allow on
+  // "**" added here.
+  for (const pattern of paths?.allow ?? []) {
+    for (const tool of FILE_TOOLS) {
+      rules.push({ permission: tool, pattern, action: "allow" })
+    }
   }
 
   return rules

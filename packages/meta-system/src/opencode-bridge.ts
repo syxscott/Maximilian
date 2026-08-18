@@ -299,10 +299,12 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
       lastUpdated: new Date().toISOString(),
     });
 
-    // TruthAudit integration: each compaction shifts the prediction
-    // window forward. We don't import TruthAudit directly to avoid a
-    // circular dep — instead we emit a derived event the orchestrator
-    // (or a TruthAudit adapter) can consume.
+    // Surface a derived "prediction window shifted" event so a downstream
+    // consumer (future TruthAudit adapter / orchestrator hook) can
+    // observe prediction-vs-reality resets after compaction. The bridge
+    // doesn't import TruthAudit directly to avoid a circular dep — the
+    // event is the contract. Today there is no in-process consumer; the
+    // event flows out via the EventStore for observability.
     this.recordDerived("truth-audit:window-shifted", sessionId, {
       sessionId,
       compactionCount: state.compactionCount + 1,
@@ -371,8 +373,13 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
   }
 
   private handlePluginAdded(sessionId: string, data: Record<string, unknown>): void {
-    // plugin.added is workspace-scoped (no sessionID); fall back to the
-    // global aggregate and broadcast to all teams.
+    // M9-fix: plugin.added is workspace-scoped (the event carries no
+    // sessionID), so broadcasting to every team in `this.states`
+    // polluted unrelated teams with capabilities from another
+    // workspace's plugin. The fix: target only the explicit session
+    // the bridge was notified on (when present), or record the
+    // capability as a derived event without mutating any team state
+    // if there is no session — never fan out to all teams.
     const pluginName = typeof data.name === "string" ? data.name : null;
     const pluginRole = typeof data.role === "string"
       ? data.role
@@ -382,22 +389,32 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
     if (!pluginName && !pluginRole) return;
 
     const tag = pluginRole ?? pluginName ?? "unknown";
-    const teamIds = this.states.size > 0 ? [...this.states.keys()] : [sessionId];
 
-    for (const teamId of teamIds) {
-      const state = this.ensureState(teamId);
-      if (!state.pluginCapabilities.includes(tag)) {
-        this.updateState(teamId, {
-          pluginCapabilities: [...state.pluginCapabilities, tag],
-          lastUpdated: new Date().toISOString(),
-        });
-      }
+    if (!sessionId) {
+      // No session to scope to — record the event but don't pollute
+      // any team state. A later session-scoped event from the same
+      // plugin will populate the team state correctly.
+      this.recordDerived("capability:registered", sessionId, {
+        capability: tag,
+        pluginName,
+        appliedTeams: [],
+        reason: "no session scope",
+      });
+      return;
+    }
+
+    const state = this.ensureState(sessionId);
+    if (!state.pluginCapabilities.includes(tag)) {
+      this.updateState(sessionId, {
+        pluginCapabilities: [...state.pluginCapabilities, tag],
+        lastUpdated: new Date().toISOString(),
+      });
     }
 
     this.recordDerived("capability:registered", sessionId, {
       capability: tag,
       pluginName,
-      appliedTeams: teamIds,
+      appliedTeams: [sessionId],
     });
   }
 

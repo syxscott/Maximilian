@@ -5,7 +5,7 @@
  * Workspace, and UI. Use zod to validate at runtime.
  */
 
-import { z } from "zod";
+import { z } from "zod"
 
 // ============================================================================
 // Task Status
@@ -19,20 +19,15 @@ export const TaskStatus = z.enum([
   "skipped",
   // 借鉴 opencode - SessionTodo.Info.status 增加 cancelled
   "cancelled",
-]);
-export type TaskStatus = z.infer<typeof TaskStatus>;
+])
+export type TaskStatus = z.infer<typeof TaskStatus>
 
 // ============================================================================
 // Agent Manifest (logical role, not runtime instance)
 // ============================================================================
 
-export const AgentRole = z.enum([
-  "frontend",
-  "backend",
-  "review",
-  "general",
-]);
-export type AgentRole = z.infer<typeof AgentRole>;
+export const AgentRole = z.enum(["frontend", "backend", "review", "general"])
+export type AgentRole = z.infer<typeof AgentRole>
 
 export const AgentManifestSchema = z.object({
   role: AgentRole,
@@ -58,8 +53,8 @@ export const AgentManifestSchema = z.object({
    * match the allowlist. Denylist wins over allowlist.
    */
   deniedTools: z.array(z.string()).optional(),
-});
-export type AgentManifest = z.infer<typeof AgentManifestSchema>;
+})
+export type AgentManifest = z.infer<typeof AgentManifestSchema>
 
 // ============================================================================
 // Task
@@ -76,8 +71,8 @@ export const TaskSchema = z.object({
   startedAt: z.string().optional(),
   completedAt: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
-});
-export type Task = z.infer<typeof TaskSchema>;
+})
+export type Task = z.infer<typeof TaskSchema>
 
 // ============================================================================
 // Result (Agent output)
@@ -92,8 +87,8 @@ export const ResultSchema = z.object({
   metadata: z.record(z.unknown()).default({}),
   createdAt: z.string(),
   durationMs: z.number().optional(),
-});
-export type Result = z.infer<typeof ResultSchema>;
+})
+export type Result = z.infer<typeof ResultSchema>
 
 // ============================================================================
 // Plan
@@ -106,8 +101,8 @@ export const PlanSchema = z.object({
   rationale: z.string().default(""),
   tasks: z.array(TaskSchema),
   createdAt: z.string(),
-});
-export type Plan = z.infer<typeof PlanSchema>;
+})
+export type Plan = z.infer<typeof PlanSchema>
 
 // ============================================================================
 // Review Result
@@ -122,21 +117,15 @@ export const ReviewResultSchema = z.object({
   suggestions: z.array(z.string()),
   summary: z.string(),
   reviewedAt: z.string(),
-});
-export type ReviewResult = z.infer<typeof ReviewResultSchema>;
+})
+export type ReviewResult = z.infer<typeof ReviewResultSchema>
 
 // ============================================================================
 // Workspace (top-level container for one user request)
 // ============================================================================
 
-export const WorkspaceStatus = z.enum([
-  "planning",
-  "executing",
-  "reviewing",
-  "completed",
-  "failed",
-]);
-export type WorkspaceStatus = z.infer<typeof WorkspaceStatus>;
+export const WorkspaceStatus = z.enum(["planning", "executing", "reviewing", "completed", "failed"])
+export type WorkspaceStatus = z.infer<typeof WorkspaceStatus>
 
 export const WorkspaceSchema = z.object({
   id: z.string(),
@@ -155,8 +144,8 @@ export const WorkspaceSchema = z.object({
    * interface. NOT a substitute for typed fields — keep keys documented.
    */
   metadata: z.record(z.unknown()).default({}),
-});
-export type Workspace = z.infer<typeof WorkspaceSchema>;
+})
+export type Workspace = z.infer<typeof WorkspaceSchema>
 
 // ============================================================================
 // Agent (runtime instance)
@@ -168,8 +157,8 @@ export const AgentInstanceSchema = z.object({
   status: z.enum(["idle", "busy", "completed", "failed"]),
   currentTaskId: z.string().optional(),
   createdAt: z.string(),
-});
-export type AgentInstance = z.infer<typeof AgentInstanceSchema>;
+})
+export type AgentInstance = z.infer<typeof AgentInstanceSchema>
 
 // ============================================================================
 // Channel Values (checkpoint state)
@@ -179,14 +168,14 @@ export type AgentInstance = z.infer<typeof AgentInstanceSchema>;
  * Arbitrary key-value map representing the state of all channels at a
  * checkpoint. Mirrors LangGraph's ChannelValues.
  */
-export type ChannelValues = Record<string, unknown>;
+export type ChannelValues = Record<string, unknown>
 
 /**
  * Free-form config dict used to query/checkpoint stores.
  * The only required key is `thread_id` (the workspace id).
  * Additional keys (e.g. `checkpoint_id`) are used for specific lookups.
  */
-export type ConfigurableDict = Record<string, string | number | boolean | null | undefined>;
+export type ConfigurableDict = Record<string, string | number | boolean | null | undefined>
 
 // ============================================================================
 // Task Priority (task re-ranking)
@@ -198,10 +187,10 @@ export type ConfigurableDict = Record<string, string | number | boolean | null |
  * reorder the remaining task list.
  */
 export interface TaskPriority {
-  taskId: string;
-  priority: "high" | "medium" | "low";
+  taskId: string
+  priority: "high" | "medium" | "low"
   /** Optional revised scope/description for the task. */
-  newScope?: string;
+  newScope?: string
 }
 
 /**
@@ -209,12 +198,169 @@ export interface TaskPriority {
  * 单条 todo 项,带有优先级、状态、position(便于排序)。
  */
 export interface TodoItem {
-  id: string;
-  content: string;
-  status: "pending" | "in_progress" | "completed" | "cancelled";
-  priority: "high" | "medium" | "low";
-  position: number;
+  id: string
+  content: string
+  status: "pending" | "in_progress" | "completed" | "cancelled"
+  priority: "high" | "medium" | "low"
+  position: number
 }
+
+// ============================================================================
+// Tool Execution Mode (借鉴 pi)
+// ============================================================================
+
+/**
+ * Controls how tool calls from a single assistant message are executed.
+ * - "sequential": each tool call is prepared, executed, and finalized before the next one starts.
+ * - "parallel": tool calls are prepared sequentially, then allowed tools execute concurrently.
+ */
+export type ToolExecutionMode = "sequential" | "parallel"
+
+// ============================================================================
+// Before/After Tool Call Hooks (借鉴 pi)
+// ============================================================================
+
+/**
+ * Context passed to `beforeToolCall` hook.
+ * Called before a tool is executed, after arguments have been validated.
+ */
+export interface BeforeToolCallContext {
+  /** The assistant message that requested the tool call. */
+  assistantMessage: unknown
+  /** The raw tool call block from assistant message content. */
+  toolCall: unknown
+  /** Validated tool arguments for the target tool schema. */
+  args: unknown
+  /** Current agent context at the time the tool call is prepared. */
+  context: unknown
+}
+
+/**
+ * Result returned from `beforeToolCall`.
+ * Returning `{ block: true }` prevents the tool from executing.
+ */
+export interface BeforeToolCallResult {
+  block?: boolean
+  reason?: string
+  /**
+   * Hint that the agent should stop after the current tool batch when this call is blocked.
+   * Early termination only happens when every finalized tool result in the batch sets this to true.
+   */
+  terminate?: boolean
+}
+
+/**
+ * Context passed to `afterToolCall` hook.
+ * Called after a tool finishes executing, before `tool_execution_end` is emitted.
+ */
+export interface AfterToolCallContext {
+  /** The assistant message that requested the tool call. */
+  assistantMessage: unknown
+  /** The raw tool call block from assistant message content. */
+  toolCall: unknown
+  /** Validated tool arguments for the target tool schema. */
+  args: unknown
+  /** The executed tool result before any `afterToolCall` overrides are applied. */
+  result: unknown
+  /** Whether the executed tool result is currently treated as an error. */
+  isError: boolean
+  /** Current agent context at the time the tool call is finalized. */
+  context: unknown
+}
+
+/**
+ * Partial override returned from `afterToolCall`.
+ * Merge semantics are field-by-field.
+ */
+export interface AfterToolCallResult {
+  content?: unknown
+  details?: unknown
+  isError?: boolean
+  usage?: unknown
+  /**
+   * Hint that the agent should stop after the current tool batch.
+   * Early termination only happens when every finalized tool result in the batch sets this to true.
+   */
+  terminate?: boolean
+}
+
+// ============================================================================
+// Agent Loop Config Hooks (借鉴 pi)
+// ============================================================================
+
+/**
+ * Context passed to `shouldStopAfterTurn`.
+ */
+export interface ShouldStopAfterTurnContext {
+  /** The assistant message that completed the turn. */
+  message: unknown
+  /** Tool result messages passed to the preceding `turn_end` event. */
+  toolResults: unknown[]
+  /** Current agent context after the turn's assistant message and tool results have been appended. */
+  context: unknown
+  /** Messages that this loop invocation will return if it exits at this point. */
+  newMessages: unknown[]
+}
+
+/**
+ * Replacement runtime state used by the agent loop before starting another provider request.
+ */
+export interface AgentLoopTurnUpdate {
+  /** Context for the next provider request. */
+  context?: unknown
+  /** Model for the next provider request. */
+  model?: unknown
+  /** Thinking level for the next provider request. */
+  thinkingLevel?: ThinkingLevel
+}
+
+/**
+ * Context passed to `prepareNextTurn`.
+ */
+export interface PrepareNextTurnContext extends ShouldStopAfterTurnContext {}
+
+/**
+ * Thinking/reasoning level for models that support it (借鉴 pi).
+ */
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+
+// ============================================================================
+// Complete AgentEvent Type System (借鉴 pi)
+// ============================================================================
+
+/**
+ * Events emitted by the Agent for UI updates.
+ * Complete event type system covering agent lifecycle, turn lifecycle,
+ * message lifecycle, and tool execution lifecycle.
+ */
+export type AgentEvent =
+  // Agent lifecycle
+  | { type: "agent_start" }
+  | { type: "agent_end"; messages: unknown[] }
+  // Turn lifecycle - a turn is one assistant response + any tool calls/results
+  | { type: "turn_start" }
+  | { type: "turn_end"; message: unknown; toolResults: unknown[] }
+  // Message lifecycle - emitted for user, assistant, and toolResult messages
+  | { type: "message_start"; message: unknown }
+  // Only emitted for assistant messages during streaming
+  | { type: "message_update"; message: unknown; assistantMessageEvent: unknown }
+  | { type: "message_end"; message: unknown }
+  // Tool execution lifecycle
+  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
+  | {
+      type: "tool_execution_update"
+      toolCallId: string
+      toolName: string
+      args: unknown
+      partialResult: unknown
+    }
+  | {
+      type: "tool_execution_end"
+      toolCallId: string
+      toolName: string
+      result: unknown
+      isError: boolean
+    }
 
 // ============================================================================
 // JSON Schemas (for OpenAPI / documentation)
@@ -276,4 +422,4 @@ export const JSON_SCHEMAS = {
     },
     required: ["id", "score", "issues", "suggestions", "summary"],
   },
-};
+}

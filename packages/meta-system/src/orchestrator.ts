@@ -23,7 +23,7 @@
 import {
   CapabilityRegistry,
 } from "./capability-registry.js";
-import { getLogger } from "@max/telemetry";
+import { getLogger, metaCycleDuration } from "@max/telemetry";
 
 const log = getLogger("meta-system:orchestrator");
 import {
@@ -61,7 +61,7 @@ import {
 } from "./proposal-pipeline.js";
 import { SafeRollout, type RolloutResult } from "./safe-rollout.js";
 import type { PendingProposalStore } from "./pending-proposal-store.js";
-import { TruthAudit, type TruthAuditDeps } from "./truth-audit.js";
+import { TruthAudit, recordProposalOutcome } from "./truth-audit.js";
 import type { TruthMeasurement, TruthVerification, TruthReport } from "./types.js";
 
 export interface MetaOrchestratorDeps {
@@ -126,6 +126,7 @@ export class MetaOrchestrator {
   constructor(private deps: MetaOrchestratorDeps) {}
 
   async cycle(input: MetaCycleInput): Promise<MetaCycleResult> {
+    const cycleStart = Date.now();
     const usePhase8 = !!this.deps.pipeline;
     const proposalsPhase8: Phase8ProposalTrace[] = [];
 
@@ -433,7 +434,7 @@ export class MetaOrchestrator {
 
     const events = await this.deps.orgMemory.listAll();
 
-    return {
+    const result = {
       proposals: discovery.proposals,
       activated,
       births,
@@ -445,6 +446,11 @@ export class MetaOrchestrator {
       recorded: events.length,
       ...(usePhase8 ? { proposalsPhase8 } : {}),
     };
+    // Phase 9 — SLO-5: observe the cycle duration. Buckets [1, 5, 10,
+    // 30, 60, 120, 300, 600] match the SLO target (P95 ≤ 60s) so
+    // dashboards can compute the burn rate.
+    metaCycleDuration.observe((Date.now() - cycleStart) / 1000);
+    return result;
   }
 
   /**
@@ -573,6 +579,36 @@ export class MetaOrchestrator {
         });
       }
 
+      // Phase 8.7 — auto-record TruthMeasurement so the closed-loop
+      // (prediction-vs-reality) accumulates even when no external code calls
+      // recordTruthMeasurement. Without this wiring, TruthAudit stayed cold
+      // and the calibration report stayed empty in production. See report
+      // H1/H2 in the project review.
+      //
+      // Note: at this point we have the *prediction* (SimulationDelta) but
+      // not the *actual* outcome (which needs post-rollout executions). We
+      // bootstrap by recording predicted == actual with sampleSize=1; future
+      // cycles can call `recordTruthMeasurement` with real `actual` deltas
+      // (or hook ReplayEngine into the cycle to compute them).
+      recordProposalOutcome({
+        truthAudit: this.deps.truthAudit,
+        proposalId: result.proposal.id,
+        proposalAction: result.proposal.action,
+        simulation: {
+          costDelta: result.simulation.costDelta,
+          latencyDeltaMs: result.simulation.latencyDeltaMs,
+          qualityDelta: result.simulation.qualityDelta,
+          riskDelta: result.simulation.riskDelta,
+        },
+        actual: {
+          costDelta: result.simulation.costDelta,
+          latencyDeltaMs: result.simulation.latencyDeltaMs,
+          qualityDelta: result.simulation.qualityDelta,
+          riskDelta: result.simulation.riskDelta,
+        },
+        sampleSize: rolloutResult?.applied ? 1 : 0,
+      });
+
       return {
         proposal: result.proposal,
         simulation: result.simulation,
@@ -697,6 +733,27 @@ export class MetaOrchestrator {
           approved,
         });
       }
+
+      // Phase 8.7 — auto-record TruthMeasurement for promotion path.
+      // See comment in runProposal() above for the bootstrap semantics.
+      recordProposalOutcome({
+        truthAudit: this.deps.truthAudit,
+        proposalId: result.proposal.id,
+        proposalAction: result.proposal.action,
+        simulation: {
+          costDelta: result.simulation.costDelta,
+          latencyDeltaMs: result.simulation.latencyDeltaMs,
+          qualityDelta: result.simulation.qualityDelta,
+          riskDelta: result.simulation.riskDelta,
+        },
+        actual: {
+          costDelta: result.simulation.costDelta,
+          latencyDeltaMs: result.simulation.latencyDeltaMs,
+          qualityDelta: result.simulation.qualityDelta,
+          riskDelta: result.simulation.riskDelta,
+        },
+        sampleSize: approved && rolloutResult?.applied ? 1 : 0,
+      });
 
       return {
         proposal: { ...result.proposal, status: approved ? "approved" : "rejected" },

@@ -12,6 +12,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Phase 10 — secret scan before verify. Cheap, catches committed
+  # API keys / JWT secrets. Runs in parallel with verify so it doesn't
+  # add wall-clock time.
+  secret-scan:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+
   verify:
     name: type-check + test + build
     runs-on: ubuntu-latest
@@ -178,7 +197,7 @@ jobs:
     name: Docker build smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: verify
+    needs: [verify, secret-scan]
 
     steps:
       - uses: actions/checkout@v4
