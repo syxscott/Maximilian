@@ -60,11 +60,30 @@ export class TruthAudit {
   constructor(private deps: TruthAuditDeps = {}) {
     this.config = { ...TRUTH_AUDIT_CONFIG, ...(deps.config ?? {}) };
     this.now = deps.now ?? (() => new Date());
-    this.loadHistoricalMeasurements();
+    // H9-fix: callers should use `await TruthAudit.create(...)` instead of
+    // constructing directly when historical persistence is wired — otherwise
+    // the first verify()/report() may run before loadHistoricalMeasurements
+    // finishes. Constructor keeps the synchronous path so legacy call-sites
+    // that construct without persistence continue to work.
   }
 
-  /** Load measurements from the persistence layer into memory. */
-  private async loadHistoricalMeasurements(): Promise<void> {
+  /**
+   * Async constructor — preferred entry point when persistence (`getMeasurements`)
+   * is wired. Awaits the historical-load so the returned instance is
+   * immediately safe to query.
+   *
+   * @example
+   *   const truthAudit = await TruthAudit.create({ getMeasurements, saveMeasurement })
+   */
+  static async create(deps: TruthAuditDeps = {}): Promise<TruthAudit> {
+    const instance = new TruthAudit(deps);
+    await instance.loadHistoricalMeasurements();
+    return instance;
+  }
+
+  /** Load measurements from the persistence layer into memory. Public so
+   *  `create()` can await it. Idempotent. */
+  async loadHistoricalMeasurements(): Promise<void> {
     if (!this.deps.getMeasurements) return;
     const historical = await this.deps.getMeasurements();
     for (const m of historical) {
@@ -376,5 +395,31 @@ export function buildMeasurement(input: {
     actual: input.actual,
     sampleSize: input.sampleSize ?? 1,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
+  });
+}
+
+/**
+ * Phase 8.7 — wiring helper for MetaOrchestrator. Given a Proposal that was
+ * rolled out (or rolled back), plus the SimulationDelta that predicted it
+ * and the observed post-rollout delta, build and record a TruthMeasurement.
+ *
+ * Returns the recorded measurement so the caller can log it. No-op when
+ * `truthAudit` is undefined (the wiring is optional).
+ */
+export function recordProposalOutcome(input: {
+  truthAudit: TruthAudit | undefined;
+  proposalId: string;
+  proposalAction: ProposalAction;
+  simulation: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number };
+  actual: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number };
+  sampleSize?: number;
+}): TruthMeasurement | null {
+  if (!input.truthAudit) return null;
+  return input.truthAudit.recordMeasurement({
+    proposalId: input.proposalId,
+    proposalAction: input.proposalAction,
+    predicted: input.simulation,
+    actual: input.actual,
+    sampleSize: input.sampleSize ?? 1,
   });
 }

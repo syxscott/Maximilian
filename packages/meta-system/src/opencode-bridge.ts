@@ -299,10 +299,12 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
       lastUpdated: new Date().toISOString(),
     });
 
-    // TruthAudit integration: each compaction shifts the prediction
-    // window forward. We don't import TruthAudit directly to avoid a
-    // circular dep — instead we emit a derived event the orchestrator
-    // (or a TruthAudit adapter) can consume.
+    // Surface a derived "prediction window shifted" event so a downstream
+    // consumer (future TruthAudit adapter / orchestrator hook) can
+    // observe prediction-vs-reality resets after compaction. The bridge
+    // doesn't import TruthAudit directly to avoid a circular dep — the
+    // event is the contract. Today there is no in-process consumer; the
+    // event flows out via the EventStore for observability.
     this.recordDerived("truth-audit:window-shifted", sessionId, {
       sessionId,
       compactionCount: state.compactionCount + 1,

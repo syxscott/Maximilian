@@ -79,6 +79,7 @@ import {
   SafeRollout,
   PendingProposalStore,
   VisualizerAdapter,
+  TruthAudit,
   type DiscoverySignal,
 } from "@max/meta-system"
 import { postChat, postChatRoute } from "./routes/chat.js"
@@ -202,6 +203,7 @@ import {
   PgTelemetryStore,
   PgGovernanceEngine,
   PgOrgMemory,
+  PgTruthStore,
 } from "@max/database"
 import { sql } from "drizzle-orm"
 import { authMiddleware, requireRole } from "./auth/middleware.js"
@@ -987,6 +989,33 @@ if (metaAgentEnabled) {
   ) as CapabilityRegistry
   metaDiscovery = new CapabilityDiscoveryEngine(metaRoot)
   const discovery = metaDiscovery
+  // Phase 8.7 — TruthAudit (prediction-vs-reality verification). When
+  // DATABASE_URL is set we persist measurements + verifications so the
+  // calibration drift survives restarts; otherwise the audit runs
+  // in-memory only (still useful for the cycle report, just not durable).
+  // Constructed via `TruthAudit.create()` so the historical load completes
+  // before the orchestrator can call report()/verify().
+  const truthStore = db ? new PgTruthStore(db) : undefined
+  const truthAudit = truthStore
+    ? await TruthAudit.create({
+        getMeasurements: () => truthStore.listAllMeasurements(),
+        saveMeasurement: (m) => {
+          // The TruthMeasurement type uses `proposalAction` (typed enum) but
+          // the DB row stores `action` (string). Map once here so the
+          // in-memory type doesn't have to know about persistence.
+          const id = `${m.proposalId}::${m.recordedAt}`
+          return truthStore.saveMeasurement({
+            id,
+            proposalId: m.proposalId,
+            action: String(m.proposalAction),
+            predicted: m.predicted,
+            actual: m.actual,
+            sampleSize: m.sampleSize,
+            recordedAt: m.recordedAt,
+          })
+        },
+      })
+    : undefined
   // Phase 8 — when DIGITAL_TWIN_ENABLED, engines are constructed WITHOUT
   // save/retire callbacks; the orchestrator wires manualSaveBlueprint /
   // manualRetireBlueprint so that no mutation bypasses the pipeline.
@@ -1061,6 +1090,7 @@ if (metaAgentEnabled) {
     manualRetireBlueprint: digitalTwinEnabled ? (id) => blueprintStore.retire(id) : undefined,
     telemetry: telemetry ?? undefined,
     pendingStore: metaPendingStore,
+    truthAudit,
   })
   metaGovernance = governance
   metaOrgMemory = orgMemory
