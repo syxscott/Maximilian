@@ -23,7 +23,7 @@
 import {
   CapabilityRegistry,
 } from "./capability-registry.js";
-import { getLogger } from "@max/telemetry";
+import { getLogger, metaCycleDuration } from "@max/telemetry";
 
 const log = getLogger("meta-system:orchestrator");
 import {
@@ -126,6 +126,7 @@ export class MetaOrchestrator {
   constructor(private deps: MetaOrchestratorDeps) {}
 
   async cycle(input: MetaCycleInput): Promise<MetaCycleResult> {
+    const cycleStart = Date.now();
     const usePhase8 = !!this.deps.pipeline;
     const proposalsPhase8: Phase8ProposalTrace[] = [];
 
@@ -433,7 +434,7 @@ export class MetaOrchestrator {
 
     const events = await this.deps.orgMemory.listAll();
 
-    return {
+    const result = {
       proposals: discovery.proposals,
       activated,
       births,
@@ -445,6 +446,11 @@ export class MetaOrchestrator {
       recorded: events.length,
       ...(usePhase8 ? { proposalsPhase8 } : {}),
     };
+    // Phase 9 — SLO-5: observe the cycle duration. Buckets [1, 5, 10,
+    // 30, 60, 120, 300, 600] match the SLO target (P95 ≤ 60s) so
+    // dashboards can compute the burn rate.
+    metaCycleDuration.observe((Date.now() - cycleStart) / 1000);
+    return result;
   }
 
   /**

@@ -16,6 +16,30 @@ exporters:
   debug:
     verbosity: basic
 
+  # Phase 9 — Production OTLP exporters. Commented out by default so the
+  # collector can boot in dev without an external dependency. Uncomment
+  # the block matching your backend, set the endpoint + auth, then add
+  # the exporter to the relevant pipeline's `exporters:` array.
+  #
+  # Honeycomb:
+  # otlp/honeycomb:
+  #   endpoint: api.honeycomb.io:443
+  #   headers:
+  #     x-honeycomb-team: ${env.HONEYCOMB_API_KEY}
+  #     x-honeycomb-dataset: maximilian-prod
+  #
+  # Grafana Cloud / Tempo:
+  # otlp/tempo:
+  #   endpoint: tempo-us-central1.grafana.net:443
+  #   headers:
+  #     authorization: Basic ${env.GRAFANA_CLOUD_AUTH}
+  #
+  # Prometheus remote_write:
+  # prometheusremotewrite:
+  #   endpoint: https://prometheus-prod-01.grafana.net/api/prom/push
+  #   headers:
+  #     authorization: Bearer ${env.GRAFANA_CLOUD_PROM_TOKEN}
+
 service:
   pipelines:
     traces:

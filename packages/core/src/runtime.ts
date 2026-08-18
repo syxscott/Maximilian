@@ -11,7 +11,7 @@
 
 import { randomUUID } from "node:crypto"
 import { Agent, type AgentContext } from "./agent.js"
-import { withSpan, getLogger } from "@max/telemetry"
+import { withSpan, getLogger, opencodeSessionsLeakedTotal } from "@max/telemetry"
 import { OpencodeExecutor } from "./opencode-executor.js"
 
 const log = getLogger("core:runtime")
@@ -1985,6 +1985,20 @@ export class AgentRuntime {
     }
     for (const key of approvalKeysToDelete) {
       this.approvalResolvers.delete(key)
+    }
+
+    // Phase 9 — SLO-4: count opencode sessions abandoned by an
+    // `abort()` that didn't go through OpencodeExecutor.shutdown().
+    // The `runTask` path attaches the workspace's AbortSignal to the
+    // executor call (M2-fix), which calls OpencodeSdk.abortSession()
+    // server-side. The remaining gap is workspaces aborted by SIGTERM
+    // before `shutdown()` runs — every cached pool entry at that
+    // moment is a leak. Increment per-cached-session so the SLO
+    // dashboard sees the magnitude even if the process exits before
+    // flushing Prometheus.
+    if (this.opencodeExecutor) {
+      const leaked = this.opencodeExecutor.leakedSessionsOnAbort?.(workspaceId) ?? 0
+      for (let i = 0; i < leaked; i++) opencodeSessionsLeakedTotal.inc()
     }
   }
 

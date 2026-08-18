@@ -33,6 +33,7 @@ import {
   type TruthVerdict,
   type ProposalAction,
 } from "./types.js";
+import { truthAuditVerdictsTotal } from "@max/telemetry";
 
 export interface TruthAuditDeps {
   /** Source of historical measurements (e.g. orchestrator's outcome store). */
@@ -298,6 +299,11 @@ export class TruthAudit {
       const v = this.verifyFromSamples(id, samples.filter((s) => s.proposalId === id));
       if (!v) continue;
       verdicts[v.verdict] += 1;
+      // Phase 9 — SLO-3: increment the per-verdict counter so the
+      // `truthAuditCalibration` dashboard chart has data. We use the
+      // `verdict` label directly so consumers can graph
+      // `verdict="accurate" / total_verdicts` for accuracy.
+      truthAuditVerdictsTotal.inc({ verdict: v.verdict });
       if (v.verdict !== "insufficient_data") {
         // Use the verification's per-dimension drifts (which are already
         // mean-across-samples) for MAE/MSE accounting.

@@ -25,6 +25,7 @@
 import { OpencodeHttpClient } from "@max/core-thin-sdk"
 import { SessionPool } from "@max/core-thin-sdk"
 import * as OpencodeSdk from "@max/core-thin-sdk"
+import { opencodeSessionsCreatedTotal } from "@max/telemetry"
 import type { Result, Task } from "./types.js"
 
 export interface OpencodeExecutorOptions {
@@ -86,6 +87,7 @@ export class OpencodeExecutor {
   ): Promise<ExecuteResult> {
     const t0 = Date.now()
     // 1. 取得/创建 opencode session
+    const poolSizeBefore = this.usePool ? this.pool.size() : 0
     const entry = this.usePool
       ? await this.pool.getOrCreate(workspaceId, { title: this.sessionTitle(task) })
       : {
@@ -93,6 +95,17 @@ export class OpencodeExecutor {
           touch: () => {},
         }
     const sessionId = entry.session.id
+    // Phase 9: count session creation for the SLO-4 leak-rate indicator.
+    // SessionPool reuses cached sessions, so we only increment when the
+    // pool's size grew (a fresh session was created server-side) or
+    // when the pool is disabled entirely. Matches the SLO target:
+    //   opencode_sessions_leaked_total / opencode_sessions_created_total < 0.0001
+    const wasCreatedThisCall = !this.usePool
+      ? true
+      : (this.pool.size() > poolSizeBefore)
+    if (wasCreatedThisCall) {
+      opencodeSessionsCreatedTotal.inc()
+    }
 
     // M2-fix: when the runtime aborts, ask opencode to abort the
     // in-flight session so the LLM call doesn't keep burning tokens
@@ -178,6 +191,26 @@ export class OpencodeExecutor {
   /** 关闭所有缓存的 opencode session(测试清理用) */
   async shutdown(): Promise<void> {
     await this.pool.shutdown()
+  }
+
+  /**
+   * Phase 9 — SLO-4: report how many cached sessions were associated
+   * with a given workspace. Called by `Runtime.abort(workspaceId)`
+   * right before SIGTERM so the SLO dashboard has visibility into
+   * sessions that the abrupt exit will leak server-side.
+   *
+   * Today we just count cached entries by workspaceId (the pool keys
+   * them that way). In the future this should also `deleteSession`
+   * best-effort with a short timeout; the metric is a stepping stone
+   * toward that.
+   */
+  leakedSessionsOnAbort(workspaceId: string): number {
+    if (!this.usePool) return 0
+    // SessionPool keys cached entries by workspaceId. If the pool has
+    // an entry for this workspace, it owns a session server-side
+    // that won't be DELETEd by the abrupt abort. Return 1 if so;
+    // 0 otherwise. Pool invariant: ≤1 cached session per workspace.
+    return this.pool.has(workspaceId) ? 1 : 0
   }
 
   /** 探活:opencode serve 是否响应 */
