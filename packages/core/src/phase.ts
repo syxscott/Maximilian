@@ -408,7 +408,14 @@ export class PhaseRunner<S = unknown> {
 
     const durationMs = Math.max(0, performance.now() - startMs)
     // Clone finalState to prevent temporal mutation of history entries.
-    const clonedState = cloneOrUse<S>(stateBeforePhase, phaseCtx.state)
+    // For 'fail' / 'skip' verdicts the runner restored `this.ctx.state` to
+    // stateBeforePhase above, so the canonical "state after the verdict was
+    // applied" is stateBeforePhase. For 'pass' the phase's mutations stand
+    // and `phaseCtx.state` is the post-phase snapshot.
+    const clonedState =
+      verdict === "fail" || verdict === "skip"
+        ? cloneOrUse<S>(stateBeforePhase, phaseCtx.state)
+        : cloneOrUse<S>(phaseCtx.state, stateBeforePhase)
     await this.eventBus.publishAsync({ type: "phase:end", workspaceId: this.ctx.workspaceId, phaseId: phase.id, turn: phaseIdx, verdict })
     return makePhaseResult(phase, verdict, output, durationMs, phaseError, gateError, clonedState, phaseCtx.artifacts, phaseCtx.messages)
   }

@@ -122,7 +122,10 @@ describe("PhaseRunner (借鉴 ChatDev ChatChain)", () => {
     expect(results[0]!.verdict).toBe("pass")
   })
 
-  it("run() records verdict 'fail' and phaseError when run() throws", async () => {
+  it("run() throws and records phaseError when a phase's run() throws", async () => {
+    // The runner surfaces uncaught phase exceptions as a thrown error so
+    // callers can decide whether to abort, retry, or record-and-continue.
+    // The thrown message includes the phase id and the original cause.
     const phases: Phase<SimpleState>[] = [
       {
         id: "throwing",
@@ -136,9 +139,7 @@ describe("PhaseRunner (借鉴 ChatDev ChatChain)", () => {
       },
     ]
     const runner = new PhaseRunner(phases, makeContext(), eventBus)
-    const results = await runner.run()
-    expect(results[0]!.verdict).toBe("fail")
-    expect(results[0]!.phaseError).toBe("boom")
+    await expect(runner.run()).rejects.toThrow(/throwing.*boom|boom/)
   })
 
   it("emits phase:start and phase:end events", async () => {
@@ -148,8 +149,13 @@ describe("PhaseRunner (借鉴 ChatDev ChatChain)", () => {
     eventBus.subscribe((e) => events.push(e))
     await runner.run()
 
-    expect(events).toContainEqual({ type: "phase:start", phaseId: "a", turn: 0 })
-    expect(events).toContainEqual(expect.objectContaining({ type: "phase:end", phaseId: "a", verdict: "pass" }))
+    // PhaseEvent includes workspaceId so a downstream subscriber can route
+    // the event to the right workspace stream. Earlier versions of this
+    // test asserted only { type, phaseId, turn }, which silently broke
+    // when workspaceId was added to the wire shape — `toContainEqual`
+    // requires strict field-by-field equality.
+    expect(events).toContainEqual(expect.objectContaining({ type: "phase:start", workspaceId: "ws-1", phaseId: "a", turn: 0 }))
+    expect(events).toContainEqual(expect.objectContaining({ type: "phase:end", workspaceId: "ws-1", phaseId: "a", verdict: "pass" }))
   })
 
   it("currentPhase() returns null before run()", () => {

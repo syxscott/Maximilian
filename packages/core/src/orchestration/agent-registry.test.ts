@@ -22,9 +22,9 @@ describe("AgentRegistry", () => {
       expect(() => registry.register({ id: "a1", type: "test" })).toThrow();
     });
 
-    it("unregisters an agent", () => {
+    it("unregisters an agent", async () => {
       registry.register({ id: "a1", type: "test" });
-      expect(registry.unregister("a1")).toBe(true);
+      expect(await registry.unregister("a1")).toBe(true);
       expect(registry.get("a1")).toBeUndefined();
     });
 

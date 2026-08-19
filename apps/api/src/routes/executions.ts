@@ -143,7 +143,13 @@ export function executionRoutes(deps: Deps) {
       }
       const nextCursor = hasMore && items.length > 0 ? items[items.length - 1]?.id : undefined
 
-      return c.json({ items, nextCursor })
+      // `total` reflects the page size returned in this response. With cursor
+      // pagination the global row count is intentionally not exposed (clients
+      // should follow `nextCursor` to enumerate the full set), but the field
+      // is kept in the wire shape so callers that only care about "is there
+      // at least one row on this page" — e.g. the dashboard's polling loop —
+      // don't have to reach for `items.length` themselves.
+      return c.json({ items, nextCursor, total: items.length })
     },
 
     get: async (c: Context) => {

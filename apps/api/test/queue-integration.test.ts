@@ -47,6 +47,10 @@ describe("Chat route queue integration", () => {
           createdAt: new Date().toISOString(),
         },
       })),
+      // chat.ts:134 invokes `commander.preflight(plan)` to gate the legacy
+      // commander path; the stub must return an empty error list so the
+      // request proceeds to the queue/in-process execution branch.
+      preflight: vi.fn(() => [] as string[]),
     };
 
     const mockStore = {
@@ -115,6 +119,8 @@ describe("Chat route queue integration", () => {
           createdAt: new Date().toISOString(),
         },
       })),
+      // See note above — chat.ts:134 calls `commander.preflight(plan)`.
+      preflight: vi.fn(() => [] as string[]),
     };
 
     const mockStore = {

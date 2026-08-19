@@ -1,10 +1,33 @@
-import { describe, it, expect, vi, afterEach } from "vitest"
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest"
+import { rmSync } from "node:fs"
 import {
   pullSkillIndex,
   downloadFile,
   discoverSkills,
   CACHE_TTL_MS,
 } from "../src/skill-discovery.js"
+
+const TEST_CACHE_DIRS = [
+  "/tmp/__max_test_skills_a",
+  "/tmp/__max_test_skills_b",
+  "/tmp/__max_test_skills_c",
+  "/tmp/__max_test_skills_d",
+  "/tmp/__max_dl_false.md",
+  "/tmp/__max_dl_ok.md",
+  "/tmp/__max_remote_cache",
+  "/tmp/__max_local_dir",
+]
+
+// Each test owns a tmpdir under /tmp. The implementation's `downloadFile`
+// short-circuits when the destination file already exists and is younger than
+// CACHE_TTL_MS (7 days). Previous test runs leave files behind, so without a
+// fresh tmpdir every run we'd silently skip fetch calls and the "called N
+// times" assertions would under-count. Clean before each test.
+beforeEach(() => {
+  for (const d of TEST_CACHE_DIRS) {
+    rmSync(d, { recursive: true, force: true })
+  }
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
