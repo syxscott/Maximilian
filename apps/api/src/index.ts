@@ -231,11 +231,7 @@ import { swaggerUI } from "@hono/swagger-ui"
 import { FileMemoryStore } from "@max/core"
 import type { AgentMemoryStorePort, ModelSelectorPort } from "@max/core"
 import type { ModelSelectorPort as CommanderModelSelectorPort } from "@max/commander"
-import {
-  JsonlEventLog,
-  EventLogRegistry,
-  type LoggedEvent,
-} from "./event-log.js"
+import { JsonlEventLog, EventLogRegistry, type LoggedEvent } from "./event-log.js"
 import {
   createSseHandler,
   createEventBus,
@@ -1444,7 +1440,7 @@ api.openapi(circuitBreakerStatsRoute, requireAuthMiddleware(), async (c) => {
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404)
   }
-  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider  
+  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider
   const stats = cbProvider.getCircuitBreakerStats?.()
   if (!stats) {
     return c.json({ error: "Circuit breaker not available for this provider" }, 404)
@@ -1458,7 +1454,7 @@ api.openapi(circuitBreakerResetRoute, requireAuthMiddleware(), async (c) => {
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404)
   }
-  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider  
+  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider
   cbProvider.resetCircuitBreaker?.()
   return c.json({ ok: true, providerId: id })
 })
@@ -1473,7 +1469,10 @@ api.openapi(failoverQueueRoute, requireAuthMiddleware(), async (c) => {
 })
 
 api.openapi(failoverQueueAddRoute, requireAuthMiddleware(), async (c) => {
-  const { providerId, priority = 99 } = c.req.valid("json" as never) as { providerId: string; priority?: number }
+  const { providerId, priority = 99 } = c.req.valid("json" as never) as {
+    providerId: string
+    priority?: number
+  }
   const provider = registry.get(providerId)
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404)
@@ -1543,7 +1542,11 @@ api.openapi(
 
 api.openapi(listWorkspacesRoute, requireAuthMiddleware(), listWorkspaces(store))
 api.openapi(getWorkspaceRoute, requireAuthMiddleware(), getWorkspace(store))
-api.openapi(getWorkspaceEventsRoute, requireAuthMiddleware(), getWorkspaceEvents(store, eventLogRegistry))
+api.openapi(
+  getWorkspaceEventsRoute,
+  requireAuthMiddleware(),
+  getWorkspaceEvents(store, eventLogRegistry),
+)
 
 // ---------------------------------------------------------------------------
 // ScopedBus — replay-friendly fan-out for runtime events (P0-C).
