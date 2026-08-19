@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,11 +20,19 @@ import {
   useAddToFailoverQueue,
   useRemoveFromFailoverQueue,
   useAutoFailoverEnabled,
+  useFailoverQueue,
 } from "@/lib/api/hooks"
 import { useLocale, t } from "@max/i18n"
+import {
+  MODEL_PRESETS,
+  PROVIDER_DEFAULT_BASE_URLS,
+  PROVIDER_ENV_VARS,
+  resolvePreset,
+  validateAllPresets,
+} from "@max/llm"
 import { VirtualList } from "./VirtualList"
 import type { ProviderInfo, ProviderCategory } from "@/api"
-import { Activity, AlertTriangle, CheckCircle, XCircle, Zap } from "lucide-react"
+import { Activity, AlertTriangle, BookMarked, CheckCircle, XCircle, Zap } from "lucide-react"
 
 // ── Category config (borrowed from cc-switch) ─────────────────────────────
 
@@ -104,6 +112,114 @@ function FailoverPriorityBadge({ priority }: { priority?: number }) {
   )
 }
 
+// ── Preset catalog ─────────────────────────────────────────────────────────
+//
+// Renders a compact list of all presets from `@max/llm`'s MODEL_PRESETS.
+// Each entry shows the provider's default baseURL (so the user can copy it
+// into a custom provider config) and the env var to set the API key under.
+// Validation runs once at mount; any errors are surfaced as a banner so a
+// typo in the catalog file is impossible to miss.
+
+interface PresetEntry {
+  readonly provider: string
+  readonly id: string
+  readonly name: string
+  readonly baseURL: string
+  readonly envVars: readonly string[]
+  readonly contextWindow?: number
+}
+
+function PresetCatalog() {
+  const entries = useMemo<PresetEntry[]>(() => {
+    const out: PresetEntry[] = []
+    for (const [provider, models] of Object.entries(MODEL_PRESETS)) {
+      const baseURL = PROVIDER_DEFAULT_BASE_URLS[provider] ?? ""
+      const envVars = PROVIDER_ENV_VARS[provider] ?? []
+      for (const m of models) {
+        // resolvePreset() is the canonical merge logic — we reuse it to
+        // verify that each catalog row would actually resolve cleanly. Any
+        // failure here is a programmer error in presets.ts and surfaces
+        // in the banner below.
+        const resolved = resolvePreset({ provider, id: m.id })
+        out.push({
+          provider,
+          id: m.id,
+          name: resolved.ok ? resolved.value.name : m.name,
+          baseURL,
+          envVars,
+          contextWindow: m.limits?.context,
+        })
+      }
+    }
+    // Stable, predictable order: official → china → aggregator → other.
+    // We just sort by provider name; the catalog itself isn't huge.
+    return out.sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id))
+  }, [])
+
+  const validationErrors = useMemo(() => validateAllPresets(), [])
+
+  if (entries.length === 0) {
+    return (
+      <Card className="bg-muted/20 mb-4">
+        <CardContent className="py-4 px-4 text-xs text-muted-foreground">
+          No presets available.
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="bg-muted/20 mb-4" data-testid="preset-catalog">
+      <CardHeader className="py-3 px-4">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <BookMarked className="w-4 h-4" />
+          Presets
+          <Badge variant="outline" className="ml-auto text-[10px]">
+            {entries.length} models
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="py-2 px-4">
+        {validationErrors.length > 0 && (
+          <div
+            className="text-xs text-destructive mb-2 font-mono"
+            data-testid="preset-validation-errors"
+          >
+            ⚠ {validationErrors.length} preset validation issue(s):{" "}
+            {validationErrors
+              .slice(0, 3)
+              .map((e) => `${e.provider}/${e.modelId}: ${e.message}`)
+              .join("; ")}
+            {validationErrors.length > 3 && " …"}
+          </div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-72 overflow-y-auto">
+          {entries.map((e) => (
+            <div
+              key={`${e.provider}/${e.id}`}
+              className="flex items-center justify-between text-xs px-3 py-2 rounded border border-border/60 bg-background"
+              data-testid={`preset-${e.provider}-${e.id}`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{e.name}</div>
+                <div className="text-[10px] text-muted-foreground font-mono truncate">
+                  {e.provider} · {e.baseURL || "—"}
+                </div>
+                {e.envVars.length > 0 && (
+                  <div className="text-[10px] text-muted-foreground font-mono truncate">
+                    {e.envVars.join(" / ")}
+                    {e.contextWindow !== undefined && ` · ${(e.contextWindow / 1024).toFixed(0)}K ctx`}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function ProviderPanel() {
   useLocale()
   const { data: providerData, isLoading, error } = useProviders()
@@ -122,6 +238,8 @@ export function ProviderPanel() {
           {t("provider.description")}
         </CardContent>
       </Card>
+
+      <PresetCatalog />
 
       {isLoading ? (
         <p className="text-muted-foreground text-sm">{t("provider.loading")}</p>
@@ -189,10 +307,18 @@ function ProviderCard({
   const addToFailover = useAddToFailoverQueue()
   const removeFromFailover = useRemoveFromFailoverQueue()
   const { data: autoFailoverEnabled } = useAutoFailoverEnabled()
+  // Failover queue is a separate live source — backend's listProviders
+  // intentionally doesn't carry inFailoverQueue / failoverPriority because
+  // those belong to a shared resource (the queue), not the provider list.
+  const { data: failoverQueue } = useFailoverQueue()
+  const queueEntry = failoverQueue?.queue.find((q) => q.providerId === provider.id)
+  const inFailoverQueue = Boolean(queueEntry)
+  const failoverPriority = queueEntry?.priority ?? 99
 
-  // Model catalog: prefer provider.modelVariants, fall back to hardcoded catalog
-  const modelVariants = provider.modelVariants
-  const catalog = modelVariants?.map((v) => v.id) ?? PROVIDER_MODEL_CATALOG[provider.id]
+  // Model catalog: listProviders doesn't carry modelVariants yet, so the
+  // hardcoded PROVIDER_MODEL_CATALOG is always the source. (When the
+  // backend adds per-provider model catalogs, prefer it here.)
+  const catalog = PROVIDER_MODEL_CATALOG[provider.id]
   const [model, setModelState] = useState(provider.defaultModel)
   const [editing, setEditing] = useState(false)
   // Track the model the user has saved so the post-save "flash back" of
@@ -238,10 +364,10 @@ function ProviderCard({
             <CircuitBreakerBadge state={cbState} />
 
             {/* Failover priority badge */}
-            <FailoverPriorityBadge priority={provider.failoverPriority} />
+            <FailoverPriorityBadge priority={failoverPriority} />
 
             {/* In-failover-queue indicator */}
-            {provider.inFailoverQueue && (
+            {inFailoverQueue && (
               <Badge variant="outline" className="text-xs gap-1">
                 <Zap className="w-3 h-3" />
                 {t("provider.failoverBadge")}
@@ -282,15 +408,7 @@ function ProviderCard({
               {provider.configured ? t("provider.ready") : t("provider.missingKey")}
             </span>
           </span>
-          {/* Model context limit display — mirrors cc-switch's PresetModelVariant display */}
-          {modelVariants && (
-            <span className="text-muted-foreground">
-              {t("provider.contextLimitLabel", {
-                limit:
-                  modelVariants.find((v) => v.id === model)?.contextLimit?.toLocaleString() ?? "—",
-              })}
-            </span>
-          )}
+          {/* Model context limit display — only when backend provides modelVariants. */}
         </div>
 
         <div className="flex items-center gap-2">
@@ -310,21 +428,11 @@ function ProviderCard({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {catalog.map((m) => {
-                  const variant = modelVariants?.find((v) => v.id === m)
-                  const label = variant?.name ?? m
-                  const ctxLimit = variant?.contextLimit
-                  return (
+                {catalog.map((m) => (
                     <SelectItem key={m} value={m}>
-                      {label}
-                      {ctxLimit && (
-                        <span className="text-muted-foreground ml-1">
-                          ({ctxLimit.toLocaleString()} ctx)
-                        </span>
-                      )}
+                      {m}
                     </SelectItem>
-                  )
-                })}
+                  ))}
               </SelectContent>
             </Select>
           ) : (
@@ -375,7 +483,7 @@ function ProviderCard({
           )}
 
           {/* Toggle failover queue */}
-          {provider.inFailoverQueue ? (
+          {inFailoverQueue ? (
             <Button
               size="sm"
               variant="ghost"
@@ -394,7 +502,7 @@ function ProviderCard({
                 onClick={() =>
                   addToFailover.mutate({
                     providerId: provider.id,
-                    priority: provider.failoverPriority ?? 99,
+                    priority: failoverPriority,
                   })
                 }
                 disabled={addToFailover.isPending}

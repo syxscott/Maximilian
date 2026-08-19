@@ -1,8 +1,9 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useLocale, t } from "@max/i18n"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
-import { FileText, Image as ImageIcon, BarChart2, Code2 } from "lucide-react"
+import { FileText, Image as ImageIcon, BarChart2, Code2, FileDiff } from "lucide-react"
+import { DiffViewer, type DiffLine } from "@max/ui-react"
 import { ArtifactPreview, type Artifact } from "./_helpers/ArtifactPreview"
 import type { Workspace, RuntimeEvent } from "../api"
 
@@ -14,7 +15,6 @@ export interface OutputPanelProps {
 
 function guessMime(name: string): string {
   const lower = name.toLowerCase()
-  // Extract the extension ONCE (Array.prototype.pop mutates, so chained calls are wrong).
   const ext = lower.includes(".") ? lower.slice(lower.lastIndexOf(".") + 1) : ""
   if (ext === "png" || ext === "gif" || ext === "webp") return `image/${ext}`
   if (ext === "jpg" || ext === "jpeg") return "image/jpeg"
@@ -47,23 +47,138 @@ function resultToArtifact(
   }
 }
 
+// ── Unified diff parser ────────────────────────────────────────────────────
+//
+// Parses a `diff --git` / `diff -u` patch into the structured DiffLine[] the
+// DiffViewer expects. Returns null if the text doesn't look like a unified
+// diff (no `--- / +++` header) so callers can fall back to raw text rendering.
+//
+// We deliberately don't pull in a full diff library — the agent's outputs
+// are small and the parser covers the common subset (added/removed/context
+// lines and @@ hunk headers). Tabs are expanded to 4 spaces so monospace
+// alignment survives in the rendered HTML.
+function parseUnifiedDiff(text: string): DiffLine[] | null {
+  if (!text) return null
+  const lines = text.split(/\r?\n/)
+  // Look for a unified-diff signature: a "--- " line followed by a "+++ " line.
+  const hasOldNew = lines.some((l) => l.startsWith("--- ")) && lines.some((l) => l.startsWith("+++ "))
+  if (!hasOldNew) return null
+  const out: DiffLine[] = []
+  let oldNumber = 0
+  let newNumber = 0
+  for (const raw of lines) {
+    if (raw.startsWith("@@")) {
+      // Parse "@@ -a,b +c,d @@ optional heading"
+      const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw)
+      if (m) {
+        oldNumber = Number.parseInt(m[1] ?? "0", 10)
+        newNumber = Number.parseInt(m[2] ?? "0", 10)
+      }
+      out.push({ type: "hunk", content: raw.replace(/\t/g, "    ") })
+      continue
+    }
+    if (raw.startsWith("--- ") || raw.startsWith("+++ ")) {
+      out.push({ type: "info", content: raw.replace(/\t/g, "    ") })
+      continue
+    }
+    if (raw.startsWith("diff --git ") || raw.startsWith("index ") || raw.startsWith("Binary ")) {
+      out.push({ type: "info", content: raw.replace(/\t/g, "    ") })
+      continue
+    }
+    if (raw.startsWith("+") && !raw.startsWith("+++")) {
+      out.push({
+        type: "add",
+        newNumber,
+        content: raw.slice(1).replace(/\t/g, "    "),
+      })
+      newNumber += 1
+      continue
+    }
+    if (raw.startsWith("-") && !raw.startsWith("---")) {
+      out.push({
+        type: "del",
+        oldNumber,
+        content: raw.slice(1).replace(/\t/g, "    "),
+      })
+      oldNumber += 1
+      continue
+    }
+    // Context line (or blank). Only count it if it begins with a space — pure
+    // blank lines inside a diff are ambiguous and we leave them as context.
+    if (raw.startsWith(" ") || raw === "") {
+      out.push({
+        type: "context",
+        oldNumber,
+        newNumber,
+        content: raw.replace(/\t/g, "    "),
+      })
+      oldNumber += 1
+      newNumber += 1
+      continue
+    }
+    // Anything else: treat as info so it's still visible but doesn't get
+    // counted as a code line.
+    out.push({ type: "info", content: raw.replace(/\t/g, "    ") })
+  }
+  return out
+}
+
+// Label inferred from a diff header (--- / +++) or a metadata patchPath.
+function diffCaptionFor(text: string): string | undefined {
+  const plus = text.split(/\r?\n/).find((l) => l.startsWith("+++ ") || l.startsWith("--- "))
+  if (!plus) return undefined
+  // Strip the leading marker and any "a/" / "b/" prefixes some diff tools add.
+  return plus.replace(/^(\+\+\+|---) /, "").replace(/^[ab]\//, "").trim() || undefined
+}
+
 export function OutputPanel({
   workspaceId,
   workspace,
-  events: _events,
+  events,
 }: OutputPanelProps) {
   useLocale()
   const results = (workspace?.results ?? []).filter((r) => r.agentRole !== "review")
   const [openIdx, setOpenIdx] = useState<number | null>(null)
-  // Clamp `openIdx` to the current `results` range. The previous version
-  // passed the raw state through, so a workspace switch that yielded
-  // fewer results left `openIdx` pointing past the end of the new
-  // array — the dialog then opened with an undefined `active` and
-  // rendered an empty title / blank body. Reset to null when out of
-  // range so the dialog closes cleanly on a new (shorter) workspace.
   const clampedOpenIdx = openIdx !== null && openIdx < results.length ? openIdx : null
 
-  if (results.length === 0) {
+  // Detect a unified diff either in the workspace's results (any result with
+  // diff-shaped output) or in the events stream (a file-changed event carrying
+  // a patch). We surface it as a dedicated "Diff" tab so reviewers don't have
+  // to dig through raw output text.
+  const diff = useMemo<{ lines: DiffLine[]; caption?: string } | null>(() => {
+    for (const r of results) {
+      const parsed = parseUnifiedDiff(r.output)
+      if (parsed) return { lines: parsed, caption: diffCaptionFor(r.output) }
+    }
+    if (events) {
+      for (const ev of events) {
+        const t = (ev as { type?: unknown }).type
+        if (typeof t !== "string") continue
+        // Best-effort: tolerate `file-changed` / `file_changed` /
+        // `diff-applied` event names. Anchored to the full type so
+        // unrelated names like `user-patch` or `system-patch` don't
+        // false-positive. (Earlier this regex matched any event whose
+        // type contained the substring "patch", which silently pulled
+        // non-diff events into the Diff tab.)
+        if (
+          t === "file-changed" ||
+          t === "file_changed" ||
+          t === "file-change" ||
+          t === "diff-applied" ||
+          t === "diff_applied"
+        ) {
+          const patch = (ev as { patch?: unknown }).patch ?? (ev as { diff?: unknown }).diff
+          if (typeof patch === "string") {
+            const parsed = parseUnifiedDiff(patch)
+            if (parsed) return { lines: parsed, caption: diffCaptionFor(patch) }
+          }
+        }
+      }
+    }
+    return null
+  }, [results, events])
+
+  if (results.length === 0 && !diff) {
     return (
       <div className="output-panel px-3 py-6 text-xs text-muted-foreground font-mono">
         {t("output.empty")}
@@ -72,12 +187,22 @@ export function OutputPanel({
   }
 
   const tabValue = (r: { id: string }, i: number) => `${r.id}::${i}`
+  const diffTabValue = "__diff__"
   const active = clampedOpenIdx !== null ? results[clampedOpenIdx] : null
 
   return (
     <>
-      <Tabs defaultValue={tabValue(results[0]!, 0)} className="flex-1 flex flex-col px-3 py-2">
+      <Tabs
+        defaultValue={diff ? diffTabValue : results[0] ? tabValue(results[0], 0) : diffTabValue}
+        className="flex-1 flex flex-col px-3 py-2"
+      >
         <TabsList className="flex-wrap">
+          {diff && (
+            <TabsTrigger value={diffTabValue} className="gap-1.5">
+              <FileDiff className="w-3.5 h-3.5" />
+              Diff
+            </TabsTrigger>
+          )}
           {results.map((r, i) => {
             const v = tabValue(r, i)
             return (
@@ -87,9 +212,17 @@ export function OutputPanel({
             )
           })}
         </TabsList>
+        {diff && (
+          <TabsContent value={diffTabValue} className="flex-1 overflow-auto mt-2">
+            <DiffViewer lines={diff.lines} mode="unified" caption={diff.caption} />
+          </TabsContent>
+        )}
         {results.map((r, i) => {
           const v = tabValue(r, i)
           const Icon = mimeIcon(guessMime(`${r.taskId}.txt`), `${r.taskId}.txt`)
+          // If the result itself is a diff, render the inline DiffViewer so
+          // the user doesn't have to open the dialog to see what changed.
+          const inlineDiff = parseUnifiedDiff(r.output)
           return (
             <TabsContent key={v} value={v} className="flex-1 overflow-auto mt-2">
               <div className="artifact-grid grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -111,6 +244,11 @@ export function OutputPanel({
                   </pre>
                 </button>
               </div>
+              {inlineDiff && (
+                <div className="mt-3">
+                  <DiffViewer lines={inlineDiff} mode="unified" caption={diffCaptionFor(r.output)} />
+                </div>
+              )}
             </TabsContent>
           )
         })}

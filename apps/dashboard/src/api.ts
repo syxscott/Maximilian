@@ -373,29 +373,6 @@ export const ProviderCategorySchema = z.enum([
 ])
 export type ProviderCategory = z.infer<typeof ProviderCategorySchema>
 
-/** Model variant metadata — mirrors cc-switch's PresetModelVariant. */
-export const ModelVariantSchema = z.object({
-  id: z.string(),
-  name: z.string().optional(),
-  contextLimit: z.number().int().positive().optional(),  // max context tokens
-  outputLimit: z.number().int().positive().optional(),   // max output tokens
-  modalities: z.object({
-    input: z.array(z.string()),
-    output: z.array(z.string()),
-  }).optional(),
-  options: z.record(z.unknown()).optional(),
-})
-export type ModelVariant = z.infer<typeof ModelVariantSchema>
-
-/** Provider metadata (not written to live config, only in ~/.cc-switch style config). */
-export const ProviderMetaSchema = z.object({
-  websiteUrl: z.string().optional(),
-  apiKeyUrl: z.string().optional(),
-  isPartner: z.boolean().optional(),
-  primePartner: z.boolean().optional(),
-})
-export type ProviderMeta = z.infer<typeof ProviderMetaSchema>
-
 /** Health status of a provider. */
 export const ProviderHealthSchema = z.object({
   status: z.enum(["healthy", "degraded", "down", "unknown"]),
@@ -405,7 +382,14 @@ export const ProviderHealthSchema = z.object({
 })
 export type ProviderHealth = z.infer<typeof ProviderHealthSchema>
 
-/** Provider info — enhanced with cc-switch features. */
+/** Provider info — minimal shape returned by `/api/providers`.
+ *
+ * Backend listProviders only returns these five fields. Richer per-provider
+ * data (model variants, health, failover status) is fetched via dedicated
+ * endpoints (`/system/providers/{id}/model`,
+ * `/system/providers/{id}/health`, `/system/failover/queue`) so a list
+ * call stays cheap.
+ */
 export const ProviderInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -413,26 +397,6 @@ export const ProviderInfoSchema = z.object({
   configured: z.boolean(),
   /** Provider category for UI differentiation and capability gating. */
   category: ProviderCategorySchema.optional(),
-  /** Sort index for drag-to-reorder (higher = lower position). */
-  sortIndex: z.number().int().optional(),
-  /** Provider metadata (homepage, partner info). */
-  meta: ProviderMetaSchema.optional(),
-  /** Model variants with metadata (context limit, output limit, modalities). */
-  modelVariants: z.array(ModelVariantSchema).optional(),
-  /** Current health status (polled every 5s by the dashboard). */
-  health: ProviderHealthSchema.optional(),
-  /** Whether this provider is in the failover queue. */
-  inFailoverQueue: z.boolean().optional(),
-  /** Failover priority (1 = P1, 2 = P2, ...). Lower number = higher priority. */
-  failoverPriority: z.number().int().positive().optional(),
-  /** Whether auto-failover is enabled for this app. */
-  autoFailoverEnabled: z.boolean().optional(),
-  /** Icon name (e.g. "openai", "anthropic"). */
-  icon: z.string().optional(),
-  /** Icon color in hex format (e.g. "#00A67E"). */
-  iconColor: z.string().optional(),
-  /** Notes set by the user. */
-  notes: z.string().optional(),
 })
 export type ProviderInfo = z.infer<typeof ProviderInfoSchema>
 
@@ -564,10 +528,23 @@ export const WorkspaceSchema = z.object({
 })
 export type Workspace = z.infer<typeof WorkspaceSchema>
 
+/**
+ * Runtime event shape. `workspaceId` is optional in the schema but the
+ * backend always emits it — keeping it `.optional()` makes the schema
+ * tolerant of legacy / replayed events from before the JSONL migration
+ * (whose payload lacked the field) and of envelope-level frames that
+ * the SSE stream treats as a single event. The handler that fetches
+ * `/workspaces/:id/events` falls back to the response's workspaceId
+ * when an individual event is missing the field.
+ *
+ * `.passthrough()` keeps unknown fields (seq, ts, taskId, …) so the
+ * UI can read them without the schema having to enumerate every
+ * possible event subtype.
+ */
 export const RuntimeEventSchema = z
   .object({
     type: z.string(),
-    workspaceId: z.string(),
+    workspaceId: z.string().optional(),
   })
   .passthrough()
 export type RuntimeEvent = z.infer<typeof RuntimeEventSchema>
@@ -589,6 +566,31 @@ export const chatApi = {
 
   getWorkspace: (id: string, signal?: AbortSignal) =>
     fetchJson(`${BASE}/workspaces/${encodeURIComponent(id)}`, { signal }, WorkspaceSchema),
+
+  /**
+   * List workspace ids visible to the current tenant. Used by the
+   * workspace switcher in the footer. Pagination is cursor-based:
+   * the backend returns `nextCursor` if there are more results.
+   * The previous audit (`phase5-code-health-audit.md`) flagged this
+   * endpoint as an orphan because no FE page consumed it — wiring
+   * it through the chatApi closes that gap and lets users revisit
+   * past workspaces without re-creating them.
+   */
+  listWorkspaces: (opts?: { cursor?: string; limit?: number }, signal?: AbortSignal) => {
+    const params = new URLSearchParams()
+    if (opts?.cursor) params.set("cursor", opts.cursor)
+    if (opts?.limit != null) params.set("limit", String(opts.limit))
+    const qs = params.toString()
+    return fetchJson(
+      `${BASE}/workspaces${qs ? `?${qs}` : ""}`,
+      { signal },
+      z.object({
+        items: z.array(z.string()),
+        nextCursor: z.string().optional(),
+        total: z.number(),
+      }),
+    )
+  },
 
   listArtifacts: (id: string, signal?: AbortSignal) =>
     fetchJson(
@@ -739,16 +741,6 @@ export const chatApi = {
         lastFailureAt: z.number().int().positive().optional(),
         probeInFlight: z.boolean().optional(),
       }),
-    ),
-
-  // ── Usage Query ──────────────────────────────────────────────────────────
-
-  /** Query usage for the current tenant (or all if admin). */
-  queryUsage: (range: UsageRange, signal?: AbortSignal) =>
-    fetchJson(
-      `${BASE}/usage?range=${range}`,
-      { signal },
-      UsageSummarySchema,
     ),
 }
 
