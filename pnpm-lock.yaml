@@ -205,6 +205,12 @@ importers:
       '@max/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@max/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      '@max/ui-react':
+        specifier: workspace:*
+        version: link:../../packages/ui-react
       '@radix-ui/react-accordion':
         specifier: ^1.2.14
         version: 1.2.14(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
