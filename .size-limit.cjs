@@ -71,7 +71,18 @@ function applyMaximilianWebpackDefaults(config) {
     },
     externals: [
       ({ request }, callback) => {
-        if (request === "react" || request === "react-dom" || workspacePackages.includes(request)) {
+        // Subpath imports (`@max/tools/permission`) must also be treated as
+        // external — without `startsWith` matching here webpack follows the
+        // bare subpath into the source `.ts` file and chokes on `type`
+        // keywords (see commit history: bundle-size regression after
+        // `@max/tools` started exporting subpaths in its `exports` map).
+        const isWorkspace =
+          request === "react" ||
+          request === "react-dom" ||
+          workspacePackages.some(
+            (pkg) => request === pkg || request.startsWith(`${pkg}/`),
+          )
+        if (isWorkspace) {
           // Emit `import * as ns from "react"` so the resulting bundle
           // is valid ESM and webpack's module concatenation pass can
           // parse it.
