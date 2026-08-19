@@ -131,7 +131,13 @@ export async function defaultGate<S>(_ctx: PhaseContext<S>): Promise<PhaseVerdic
 export type PhaseEvent =
   | { type: "phase:start"; workspaceId: string; phaseId: string; turn: number }
   | { type: "phase:end"; workspaceId: string; phaseId: string; turn: number; verdict: PhaseVerdict }
-  | { type: "runner:complete"; workspaceId: string; terminalReason: "completed" | "skipped" | "failed" | "error"; phaseCount: number; totalDurationMs: number }
+  | {
+      type: "runner:complete"
+      workspaceId: string
+      terminalReason: "completed" | "skipped" | "failed" | "error"
+      phaseCount: number
+      totalDurationMs: number
+    }
   | { type: "runner:error"; workspaceId: string; phaseId: string; error: string }
 
 /**
@@ -245,7 +251,9 @@ export class PhaseRunner<S = unknown> {
             phaseId: result.phaseId,
             error: `Phase "${result.phaseId}" retry exceeded max retries (${MAX_RETRIES})`,
           })
-          throw new Error(`Phase "${result.phaseId}" retry verdict exceeded ${MAX_RETRIES} attempts`)
+          throw new Error(
+            `Phase "${result.phaseId}" retry verdict exceeded ${MAX_RETRIES} attempts`,
+          )
         }
         // Index is NOT incremented — retry stays at the same phase.
         continue
@@ -332,7 +340,12 @@ export class PhaseRunner<S = unknown> {
             : undefined // NaN → no timeout
         : undefined
 
-    await this.eventBus.publishAsync({ type: "phase:start", workspaceId: this.ctx.workspaceId, phaseId: phase.id, turn: phaseIdx })
+    await this.eventBus.publishAsync({
+      type: "phase:start",
+      workspaceId: this.ctx.workspaceId,
+      phaseId: phase.id,
+      turn: phaseIdx,
+    })
 
     // Snapshot state before phase runs — used to restore on timeout or gate failure.
     let stateBeforePhase: S | undefined
@@ -364,9 +377,10 @@ export class PhaseRunner<S = unknown> {
     // ── Run phase with timeout ──────────────────────────────────────────────
 
     try {
-      const runPromise = timeoutMs !== undefined
-        ? this.withTimeout(phase.run(phaseCtx), timeoutMs, phase.id, abortController)
-        : phase.run(phaseCtx)
+      const runPromise =
+        timeoutMs !== undefined
+          ? this.withTimeout(phase.run(phaseCtx), timeoutMs, phase.id, abortController)
+          : phase.run(phaseCtx)
       output = await runPromise
     } catch (err) {
       phaseError = err instanceof Error ? err.message : String(err)
@@ -377,8 +391,24 @@ export class PhaseRunner<S = unknown> {
       const verdict: PhaseVerdict = "fail"
       const durationMs = Math.max(0, performance.now() - startMs)
       const clonedState = cloneOrUse<S>(stateBeforePhase, this.ctx.state)
-      await this.eventBus.publishAsync({ type: "phase:end", workspaceId: this.ctx.workspaceId, phaseId: phase.id, turn: phaseIdx, verdict })
-      return makePhaseResult(phase, verdict, output, durationMs, phaseError, undefined, clonedState, phaseCtx.artifacts, phaseCtx.messages)
+      await this.eventBus.publishAsync({
+        type: "phase:end",
+        workspaceId: this.ctx.workspaceId,
+        phaseId: phase.id,
+        turn: phaseIdx,
+        verdict,
+      })
+      return makePhaseResult(
+        phase,
+        verdict,
+        output,
+        durationMs,
+        phaseError,
+        undefined,
+        clonedState,
+        phaseCtx.artifacts,
+        phaseCtx.messages,
+      )
     }
 
     // ── Gate evaluation (also with timeout) ────────────────────────────────
@@ -389,9 +419,15 @@ export class PhaseRunner<S = unknown> {
     if (phase.gate) {
       try {
         // Gate also respects the same timeout as the phase.
-        const gatePromise = timeoutMs !== undefined
-          ? this.withTimeout(Promise.resolve(phase.gate(phaseCtx)), timeoutMs, `${phase.id}:gate`, abortController)
-          : phase.gate(phaseCtx)
+        const gatePromise =
+          timeoutMs !== undefined
+            ? this.withTimeout(
+                Promise.resolve(phase.gate(phaseCtx)),
+                timeoutMs,
+                `${phase.id}:gate`,
+                abortController,
+              )
+            : phase.gate(phaseCtx)
         verdict = await gatePromise
       } catch (err) {
         verdict = "fail"
@@ -416,8 +452,24 @@ export class PhaseRunner<S = unknown> {
       verdict === "fail" || verdict === "skip"
         ? cloneOrUse<S>(stateBeforePhase, phaseCtx.state)
         : cloneOrUse<S>(phaseCtx.state, stateBeforePhase)
-    await this.eventBus.publishAsync({ type: "phase:end", workspaceId: this.ctx.workspaceId, phaseId: phase.id, turn: phaseIdx, verdict })
-    return makePhaseResult(phase, verdict, output, durationMs, phaseError, gateError, clonedState, phaseCtx.artifacts, phaseCtx.messages)
+    await this.eventBus.publishAsync({
+      type: "phase:end",
+      workspaceId: this.ctx.workspaceId,
+      phaseId: phase.id,
+      turn: phaseIdx,
+      verdict,
+    })
+    return makePhaseResult(
+      phase,
+      verdict,
+      output,
+      durationMs,
+      phaseError,
+      gateError,
+      clonedState,
+      phaseCtx.artifacts,
+      phaseCtx.messages,
+    )
   }
 
   /**

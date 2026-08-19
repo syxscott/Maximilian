@@ -114,9 +114,7 @@ describe("PhaseRunner (借鉴 ChatDev ChatChain)", () => {
   })
 
   it("run() records verdict 'pass' when no gate defined", async () => {
-    const phases: Phase<SimpleState>[] = [
-      { ...countPhase("a", 1), gate: undefined },
-    ]
+    const phases: Phase<SimpleState>[] = [{ ...countPhase("a", 1), gate: undefined }]
     const runner = new PhaseRunner(phases, makeContext(), eventBus)
     const results = await runner.run()
     expect(results[0]!.verdict).toBe("pass")
@@ -134,7 +132,9 @@ describe("PhaseRunner (借鉴 ChatDev ChatChain)", () => {
         roles: [],
         inputSchema: {},
         outputSchema: {},
-        async run() { throw new Error("boom") },
+        async run() {
+          throw new Error("boom")
+        },
         gate: () => Promise.resolve("pass" as PhaseVerdict),
       },
     ]
@@ -154,8 +154,17 @@ describe("PhaseRunner (借鉴 ChatDev ChatChain)", () => {
     // test asserted only { type, phaseId, turn }, which silently broke
     // when workspaceId was added to the wire shape — `toContainEqual`
     // requires strict field-by-field equality.
-    expect(events).toContainEqual(expect.objectContaining({ type: "phase:start", workspaceId: "ws-1", phaseId: "a", turn: 0 }))
-    expect(events).toContainEqual(expect.objectContaining({ type: "phase:end", workspaceId: "ws-1", phaseId: "a", verdict: "pass" }))
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "phase:start", workspaceId: "ws-1", phaseId: "a", turn: 0 }),
+    )
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "phase:end",
+        workspaceId: "ws-1",
+        phaseId: "a",
+        verdict: "pass",
+      }),
+    )
   })
 
   it("currentPhase() returns null before run()", () => {

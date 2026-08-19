@@ -95,10 +95,7 @@ describe("SkillDiscovery (借鉴 opencode)", () => {
   })
 
   it("downloadFile returns true on ok response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, text: async () => "hello" }),
-    )
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: async () => "hello" }))
     expect(await downloadFile("https://x.com/f", "/tmp/__max_dl_ok.md")).toBe(true)
   })
 

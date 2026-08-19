@@ -5,28 +5,28 @@
  * and falls back to in-process execution when no queue is set.
  */
 
-import { describe, it, expect, vi } from "vitest";
-import type { Context } from "hono";
+import { describe, it, expect, vi } from "vitest"
+import type { Context } from "hono"
 
 // Mock BullMQ Queue
 function createMockQueue() {
-  const jobs: Array<{ name: string; data: unknown }> = [];
+  const jobs: Array<{ name: string; data: unknown }> = []
   return {
     add: vi.fn(async (name: string, data: unknown) => {
-      jobs.push({ name, data });
-      return { id: `job-${jobs.length}` };
+      jobs.push({ name, data })
+      return { id: `job-${jobs.length}` }
     }),
     close: vi.fn(async () => {}),
     jobs,
-  };
+  }
 }
 
 describe("Chat route queue integration", () => {
   it("enqueues a job when queue is provided", async () => {
-    const mockQueue = createMockQueue();
+    const mockQueue = createMockQueue()
 
     // Dynamically import to avoid side effects
-    const { postChat } = await import("../src/routes/chat.js");
+    const { postChat } = await import("../src/routes/chat.js")
 
     const mockCommander = {
       plan: vi.fn(async (msg: string) => ({
@@ -51,12 +51,12 @@ describe("Chat route queue integration", () => {
       // commander path; the stub must return an empty error list so the
       // request proceeds to the queue/in-process execution branch.
       preflight: vi.fn(() => [] as string[]),
-    };
+    }
 
     const mockStore = {
       saveWorkspace: vi.fn(async () => {}),
       loadWorkspace: vi.fn(async () => undefined),
-    };
+    }
 
     const handler = postChat({
       commander: mockCommander as never,
@@ -64,41 +64,40 @@ describe("Chat route queue integration", () => {
       store: mockStore as never,
       eventLog: new Map(),
       queue: mockQueue as never,
-    });
+    })
 
     const fakeCtx = {
       req: {
         json: async () => ({ message: "hello" }),
       },
-      json: (body: unknown, status = 200) =>
-        new Response(JSON.stringify(body), { status }),
+      json: (body: unknown, status = 200) => new Response(JSON.stringify(body), { status }),
       get: () => undefined,
-    } as unknown as Context;
+    } as unknown as Context
 
-    const res = await handler(fakeCtx);
-    const body = await (res as Response).json();
+    const res = await handler(fakeCtx)
+    const body = await (res as Response).json()
 
-    expect(body.status).toBe("planning");
-    expect(body.workspaceId).toBe("ws-1");
+    expect(body.status).toBe("planning")
+    expect(body.workspaceId).toBe("ws-1")
     expect(mockQueue.add).toHaveBeenCalledWith("execute", {
       workspaceId: "ws-1",
       mode: "commander",
-    });
+    })
     // Should NOT have called runtime.execute (in-process)
-    expect(mockStore.saveWorkspace).toHaveBeenCalledTimes(1); // only the initial save
-  });
+    expect(mockStore.saveWorkspace).toHaveBeenCalledTimes(1) // only the initial save
+  })
 
   it("runs in-process when no queue is provided", async () => {
-    const { postChat } = await import("../src/routes/chat.js");
+    const { postChat } = await import("../src/routes/chat.js")
 
-    let executeCalled = false;
+    let executeCalled = false
     const mockRuntime = {
       execute: vi.fn(async (ws: { id: string }) => {
-        executeCalled = true;
-        return { ...ws, status: "completed", results: [] };
+        executeCalled = true
+        return { ...ws, status: "completed", results: [] }
       }),
       on: vi.fn(),
-    };
+    }
 
     const mockCommander = {
       plan: vi.fn(async (msg: string) => ({
@@ -121,12 +120,12 @@ describe("Chat route queue integration", () => {
       })),
       // See note above — chat.ts:134 calls `commander.preflight(plan)`.
       preflight: vi.fn(() => [] as string[]),
-    };
+    }
 
     const mockStore = {
       saveWorkspace: vi.fn(async () => {}),
       loadWorkspace: vi.fn(async () => undefined),
-    };
+    }
 
     const handler = postChat({
       commander: mockCommander as never,
@@ -134,25 +133,24 @@ describe("Chat route queue integration", () => {
       store: mockStore as never,
       eventLog: new Map(),
       // no queue
-    });
+    })
 
     const fakeCtx = {
       req: {
         json: async () => ({ message: "hello" }),
       },
-      json: (body: unknown, status = 200) =>
-        new Response(JSON.stringify(body), { status }),
+      json: (body: unknown, status = 200) => new Response(JSON.stringify(body), { status }),
       get: () => undefined,
-    } as unknown as Context;
+    } as unknown as Context
 
-    const res = await handler(fakeCtx);
-    const body = await (res as Response).json();
+    const res = await handler(fakeCtx)
+    const body = await (res as Response).json()
 
-    expect(body.status).toBe("planning");
-    expect(body.workspaceId).toBe("ws-2");
+    expect(body.status).toBe("planning")
+    expect(body.workspaceId).toBe("ws-2")
     // runtime.execute should have been called (fire-and-forget)
     // Give the microtask queue a tick to run
-    await new Promise((r) => setTimeout(r, 10));
-    expect(executeCalled).toBe(true);
-  });
-});
+    await new Promise((r) => setTimeout(r, 10))
+    expect(executeCalled).toBe(true)
+  })
+})
