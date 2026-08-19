@@ -2,6 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { z } from "zod";
 import type { Context } from "hono";
 import type { FileWorkspaceStore } from "@max/workspace";
+import type { EventLogRegistry } from "../event-log.js";
 import {
   IdParamsSchema,
   ErrorSchema,
@@ -160,20 +161,35 @@ export function getArtifact(store: FileWorkspaceStore) {
 }
 
 /**
- * Returns the in-memory event log for a workspace. The handler is a thin
- * closure over the event-log registry so it can be wired in `index.ts`
- * where the registry is constructed.
+ * Returns the durable JSONL event log for a workspace.
+ *
+ * The previous implementation read from a per-process `Map`, which meant
+ * every API restart erased the history. The `EventLogRegistry` writes a
+ * `<eventsRootDir>/<workspaceId>.jsonl` file via `appendLocked`, so
+ * the events survive restarts and `Last-Event-ID`-based SSE replay can
+ * pick up where it left off. We unwrap the {seq, type, payload, ts}
+ * envelope into the wire shape the runtime already produces
+ * (`{ type, workspaceId, ...payload }`) so callers see the same field
+ * order whether they hit this endpoint or the SSE stream.
  */
 export function getWorkspaceEvents(
   store: FileWorkspaceStore,
-  eventLog: Map<string, Array<Record<string, unknown>>>,
+  registry: EventLogRegistry,
 ) {
   return async (c: any) => {
     const { id } = c.req.valid("param");
     const tenantId = c.get("tenantId") as string | undefined;
     const ws = await store.loadWorkspace(id, tenantId);
     if (!ws) return c.json({ error: "Workspace not found" }, 404);
-    const events = eventLog.get(id) ?? [];
+    const log = registry.for(id);
+    const logged = await log.readAfter(0);
+    // `logged.payload` is the original runtime event the publisher wrote;
+    // splice seq/ts back in so the response shape stays self-describing.
+    const events = logged.map((e) => ({
+      ...(e.payload as Record<string, unknown>),
+      seq: e.seq,
+      ts: e.ts,
+    }));
     return c.json({ workspaceId: id, events });
   };
 }

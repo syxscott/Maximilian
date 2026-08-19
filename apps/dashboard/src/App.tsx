@@ -1,8 +1,15 @@
 import { Suspense, lazy, useState, useEffect, useRef, useCallback } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Toaster } from "@/components/ui/sonner"
-import { useHealth } from "@/lib/api/hooks"
+import { useHealth, useWorkspaces } from "@/lib/api/hooks"
 import { useLocale, t } from "@max/i18n"
 import { chatApi } from "./api"
 import type { Workspace, RuntimeEvent } from "./api"
@@ -12,10 +19,13 @@ import { TaskPanel } from "./components/TaskPanel"
 import { OutputPanel } from "./components/OutputPanel"
 import { ReviewPanel } from "./components/ReviewPanel"
 import { ThemeToggle } from "./components/ThemeToggle"
+import { LocaleSwitcher } from "./components/LocaleSwitcher"
 import { LiveUsagePill } from "./components/LiveUsagePill"
 import { PermissionDialog } from "./components/PermissionDialog"
+import { AppCommandPalette } from "./components/AppCommandPalette"
 import { permissionsApi, type PendingPermission } from "./lib/permissions"
 import { usePerfTier } from "./lib/perf-tier"
+import { useTheme } from "./lib/theme"
 
 // Lazy-load the heavier panels so the initial bundle stays light. On high
 // perf tier, eager loading is fine but lazy still saves parse time on first
@@ -52,6 +62,7 @@ function TabFallback({ label }: { label: string }) {
 
 export function App() {
   const [tab, setTab] = useState<Tab>("workspace")
+  const [commandOpen, setCommandOpen] = useState(false)
   const { data: health, error: healthError } = useHealth()
   // Subscribe to locale changes so tabs (and any other t() calls below)
   // re-render when the user switches language in Settings.
@@ -99,7 +110,56 @@ export function App() {
     }
   }, [])
 
+  // Abort the in-flight submission + close the SSE stream. Bound to the
+  // Stop button in ChatPanel. Note: this does NOT cancel the server-side
+  // workspace execution — the backend has no cancel endpoint yet. The
+  // orphaned workspace continues running and its events fire into the
+  // void (no subscriber); the user's UI clears and they can start fresh.
+  const abortSubmission = useCallback(() => {
+    abortRef.current?.abort()
+    stopStream()
+    // Bump the token so any pending `es.onmessage` / `es.onerror` from
+    // the old stream short-circuits (line 130/201) without flipping
+    // `submitting` after we've already cleared it below.
+    tokenRef.current++
+    setSubmitting(false)
+  }, [stopStream])
+
   useEffect(() => () => stopStream(), [stopStream])
+
+  // Recent-workspaces list. Used by the switcher in the footer; surfaces
+  // workspaces from `GET /api/workspaces` so the user can revisit a past
+  // run without re-submitting. Backed by `EventLogRegistry`-durable state
+  // on the backend, so it survives API restarts.
+  const { data: workspaceList } = useWorkspaces({ limit: 20 })
+
+  /**
+   * Switch to a previous workspace. Cancels any active submission and
+   * closes the current SSE stream before pulling the snapshot — without
+   * this, a stale stream from the previous workspace would race the
+   * GET and overwrite the new `workspace` state mid-fetch. We don't
+   * restart the SSE stream for past workspaces: the snapshot is the
+   * final state, so live replay would only generate noise.
+   */
+  const pickWorkspace = useCallback(
+    async (id: string) => {
+      abortRef.current?.abort()
+      stopStream()
+      const myToken = ++tokenRef.current
+      setSubmitting(false)
+      try {
+        const ws = await chatApi.getWorkspace(id)
+        // If the user navigated away / switched tabs during the fetch,
+        // don't clobber whatever is now active.
+        if (tokenRef.current !== myToken) return
+        setWorkspace(ws)
+        setEvents([])
+      } catch (err) {
+        console.error("pickWorkspace failed", err)
+      }
+    },
+    [stopStream],
+  )
 
   async function handleSubmit(message: string) {
     // Cancel any in-flight request and close any open stream first. Without
@@ -278,6 +338,43 @@ export function App() {
     [pendingPermission],
   )
 
+  // Cmd/Ctrl+K opens the command palette. Bound at the App level so it works
+  // regardless of which tab is active. Skipped when typing in an input,
+  // textarea, or contenteditable so the keystroke isn't hijacked while the
+  // user is editing.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return
+      // Reject when other modifier keys are also pressed (Shift / Alt) so the
+      // shortcut doesn't hijack combinations the OS or other apps reserve
+      // (e.g. Cmd+Shift+K is bound by many browsers / terminals).
+      if (e.altKey || e.shiftKey) return
+      const target = e.target as Element | null
+      if (target) {
+        const tag = target.tagName.toLowerCase()
+        if (tag === "input" || tag === "textarea" || (target as HTMLElement).isContentEditable) {
+          return
+        }
+      }
+      e.preventDefault()
+      setCommandOpen((prev) => !prev)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
+
+  // The palette's "Toggle theme" action delegates to the same setMode the
+  // ThemeToggle button uses — keeping a single source of truth (`useTheme`)
+  // so the in-memory state, the localStorage write, and the <html> class
+  // stay in lock-step. Earlier this function wrote `mx-theme` directly and
+  // left the theme hook stale, so a follow-up click on ThemeToggle flipped
+  // the screen back to the previously-persisted mode.
+  const theme = useTheme()
+  const toggleTheme = useCallback(() => {
+    const next = theme.mode === "dark" ? "light" : "dark"
+    theme.setMode(next)
+  }, [theme.mode, theme.setMode])
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Toaster />
@@ -285,6 +382,13 @@ export function App() {
         pending={pendingPermission}
         onAnswer={answerPermission}
         onApprovalAnswer={answerApproval}
+      />
+      <AppCommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onNavigate={setTab}
+        onToggleTheme={toggleTheme}
+        onOpenUsage={() => setTab("usage")}
       />
 
       {/* Header */}
@@ -310,6 +414,7 @@ export function App() {
             </div>
           ) : null}
           <LiveUsagePill onOpenUsage={() => setTab("usage")} />
+          <LocaleSwitcher />
           <ThemeToggle />
         </div>
       </header>
@@ -333,6 +438,7 @@ export function App() {
             <div className="h-[calc(100vh-8rem)] rounded-lg border border-border bg-card overflow-hidden">
               <ChatPanel
                 onSubmit={handleSubmit}
+                onAbort={abortSubmission}
                 submitting={submitting}
                 workspace={workspace}
                 sidebar={
@@ -384,13 +490,39 @@ export function App() {
 
       {/* Workspace footer */}
       {tab === "workspace" && (
-        <footer className="px-6 py-1.5 text-xs flex gap-4 border-t border-border bg-muted/30 text-muted-foreground">
+        <footer className="px-6 py-1.5 text-xs flex gap-4 items-center border-t border-border bg-muted/30 text-muted-foreground">
           <span>
             {t("app.footer.status", { status: workspace?.status ?? t("statusAgent.idle") })}
           </span>
-          <span>
-            {t("footer.workspace")}: {workspace?.id ?? t("footer.workspaceNone")}
-          </span>
+          <div className="flex items-center gap-2">
+            <span>{t("footer.workspace")}:</span>
+            {/* Recent-workspaces switcher. Closes the gap from the
+                phase5 audit: GET /api/workspaces was an orphan route —
+                now the user can re-open any past run from this dropdown.
+                Picking a workspace cancels any active submission and
+                closes the live SSE stream (live replay would only be
+                noise on a finalized workspace). */}
+            <Select
+              value={workspace?.id ?? ""}
+              onValueChange={(id) => {
+                if (id && id !== workspace?.id) pickWorkspace(id)
+              }}
+            >
+              <SelectTrigger
+                className="h-6 w-auto min-w-[12rem] max-w-[20rem] text-xs px-2 py-0 border-border bg-background"
+                aria-label={t("footer.workspaceSwitcher")}
+              >
+                <SelectValue placeholder={t("footer.workspacePlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {(workspaceList?.items ?? []).map((id) => (
+                  <SelectItem key={id} value={id}>
+                    {id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <span>{t("app.footer.tasks", { count: workspace?.plan?.tasks.length ?? 0 })}</span>
         </footer>
       )}

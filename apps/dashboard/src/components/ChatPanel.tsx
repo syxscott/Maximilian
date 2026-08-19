@@ -12,12 +12,16 @@ const PRESET_KEYS = ["preset.todo", "preset.scraper", "preset.blog"] as const
 
 export function ChatPanel({
   onSubmit,
+  onAbort,
   submitting,
   workspace,
   sidebar,
   sidebarHidden,
 }: {
   onSubmit: (message: string) => void
+  /** Abort the in-flight submission + close the SSE stream. When omitted
+   *  the panel falls back to a disabled Send button (legacy behavior). */
+  onAbort?: () => void
   submitting: boolean
   workspace: Workspace | null
   /**
@@ -158,12 +162,26 @@ export function ChatPanel({
                 )
               })}
             </div>
-            <Button
-              onClick={() => submit()}
-              disabled={submitting || !isValid || !messageValue?.trim()}
-            >
-              {submitting ? t("common.sending") : t("common.send")}
-            </Button>
+            {submitting && onAbort ? (
+              // Stop button — aborts the in-flight POST + closes the
+              // SSE stream so the user can recover from a wrong input.
+              // Server-side workspace execution isn't cancelled (no
+              // cancel endpoint yet); it just becomes orphaned and the
+              // UI no longer listens to it.
+              <Button
+                onClick={onAbort}
+                variant="destructive"
+              >
+                {t("common.stop")}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => submit()}
+                disabled={submitting || !isValid || !messageValue?.trim()}
+              >
+                {submitting ? t("common.sending") : t("common.send")}
+              </Button>
+            )}
           </div>
         </div>
       </div>

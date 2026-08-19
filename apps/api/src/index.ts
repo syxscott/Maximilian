@@ -1543,7 +1543,7 @@ api.openapi(
 
 api.openapi(listWorkspacesRoute, requireAuthMiddleware(), listWorkspaces(store))
 api.openapi(getWorkspaceRoute, requireAuthMiddleware(), getWorkspace(store))
-api.openapi(getWorkspaceEventsRoute, requireAuthMiddleware(), getWorkspaceEvents(store, eventLog))
+api.openapi(getWorkspaceEventsRoute, requireAuthMiddleware(), getWorkspaceEvents(store, eventLogRegistry))
 
 // ---------------------------------------------------------------------------
 // ScopedBus — replay-friendly fan-out for runtime events (P0-C).
