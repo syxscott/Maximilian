@@ -1418,7 +1418,7 @@ api.openapi(providerHealthRoute, requireAuthMiddleware(), async (c) => {
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404)
   }
-  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
   const stats = cbProvider.getCircuitBreakerStats?.()
   const isConfigured = provider.isConfigured()
   // Derive health status from circuit breaker state and configuration
