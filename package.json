@@ -66,7 +66,11 @@
   },
   "pnpm": {
     "overrides": {
-      "cross-spawn": "^6.0.6"
+      "cross-spawn": "^6.0.6",
+      "brace-expansion": "^2.1.2",
+      "shell-quote": "^1.9.0",
+      "@opentelemetry/auto-instrumentations-node": "^0.78.0",
+      "@opentelemetry/propagator-jaeger": "^2.9.0"
     }
   },
   "packageManager": "pnpm@9.12.0",
