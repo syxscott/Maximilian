@@ -13,15 +13,15 @@
  * the caller can attach to the `EvolutionDecision.reason`.
  */
 
-export const PROMPT_GROWTH_MAX = 1.2; // 20% growth cap
-export const PROMPT_MIN_LEN = 80;
-export const PROMPT_MAX_LEN = 16_000;
+export const PROMPT_GROWTH_MAX = 1.2 // 20% growth cap
+export const PROMPT_MIN_LEN = 80
+export const PROMPT_MAX_LEN = 16_000
 
 export interface CandidateLike {
   /** The proposed system prompt. */
-  newSystemPrompt: string;
+  newSystemPrompt: string
   /** The current system prompt (for growth comparison). */
-  baseSystemPrompt: string;
+  baseSystemPrompt: string
 }
 
 export type GateCode =
@@ -32,29 +32,23 @@ export type GateCode =
   | "overgrowth"
   | "missing-role-marker"
   | "secret-leaked"
-  | "duplicate-section";
+  | "duplicate-section"
 
 export interface GateResult {
-  code: GateCode;
-  ok: boolean;
-  reason?: string;
+  code: GateCode
+  ok: boolean
+  reason?: string
   /** Numeric metric the caller can use (size, growth ratio, etc.). */
-  metric?: { size: number; growth: number };
+  metric?: { size: number; growth: number }
 }
 
-const ROLE_MARKERS = [
-  "you are",
-  "your role",
-  "your task",
-  "agent profile",
-  "system prompt",
-];
+const ROLE_MARKERS = ["you are", "your role", "your task", "agent profile", "system prompt"]
 
 export function validateCandidate(c: CandidateLike): GateResult {
-  const trimmed = c.newSystemPrompt.trim();
+  const trimmed = c.newSystemPrompt.trim()
 
   if (trimmed.length === 0) {
-    return { code: "empty", ok: false, reason: "candidate prompt is empty" };
+    return { code: "empty", ok: false, reason: "candidate prompt is empty" }
   }
   if (trimmed.length < PROMPT_MIN_LEN) {
     return {
@@ -62,7 +56,7 @@ export function validateCandidate(c: CandidateLike): GateResult {
       ok: false,
       reason: `candidate prompt is shorter than ${PROMPT_MIN_LEN} chars (${trimmed.length})`,
       metric: { size: trimmed.length, growth: 1 },
-    };
+    }
   }
   if (trimmed.length > PROMPT_MAX_LEN) {
     return {
@@ -70,28 +64,28 @@ export function validateCandidate(c: CandidateLike): GateResult {
       ok: false,
       reason: `candidate prompt exceeds ${PROMPT_MAX_LEN} chars (${trimmed.length})`,
       metric: { size: trimmed.length, growth: 1 },
-    };
+    }
   }
 
-  const baseLen = Math.max(1, c.baseSystemPrompt.length);
-  const growth = trimmed.length / baseLen;
+  const baseLen = Math.max(1, c.baseSystemPrompt.length)
+  const growth = trimmed.length / baseLen
   if (growth > PROMPT_GROWTH_MAX) {
     return {
       code: "overgrowth",
       ok: false,
       reason: `candidate grew by ${(growth * 100).toFixed(0)}% (max ${(PROMPT_GROWTH_MAX * 100).toFixed(0)}%)`,
       metric: { size: trimmed.length, growth },
-    };
+    }
   }
 
-  const lower = trimmed.toLowerCase();
+  const lower = trimmed.toLowerCase()
   if (!ROLE_MARKERS.some((m) => lower.includes(m))) {
     return {
       code: "missing-role-marker",
       ok: false,
       reason: `candidate missing role marker; expected one of: ${ROLE_MARKERS.join(", ")}`,
       metric: { size: trimmed.length, growth },
-    };
+    }
   }
 
   // Reject if the candidate *introduces* a secret (the source prompt is
@@ -103,18 +97,40 @@ export function validateCandidate(c: CandidateLike): GateResult {
       ok: false,
       reason: "candidate prompt appears to contain a secret (API key, token, etc.)",
       metric: { size: trimmed.length, growth },
-    };
+    }
   }
 
-  return { code: "ok", ok: true, metric: { size: trimmed.length, growth } };
+  // Duplicate headings = learned garbage (hermes "duplicate skill" failure
+  // mode). Enforces the previously-declared `duplicate-section` GateCode;
+  // the finer-grained shape lints live in artifact-lint.ts.
+  const headingCounts = new Map<string, number>()
+  for (const line of trimmed.split("\n")) {
+    const m = /^#{1,6}\s+(.*)$/.exec(line.trim())
+    if (!m) continue
+    const key = m[1].trim().toLowerCase()
+    headingCounts.set(key, (headingCounts.get(key) ?? 0) + 1)
+  }
+  const dup = [...headingCounts.entries()].find(([, n]) => n > 1)
+  if (dup) {
+    return {
+      code: "duplicate-section",
+      ok: false,
+      reason: `candidate repeats heading "${dup[0]}" ${dup[1]}×`,
+      metric: { size: trimmed.length, growth },
+    }
+  }
+
+  return { code: "ok", ok: true, metric: { size: trimmed.length, growth } }
 }
 
 function containsSecretLike(text: string): boolean {
   // Lightweight check; the full secret-scrub module is a separate package
   // we import at the top of the evolution pipeline. Here we only catch
   // obvious PEM / Bearer / 64-char-hex markers.
-  return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text) ||
+  return (
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text) ||
     /Bearer\s+[A-Za-z0-9_\-.=]{20,}/.test(text) ||
     /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/.test(text) ||
-    /\bsk_(?:live|test)_[A-Za-z0-9]{16,}\b/.test(text);
+    /\bsk_(?:live|test)_[A-Za-z0-9]{16,}\b/.test(text)
+  )
 }

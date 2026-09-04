@@ -175,6 +175,7 @@ import {
   usageSummaryRoute,
   usageDailyRoute,
   usageLatencyRoute,
+  usageWindowsRoute,
 } from "./routes/usage.js"
 import { govRoutes, listPendingProposalsRoute, resolveProposalRoute } from "./routes/gov.js"
 import {
@@ -1414,7 +1415,7 @@ api.openapi(providerHealthRoute, requireAuthMiddleware(), async (c) => {
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404)
   }
-  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+  const cbProvider = provider as import("@max/providers").CircuitBreakerProvider
   const stats = cbProvider.getCircuitBreakerStats?.()
   const isConfigured = provider.isConfigured()
   // Derive health status from circuit breaker state and configuration
@@ -2066,6 +2067,7 @@ const ur = usageRoutes({ evolution })
 api.openapi(usageSummaryRoute, requireAuthMiddleware(), ur.summary)
 api.openapi(usageDailyRoute, requireAuthMiddleware(), ur.daily)
 api.openapi(usageLatencyRoute, requireAuthMiddleware(), ur.latency)
+api.openapi(usageWindowsRoute, requireAuthMiddleware(), ur.windows)
 
 // Phase 11 — Visualizer adapter endpoints
 if (telemetry) {

@@ -60,6 +60,8 @@ const STATUS_DOT: Record<string, string> = {
   running: "bg-[color:var(--mx-status-running)]",
   completed: "bg-[color:var(--mx-status-done)]",
   failed: "bg-[color:var(--mx-status-error)]",
+  // Will never run — hollow grey, visually distinct from "pending".
+  skipped: "border border-[color:var(--mx-status-skipped)] bg-transparent",
 }
 
 export function TaskPanel({ workspace }: Props) {
@@ -134,10 +136,12 @@ export function TaskPanel({ workspace }: Props) {
                     className={
                       task.status === "failed"
                         ? "text-[color:var(--mx-red-600)]"
-                        : "text-[color:var(--mx-green-600)]"
+                        : task.status === "skipped"
+                          ? "text-[color:var(--mx-status-skipped)]"
+                          : "text-[color:var(--mx-green-600)]"
                     }
                   >
-                    {task.status === "failed" ? "✕" : "✓"}
+                    {task.status === "failed" ? "✕" : task.status === "skipped" ? "–" : "✓"}
                   </span>
                   <span className="truncate flex-1">{task.description}</span>
                   {task.error && (

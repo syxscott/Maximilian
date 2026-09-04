@@ -6,10 +6,21 @@ const STATUS_KEYS: Record<StatusDotProps["status"], string> = {
   running: "statusDot.running",
   done: "statusDot.done",
   error: "statusDot.error",
+  waiting: "statusDot.waiting",
+  skipped: "statusDot.skipped",
 }
 
 export interface StatusDotProps {
-  status: "idle" | "running" | "done" | "error"
+  /**
+   * Visual status language (OpenHands conversation-status-dot borrowing):
+   *   - idle      hollow dot
+   *   - running   pulsing blue
+   *   - waiting   static amber — parked on a permission/approval gate
+   *   - done      solid green
+   *   - error     solid red
+   *   - skipped   muted grey — will never run (dep failed, terminated)
+   */
+  status: "idle" | "running" | "done" | "error" | "waiting" | "skipped"
   /** Override the default 8px size for compact contexts. */
   size?: number
   className?: string

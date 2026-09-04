@@ -7,6 +7,27 @@ import type {
   EmbeddingResponse,
 } from "./base.js"
 
+/**
+ * Retry status broadcast (opencode `session/retry.ts` UI-semantics
+ * borrowing): every backed-off attempt is reported with the attempt number,
+ * the resolved delay and a human-readable action, so dashboards/TUIs can
+ * show "retrying in 30s (attempt 2 of 5)" instead of a silent hang.
+ */
+export interface ProviderRetryStatus {
+  providerId: string
+  /** Attempt number that just failed (0-based). */
+  attempt: number
+  maxAttempts: number
+  /** Resolved backoff in ms (server retry-after wins when provided). */
+  delayMs: number
+  /** Epoch ms when the next attempt fires. */
+  nextRetryAt: number
+  /** Human-readable action for UI display. */
+  action: string
+  /** Raw error message. */
+  reason: string
+}
+
 export interface RetryOptions {
   /** Max retry attempts (default: 3) */
   maxAttempts?: number
@@ -24,6 +45,25 @@ export interface RetryOptions {
    * `retry-after` / `retry-after-ms` 决定退避时长。
    */
   headers?: () => Record<string, string | undefined> | undefined
+  /**
+   * 借鉴 opencode - retry status with UI semantics. Called before each
+   * backoff sleep so callers can surface progress to users.
+   */
+  onRetryStatus?: (status: ProviderRetryStatus) => void
+}
+
+/** Map an error to a short human action (opencode retry-action borrowing). */
+export function describeRetryAction(err: unknown): string {
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase()
+  if (msg.includes("rate limit") || msg.includes("429") || msg.includes("too many requests")) {
+    return "provider rate limit hit — waiting for capacity"
+  }
+  if (msg.includes("econnrefused")) return "provider unreachable — retrying connection"
+  if (msg.includes("econnreset") || msg.includes("fetch failed")) {
+    return "connection dropped — reconnecting"
+  }
+  if (msg.includes("etimedout") || msg.includes("timeout")) return "timed out — retrying"
+  return "transient provider error — backing off"
 }
 
 const DEFAULT_RETRYABLE_STATUSES = [429, 500, 502, 503, 504]
@@ -46,6 +86,19 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
     retryableStatuses = DEFAULT_RETRYABLE_STATUSES,
   } = options ?? {}
 
+  function emitStatus(attempt: number, delayMs: number, err: unknown): void {
+    if (!options?.onRetryStatus) return
+    options.onRetryStatus({
+      providerId: provider.id,
+      attempt,
+      maxAttempts,
+      delayMs,
+      nextRetryAt: Date.now() + delayMs,
+      action: describeRetryAction(err),
+      reason: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   async function retryChat(messages: ChatMessage[], opts?: ChatOptions): Promise<ChatResponse> {
     let lastError: unknown
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -57,6 +110,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
           throw err
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())
+        emitStatus(attempt, delay, err)
         await sleep(delay)
       }
     }
@@ -81,6 +135,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
           throw err
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())
+        emitStatus(attempt, delay, err)
         await sleep(delay)
         // Continue to next attempt
       }
@@ -103,6 +158,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
           throw err
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())
+        emitStatus(attempt, delay, err)
         await sleep(delay)
       }
     }

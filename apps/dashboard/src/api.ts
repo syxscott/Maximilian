@@ -37,6 +37,14 @@ export async function fetchJson<T>(
   return parsed.data
 }
 
+/**
+ * Open the workspace SSE stream (arch guard: the ONLY place besides
+ * fetchJson allowed to touch the network).
+ */
+export function openWorkspaceStream(workspaceId: string): EventSource {
+  return new EventSource(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/stream`)
+}
+
 // Re-export zod so feature modules can share the runtime schema.
 export { z }
 
@@ -364,12 +372,12 @@ export const metaApi = {
 
 /** Provider category — mirrors cc-switch's ProviderCategory type. */
 export const ProviderCategorySchema = z.enum([
-  "official",      // First-party LLM vendor (Anthropic, OpenAI, Google)
-  "china",         // Chinese 1P vendor (DeepSeek, Zhipu, Kimi, ...)
+  "official", // First-party LLM vendor (Anthropic, OpenAI, Google)
+  "china", // Chinese 1P vendor (DeepSeek, Zhipu, Kimi, ...)
   "international", // Non-Chinese 1P vendor (Mistral, Cohere, Groq, ...)
-  "aggregator",    // Routing / aggregation service (OpenRouter, PackyCode, ...)
-  "cloud",         // Cloud-hosted proxy (AWS Bedrock, Azure OpenAI)
-  "custom",        // User-defined custom endpoint / local inference
+  "aggregator", // Routing / aggregation service (OpenRouter, PackyCode, ...)
+  "cloud", // Cloud-hosted proxy (AWS Bedrock, Azure OpenAI)
+  "custom", // User-defined custom endpoint / local inference
 ])
 export type ProviderCategory = z.infer<typeof ProviderCategorySchema>
 
@@ -443,6 +451,8 @@ export const UsageSummarySchema = z.object({
   totalCacheCreationTokens: z.number().int().nonnegative(),
   realTotalTokens: z.number().int().nonnegative(),
   totalCostUsd: z.number().nonnegative(),
+  /** False when any request in range lacked pricing — total is a partial sum. */
+  totalCostUsdKnown: z.boolean().optional(),
   successRate: z.number().min(0).max(1),
   cacheHitRate: z.number().min(0).max(1),
   unpricedRequestCount: z.number().int().nonnegative(),
@@ -474,7 +484,10 @@ const PlanTaskSchema = z.object({
   id: z.string(),
   agentRole: z.string(),
   description: z.string(),
-  status: z.enum(["pending", "running", "completed", "failed"]),
+  // Must match @max/core TaskStatus: the runtime also emits "skipped"
+  // (dependency failed / terminated) and "cancelled" — a workspace
+  // containing such a task must not fail whole-payload validation.
+  status: z.enum(["pending", "running", "completed", "failed", "skipped", "cancelled"]),
   dependsOn: z.array(z.string()),
   resultId: z.string().optional(),
   error: z.string().optional(),
@@ -663,11 +676,13 @@ export const chatApi = {
       `${BASE}/system/failover/queue`,
       { signal },
       z.object({
-        queue: z.array(z.object({
-          providerId: z.string(),
-          priority: z.number().int().positive(),
-          addedAt: z.number().int().positive(),
-        })),
+        queue: z.array(
+          z.object({
+            providerId: z.string(),
+            priority: z.number().int().positive(),
+            addedAt: z.number().int().positive(),
+          }),
+        ),
       }),
     ),
 
@@ -699,11 +714,7 @@ export const chatApi = {
 
   /** Get auto-failover enabled state. */
   getAutoFailoverEnabled: (signal?: AbortSignal) =>
-    fetchJson(
-      `${BASE}/system/failover/auto`,
-      { signal },
-      z.object({ enabled: z.boolean() }),
-    ),
+    fetchJson(`${BASE}/system/failover/auto`, { signal }, z.object({ enabled: z.boolean() })),
 
   /** Set auto-failover enabled state. */
   setAutoFailoverEnabled: (enabled: boolean, signal?: AbortSignal) =>

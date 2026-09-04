@@ -23,12 +23,25 @@ const ROLE_TINT: Record<string, { token: string; muted: string; monogram: string
 
 export interface AgentPanelProps {
   workspace: Workspace | null
+  /** Task ids currently parked on a permission/approval gate (rendered as
+   *  the amber "waiting" status dot). */
+  parkedTaskIds?: ReadonlySet<string>
 }
 
-function statusFromTask(s: string, error?: string): "idle" | "running" | "done" | "error" {
+function statusFromTask(
+  s: string,
+  error?: string,
+  isParked = false,
+): "idle" | "running" | "done" | "error" | "waiting" | "skipped" {
   if (error) return "error"
+  // Parked on a permission/approval gate: nominally "running" in the
+  // runtime, but the visual language must distinguish "waiting on a
+  // human" (static amber) from "making progress" (pulsing blue).
+  if (isParked) return "waiting"
   if (s === "running") return "running"
   if (s === "completed" || s === "done") return "done"
+  // Will never run (dependency failed / terminated) — muted grey, not idle.
+  if (s === "skipped") return "skipped"
   return "idle"
 }
 
@@ -40,7 +53,7 @@ function durationSince(start: string | undefined, now: number): string {
   return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`
 }
 
-export function AgentPanel({ workspace }: AgentPanelProps) {
+export function AgentPanel({ workspace, parkedTaskIds }: AgentPanelProps) {
   useLocale()
   const tasks = workspace?.plan?.tasks ?? []
   const taskErrors = new Map<string, string>(
@@ -61,13 +74,21 @@ export function AgentPanel({ workspace }: AgentPanelProps) {
     <div className="agent-panel divide-y divide-border">
       {tasks.map((task) => {
         const role = ROLE_TINT[task.agentRole] ?? ROLE_TINT.general!
-        const status = statusFromTask(task.status, taskErrors.get(task.id))
+        const status = statusFromTask(
+          task.status,
+          taskErrors.get(task.id),
+          parkedTaskIds?.has(task.id) ?? false,
+        )
         const dur = durationSince(task.startedAt, now)
         return (
           <div
             key={task.id}
             className={`agent-row agent-row--${task.agentRole} flex items-center gap-3 px-3 py-2${
-              status === "error" ? " border-l-4 border-l-[color:var(--mx-red-600)]" : ""
+              status === "error"
+                ? " border-l-4 border-l-[color:var(--mx-red-600)]"
+                : status === "waiting"
+                  ? " border-l-4 border-l-[color:var(--mx-status-waiting)]"
+                  : ""
             }`}
           >
             <span

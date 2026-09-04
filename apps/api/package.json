@@ -9,7 +9,8 @@
     "build": "tsc",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/demo.ts",
+    "contract:update": "node scripts/update-contract.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

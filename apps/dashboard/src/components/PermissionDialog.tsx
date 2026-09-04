@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import type { PendingPermission } from "@/lib/permissions"
+import { DiffPreview } from "./_helpers/DiffPreview"
 import { useLocale, t } from "@max/i18n"
 
 export interface PermissionDialogProps {
@@ -169,6 +170,9 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
                     {pending.target || t("permissions.targetEmpty")}
                   </code>
                 </div>
+                {pending.tool === "edit" || pending.tool === "write" ? (
+                  <DiffPreview tool={pending.tool} input={pending.input} />
+                ) : null}
               </>
             )}
             <div className="text-xs text-muted-foreground">

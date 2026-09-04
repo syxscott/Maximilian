@@ -7,6 +7,18 @@
  * Naming convention:
  *   --mx-<category>-<role>[-<state>]
  *
+ * Three-layer theme contract (OpenHands color-themes borrowing):
+ *   1. Primitives   — hue ramps (--mx-grey-*, --mx-blue-*, …), never used
+ *                     directly by components.
+ *   2. Semantic     — role tokens (--mx-status-*, --mx-text-*,
+ *                     --mx-border-*) mapping primitives to meaning; both
+ *                     light and dark themes override only this layer.
+ *   3. Components   — shadcn vars (--background, --primary, …) in
+ *                     index.css map the semantic layer to the component
+ *                     library, so a re-theme never touches component code.
+ * Semantic status colors are deliberately NOT theme-switchable beyond
+ * light/dark — their meaning must stay stable (token-monitor rule).
+ *
  * Inspired by OpenCode's --v2-* system but simplified for a dashboard context.
  */
 
@@ -99,6 +111,11 @@
   --mx-status-running: var(--mx-blue-600);
   --mx-status-done: var(--mx-green-600);
   --mx-status-error: var(--mx-red-600);
+  /* Gate-parked (permission/approval ask) — high-saturation static amber,
+   * deliberately NOT animated so "waiting" reads differently from "running". */
+  --mx-status-waiting: var(--mx-yellow-600);
+  /* Will never run (dependency failed / terminated) — muted grey. */
+  --mx-status-skipped: var(--mx-grey-600);
 
   --mx-role-frontend: var(--mx-blue-600);
   --mx-role-frontend-muted: rgba(59, 92, 246, 0.12);
@@ -240,6 +257,14 @@
 .status-dot--error {
   background: var(--mx-status-error);
   border: 1px solid var(--mx-status-error);
+}
+.status-dot--waiting {
+  background: var(--mx-status-waiting);
+  border: 1px solid var(--mx-status-waiting);
+}
+.status-dot--skipped {
+  background: transparent;
+  border: 1px solid var(--mx-status-skipped);
 }
 @media (prefers-reduced-motion: no-preference) {
   .status-dot--pulse {

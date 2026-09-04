@@ -1,6 +1,12 @@
 // Barrel export — @max/tools
 
-export { createToolRegistry, type ToolRegistry, type Materialization, type Settlement, type ExecuteInput } from "./registry.js"
+export {
+  createToolRegistry,
+  type ToolRegistry,
+  type Materialization,
+  type Settlement,
+  type ExecuteInput,
+} from "./registry.js"
 // Toolkit (借鉴 SuperAGI)
 export { DefaultToolRegistry, BUILT_IN_TOOLKITS, type Tool, type Toolkit } from "./toolkit.js"
 export { bashTool, type BashInput, type BashOutput } from "./bash.js"
@@ -17,6 +23,15 @@ export {
   isPermissionDeniedError,
   type PermissionProvider,
 } from "./with-permission.js"
+export {
+  PermissionService,
+  type AlwaysDecision,
+  type ApprovalResolution,
+  type ApprovalEvent,
+  type PendingRequest,
+  type PermissionRequestInput,
+  type PermissionServiceOptions,
+} from "./permission-service.js"
 
 import { bashTool } from "./bash.js"
 import { readTool } from "./read.js"

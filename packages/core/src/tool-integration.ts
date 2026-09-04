@@ -621,13 +621,35 @@ async function executeSingleToolCall(
         requestId: reqErr.requestId,
         tool: reqErr.tool,
         target: reqErr.target,
+        // Raw tool call input — the dashboard's approval card renders it as
+        // an embedded diff for edit/write calls (opencode borrowing).
+        input: call.input,
       })
-      await options.awaitPermission(reqErr.requestId, {
+      const decision = await options.awaitPermission(reqErr.requestId, {
         workspaceId: options.workspaceId ?? "",
         taskId: options.taskId ?? "",
         tool: reqErr.tool,
         target: reqErr.target,
       })
+      // "deny" surfaces a tool error so the LLM can adapt (per the
+      // awaitPermission contract) — re-executing would throw
+      // PermissionDeniedError and kill the whole loop in sequential mode.
+      if (decision === "deny") {
+        const denyMsg = `Permission denied for tool "${reqErr.tool}"`
+        // (no `ok`/`errorMessage` bookkeeping needed: we return below, and
+        // both flags are only consumed on the paths after this branch)
+        options.emitEvent?.({
+          type: "tool-end",
+          workspaceId: options.workspaceId ?? "",
+          taskId: options.taskId ?? "",
+          toolName: call.name,
+          ok: false,
+          durationMs: Date.now() - startedAt,
+          error: denyMsg,
+        })
+        options.onToolResult?.(call, { error: denyMsg })
+        return { output: { error: denyMsg }, skip: false }
+      }
       result = await provider.executeTool(call, {
         sessionID: "default",
         agent: "agent",

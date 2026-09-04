@@ -18,3 +18,4 @@ workspaces/
 /**/pnpm-lock.yaml
 !pnpm-lock.yaml
 research/similar-projects/
+*.tsbuildinfo

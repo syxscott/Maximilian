@@ -6,6 +6,8 @@
 export * from "./types.js"
 export * from "./agent.js"
 export * from "./runtime.js"
+export * from "./steering.js"
+export * from "./prompt-queue.js"
 export * from "./file-memory-store.js"
 export * from "./tool-integration.js"
 export { Container, TOKENS, type Lifecycle } from "./di.js"
@@ -153,6 +155,12 @@ export * from "./acp/index.js"
 export * from "./acp/backend.js"
 export type { FailoverReason, ClassifiedError } from "./failover-reason.js"
 export { classifyTaskError } from "./failover-reason.js"
+export {
+  PolicyDeniedError,
+  POLICY_DENIED_PREFIX,
+  isPolicyDeniedError,
+  isPolicyDeniedMessage,
+} from "./policy-error.js"
 // Reminder system (借鉴 grok-build Reminder trait)
 export {
   ReminderCollector,

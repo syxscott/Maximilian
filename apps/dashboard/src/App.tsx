@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Toaster } from "@/components/ui/sonner"
 import { useHealth, useWorkspaces } from "@/lib/api/hooks"
 import { useLocale, t } from "@max/i18n"
-import { chatApi } from "./api"
+import { chatApi, openWorkspaceStream } from "./api"
 import type { Workspace, RuntimeEvent } from "./api"
 import { ChatPanel } from "./components/ChatPanel"
 import { AgentPanel } from "./components/AgentPanel"
@@ -177,7 +177,7 @@ export function App() {
       if (tokenRef.current !== myToken) return
       setEvents([])
 
-      const es = new EventSource(`/api/workspaces/${encodeURIComponent(workspaceId)}/stream`)
+      const es = openWorkspaceStream(workspaceId)
       esRef.current = es
       sseErrorCount.current = 0
 
@@ -215,6 +215,7 @@ export function App() {
                 taskId: strField("taskId") ?? "",
                 tool: strField("tool") ?? "",
                 target: strField("target") ?? "",
+                input: ev.input ?? undefined,
               })
             } else if (ev.type === "permission-resolved") {
               const requestId = strField("requestId")
@@ -443,7 +444,12 @@ export function App() {
                 workspace={workspace}
                 sidebar={
                   <div className="flex flex-col gap-4">
-                    <AgentPanel workspace={workspace} />
+                    <AgentPanel
+                      workspace={workspace}
+                      parkedTaskIds={
+                        pendingPermission ? new Set([pendingPermission.taskId]) : undefined
+                      }
+                    />
                     <TaskPanel workspace={workspace} />
                     {workspace?.review ? (
                       <ReviewPanel workspace={workspace} />

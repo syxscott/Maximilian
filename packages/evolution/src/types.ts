@@ -10,8 +10,8 @@
  *   6. EvolutionDecision — why a version was promoted/retired
  */
 
-import { z } from "zod";
-import { AgentRole, AgentManifestSchema } from "@max/core";
+import { z } from "zod"
+import { AgentRole, AgentManifestSchema } from "@max/core"
 
 // ============================================================================
 // Metric Record (Phase 1)
@@ -23,7 +23,7 @@ export const MetricRecordSchema = z.object({
   agentRole: AgentRole,
   provider: z.string(),
   model: z.string(),
-  executionTime: z.number().nonnegative(),       // ms
+  executionTime: z.number().nonnegative(), // ms
   tokenInput: z.number().int().nonnegative(),
   tokenOutput: z.number().int().nonnegative(),
   /** Tokens served from provider-side prompt cache (Anthropic cache_read_input_tokens,
@@ -37,9 +37,9 @@ export const MetricRecordSchema = z.object({
   userAccepted: z.boolean().optional(),
   retryCount: z.number().int().nonnegative().default(0),
   error: z.string().optional(),
-  timestamp: z.string(),                          // ISO
-});
-export type MetricRecord = z.infer<typeof MetricRecordSchema>;
+  timestamp: z.string(), // ISO
+})
+export type MetricRecord = z.infer<typeof MetricRecordSchema>
 
 // ============================================================================
 // Agent Memory (Phase 5)
@@ -78,7 +78,10 @@ export type MemoryEntry = z.infer<typeof MemoryEntrySchema>
  * entry) into a MemoryEntry. This keeps the upgrade non-breaking: existing
  * call sites that pass raw strings continue to work.
  */
-export function toMemoryEntry(value: unknown, mime: MemoryMime = MemoryMime.TextPlain): MemoryEntry {
+export function toMemoryEntry(
+  value: unknown,
+  mime: MemoryMime = MemoryMime.TextPlain,
+): MemoryEntry {
   if (value === null || value === undefined) return { mime, content: "" }
   if (typeof value === "string") return { mime, content: value }
   if (typeof value === "object") {
@@ -111,32 +114,54 @@ export const AgentMemorySchema = z.object({
   reviewSuggestions: legacyBucket.default([]),
   commonErrors: legacyBucket.default([]),
   goodExamples: legacyBucket.default([]),
+  /**
+   * Curator quarantine (hermes curator: archive-not-delete). Entries the
+   * curator retired from the active buckets — duplicates, sprawl — land
+   * here for audit. They are never re-injected into prompts, but they are
+   * also never silently destroyed.
+   */
+  archived: z.record(z.array(MemoryEntrySchema)).optional(),
   totalEntries: z.number().int().nonnegative().default(0),
   compressedAt: z.string().optional(),
-});
-export type AgentMemory = z.infer<typeof AgentMemorySchema>;
+})
+export type AgentMemory = z.infer<typeof AgentMemorySchema>
 
 // ============================================================================
 // Agent Profile (Phase 2)
 // ============================================================================
 
+/**
+ * Curator bookkeeping (hermes agent/curator.py): a maintenance pass that
+ * runs when the agent is idle, keeping the memory corpus small enough to
+ * stay useful. Counters are monotonic so callers can see the curator's
+ * lifetime effect at a glance.
+ */
+export const CuratorStateSchema = z.object({
+  lastRunAt: z.string().optional(),
+  totalPinned: z.number().int().nonnegative().default(0),
+  totalArchived: z.number().int().nonnegative().default(0),
+  totalConsolidated: z.number().int().nonnegative().default(0),
+})
+export type CuratorState = z.infer<typeof CuratorStateSchema>
+
 export const AgentProfileSchema = z.object({
-  id: z.string(),                                 // equals role
+  id: z.string(), // equals role
   role: AgentRole,
   createdAt: z.string(),
   totalTasks: z.number().int().nonnegative().default(0),
   avgScore: z.number().min(0).max(10).default(0),
   successRate: z.number().min(0).max(1).default(1),
   avgExecutionTime: z.number().nonnegative().default(0),
-  preferredModel: z.string().optional(),          // provider:model
+  preferredModel: z.string().optional(), // provider:model
   strengths: z.array(z.string()).default([]),
   weaknesses: z.array(z.string()).default([]),
   memory: AgentMemorySchema.default({}),
+  curatorState: CuratorStateSchema.optional(),
   currentVersion: z.string().default("v1"),
   versions: z.array(z.string()).default(["v1"]),
-  manifest: AgentManifestSchema.optional(),       // active prompt snapshot
-});
-export type AgentProfile = z.infer<typeof AgentProfileSchema>;
+  manifest: AgentManifestSchema.optional(), // active prompt snapshot
+})
+export type AgentProfile = z.infer<typeof AgentProfileSchema>
 
 // ============================================================================
 // Leaderboard Entry (Phase 3)
@@ -148,8 +173,8 @@ export const LeaderboardEntrySchema = z.object({
   model: z.string(),
   avgScore: z.number().min(0).max(10),
   avgExecutionTime: z.number().nonnegative(),
-  avgCostUSD: z.number().nonnegative(),           // approximate
-  userSatisfaction: z.number().min(0).max(1),     // acceptance rate
+  avgCostUSD: z.number().nonnegative(), // approximate
+  userSatisfaction: z.number().min(0).max(1), // acceptance rate
   sampleSize: z.number().int().nonnegative(),
   lastUpdated: z.string(),
   // Counterfactual dimensions (borrowed from EvoAgentBench):
@@ -177,21 +202,21 @@ export const LeaderboardEntrySchema = z.object({
       }),
     )
     .default([]),
-});
-export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
+})
+export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>
 
 export const LeaderboardSchema = z.object({
   entries: z.array(LeaderboardEntrySchema).default([]),
   lastRebuilt: z.string().optional(),
-});
-export type LeaderboardData = z.infer<typeof LeaderboardSchema>;
+})
+export type LeaderboardData = z.infer<typeof LeaderboardSchema>
 
 // ============================================================================
 // Agent Version (Phase 6)
 // ============================================================================
 
 export const AgentVersionSchema = z.object({
-  id: z.string(),                                 // e.g. "v1", "v2"
+  id: z.string(), // e.g. "v1", "v2"
   agentRole: AgentRole,
   manifest: AgentManifestSchema,
   createdAt: z.string(),
@@ -201,8 +226,8 @@ export const AgentVersionSchema = z.object({
     totalTasks: z.number().int().nonnegative().default(0),
     avgScore: z.number().min(0).max(10).default(0),
   }),
-});
-export type AgentVersion = z.infer<typeof AgentVersionSchema>;
+})
+export type AgentVersion = z.infer<typeof AgentVersionSchema>
 
 // ============================================================================
 // Evolution Decision
@@ -218,8 +243,8 @@ export const EvolutionDecisionSchema = z.object({
   newAvgScore: z.number(),
   triggeredAt: z.string(),
   reason: z.string(),
-});
-export type EvolutionDecision = z.infer<typeof EvolutionDecisionSchema>;
+})
+export type EvolutionDecision = z.infer<typeof EvolutionDecisionSchema>
 
 // ============================================================================
 // Model Selection Output
@@ -230,8 +255,8 @@ export const ModelSelectionSchema = z.object({
   model: z.string(),
   score: z.number(),
   reason: z.string(),
-});
-export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
+})
+export type ModelSelection = z.infer<typeof ModelSelectionSchema>
 
 // ============================================================================
 // Default memory factory
@@ -244,7 +269,7 @@ export function emptyMemory(): AgentMemory {
     commonErrors: [],
     goodExamples: [],
     totalEntries: 0,
-  };
+  }
 }
 
 /**

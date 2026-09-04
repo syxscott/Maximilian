@@ -226,6 +226,9 @@ export interface PendingPermission {
   taskId: string
   tool?: string
   target?: string
+  /** Raw tool input (when the runtime event carried it) — powers the
+   *  embedded diff preview on the approval card. */
+  input?: unknown
   prompt?: string
   reason?: string
   requireComment?: boolean

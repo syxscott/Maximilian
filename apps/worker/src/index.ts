@@ -27,6 +27,7 @@ import { EvolutionFacade, evolutionAwareFactory } from "@max/evolution"
 import { createDb, closeDb, PgWorkspaceStore, getProviderConfigsFromDb } from "@max/database"
 import { FileWorkspaceStore } from "@max/workspace"
 import { createWorker, acquireResourceLease, type WorkspaceProcessor } from "@max/queue"
+import { Gateway, createWebhookAdapter } from "@max/gateway"
 import { bootstrapModelRouting } from "@max/core"
 import type { Job } from "bullmq"
 import type { WorkspaceJobData } from "@max/queue"
@@ -245,8 +246,33 @@ async function main() {
     )
   })
 
+  // Notification egress (openclaw gateway borrowing): when a channel is
+  // configured (GATEWAY_WEBHOOK_URL), completion events flow out through
+  // the gateway so humans on chat channels learn a workspace finished
+  // without polling the dashboard.
+  const gatewayWebhookUrl = process.env.GATEWAY_WEBHOOK_URL
+  const notificationGateway = gatewayWebhookUrl
+    ? new Gateway().registerAdapter(
+        createWebhookAdapter({
+          url: gatewayWebhookUrl,
+          token: process.env.GATEWAY_WEBHOOK_TOKEN,
+        }),
+      )
+    : undefined
+
   worker.on("completed", (job: Job<WorkspaceJobData>) => {
     log.info({ jobId: job.id, workspaceId: job.data.workspaceId }, "job completed")
+    if (notificationGateway) {
+      const workspaceId = job.data.workspaceId
+      notificationGateway.notify({
+        channel: "webhook",
+        recipientId: process.env.GATEWAY_NOTIFY_RECIPIENT ?? "default",
+        title: `Workspace ${workspaceId} completed`,
+        body: `All tasks finished (job ${String(job.id)}).`,
+        workspaceId,
+        severity: "info",
+      })
+    }
   })
 
   worker.on("error", (err: Error) => {
@@ -272,6 +298,9 @@ async function main() {
       log.error({ err }, "error aborting in-flight runtimes during shutdown")
     }
     try {
+      if (notificationGateway) {
+        await notificationGateway.close().catch(() => {})
+      }
       await worker.close().catch((err) => {
         log.error({ err }, "error closing worker")
       })

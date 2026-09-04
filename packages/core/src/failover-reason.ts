@@ -50,6 +50,12 @@ export const FailoverReason = {
   ToolError: "tool_error",
   /** Permission denied by user or config - don't retry. */
   PermissionDenied: "permission_denied",
+  /**
+   * Governance rejection (crewAI deny≠failure borrowing): a deliberate
+   * policy outcome — permission rules, capability gates, budget caps.
+   * Structurally non-retryable AND excluded from failure learning.
+   */
+  PolicyDenied: "policy_denied",
   /** Unknown/unexpected error. */
   Unknown: "unknown",
 } as const
@@ -158,6 +164,8 @@ const OVERLOADED_PATTERNS = [
   /try.again.later/i,
 ]
 
+import { PolicyDeniedError, isPolicyDeniedMessage } from "./policy-error.js"
+
 /**
  * Classify a task error into a structured ClassifiedError.
  * Priority-ordered: permanent auth → tool errors → status-code-like patterns
@@ -170,6 +178,13 @@ const OVERLOADED_PATTERNS = [
 export function classifyTaskError(error: unknown): ClassifiedError {
   const message = error instanceof Error ? error.message : String(error)
   const msg = message.slice(0, 500) // bound
+
+  // 0. Governance rejection (deny≠failure, crewAI borrowing) — structural
+  //    check first, then the serialized prefix for errors that crossed a
+  //    process/message boundary. Never retried, never re-learned.
+  if (error instanceof PolicyDeniedError || isPolicyDeniedMessage(message)) {
+    return mkClassification("policy_denied", msg, false, false, false, false)
+  }
 
   // 1. Permanent auth — these are NEVER retryable.
   if (matchAny(msg, AUTH_PERMANENT_PATTERNS)) {

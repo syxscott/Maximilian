@@ -10,7 +10,7 @@
  *   - Assignment        (Stage 5) resolved (provider, model) per node
  */
 
-import { z } from "zod";
+import { z } from "zod"
 
 // ============================================================================
 // Capability
@@ -27,8 +27,8 @@ export const CapabilityCategory = z.enum([
   "writing",
   "review",
   "general",
-]);
-export type CapabilityCategory = z.infer<typeof CapabilityCategory>;
+])
+export type CapabilityCategory = z.infer<typeof CapabilityCategory>
 
 export const CapabilitySchema = z.object({
   id: z.string(),
@@ -49,8 +49,8 @@ export const CapabilitySchema = z.object({
     .default({ outputFormat: "free" }),
   dependsOn: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),
-});
-export type Capability = z.infer<typeof CapabilitySchema>;
+})
+export type Capability = z.infer<typeof CapabilitySchema>
 
 // ============================================================================
 // Tool
@@ -66,8 +66,8 @@ export const ToolSpecSchema = z.object({
       exclusive: z.boolean().optional(),
     })
     .optional(),
-});
-export type ToolSpec = z.infer<typeof ToolSpecSchema>;
+})
+export type ToolSpec = z.infer<typeof ToolSpecSchema>
 
 // ============================================================================
 // Model Hint
@@ -77,8 +77,8 @@ export const ModelHintSchema = z.object({
   provider: z.string(),
   model: z.string(),
   reason: z.string(),
-});
-export type ModelHint = z.infer<typeof ModelHintSchema>;
+})
+export type ModelHint = z.infer<typeof ModelHintSchema>
 
 // ============================================================================
 // AgentBlueprint
@@ -104,12 +104,12 @@ export const PersonalitySchema = z.object({
   tone: z.enum(["formal", "casual", "playful", "stern", "neutral"]).optional(),
   language: z.string().optional(), // e.g. "zh-CN", "en", "code-only"
   customDirectives: z.array(z.string()).default([]),
-});
-export type Personality = z.infer<typeof PersonalitySchema>;
+})
+export type Personality = z.infer<typeof PersonalitySchema>
 
 export const AgentBlueprintSchema = z.object({
   id: z.string(),
-  role: z.string(),                                    // logical role name
+  role: z.string(), // logical role name
   displayName: z.string(),
   goal: z.string(),
   systemPrompt: z.string(),
@@ -147,17 +147,17 @@ export const AgentBlueprintSchema = z.object({
     })
     .default({ totalTasks: 0, totalSuccesses: 0, avgScore: 0, avgExecutionTimeMs: 0 }),
   metadata: z.record(z.unknown()).default({}),
-});
-export type AgentBlueprint = z.infer<typeof AgentBlueprintSchema>;
+})
+export type AgentBlueprint = z.infer<typeof AgentBlueprintSchema>
 
 /** Default personality (fully materialised through zod — use as spread base). */
 export function defaultPersonality(): Personality {
-  return PersonalitySchema.parse({});
+  return PersonalitySchema.parse({})
 }
 
 /** Default voice config (fully materialised through zod — use as spread base). */
 export function defaultVoice(): AgentBlueprint["voice"] {
-  return AgentBlueprintSchema.shape.voice.parse({});
+  return AgentBlueprintSchema.shape.voice.parse({})
 }
 
 // ============================================================================
@@ -184,27 +184,35 @@ export const TeamNodeSchema = z.object({
       model: z.string(),
       reason: z.string(),
       score: z.number(),
+      /**
+       * Value tier this node was assigned at (wshobson/agents model-tier
+       * borrowing): review/orchestration work lands on frontier models,
+       * deterministic utility work on economy ones. Observational today —
+       * the leaderboard still drives the concrete pick — but this is the
+       * dimension a tier-enforcing selector would key on.
+       */
+      tier: z.enum(["frontier", "standard", "economy"]).optional(),
     })
     .optional(),
-});
-export type TeamNode = z.infer<typeof TeamNodeSchema>;
+})
+export type TeamNode = z.infer<typeof TeamNodeSchema>
 
 export const TeamEdgeSchema = z.object({
   from: z.string(),
   to: z.string(),
   type: z.enum(["data_flow", "review", "validation"]).default("data_flow"),
   description: z.string().optional(),
-});
-export type TeamEdge = z.infer<typeof TeamEdgeSchema>;
+})
+export type TeamEdge = z.infer<typeof TeamEdgeSchema>
 
 export const TeamLayerSchema = z.object({
   index: z.number().int().nonnegative(),
   nodeIds: z.array(z.string()),
-});
-export type TeamLayer = z.infer<typeof TeamLayerSchema>;
+})
+export type TeamLayer = z.infer<typeof TeamLayerSchema>
 
-export const TeamGraphStatus = z.enum(["draft", "ready", "executing", "completed", "failed"]);
-export type TeamGraphStatus = z.infer<typeof TeamGraphStatus>;
+export const TeamGraphStatus = z.enum(["draft", "ready", "executing", "completed", "failed"])
+export type TeamGraphStatus = z.infer<typeof TeamGraphStatus>
 
 export const TeamGraphSchema = z.object({
   id: z.string(),
@@ -215,8 +223,8 @@ export const TeamGraphSchema = z.object({
   layers: z.array(TeamLayerSchema).default([]),
   createdAt: z.string(),
   status: TeamGraphStatus.default("draft"),
-});
-export type TeamGraph = z.infer<typeof TeamGraphSchema>;
+})
+export type TeamGraph = z.infer<typeof TeamGraphSchema>
 
 // ============================================================================
 // Helpers
@@ -228,5 +236,5 @@ export function emptyStats() {
     totalSuccesses: 0,
     avgScore: 0,
     avgExecutionTimeMs: 0,
-  };
+  }
 }

@@ -79,7 +79,16 @@ export function UsagePanel() {
 function SummaryCards({ summary }: { summary: UsageSummary }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <MetricCard label={t("usage.metric.totalCost")} value={formatUsd(summary.totalCostUsd)} />
+      <MetricCard
+        label={t("usage.metric.totalCost")}
+        value={summary.totalCostUsdKnown === false ? "—" : formatUsd(summary.totalCostUsd)}
+        sub={
+          summary.totalCostUsdKnown === false
+            ? t("usage.cost.unpriced", { count: summary.unpricedRequestCount })
+            : undefined
+        }
+        alert={summary.totalCostUsdKnown === false}
+      />
       <MetricCard
         label={t("usage.metric.tokens")}
         value={formatTokens(summary.realTotalTokens)}

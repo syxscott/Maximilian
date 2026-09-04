@@ -21,16 +21,11 @@
  *     EvoAgentBench's `costDeltaUSD` dimension).
  */
 
-import { randomUUID } from "node:crypto";
-import type {
-  AgentRole,
-  AgentManifest,
-  Result,
-  Task,
-} from "@max/core";
-import type { OpencodeExecutor, ExecuteResult } from "@max/core";
-import type { AgentProfile } from "./types.js";
-import { ProfileStore } from "./profile-store.js";
+import { randomUUID } from "node:crypto"
+import type { AgentRole, AgentManifest, Result, Task } from "@max/core"
+import type { OpencodeExecutor, ExecuteResult } from "@max/core"
+import type { AgentProfile } from "./types.js"
+import { ProfileStore } from "./profile-store.js"
 
 // ── Mutator contract ────────────────────────────────────────────────────────
 
@@ -44,7 +39,7 @@ export type VariantMutator = (
   parent: AgentManifest,
   index: number,
   ctx: { failures: string[]; feedback: string[] },
-) => AgentManifest;
+) => AgentManifest
 
 /**
  * Default mutator: produces N distinct variants by appending a deterministic
@@ -56,7 +51,7 @@ export const identityMutator: VariantMutator = (parent, index) => ({
   systemPrompt:
     parent.systemPrompt +
     `\n\n# Variant ${index + 1} focus\nPay special attention to clarity and explicit assumptions.`,
-});
+})
 
 // ── Scoring contract ────────────────────────────────────────────────────────
 
@@ -66,22 +61,22 @@ export const identityMutator: VariantMutator = (parent, index) => ({
  * a real 8-dim judge.
  */
 export type VariantJudge = (input: {
-  task: Task;
-  parent: AgentManifest;
-  variant: AgentManifest;
-  variantResult: Result;
-  variantMeta: ExecuteResult;
-}) => Promise<VariantScore> | VariantScore;
+  task: Task
+  parent: AgentManifest
+  variant: AgentManifest
+  variantResult: Result
+  variantMeta: ExecuteResult
+}) => Promise<VariantScore> | VariantScore
 
 export interface VariantScore {
   /** 0..10 quality score. */
-  quality: number;
+  quality: number
   /** Wall-clock duration ms (mirrors `ExecuteResult.durationMs`). */
-  durationMs: number;
+  durationMs: number
   /** Cost in USD. */
-  costUSD: number;
+  costUSD: number
   /** Free-form rationale the runner can surface in the leaderboard. */
-  reason: string;
+  reason: string
 }
 
 // ── Executor contract ───────────────────────────────────────────────────────
@@ -93,43 +88,43 @@ export interface VariantScore {
  * passed in production. Tests pass a mock that satisfies this same shape.
  */
 export interface VariantExecutor {
-  executeTask(task: Task, workspaceId: string): Promise<ExecuteResult>;
+  executeTask(task: Task, workspaceId: string): Promise<ExecuteResult>
 }
 
 // ── Runner output ───────────────────────────────────────────────────────────
 
 export interface VariantRun {
   /** Stable id for this variant run (used for leaderboard rows). */
-  id: string;
+  id: string
   /** 0-based variant index (parent is index -1; not present in this list). */
-  index: number;
+  index: number
   /** Parent manifest this variant was derived from. */
-  parent: AgentManifest;
+  parent: AgentManifest
   /** The mutated manifest actually executed. */
-  variant: AgentManifest;
+  variant: AgentManifest
   /** Raw executor result (text + metadata). */
-  result: Result;
+  result: Result
   /** Wall-clock session id (opencode's, from `ExecuteResult.sessionId`). */
-  sessionId: string;
+  sessionId: string
   /** Combined score from the judge. */
-  score: VariantScore;
+  score: VariantScore
   /** Whether this variant's run produced an error (judge still ran). */
-  errored: boolean;
+  errored: boolean
   /** Error message if `errored` is true. */
-  error?: string;
+  error?: string
 }
 
 export interface LeaderboardRow {
   /** Reference to the run id (always present). */
-  runId: string;
+  runId: string
   /** Agent role. */
-  agentRole: AgentRole;
+  agentRole: AgentRole
   /** Variant id used in the leaderboard (we use `manifest.systemPrompt`'s first 24 chars + index). */
-  variantKey: string;
+  variantKey: string
   /** Combined score: quality minus time/cost penalty. Higher is better. */
-  combined: number;
-  score: VariantScore;
-  rank: number;
+  combined: number
+  score: VariantScore
+  rank: number
 }
 
 export interface VariantRunOptions {
@@ -137,52 +132,61 @@ export interface VariantRunOptions {
    * Agent role this run is for. Falls back to `task.agentRole` when
    * not provided (so callers can omit it for the common case).
    */
-  agentRole?: AgentRole;
+  agentRole?: AgentRole
   /**
    * Workspace to execute under. Typically the workspace the parent
    * session was created in.
    */
-  workspaceId: string;
+  workspaceId: string
   /**
    * How many variants to spawn. Default: 3. Bounds: 1..16.
    */
-  variantCount?: number;
+  variantCount?: number
   /** Override the mutator (default: `identityMutator`). */
-  mutator?: VariantMutator;
+  mutator?: VariantMutator
   /** Override the judge (default: heuristic). */
-  judge?: VariantJudge;
+  judge?: VariantJudge
   /**
    * Optional: failure-mode strings fed to the mutator context (mirrors
    * the failure list the EvolutionEngine passes to `composeImprovedPrompt`).
    */
-  failures?: string[];
+  failures?: string[]
   /** Optional: user feedback strings fed to the mutator context. */
-  feedback?: string[];
+  feedback?: string[]
+  /**
+   * Early-stop after N consecutive variants that fail to beat the best
+   * combined score so far (wshobson/agents `optimize()` no-improvement
+   * stop). Saves judge/executor budget when mutations have plateaued.
+   * Default: disabled.
+   */
+  patience?: number
 }
 
 export interface VariantRunReport {
   /** The agent role the run targeted. */
-  agentRole: AgentRole;
+  agentRole: AgentRole
   /** Workspace the variants ran under. */
-  workspaceId: string;
+  workspaceId: string
   /** Parent profile that was used as the baseline. */
-  parentProfile: AgentProfile;
+  parentProfile: AgentProfile
   /** Per-variant results, in execution order. */
-  runs: VariantRun[];
+  runs: VariantRun[]
   /** Leaderboard-ranked rows (best-first). */
-  leaderboard: LeaderboardRow[];
+  leaderboard: LeaderboardRow[]
   /** Index of the best variant in `runs` (-1 if `runs` is empty). */
-  winnerIndex: number;
+  winnerIndex: number
   /** ISO timestamp at which the run started. */
-  startedAt: string;
+  startedAt: string
   /** ISO timestamp at which the run completed. */
-  completedAt: string;
+  completedAt: string
+  /** True when the patience early-stop fired before all variants ran. */
+  stoppedEarly?: boolean
 }
 
 // ── Defaults ────────────────────────────────────────────────────────────────
 
-const DEFAULT_VARIANT_COUNT = 3;
-const MAX_VARIANT_COUNT = 16;
+const DEFAULT_VARIANT_COUNT = 3
+const MAX_VARIANT_COUNT = 16
 
 /**
  * Default heuristic judge: a non-empty `output` is worth 6/10; presence of
@@ -190,28 +194,28 @@ const MAX_VARIANT_COUNT = 16;
  * deterministic — real callers pass an LLM-driven judge.
  */
 const defaultJudge: VariantJudge = (input) => {
-  const text = input.variantResult.output ?? "";
+  const text = input.variantResult.output ?? ""
   if (text.trim().length === 0) {
     return {
       quality: 0,
       durationMs: input.variantMeta.durationMs,
       costUSD: 0,
       reason: "empty output",
-    };
+    }
   }
-  let quality = 6;
-  if (text.length >= 200) quality += 1;
-  if (text.length >= 1000) quality += 1;
+  let quality = 6
+  if (text.length >= 200) quality += 1
+  if (text.length >= 1000) quality += 1
   // Penalise if the variant obviously errored out (Maximilian `Result` carries
   // an empty-string output when the executor falls back to "(empty response)").
-  if (text.startsWith("(empty response")) quality -= 4;
+  if (text.startsWith("(empty response")) quality -= 4
   return {
     quality: Math.max(0, Math.min(10, quality)),
     durationMs: input.variantMeta.durationMs,
     costUSD: 0,
     reason: `heuristic: ${text.length} chars`,
-  };
-};
+  }
+}
 
 /**
  * Combined score formula (higher = better). Borrowed shape from
@@ -222,26 +226,26 @@ const defaultJudge: VariantJudge = (input) => {
  *   costPenalty  = costUSD * 100                        (linear)
  */
 function combinedOf(score: VariantScore): number {
-  const speedPenalty = Math.log(1 + Math.max(0, score.durationMs) / 1000) * 0.5;
-  const costPenalty = Math.max(0, score.costUSD) * 100;
-  return Math.max(0, score.quality - speedPenalty - costPenalty);
+  const speedPenalty = Math.log(1 + Math.max(0, score.durationMs) / 1000) * 0.5
+  const costPenalty = Math.max(0, score.costUSD) * 100
+  return Math.max(0, score.quality - speedPenalty - costPenalty)
 }
 
 // ── Runner ──────────────────────────────────────────────────────────────────
 
 export class VariantRunner {
-  private readonly profiles: ProfileStore;
+  private readonly profiles: ProfileStore
 
   constructor(opts: { profiles: ProfileStore; executor: VariantExecutor }) {
-    if (!opts.profiles) throw new Error("VariantRunner: `profiles` is required");
-    if (!opts.executor) throw new Error("VariantRunner: `executor` is required");
-    this.profiles = opts.profiles;
+    if (!opts.profiles) throw new Error("VariantRunner: `profiles` is required")
+    if (!opts.executor) throw new Error("VariantRunner: `executor` is required")
+    this.profiles = opts.profiles
     // `executor` is held only as a structural check; the runner accepts
     // either kind and runs via `executeTask(task, workspaceId)`. We don't
     // store it — callers pass it per `run()` invocation through the
     // `runWith()` form below. Keeping the constructor minimal means the
     // class is fully testable with a mocked executor.
-    void opts.executor;
+    void opts.executor
   }
 
   /**
@@ -254,52 +258,62 @@ export class VariantRunner {
     task: Task,
     options: VariantRunOptions,
   ): Promise<VariantRunReport> {
-    if (!executor) throw new Error("VariantRunner.runWith: `executor` is required");
-    if (!task) throw new Error("VariantRunner.runWith: `task` is required");
+    if (!executor) throw new Error("VariantRunner.runWith: `executor` is required")
+    if (!task) throw new Error("VariantRunner.runWith: `task` is required")
 
-    const agentRole = options.agentRole ?? task.agentRole;
-    const workspaceId = options.workspaceId;
-    const variantCount = clamp(options.variantCount ?? DEFAULT_VARIANT_COUNT, 1, MAX_VARIANT_COUNT);
-    const mutator = options.mutator ?? identityMutator;
-    const judge = options.judge ?? defaultJudge;
-    const failures = options.failures ?? [];
-    const feedback = options.feedback ?? [];
+    const agentRole = options.agentRole ?? task.agentRole
+    const workspaceId = options.workspaceId
+    const variantCount = clamp(options.variantCount ?? DEFAULT_VARIANT_COUNT, 1, MAX_VARIANT_COUNT)
+    const mutator = options.mutator ?? identityMutator
+    const judge = options.judge ?? defaultJudge
+    const failures = options.failures ?? []
+    const feedback = options.feedback ?? []
 
-    const startedAt = new Date().toISOString();
+    const startedAt = new Date().toISOString()
 
     // Load parent manifest via ProfileStore (the source of truth per
     // Phase 2). Fall back to a synthesized manifest if no profile exists
     // yet — this keeps tests hermetic.
-    let parentProfile = await this.profiles.get(agentRole);
+    let parentProfile = await this.profiles.get(agentRole)
     if (!parentProfile) {
       const fallback: AgentManifest = {
         role: agentRole,
         displayName: agentRole,
         goal: agentRole,
         systemPrompt: task.description,
-      };
-      parentProfile = await this.profiles.getOrCreate(agentRole, fallback);
+      }
+      parentProfile = await this.profiles.getOrCreate(agentRole, fallback)
     }
     const parent = parentProfile.manifest ?? {
       role: agentRole,
       displayName: agentRole,
       goal: agentRole,
       systemPrompt: task.description,
-    };
+    }
 
-    const runs: VariantRun[] = [];
+    const runs: VariantRun[] = []
+    // Patience early-stop bookkeeping (wshobson optimize() borrowing).
+    const patience = options.patience
+    let bestCombined = -Infinity
+    let noImprovement = 0
+    let stoppedEarly = false
+
     for (let i = 0; i < variantCount; i++) {
-      const variant = mutator(parent, i, { failures, feedback });
-      const runId = `vr-${randomUUID().slice(0, 8)}`;
+      if (patience !== undefined && noImprovement >= patience) {
+        stoppedEarly = true
+        break
+      }
+      const variant = mutator(parent, i, { failures, feedback })
+      const runId = `vr-${randomUUID().slice(0, 8)}`
       try {
-        const execResult = await executor.executeTask(task, workspaceId);
+        const execResult = await executor.executeTask(task, workspaceId)
         const score = await judge({
           task,
           parent,
           variant,
           variantResult: execResult.result,
           variantMeta: execResult,
-        });
+        })
         runs.push({
           id: runId,
           index: i,
@@ -309,7 +323,14 @@ export class VariantRunner {
           sessionId: execResult.sessionId,
           score,
           errored: Boolean(execResult.result.metadata?.error) || false,
-        });
+        })
+        const combined = combinedOf(score)
+        if (combined > bestCombined) {
+          bestCombined = combined
+          noImprovement = 0
+        } else {
+          noImprovement += 1
+        }
       } catch (err) {
         // One variant failing should not sink the run — capture the error
         // on the row so the leaderboard can rank the survivors.
@@ -337,15 +358,13 @@ export class VariantRunner {
           },
           errored: true,
           error: describe(err),
-        });
+        })
       }
     }
 
-    const leaderboard = rankLeaderboard(runs, agentRole);
-    const completedAt = new Date().toISOString();
-    const winnerIndex = leaderboard[0]
-      ? runs.findIndex((r) => r.id === leaderboard[0].runId)
-      : -1;
+    const leaderboard = rankLeaderboard(runs, agentRole)
+    const completedAt = new Date().toISOString()
+    const winnerIndex = leaderboard[0] ? runs.findIndex((r) => r.id === leaderboard[0].runId) : -1
 
     return {
       agentRole,
@@ -356,7 +375,8 @@ export class VariantRunner {
       winnerIndex,
       startedAt,
       completedAt,
-    };
+      ...(stoppedEarly ? { stoppedEarly: true } : {}),
+    }
   }
 
   /**
@@ -373,24 +393,24 @@ export class VariantRunner {
     task: Task,
     options: VariantRunOptions,
   ): Promise<VariantRunReport> {
-    return this.runWith(executor, task, options);
+    return this.runWith(executor, task, options)
   }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function clamp(n: number, lo: number, hi: number): number {
-  if (!Number.isFinite(n)) return lo;
-  return Math.max(lo, Math.min(hi, Math.floor(n)));
+  if (!Number.isFinite(n)) return lo
+  return Math.max(lo, Math.min(hi, Math.floor(n)))
 }
 
 function describe(err: unknown): string {
-  return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  return err instanceof Error ? `${err.name}: ${err.message}` : String(err)
 }
 
 function variantKey(variant: AgentManifest, index: number): string {
-  const head = variant.systemPrompt.slice(0, 24).replace(/\s+/g, "_");
-  return `v${index + 1}:${head || "mut"}`;
+  const head = variant.systemPrompt.slice(0, 24).replace(/\s+/g, "_")
+  return `v${index + 1}:${head || "mut"}`
 }
 
 function rankLeaderboard(runs: VariantRun[], agentRole: AgentRole): LeaderboardRow[] {
@@ -401,13 +421,13 @@ function rankLeaderboard(runs: VariantRun[], agentRole: AgentRole): LeaderboardR
     combined: combinedOf(r.score),
     score: r.score,
     rank: 0,
-  }));
-  rows.sort((a, b) => b.combined - a.combined);
+  }))
+  rows.sort((a, b) => b.combined - a.combined)
   rows.forEach((row, i) => {
-    row.rank = i + 1;
-  });
-  return rows;
+    row.rank = i + 1
+  })
+  return rows
 }
 
 // ── Type re-export so consumers don't reach into @max/core directly ─────────
-export type { OpencodeExecutor, ExecuteResult };
+export type { OpencodeExecutor, ExecuteResult }

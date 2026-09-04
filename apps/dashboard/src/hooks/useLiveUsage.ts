@@ -17,6 +17,8 @@ import { queryKeys } from "../lib/api/hooks.js"
 
 export interface LiveUsage {
   totalCostUsd: number
+  /** False when any request in the window lacked pricing (total is partial). */
+  totalCostUsdKnown?: boolean
   totalTokens: number
   cacheReadTokens: number
   cacheHitRate: number // 0..1
@@ -38,6 +40,7 @@ export function useLiveUsage(enabled = true) {
       const s = await usageApi.summary("today", signal)
       return {
         totalCostUsd: s.totalCostUsd,
+        totalCostUsdKnown: s.totalCostUsdKnown,
         totalTokens: s.realTotalTokens,
         cacheReadTokens: s.totalCacheReadTokens,
         cacheHitRate: s.cacheHitRate,

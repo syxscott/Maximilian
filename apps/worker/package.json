@@ -25,7 +25,8 @@
     "@max/telemetry": "workspace:*",
     "@max/workspace": "workspace:*",
     "bullmq": "^5.30.0",
-    "ioredis": "^5.4.0"
+    "ioredis": "^5.4.0",
+    "@max/gateway": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

@@ -81,7 +81,11 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
           }
         >
           <span aria-hidden="true">💰</span>
-          <span className="font-mono tabular-nums">{fmtCost(data?.totalCostUsd ?? 0)}</span>
+          <span className="font-mono tabular-nums">
+            {data?.totalCostUsdKnown === false
+              ? t("usage.pill.costUnknown")
+              : fmtCost(data?.totalCostUsd ?? 0)}
+          </span>
           <span className="text-muted-foreground">·</span>
           <span className="font-mono tabular-nums">{fmtTokens(data?.totalTokens ?? 0)}</span>
           {(data?.cacheHitRate ?? 0) > 0 && (
@@ -106,9 +110,19 @@ export function LiveUsagePill({ onOpenUsage }: LiveUsagePillProps) {
             </h4>
             <Sparkline values={sparklineValues} width={288} height={48} />
             <div className="grid grid-cols-3 gap-3 text-[11px]">
-              <Stat label={t("usage.pill.stat.cost")} value={fmtCost(data?.totalCostUsd ?? 0)} />
+              <Stat
+                label={t("usage.pill.stat.cost")}
+                value={
+                  data?.totalCostUsdKnown === false
+                    ? t("usage.pill.costUnknown")
+                    : fmtCost(data?.totalCostUsd ?? 0)
+                }
+              />
               <Stat label={t("usage.pill.stat.tokens")} value={fmtTokens(data?.totalTokens ?? 0)} />
-              <Stat label={t("usage.pill.stat.cache")} value={fmtPercent(data?.cacheHitRate ?? 0, 0)} />
+              <Stat
+                label={t("usage.pill.stat.cache")}
+                value={fmtPercent(data?.cacheHitRate ?? 0, 0)}
+              />
             </div>
             <div className="text-[10px] text-muted-foreground pt-1 border-t border-border">
               {t("usage.pill.tooltip.requests", { requests: data?.totalRequests ?? 0 })}

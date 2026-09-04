@@ -143,6 +143,9 @@ export type RuntimeEvent =
       requestId: string
       tool: string
       target: string
+      /** Raw tool call input (when known) — powers the dashboard's
+       *  embedded diff preview on the approval card. */
+      input?: unknown
     }
   | {
       type: "permission-resolved"
@@ -167,6 +170,20 @@ export type RuntimeEvent =
       requestId: string
       decision: ApprovalDecision
       comment?: string
+    }
+  | {
+      type: "steering-applied"
+      workspaceId: string
+      /** Steering messages drained at this wave boundary (pi borrowing). */
+      messages: import("./steering.js").SteeringMessage[]
+      /** Task ids whose instructions were augmented this wave. */
+      taskIds: string[]
+    }
+  | {
+      type: "followup-pending"
+      workspaceId: string
+      /** Followup messages left after the run finished — caller should start a new cycle. */
+      messages: import("./steering.js").SteeringMessage[]
     }
 
 export type RuntimeListener = (event: RuntimeEvent) => void
@@ -380,25 +397,25 @@ interface PreflightCache {
   outputPreview: string
 }
 function readPreflightResult(metadata: unknown): PreflightCache | null {
-  if (!metadata || typeof metadata !== "object") return null;
-  const m = metadata as Record<string, unknown>;
-  const r = m.preflightResult;
-  if (!r || typeof r !== "object") return null;
-  const obj = r as Record<string, unknown>;
+  if (!metadata || typeof metadata !== "object") return null
+  const m = metadata as Record<string, unknown>
+  const r = m.preflightResult
+  if (!r || typeof r !== "object") return null
+  const obj = r as Record<string, unknown>
   if (
     typeof obj.sessionId !== "string" ||
     typeof obj.executor !== "string" ||
     typeof obj.durationMs !== "number" ||
     typeof obj.outputPreview !== "string"
   ) {
-    return null;
+    return null
   }
   return {
     sessionId: obj.sessionId,
     executor: obj.executor,
     durationMs: obj.durationMs,
     outputPreview: obj.outputPreview,
-  };
+  }
 }
 
 export class AgentRuntime {
@@ -511,12 +528,12 @@ export class AgentRuntime {
       // (tests + legacy callers rely on them), but a future phase will
       // make `opencode.baseUrl` required and delete the `toolProvider` /
       // `agent.execute` branches.
-      // eslint-disable-next-line no-console
+
       console.warn(
         "[AgentRuntime] RuntimeOptions.opencode is not set — running in " +
           "legacy in-process mode. This is deprecated and will be removed " +
           "in a future release. Configure `opencode: { baseUrl }` to migrate.",
-      );
+      )
     }
   }
 
@@ -710,7 +727,6 @@ export class AgentRuntime {
    */
   saveState(workspaceId: string): Record<string, unknown> | undefined {
     const ledger = this.ledgers.get(workspaceId)
-    const retryCounts: Record<string, number> = {}
     // We can't snapshot retryMap directly (it's a local in _executeImpl).
     // Instead, we expose what we can from the public fields.
     return {
@@ -993,6 +1009,19 @@ export class AgentRuntime {
   }
 
   private async _executeImpl(workspace: Workspace): Promise<Workspace> {
+    // Guard against concurrent execution of the same workspace: a second
+    // _executeImpl would overwrite this.runningWorkspaces[id] (losing the
+    // first run's AbortController for abort()/ctx.signal) and both runs'
+    // finally blocks would delete each other's bookkeeping. Callers must
+    // await or abort() the first run before re-executing. Both production
+    // call sites (API chat route, worker) already persist a `failed` state
+    // when execute() throws, so the clear error surfaces instead of a
+    // silent overwrite.
+    if (this.runningWorkspaces.has(workspace.id)) {
+      throw new Error(
+        `workspace ${workspace.id} already executing — await or abort() the first run before re-executing`,
+      )
+    }
     this._currentWorkspaceId = workspace.id
     try {
       const controller = new AbortController()
@@ -1076,6 +1105,39 @@ export class AgentRuntime {
           updated.status = "failed"
           updated.error = "Aborted"
           break
+        }
+
+        // Steering safe point (pi borrowing): fold queued mid-flight
+        // messages into the still-pending tasks instead of interrupting
+        // running ones. This covers tasks that never enter the tool loop —
+        // tool-loop tasks are already injected per-iteration via
+        // getSteeringMessages().
+        {
+          const raw = this.steeringQueues.get(updated.id)
+          if (raw && raw.length > 0) {
+            this.steeringQueues.set(updated.id, [])
+            const steeringMsgs = raw.map((m) => ({
+              text: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+              at: new Date().toISOString(),
+            }))
+            const addendum = steeringMsgs.map((m) => `[steering] ${m.text}`).join("\n")
+            const touched: string[] = []
+            for (const t of pending) {
+              if (t.status === "pending") {
+                t.description = `${t.description}\n\nOperator steering (apply where relevant):\n${addendum}`
+                t.metadata = { ...(t.metadata ?? {}), steered: true }
+                touched.push(t.id)
+              }
+            }
+            if (touched.length > 0) {
+              this.emit({
+                type: "steering-applied",
+                workspaceId: updated.id,
+                messages: steeringMsgs,
+                taskIds: touched,
+              })
+            }
+          }
         }
 
         // Bump the round counter ONCE per scheduling wave (i.e. once per
@@ -1393,6 +1455,24 @@ export class AgentRuntime {
         updated.status = "completed"
       }
       updated.updatedAt = new Date().toISOString()
+
+      // Leftover followups (pi borrowing): the run finished but the user
+      // queued "keep going with this" messages. Surface them so the API
+      // layer can start a new cycle instead of silently dropping them in
+      // the finally-block cleanup.
+      const leftoverFollowups = this.followUpQueues.get(workspace.id)
+      if (leftoverFollowups && leftoverFollowups.length > 0) {
+        this.followUpQueues.delete(workspace.id)
+        this.emit({
+          type: "followup-pending",
+          workspaceId: updated.id,
+          messages: leftoverFollowups.map((m) => ({
+            text: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+            at: new Date().toISOString(),
+          })),
+        })
+      }
+
       await this.sink.saveWorkspace(updated)
       this.emit({ type: "workspace-status", workspaceId: updated.id, status: updated.status })
       this.emit({ type: "done", workspaceId: updated.id, workspace: updated })
@@ -1400,6 +1480,20 @@ export class AgentRuntime {
       return updated
     } finally {
       this._currentWorkspaceId = undefined
+      // Clean up per-workspace bookkeeping so an exception path (e.g. a
+      // failing sink.saveWorkspace) doesn't leak the AbortController or the
+      // steering/follow-up queues (which grow unboundedly on long-lived
+      // runtimes otherwise).
+      //
+      // Note: messages enqueued via enqueueSteeringMessages()/
+      // enqueueFollowUpMessages() but never drained by the tool loop (e.g. a
+      // run that had no tool-enabled provider) are discarded here rather
+      // than carried over to the next run of the same workspace. That is
+      // intentional — stale steering is more confusing than lost — and it
+      // is what bounds memory on long-lived runtimes.
+      this.runningWorkspaces.delete(workspace.id)
+      this.steeringQueues.delete(workspace.id)
+      this.followUpQueues.delete(workspace.id)
     }
   }
 
@@ -1574,7 +1668,7 @@ export class AgentRuntime {
               // `OpencodeExecutor.executeTask` returns so the rest of the
               // pipeline (self-critique, TruthAudit, etc.) sees identical
               // data regardless of which path produced the result.
-              const cached = readPreflightResult(task.metadata);
+              const cached = readPreflightResult(task.metadata)
               if (cached && cached.executor === "opencode") {
                 // Hydrate a minimal Result-like object from the cached
                 // preflight payload. We deliberately cast through
@@ -1593,9 +1687,9 @@ export class AgentRuntime {
                     durationMs: cached.durationMs,
                     prefetched: true,
                   },
-                } as unknown as Awaited<ReturnType<typeof agent.submitResult>>;
-                lastActionRef.toolName = "opencode-session-preflight";
-                lastActionRef.input = { sessionId: cached.sessionId, durationMs: cached.durationMs };
+                } as unknown as Awaited<ReturnType<typeof agent.submitResult>>
+                lastActionRef.toolName = "opencode-session-preflight"
+                lastActionRef.input = { sessionId: cached.sessionId, durationMs: cached.durationMs }
               } else {
                 const out = await raceWithAbort(
                   this.opencodeExecutor.executeTask(task, workspaceId),
@@ -1642,8 +1736,21 @@ export class AgentRuntime {
                   this.emit.bind(this),
                   (requestId, meta) => this.awaitPermission(requestId, meta),
                   lastActionRef,
-                  this.getSteeringMessages.bind(this),
-                  this.getFollowUpMessages.bind(this),
+                  // Pin _currentWorkspaceId before each hook call: the getters
+                  // resolve their queue key from that single instance field,
+                  // so with concurrent workspaces the last-started one would
+                  // otherwise win and steering/follow-up messages would be
+                  // cross-read (or silently dropped). The hook bodies are
+                  // synchronous (no await between set and read), so this is
+                  // atomic under Node's event loop.
+                  () => {
+                    this._currentWorkspaceId = workspace.id
+                    return this.getSteeringMessages()
+                  },
+                  () => {
+                    this._currentWorkspaceId = workspace.id
+                    return this.getFollowUpMessages()
+                  },
                   undefined, // toolExecution (借鉴 pi)
                   undefined, // beforeToolCall (借鉴 pi)
                   undefined, // afterToolCall (借鉴 pi)
@@ -1955,6 +2062,35 @@ export class AgentRuntime {
     )
     this.ledgers.set(workspace.id, afterObs)
     this.emit({ type: "ledger", workspaceId: workspace.id, ledger: afterObs })
+  }
+
+  /** True while the workspace has an in-flight execution. */
+  isExecuting(workspaceId: string): boolean {
+    return this.runningWorkspaces.has(workspaceId)
+  }
+
+  /**
+   * Queue a mid-flight steering message for a running workspace (pi
+   * borrowing). Consumed at the next safe point — per tool-loop iteration
+   * for tool tasks, or the next wave boundary otherwise. Returns false on
+   * an idle workspace (the caller should start a new workspace instead).
+   */
+  steer(workspaceId: string, text: string, source?: string): boolean {
+    if (!this.isExecuting(workspaceId)) return false
+    const label = source ? `[steering from ${source}]` : "[steering]"
+    this.enqueueSteeringMessages(workspaceId, [{ role: "user", content: `${label} ${text}` }])
+    return true
+  }
+
+  /**
+   * Queue a followup message. Surfaced as a `followup-pending` event when
+   * the workspace's current run finishes, so the caller can start a new
+   * cycle with the user's continuation attached.
+   */
+  queueFollowup(workspaceId: string, text: string, source?: string): boolean {
+    const label = source ? `[followup from ${source}]` : "[followup]"
+    this.enqueueFollowUpMessages(workspaceId, [{ role: "user", content: `${label} ${text}` }])
+    return true
   }
 
   abort(workspaceId: string): void {
