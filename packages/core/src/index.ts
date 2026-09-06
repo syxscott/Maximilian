@@ -97,6 +97,39 @@ export {
   DEFAULT_LABEL_MAX_LENGTH,
   type SanitizeLabelOptions,
 } from "./validation/sanitize-label.js"
+export {
+  reviewPlan,
+  PLAN_REVIEW_DIMENSIONS,
+  PLAN_PASS_THRESHOLDS,
+  type PlanLike,
+  type PlanLikeTask,
+  type PlanReview,
+  type PlanReviewOptions,
+  type PlanReviewDimension,
+  type DimensionScorer,
+} from "./validation/plan-reviewer.js"
+export {
+  detectFailures,
+  type FailureDetectionResult,
+  type FailureMode,
+  type FailureSignal,
+  type FailureDetectorOptions,
+} from "./validation/failure-detector.js"
+export {
+  SafetyGuardrails,
+  type SafetyGuardrailsOptions,
+  type SafetyIncident,
+  type RiskLevel,
+  type ViolationType,
+  type ResourceLimits,
+} from "./safety/guardrails.js"
+export {
+  ReproducibilityManager,
+  hashObject,
+  type ReproducibilityOptions,
+  type ReproducibilityReport,
+  type EnvironmentSnapshot,
+} from "./safety/reproducibility.js"
 // Phase + Profile (借鉴 ChatDev / Open Interpreter)
 export {
   PhaseRunner,

@@ -14,4 +14,4 @@ export {
   type RoleTierPolicy,
 } from "./model-assigner.js"
 export { DynamicAgentFactory } from "./dynamic-agent-factory.js"
-export { DAGS } from "./dags.js"
+export { DAGS, type ComposedTeam } from "./dags.js"

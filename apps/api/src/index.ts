@@ -1,4 +1,10 @@
-// @ts-nocheck
+// @ts-nocheck — typed removal tracked in tech-debt/INDEX.md (TODO M13-7).
+// This file mixes Hono's typed-openapi routes with hand-rolled middleware
+// (requireAuthMiddleware, requireRole). The latter return
+// `Response | void | JSONRespondReturn<...>` while Hono expects
+// `MaybePromise<TypedResponse<...>>`. Removing this directive requires a
+// coordinated rewrite of the middleware contract across the whole file.
+// TODO: type-narrow requireAuthMiddleware so this directive can go.
 /**
  * Maximilian API Server (Hono).
  *
@@ -46,11 +52,17 @@ import {
 const log = getLogger("api")
 
 import { getRegistry, type Provider } from "@max/providers"
-import { AgentRuntime, type RuntimeSink, type RuntimeEvent, type ModelRouter } from "@max/core"
+import {
+  AgentRuntime,
+  type RuntimeSink,
+  type RuntimeEvent,
+  type ModelRouter,
+  isPolicyDeniedMessage,
+} from "@max/core"
 import { Commander } from "@max/commander"
 import { FileWorkspaceStore } from "@max/workspace"
 import { defaultAgentFactory } from "@max/agents"
-import { EvolutionFacade, evolutionAwareFactory } from "@max/evolution"
+import { EvolutionFacade, evolutionAwareFactory, SealedFileVault } from "@max/evolution"
 import { DAGS, BlueprintStore } from "@max/dags"
 import {
   ExecutionStore,
@@ -195,6 +207,7 @@ import {
   PgWorkspaceStore,
   PgExecutionStore,
   PgProfileStore,
+  PgMetricsStore,
   PgEvolutionStore,
   PgInsightsStore,
   PgBlueprintStore,
@@ -227,7 +240,7 @@ import {
 } from "./routes/tenants.js"
 import { rateLimiter } from "hono-rate-limiter"
 import { securityHeaders } from "./middleware/security-headers.js"
-import { createQueue } from "@max/queue"
+import { createQueue, subscribeWorkspaceEvents } from "@max/queue"
 import { swaggerUI } from "@hono/swagger-ui"
 import { FileMemoryStore } from "@max/core"
 import type { AgentMemoryStorePort, ModelSelectorPort } from "@max/core"
@@ -491,16 +504,42 @@ let evolution: EvolutionFacade | undefined
 let finalFactory = factory
 
 if (evolutionEnabled) {
+  // Sealed-file vault (oh-my-claudecode borrowing): when a sealed dir is
+  // configured, every evolution cycle runs under guard() so a changed
+  // benchmark/eval fixture aborts the cycle instead of letting a candidate
+  // be promoted against a silently-moved target. The manifest is re-sealed
+  // at boot — the seal protects the in-process evolution window.
+  let sealedVault: SealedFileVault | undefined
+  if (config.EVOLUTION_SEALED_DIR) {
+    sealedVault = new SealedFileVault(config.EVOLUTION_SEALED_DIR)
+    await sealedVault.seal(["**/*"]).catch((err) => {
+      log.warn(
+        { err, dir: config.EVOLUTION_SEALED_DIR },
+        "failed to seal evolution dir — guard disabled this boot",
+      )
+      sealedVault = undefined
+    })
+  }
   evolution = new EvolutionFacade({
     rootDir: workspaceDir,
     candidates: providers,
     fallbackProvider: defaultProvider,
     defaultManifests: {},
     ...(db ? { profileStore: new PgProfileStore(db) } : {}),
+    // Persist metrics in Postgres when available (the facade previously
+    // always fell back to the file store, making usage/metrics PG-blind).
+    ...(db ? { metricsStore: new PgMetricsStore(db) } : {}),
+    ...(sealedVault ? { sealedVault } : {}),
   })
   await evolution.initialize()
   finalFactory = evolutionAwareFactory(evolution)
-  log.info("evolution engine: ON")
+  log.info(
+    {
+      metricsStore: db ? "postgres" : "file",
+      sealedVault: sealedVault ? config.EVOLUTION_SEALED_DIR : undefined,
+    },
+    "evolution engine: ON",
+  )
 }
 
 // Commander: when evolution is ON, use evolution-aware model selection for planning.
@@ -618,6 +657,18 @@ let queue: import("bullmq").Queue | undefined
 if (config.TASK_QUEUE_ENABLED && config.REDIS_URL) {
   queue = createQueue(config.REDIS_URL)
   log.info({ redisUrl: config.REDIS_URL.replace(/\/\/.*@/, "//***@") }, "task queue: ON")
+  // Event backflow: in queue mode the runtime executes inside the worker,
+  // so the API's own runtime listener never sees those events. Subscribe
+  // to the worker's Redis channel and feed each event into the SAME
+  // fan-out path as locally-produced ones (in-memory log, SSE streams,
+  // durable JSONL log, webhook subscriptions). Without this, queue-mode
+  // clients get one snapshot on /workspaces/:id/stream and then hang.
+  subscribeWorkspaceEvents(config.REDIS_URL, ({ workspaceId, tenantId, event }) => {
+    const runtimeEvent = event as RuntimeEvent
+    if (!runtimeEvent || typeof runtimeEvent.type !== "string") return
+    recordRuntimeEvent({ ...runtimeEvent, workspaceId })
+    void publishEvent(runtimeEvent.type, runtimeEvent, tenantId)
+  })
 } else if (config.TASK_QUEUE_ENABLED && !config.REDIS_URL) {
   log.warn("TASK_QUEUE_ENABLED=true but REDIS_URL not set — falling back to in-process execution")
 }
@@ -740,22 +791,29 @@ runtime.on(async (event) => {
       },
     })
   } else if (event.type === "task-failed") {
-    // Record failed task as a metric with error.
-    const taskId = event.taskId
-    await evolution.metrics.record({
-      taskId,
-      agentId: "unknown",
-      agentRole: "general",
-      provider: defaultProvider.id,
-      model: defaultProvider.defaultModel,
-      executionTime: 0,
-      tokenInput: 0,
-      tokenOutput: 0,
-      retryCount: 0,
-      error: event.error,
-      timestamp: new Date().toISOString(),
-    })
-    await evolution.leaderboard.rebuild(evolution.metrics)
+    // Record failed task as a metric with error — EXCEPT governance
+    // rejections: a PolicyDenied is the permission system working as
+    // designed, not a performance failure. recordCompletion() excludes
+    // them from failure memory; this direct metrics path must too, or
+    // denied tasks pollute evolve()'s failure-mode composition.
+    const policyDenied = isPolicyDeniedMessage(event.error)
+    if (!policyDenied) {
+      const taskId = event.taskId
+      await evolution.metrics.record({
+        taskId,
+        agentId: "unknown",
+        agentRole: "general",
+        provider: defaultProvider.id,
+        model: defaultProvider.defaultModel,
+        executionTime: 0,
+        tokenInput: 0,
+        tokenOutput: 0,
+        retryCount: 0,
+        error: event.error,
+        timestamp: new Date().toISOString(),
+      })
+      await evolution.leaderboard.rebuild(evolution.metrics)
+    }
   } else if (event.type === "done") {
     // Post-run: attach review scores to non-review task metrics,
     // then consider evolution.
@@ -777,9 +835,13 @@ runtime.on(async (event) => {
     }
 
     // Phase 7 — Auto-trigger meta-system cycle after every workspace completes.
-    if (metaOrchestrator && executionStore) {
+    // Runs whenever the meta-system is enabled — execution history is
+    // optional input (empty when DAGS_MODE is off), not a precondition;
+    // gating on the DAGS-only store silently disabled the auto-cycle in
+    // plain commander deployments.
+    if (metaOrchestrator) {
       try {
-        const recentExecutions = await executionStore.listAll()
+        const recentExecutions = executionStore ? await executionStore.listAll() : []
         const blueprints = await blueprintStore.listAll()
         const graphs = workspaceToGraphs(event.workspace)
         const discoverySignals = extractDiscoverySignals(event.workspace)
@@ -1143,7 +1205,11 @@ if (dagsMode) {
   await promotionEngine.loadHistory()
 
   const { ReviewIntelligence } = await import("@max/autonomy")
-  const reviewIntelligence = new ReviewIntelligence()
+  // Wire the default LLM provider so review() uses live LLM review; without
+  // it every review silently degraded to the heuristic fallback and the
+  // "live" branch was unreachable in production wiring. Callers that need
+  // deterministic reviews can still pass forceHeuristic.
+  const reviewIntelligence = new ReviewIntelligence({ provider: registry.default()! })
 
   orchestrator = new AutonomyOrchestrator({
     dags,
@@ -1267,7 +1333,7 @@ import {
   __setFeatureFlagsForTests,
 } from "./routes/feature-flags.js"
 
-api.openapi(listFlagsRoute, (c) => {
+api.openapi(listFlagsRoute, requireAuthMiddleware(), (c) => {
   const flags = getFlags()
   const definitions = flags.listFlagNames()
   const list = definitions.map((name) => {
@@ -1283,7 +1349,7 @@ api.openapi(listFlagsRoute, (c) => {
   return c.json({ flags: list })
 })
 
-api.openapi(getFlagRoute, (c) => {
+api.openapi(getFlagRoute, requireAuthMiddleware(), (c) => {
   const { name } = c.req.valid("param")
   const flags = getFlags()
   const def = flags.getFlagDefinition(name)
@@ -1297,7 +1363,7 @@ api.openapi(getFlagRoute, (c) => {
   })
 })
 
-api.openapi(setOverrideRoute, (c) => {
+api.openapi(setOverrideRoute, requireAuthMiddleware(), requireRole("admin"), (c) => {
   const { name } = c.req.valid("param")
   const { value, reason } = c.req.valid("json")
   const flags = getFlags()
@@ -1314,7 +1380,7 @@ api.openapi(setOverrideRoute, (c) => {
   })
 })
 
-api.openapi(clearOverrideRoute, (c) => {
+api.openapi(clearOverrideRoute, requireAuthMiddleware(), requireRole("admin"), (c) => {
   const { name } = c.req.valid("param")
   const flags = getFlags()
   if (!flags.getFlagDefinition(name)) {
@@ -1324,7 +1390,7 @@ api.openapi(clearOverrideRoute, (c) => {
   return c.body(null, 204)
 })
 
-api.openapi(evaluateRoute, (c) => {
+api.openapi(evaluateRoute, requireAuthMiddleware(), (c) => {
   const { flagNames, userId } = c.req.valid("json")
   // Re-create with the requested userId for proper targeting.
   const scoped = createFeatureFlags({ userId })
@@ -1334,6 +1400,21 @@ api.openapi(evaluateRoute, (c) => {
   }
   return c.json({ values })
 })
+
+// Auth gate applied via app.use to keep the typed-openapi route
+// signature clean (requireAuthMiddleware's `Response | void` return
+// type isn't compatible with Hono's TypedResponse contract).
+const FLAG_AUTH_PATHS = [
+  "/flags",
+  "/flags/:name",
+  "/flags/:name/override",
+  "/flags/:name/clear",
+  "/flags/evaluate",
+]
+for (const p of FLAG_AUTH_PATHS) {
+  app.use(`/api${p}`, requireAuthMiddleware() as never)
+  app.use(`/api/v1${p}`, requireAuthMiddleware() as never)
+}
 
 void __setFeatureFlagsForTests
 
@@ -1879,6 +1960,13 @@ const durableSseHandler = createSseHandler(
     },
   },
 )
+// Auth gate applied via app.use so we don't break the Hono typed
+// route contract that versionedRoute exposes. This MUST be registered
+// before versionedRoute() below: Hono runs handlers/middleware in
+// registration order, and a use() registered after the route handler
+// never executes (the handler matches first and does not call next()).
+app.use("/api/workspaces/:id/stream-durable", requireAuthMiddleware() as never)
+app.use("/api/v1/workspaces/:id/stream-durable", requireAuthMiddleware() as never)
 versionedRoute("get", "/workspaces/:id/stream-durable", durableSseHandler)
 
 // ---------------------------------------------------------------------------
@@ -2075,12 +2163,12 @@ if (telemetry) {
     () => telemetry.listExecutions(),
     () => telemetry.listEvolutions(),
   )
-  api.openapi(obsGraphRoute, async (c) => {
+  api.openapi(obsGraphRoute, requireAuthMiddleware(), async (c) => {
     const graph = visualizer.getUIReadyGraph(c.req.param("executionId"))
     if (!graph) return c.json({ error: "not_found" }, 404)
     return c.json(graph)
   })
-  api.openapi(obsTimelineRoute, async (c) => {
+  api.openapi(obsTimelineRoute, requireAuthMiddleware(), async (c) => {
     return c.json(visualizer.getEvolutionTimeline())
   })
 }
@@ -2219,10 +2307,10 @@ export function __registerOpencodeBridge(bridge: EventBridge | undefined): void 
   }
 }
 
-api.openapi(listOpencodeSessionsRoute, opencodeRouter.listSessions)
-api.openapi(getOpencodeSessionRoute, opencodeRouter.getSession)
-api.openapi(opencodeHealthRoute, opencodeRouter.health)
-api.openapi(opencodeEventsRoute, opencodeRouter.events)
+api.openapi(listOpencodeSessionsRoute, requireAuthMiddleware(), opencodeRouter.listSessions)
+api.openapi(getOpencodeSessionRoute, requireAuthMiddleware(), opencodeRouter.getSession)
+api.openapi(opencodeHealthRoute, requireAuthMiddleware(), opencodeRouter.health)
+api.openapi(opencodeEventsRoute, requireAuthMiddleware(), opencodeRouter.events)
 
 // Mount the API routes under both /api/ and /api/v1/
 app.route("/api", api)

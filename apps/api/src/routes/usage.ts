@@ -560,7 +560,8 @@ export function usageRoutes(deps: UsageRouteDeps) {
       const preset = parsePreset(c.req.query("range"))
       const range = resolveUsageRange(preset)
       try {
-        const records = await evolution.metrics.listAll()
+        const tenantId = c.get("tenantId" as never) as string | undefined
+        const records = await evolution.metrics.listAll({ tenantId })
         const summary = aggregateUsageSummary(records, range, preset)
         return c.json(summary)
       } catch (err) {
@@ -576,7 +577,8 @@ export function usageRoutes(deps: UsageRouteDeps) {
       const preset = parsePreset(c.req.query("range"))
       const range = resolveUsageRange(preset)
       try {
-        const records = await evolution.metrics.listAll()
+        const tenantId = c.get("tenantId" as never) as string | undefined
+        const records = await evolution.metrics.listAll({ tenantId })
         const samples = records
           .filter((r) => inRange(r, range))
           .filter((r) => !r.error && r.executionTime > 0)
@@ -598,7 +600,8 @@ export function usageRoutes(deps: UsageRouteDeps) {
       const preset = parsePreset(c.req.query("range"))
       const range = resolveUsageRange(preset)
       try {
-        const records = await evolution.metrics.listAll()
+        const tenantId = c.get("tenantId" as never) as string | undefined
+        const records = await evolution.metrics.listAll({ tenantId })
         const daily = aggregateDailyUsage(records, range)
         const page = paginate(daily, parsePagination(c), (d) => d.date)
         return c.json({
@@ -618,7 +621,8 @@ export function usageRoutes(deps: UsageRouteDeps) {
         return c.json({ error: "evolution_disabled" }, 503)
       }
       try {
-        const records = await evolution.metrics.listAll()
+        const tenantId = c.get("tenantId" as never) as string | undefined
+        const records = await evolution.metrics.listAll({ tenantId })
         return c.json({ windows: computeUsageWindows(records) })
       } catch (err) {
         log.error({ err }, "usage windows failed")

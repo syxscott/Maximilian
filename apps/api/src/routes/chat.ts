@@ -117,8 +117,9 @@ export function postChat(deps: ChatDeps) {
     if (deps.dagsMode && deps.dags && deps.orchestrator) {
       let workspace: import("@max/core").Workspace
       let plan: import("@max/core").Plan
+      let composed: import("@max/dags").ComposedTeam
       try {
-        ;({ workspace, plan } = await buildDagsWorkspace(deps.dags, message))
+        ;({ workspace, plan, composed } = await buildDagsWorkspace(deps.dags, message))
         // Carry tenantId through the runtime sink. The runtime doesn't
         // know about auth, so we stash it on workspace.metadata and the
         // sink (in apps/api/src/index.ts) reads it back.
@@ -140,6 +141,7 @@ export function postChat(deps: ChatDeps) {
         },
         workspace,
         deps.eventLog,
+        composed,
       ).catch(async (err) => {
         log.error({ err }, "dags-flow crash")
         try {
@@ -170,6 +172,35 @@ export function postChat(deps: ChatDeps) {
     const preflightErrors = deps.commander.preflight(plan)
     if (preflightErrors.length > 0) {
       return c.json({ error: preflightErrors.join("; ") }, 400)
+    }
+
+    // Consume the Commander's plan-review verdict (Kosmos plan_reviewer
+    // borrowing). Until now the verdict was write-only — stashed on
+    // workspace.metadata and read by nobody, so a rejected plan executed
+    // anyway. A plan that fails the 5-dimension review is bounced here
+    // with the reasons; callers can inspect `review` to replan.
+    const planReview = workspace.metadata?.planReview as
+      | {
+          approved: boolean
+          averageScore: number
+          minScore: number
+          scores: Record<string, number>
+          requiredChanges: string[]
+        }
+      | undefined
+    if (planReview && planReview.approved === false) {
+      return c.json(
+        {
+          error: "Plan rejected by reviewer",
+          details: {
+            averageScore: planReview.averageScore,
+            minScore: planReview.minScore,
+            scores: planReview.scores,
+            requiredChanges: planReview.requiredChanges,
+          },
+        },
+        422,
+      )
     }
 
     // Stash tenantId on workspace.metadata so the runtime sink (which

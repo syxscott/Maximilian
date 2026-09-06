@@ -35,7 +35,7 @@ import {
   type MetricRecord,
 } from "./types.js"
 import { ProfileStore } from "./profile-store.js"
-import { MetricsStore } from "./metrics-store.js"
+import type { MetricsStoreLike } from "./metrics-store.js"
 import { readModifyWriteAtomic, writeFileAtomic } from "./atomic.js"
 import { validateCandidate, type GateResult } from "./constraint-gates.js"
 import { lintPromptShape, summarizeViolations, type LintViolation } from "./artifact-lint.js"
@@ -74,7 +74,7 @@ export class EvolutionEngine {
 
   constructor(
     private rootDir: string,
-    private metrics: MetricsStore,
+    private metrics: MetricsStoreLike,
     private profiles: ProfileStore,
     private config: EvolutionConfig = DEFAULT_EVOLUTION_CONFIG,
     opts: EvolutionEngineOptions = {},

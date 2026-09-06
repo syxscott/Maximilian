@@ -15,6 +15,7 @@
 
 export * from "./types.js"
 export { MetricsStore } from "./metrics-store.js"
+export type { MetricsStoreLike } from "./metrics-store.js"
 export { ProfileStore } from "./profile-store.js"
 export {
   Leaderboard,

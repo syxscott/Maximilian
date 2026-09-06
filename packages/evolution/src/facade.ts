@@ -13,7 +13,7 @@
 
 import type { AgentRole, AgentManifest, Result, Task, Workspace } from "@max/core"
 import type { Provider } from "@max/providers"
-import { MetricsStore } from "./metrics-store.js"
+import { MetricsStore, type MetricsStoreLike } from "./metrics-store.js"
 import { ProfileStore } from "./profile-store.js"
 import { Leaderboard } from "./leaderboard.js"
 import { ModelSelector } from "./selector.js"
@@ -53,7 +53,7 @@ export interface EvolutionFacadeOptions {
   defaultManifests: Partial<Record<AgentRole, AgentManifest>>
   /** Optional database-backed stores. When provided, overrides file-based defaults. */
   profileStore?: ProfileStore
-  metricsStore?: MetricsStore
+  metricsStore?: MetricsStoreLike
   /**
    * Optional sealed-file vault (oh-my-claudecode self-improve). When set,
    * every evolution cycle runs under `guard()`: if any sealed file
@@ -74,7 +74,7 @@ export interface EvolutionFacadeOptions {
 }
 
 export class EvolutionFacade {
-  readonly metrics: MetricsStore
+  readonly metrics: MetricsStoreLike
   readonly profiles: ProfileStore
   readonly leaderboard: Leaderboard
   readonly selector: ModelSelector

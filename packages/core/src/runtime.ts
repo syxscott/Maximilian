@@ -40,6 +40,9 @@ import type { Checkpoint } from "./checkpoint/saver.js"
 import { SelfCritique } from "./self-critique.js"
 import { TaskPrioritizer } from "./task-prioritizer.js"
 import { RuntimeInterrupt } from "./runtime-interrupt.js"
+import type { SafetyGuardrails } from "./safety/guardrails.js"
+import type { ReproducibilityManager, ReproducibilityReport } from "./safety/reproducibility.js"
+import type { FailureDetectionResult } from "./validation/failure-detector.js"
 import type { TaskPriority } from "./types.js"
 import type { ChannelValues, ConfigurableDict } from "./types.js"
 
@@ -306,6 +309,32 @@ export interface RuntimeOptions {
    * adapt the pending task order based on recent results (借鉴 AutoGPT).
    */
   taskPrioritizer?: TaskPrioritizer
+  /**
+   * Optional SafetyGuardrails (借鉴 Kosmos safety/guardrails.py). When
+   * provided, every tool call passes through `safetyGuardrails.checkCode()`
+   * before execution; matched dangerous patterns block the call (set
+   * `BeforeToolCallResult.block = true`) and are appended to the
+   * workspace's runtime event stream as `tool-blocked` so the API SSE
+   * can surface the rejection to the UI. Provide this when you want
+   * to run the agent under policy enforcement.
+   */
+  safetyGuardrails?: SafetyGuardrails
+  /**
+   * Optional ReproducibilityManager (借鉴 Kosmos safety/reproducibility.py).
+   * When provided, the runtime captures an environment snapshot at the
+   * start of each workspace and records a reproducibility report at the
+   * end. The report is stashed in `workspace.metadata.reproducibility`
+   * for downstream consumers (evaluation harnesses, audit logs).
+   */
+  reproducibilityManager?: ReproducibilityManager
+  /**
+   * Optional FailureDetector hook (借鉴 Kosmos failure_detector.py).
+   * Called for every completed task with the result's output text;
+   * the detection result is stashed in the `Result.metadata.failureDetection`
+   * field. Useful for catching over-interpretation / invented metrics
+   * / rabbit-holing before downstream LLM judges see the text.
+   */
+  failureDetector?: (text: string) => FailureDetectionResult
 }
 
 /**
@@ -483,6 +512,14 @@ export class AgentRuntime {
   private checkpointSaver?: BaseCheckpointSaver
   private selfCritique?: SelfCritique
   private taskPrioritizer?: TaskPrioritizer
+  private safetyGuardrails?: SafetyGuardrails
+  private reproducibilityManager?: ReproducibilityManager
+  /** Per-workspace reproducibility capture: workspaceId → snapshot taken at execute() start. */
+  private reproducibilityCaptures = new Map<
+    string,
+    ReturnType<ReproducibilityManager["captureEnvironment"]>
+  >()
+  private failureDetector?: (text: string) => FailureDetectionResult
   /** Per-workspace critique result history, cleared on each new workspace execution. */
   private critiqueHistory = new Map<string, SelfCritiqueResult[]>()
   /** Interrupt resolvers keyed by workspaceId. */
@@ -517,6 +554,9 @@ export class AgentRuntime {
     this.checkpointSaver = options?.checkpointSaver
     this.selfCritique = options?.selfCritique
     this.taskPrioritizer = options?.taskPrioritizer
+    this.safetyGuardrails = options?.safetyGuardrails
+    this.reproducibilityManager = options?.reproducibilityManager
+    this.failureDetector = options?.failureDetector
     if (options?.opencode) {
       this.opencodeExecutor = new OpencodeExecutor({
         baseUrl: options.opencode.baseUrl,
@@ -1031,7 +1071,18 @@ export class AgentRuntime {
       const initialLedger = freshLedger(workspace.id)
       this.ledgers.set(workspace.id, initialLedger)
 
-      const updated: Workspace = {
+      // Reproducibility (借鉴 Kosmos safety/reproducibility.py): capture the
+      // environment at execute() start so the workspace report can later
+      // diff against capture-at-end. Skipped silently when the manager is
+      // not provided — the runtime treats reproducibility as opt-in.
+      if (this.reproducibilityManager) {
+        this.reproducibilityCaptures.set(
+          workspace.id,
+          this.reproducibilityManager.captureEnvironment(),
+        )
+      }
+
+      let updated: Workspace = {
         ...workspace,
         results: [...workspace.results],
         updatedAt: new Date().toISOString(),
@@ -1456,6 +1507,55 @@ export class AgentRuntime {
       }
       updated.updatedAt = new Date().toISOString()
 
+      // Reproducibility verification (借鉴 Kosmos safety/reproducibility.py):
+      // compare the start-of-run snapshot with the current environment and
+      // stash the report on `workspace.metadata.reproducibility` so callers
+      // can audit cross-run determinism without re-running. Best-effort —
+      // any throw from the manager is swallowed so it cannot poison the
+      // already-completed workspace.
+      if (this.reproducibilityManager) {
+        try {
+          const startSnap = this.reproducibilityCaptures.get(workspace.id)
+          const endSnap = this.reproducibilityManager.captureEnvironment()
+          let reproducibilityReport: ReproducibilityReport
+          if (startSnap) {
+            const issues: string[] = []
+            const checks: string[] = [
+              `start env hash: ${this.reproducibilityManager.hashSnapshot(startSnap)}`,
+              `end env hash: ${this.reproducibilityManager.hashSnapshot(endSnap)}`,
+            ]
+            const matches = this.reproducibilityManager.environmentsMatch(startSnap, endSnap)
+            if (!matches) issues.push("environment differs between workspace start and end")
+            reproducibilityReport = {
+              experimentId: workspace.id,
+              isReproducible: matches,
+              seedUsed: this.reproducibilityManager.getSeed(),
+              environment: startSnap,
+              consistencyChecks: checks,
+              issues,
+              metadata: { startHash: checks[0], endHash: checks[1] },
+              timestamp: new Date().toISOString(),
+            }
+          } else {
+            // Shouldn't happen (capture at start always when manager set),
+            // but fall back to a self-check so the field is always populated.
+            reproducibilityReport = this.reproducibilityManager.checkReproducibility(
+              workspace.id,
+              { sampled: true },
+              { sampled: true },
+            )
+          }
+          this.reproducibilityCaptures.delete(workspace.id)
+          const reproMeta: Record<string, unknown> = {
+            ...(updated.metadata ?? {}),
+            reproducibility: reproducibilityReport,
+          }
+          updated = { ...updated, metadata: reproMeta }
+        } catch (err) {
+          log.warn({ err, workspaceId: workspace.id }, "reproducibility verify failed")
+        }
+      }
+
       // Leftover followups (pi borrowing): the run finished but the user
       // queued "keep going with this" messages. Surface them so the API
       // layer can start a new cycle instead of silently dropping them in
@@ -1494,6 +1594,7 @@ export class AgentRuntime {
       this.runningWorkspaces.delete(workspace.id)
       this.steeringQueues.delete(workspace.id)
       this.followUpQueues.delete(workspace.id)
+      this.reproducibilityCaptures.delete(workspace.id)
     }
   }
 
@@ -1726,6 +1827,26 @@ export class AgentRuntime {
           // configured, route through agent's tool loop or plain execute.
           if (final === undefined) {
             if (toolProvider) {
+              // SafetyGuardrails (借鉴 Kosmos safety/guardrails.py): check
+              // every tool call's serialized input against the dangerous
+              // pattern set before the tool executes. When a match is
+              // found we return `block: true` from the beforeToolCall
+              // callback so the tool loop substitutes an error tool result
+              // instead of running the unsafe payload. The check is
+              // intentionally lightweight (regex only) so it doesn't
+              // bloat the hot loop.
+              const safetyCheck = (
+                toolCtx: import("./types.js").BeforeToolCallContext,
+              ): import("./types.js").BeforeToolCallResult | undefined => {
+                if (!this.safetyGuardrails) return undefined
+                const incident = this.safetyGuardrails.checkCode(
+                  typeof toolCtx.args === "string"
+                    ? toolCtx.args
+                    : JSON.stringify(toolCtx.args ?? ""),
+                )
+                if (!incident) return undefined
+                return { block: true }
+              }
               final = await raceWithAbort(
                 runToolLoopAndSubmit(
                   agent,
@@ -1752,7 +1873,7 @@ export class AgentRuntime {
                     return this.getFollowUpMessages()
                   },
                   undefined, // toolExecution (借鉴 pi)
-                  undefined, // beforeToolCall (借鉴 pi)
+                  safetyCheck, // beforeToolCall (SafetyGuardrails)
                   undefined, // afterToolCall (借鉴 pi)
                 ),
                 ctx.signal,
@@ -1811,6 +1932,29 @@ export class AgentRuntime {
           task.resultId = final.id
           task.status = "completed"
           task.completedAt = new Date().toISOString()
+          // FailureDetector (借鉴 Kosmos failure_detector.py): heuristic
+          // over-interpretation / invented-metrics / rabbit-hole check on
+          // the result's output text. Runs on every successful task when
+          // `failureDetector` is configured; the verdict is stashed in
+          // `Result.metadata.failureDetection` so downstream consumers
+          // (TruthAudit, review task, UI) can surface it without re-running.
+          if (this.failureDetector) {
+            try {
+              const detection = this.failureDetector(final.output ?? "")
+              final = {
+                ...final,
+                metadata: {
+                  ...(final.metadata ?? {}),
+                  failureDetection: detection,
+                },
+              }
+            } catch (err) {
+              log.warn(
+                { err, workspaceId: workspace.id, taskId: task.id },
+                "failureDetector threw — ignoring",
+              )
+            }
+          }
           workspace.results.push(final)
 
           span?.setAttribute("task.resultId", final.id)

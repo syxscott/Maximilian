@@ -19,10 +19,7 @@
  */
 
 import { randomUUID } from "node:crypto"
-import {
-  deriveSubagentScope,
-  type PermissionScope,
-} from "@max/tools/permission"
+import { deriveSubagentScope, type PermissionScope } from "@max/tools/permission"
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -89,32 +86,21 @@ export class AgentRegistry {
   private readonly idempotencyTtlMs: number
 
   // Bounded TTL cache for idempotency: messageId → expiry timestamp.
-  private readonly _processedIds = new Map<string, number>()
+  private readonly _processedIds = new Map<string, { delivered: boolean; expiresAt: number }>()
 
   constructor(options?: RegistryOptions) {
     const hc = options?.messageHistoryCap
-    this.historyCap =
-      Number.isSafeInteger(hc) && hc !== undefined && hc >= 0
-        ? hc
-        : 1000
+    this.historyCap = Number.isSafeInteger(hc) && hc !== undefined && hc >= 0 ? hc : 1000
 
     const ma = options?.maxAgents
-    this.maxAgents =
-      Number.isSafeInteger(ma) && ma !== undefined && ma > 0
-        ? ma
-        : 10_000
+    this.maxAgents = Number.isSafeInteger(ma) && ma !== undefined && ma > 0 ? ma : 10_000
 
     const mmb = options?.maxMetadataBytes
-    this.maxMetadataBytes =
-      Number.isSafeInteger(mmb) && mmb !== undefined && mmb > 0
-        ? mmb
-        : 65_536
+    this.maxMetadataBytes = Number.isSafeInteger(mmb) && mmb !== undefined && mmb > 0 ? mmb : 65_536
 
     const ittl = options?.idempotencyTtlMs
     this.idempotencyTtlMs =
-      Number.isSafeInteger(ittl) && ittl !== undefined && ittl > 0
-        ? ittl
-        : 60_000
+      Number.isSafeInteger(ittl) && ittl !== undefined && ittl > 0 ? ittl : 60_000
   }
 
   /** Register an agent. Throws if id is already registered or limit reached. */
@@ -219,7 +205,9 @@ export class AgentRegistry {
     const updated: Readonly<AgentLike> = Object.freeze({
       ...existing,
       status,
-      metadata: extra ? Object.freeze({ ...(existing.metadata ?? {}), ...extra }) : existing.metadata,
+      metadata: extra
+        ? Object.freeze({ ...(existing.metadata ?? {}), ...extra })
+        : existing.metadata,
     })
     this.agents.set(agentId, updated)
     return true
@@ -246,16 +234,18 @@ export class AgentRegistry {
     // ── Idempotency check ─────────────────────────────────────────────────────
     const msgId = messageId ?? randomUUID()
     const now = Date.now()
-    const expiry = this._processedIds.get(msgId)
-    if (expiry !== undefined) {
-      // Within TTL window — return cached result (don't re-deliver).
-      // We don't record history again for a replayed message.
-      return false
+    const prior = this._processedIds.get(msgId)
+    if (prior !== undefined) {
+      // Within TTL window — return the original delivery outcome
+      // (delivered=true|false) rather than a misleading `false`. We
+      // also skip re-recording the message in history so retries don't
+      // pollute the audit trail.
+      return prior.delivered
     }
     // Clean up expired entries on every call (amortized O(1) if bounded).
     if (this._processedIds.size > 100_000) {
-      for (const [key, exp] of this._processedIds) {
-        if (exp < now) this._processedIds.delete(key)
+      for (const [key, entry] of this._processedIds) {
+        if (entry.expiresAt < now) this._processedIds.delete(key)
       }
     }
 
@@ -264,8 +254,19 @@ export class AgentRegistry {
     if (!sender || !recipient) return false
 
     const sentAt = new Date().toISOString()
-    // Freeze the payload to prevent post-send mutation.
-    const frozenPayload = Object.freeze(structuredClone(payload))
+    // Freeze the payload to prevent post-send mutation. structuredClone
+    // throws DataCloneError on non-cloneable values (functions, DOM
+    // nodes, WeakMap, etc.) — convert the failure into a delivery
+    // failure rather than letting the whole routeMessage reject.
+    let frozenPayload: unknown
+    try {
+      frozenPayload = Object.freeze(structuredClone(payload))
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      // History wasn't pushed yet (we record below), so just bail with
+      // a clear error.
+      throw new Error(`AgentRegistry.routeMessage: payload is not cloneable: ${reason}`)
+    }
 
     // Record delivery attempt before delivery so failures are visible in history.
     const entry: AgentMessage = {
@@ -281,24 +282,54 @@ export class AgentRegistry {
       this.history.splice(0, this.history.length - this.historyCap)
     }
 
-    // Mark as processed for idempotency.
-    this._processedIds.set(msgId, now + this.idempotencyTtlMs)
+    // Mark as processed for idempotency. The entry stores the
+    // delivery outcome so a retry within the TTL can return the same
+    // boolean the original attempt produced.
+    this._processedIds.set(msgId, {
+      delivered: false,
+      expiresAt: now + this.idempotencyTtlMs,
+    })
 
     if (recipient.receiver) {
       try {
         const result = recipient.receiver(from, frozenPayload)
         if (result && typeof result.then === "function") {
           // Cap delivery time to prevent hung receivers from blocking routing.
-          const timeoutPromise = new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error("delivery timeout")), this.deliveryTimeoutMs),
-          )
-          await Promise.race([result, timeoutPromise])
+          // The AbortController signals the receiver so it can cancel its
+          // own work — otherwise the underlying promise keeps running
+          // after timeout and accumulates orphan handlers.
+          const controller = new AbortController()
+          const timeoutPromise = new Promise<null>((_, reject) => {
+            const timer = setTimeout(() => {
+              controller.abort()
+              reject(new Error("delivery timeout"))
+            }, this.deliveryTimeoutMs)
+            // Don't keep the event loop alive just for the timer.
+            if (typeof timer.unref === "function") timer.unref()
+          })
+          // Attach the abort signal to the receiver when it accepts one.
+          if ("signal" in recipient && (recipient as { signal?: unknown }).signal !== undefined) {
+            ;(recipient as { signal: AbortSignal }).signal = controller.signal
+          }
+          try {
+            await Promise.race([result, timeoutPromise])
+          } finally {
+            controller.abort()
+          }
         }
         entry.delivered = true
+        this._processedIds.set(msgId, {
+          delivered: true,
+          expiresAt: now + this.idempotencyTtlMs,
+        })
         return true
       } catch (err) {
         entry.error = err instanceof Error ? err.message : String(err)
         entry.delivered = false
+        this._processedIds.set(msgId, {
+          delivered: false,
+          expiresAt: now + this.idempotencyTtlMs,
+        })
         return false
       }
     }

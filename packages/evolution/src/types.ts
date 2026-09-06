@@ -38,6 +38,10 @@ export const MetricRecordSchema = z.object({
   retryCount: z.number().int().nonnegative().default(0),
   error: z.string().optional(),
   timestamp: z.string(), // ISO
+  /** Tenant scope for multi-tenant deployments. Optional for backwards
+   *  compatibility with single-tenant historical records — listAll()
+   *  returns unscoped records when `tenantId` is not supplied. */
+  tenantId: z.string().optional(),
 })
 export type MetricRecord = z.infer<typeof MetricRecordSchema>
 

@@ -17,6 +17,13 @@ export default [
       "**/.turbo/**",
       "**/*.d.ts",
       "apps/dashboard/dist/**",
+      // Third-party vendored reference repos. Lint noise from these
+      // (Lit, OpenCode, Shannon, etc.) would otherwise block CI even
+      // for first-party changes.
+      "research/**",
+      "**/research/**",
+      // NOTE: benchmarks/ is first-party (14 tracked task/load files) and
+      // stays linted — do not add it here.
     ],
   },
   {

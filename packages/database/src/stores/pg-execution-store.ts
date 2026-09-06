@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm"
+import { and, eq, gt, isNull, lt, sql } from "drizzle-orm"
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
 import { executions, executionsArchive } from "../schema.js"
 
@@ -48,9 +48,12 @@ interface RetentionOptions {
  * API-compatible with ExecutionStore from @max/autonomy.
  *
  * Tenant isolation: when `tenantId` is provided in list/get options, queries
- * filter on `executions.tenantId`. Records without a tenantId (legacy data
- * created before multi-tenant support) remain visible to all callers — this
- * matches the filesystem ExecutionStore behaviour.
+ * filter strictly on `executions.tenantId` — NULL-tenant rows are invisible
+ * to tenant-scoped callers (fail-closed). Writes stamp `record.tenantId`
+ * (set by AutonomyOrchestrator.buildExecutionRecord from the workspace's
+ * metadata); rows saved before multi-tenant support predate this stamp and
+ * need a one-time backfill (`UPDATE executions SET tenant_id = …` per
+ * workspace) to become visible to tenant-scoped queries again.
  */
 export class PgExecutionStore {
   constructor(private db: PostgresJsDatabase) {}
@@ -102,9 +105,7 @@ export class PgExecutionStore {
   }
 
   async get(id: string, tenantId?: string): Promise<ExecutionRecord | undefined> {
-    const tenantFilter = tenantId
-      ? or(eq(executions.tenantId, tenantId), isNull(executions.tenantId))
-      : undefined
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
     const liveWhere = tenantFilter
       ? and(eq(executions.id, id), isNull(executions.archivedAt), tenantFilter)
       : and(eq(executions.id, id), isNull(executions.archivedAt))
@@ -112,42 +113,44 @@ export class PgExecutionStore {
     if (rows.length > 0) return rowToExecution(rows[0])
     // Always check archive — get has no includeArchived flag, it's a direct lookup
     const archiveWhere = tenantId
-      ? and(eq(executionsArchive.id, id), or(eq(executionsArchive.tenantId, tenantId), isNull(executionsArchive.tenantId)))
+      ? and(eq(executionsArchive.id, id), eq(executionsArchive.tenantId, tenantId))
       : eq(executionsArchive.id, id)
     const archived = await this.db.select().from(executionsArchive).where(archiveWhere).limit(1)
     return archived[0] ? rowToExecution(archived[0]) : undefined
   }
 
   async listAll(tenantIdOrOptions?: string | ExecutionListOptions): Promise<ExecutionRecord[]> {
-    const opts: ExecutionListOptions = typeof tenantIdOrOptions === 'string'
-      ? { tenantId: tenantIdOrOptions }
-      : tenantIdOrOptions ?? {}
+    const opts: ExecutionListOptions =
+      typeof tenantIdOrOptions === "string"
+        ? { tenantId: tenantIdOrOptions }
+        : (tenantIdOrOptions ?? {})
     const { tenantId, skip, take, cursor } = opts
 
-    const tenantFilter = tenantId
-      ? or(eq(executions.tenantId, tenantId), isNull(executions.tenantId))
-      : undefined
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
     const archivedFilter = isNull(executions.archivedAt)
     const liveWhere = tenantFilter ? and(archivedFilter, tenantFilter) : archivedFilter
 
     // Build query with optional cursor
     const baseQuery = cursor
-      ? this.db.select().from(executions).where(and(liveWhere, gt(executions.id, cursor))).orderBy(executions.id)
+      ? this.db
+          .select()
+          .from(executions)
+          .where(and(liveWhere, gt(executions.id, cursor)))
+          .orderBy(executions.id)
       : this.db.select().from(executions).where(liveWhere).orderBy(executions.id)
 
-    const rows = take !== undefined
-      ? skip !== undefined
-        ? await baseQuery.limit(take).offset(skip)
-        : await baseQuery.limit(take)
-      : await baseQuery
+    const rows =
+      take !== undefined
+        ? skip !== undefined
+          ? await baseQuery.limit(take).offset(skip)
+          : await baseQuery.limit(take)
+        : await baseQuery
 
     return rows.map(rowToExecution)
   }
 
   async listForWorkspace(workspaceId: string, tenantId?: string): Promise<ExecutionRecord[]> {
-    const tenantFilter = tenantId
-      ? or(eq(executions.tenantId, tenantId), isNull(executions.tenantId))
-      : undefined
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
     const liveWhere = tenantFilter
       ? and(eq(executions.workspaceId, workspaceId), isNull(executions.archivedAt), tenantFilter)
       : and(eq(executions.workspaceId, workspaceId), isNull(executions.archivedAt))
@@ -156,9 +159,7 @@ export class PgExecutionStore {
   }
 
   async listForRole(role: string, tenantId?: string): Promise<ExecutionRecord[]> {
-    const tenantFilter = tenantId
-      ? or(eq(executions.tenantId, tenantId), isNull(executions.tenantId))
-      : undefined
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
     const liveWhere = tenantFilter
       ? and(eq(executions.agentRole, role), isNull(executions.archivedAt), tenantFilter)
       : and(eq(executions.agentRole, role), isNull(executions.archivedAt))
@@ -167,9 +168,7 @@ export class PgExecutionStore {
   }
 
   async listForBlueprint(blueprintId: string, tenantId?: string): Promise<ExecutionRecord[]> {
-    const tenantFilter = tenantId
-      ? or(eq(executions.tenantId, tenantId), isNull(executions.tenantId))
-      : undefined
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
     const liveWhere = tenantFilter
       ? and(eq(executions.blueprintId, blueprintId), isNull(executions.archivedAt), tenantFilter)
       : and(eq(executions.blueprintId, blueprintId), isNull(executions.archivedAt))

@@ -16,7 +16,13 @@
  *   4. Else → use keyword heuristic + add to cache
  */
 
-import { ModelRouter, deriveTaskCharacteristics, type TaskCharacteristics, type TaskType, type TaskComplexity } from "./model-router.js"
+import {
+  ModelRouter,
+  deriveTaskCharacteristics,
+  type TaskCharacteristics,
+  type TaskType,
+  type TaskComplexity,
+} from "./model-router.js"
 import type { AgentRole } from "./types.js"
 
 export interface EmbeddingFn {
@@ -63,7 +69,12 @@ export class EmbeddingRouter {
   async selectModel(task: {
     agentRole: AgentRole
     description: string
-  }): Promise<{ provider: string; model: string; characteristics: TaskCharacteristics; source: "cache" | "heuristic" | "fallback" }> {
+  }): Promise<{
+    provider: string
+    model: string
+    characteristics: TaskCharacteristics
+    source: "cache" | "heuristic" | "fallback"
+  }> {
     let characteristics: TaskCharacteristics
     let source: "cache" | "heuristic" | "fallback" = "heuristic"
 
@@ -112,7 +123,11 @@ export class EmbeddingRouter {
   }
 
   /** Add a new entry to the cache, pruning if over limit. */
-  private addToCache(description: string, embedding: number[], characteristics: TaskCharacteristics): void {
+  private addToCache(
+    description: string,
+    embedding: number[],
+    characteristics: TaskCharacteristics,
+  ): void {
     this.cache.push({
       taskDescription: description,
       embedding,
@@ -128,20 +143,47 @@ export class EmbeddingRouter {
     }
   }
 
-  /** Manually inject a classification (for bootstrapping from historical data). */
-  injectClassification(taskDescription: string, characteristics: TaskCharacteristics): void {
-    // Use a zero vector as a placeholder — actual embedding will be computed on next use
+  /**
+   * Manually inject a classification (for bootstrapping from historical data).
+   *
+   * Callers MUST supply the embedding vector — without one the entry would
+   * never match any cosine-similarity lookup (an empty vector returns 0 for
+   * every query), so silently storing `embedding: []` would just bloat the
+   * cache with entries that can never hit. Use `embed()` (the injected
+   * embedder) to compute the vector first.
+   */
+  injectClassification(
+    taskDescription: string,
+    characteristics: TaskCharacteristics,
+    embedding: number[],
+  ): void {
+    if (!Array.isArray(embedding) || embedding.length === 0) {
+      throw new Error(
+        "EmbeddingRouter.injectClassification requires a non-empty embedding vector; " +
+          "compute one via embed() first — empty embeddings never match lookups.",
+      )
+    }
     this.cache.push({
       taskDescription,
-      embedding: [],
+      embedding,
       characteristics,
       classifiedAt: Date.now(),
       hitCount: 0,
     })
+    if (this.cache.length > this.maxCacheSize) {
+      this.cache.sort((a, b) => a.classifiedAt - b.classifiedAt)
+      this.cache.splice(0, this.cache.length - this.maxCacheSize)
+    }
   }
 
   /** Get cache statistics. */
-  getStats(): { hits: number; misses: number; fallback: number; cacheSize: number; hitRate: number } {
+  getStats(): {
+    hits: number
+    misses: number
+    fallback: number
+    cacheSize: number
+    hitRate: number
+  } {
     const total = this.stats.hits + this.stats.misses
     return {
       ...this.stats,

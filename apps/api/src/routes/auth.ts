@@ -133,11 +133,17 @@ export function authRoutes(deps: AuthRouteDeps) {
       const body = c.req.valid("json" as never) as { email: string; password: string }
       const { email, password } = body
 
-      // Check for existing user
+      // Pre-check is a friendly fast-path. The real guarantee comes from
+      // the unique constraint on users.email — if two concurrent
+      // registrations pass the pre-check, the second insert will fail
+      // with Postgres 23505 and we translate that into a 409 below.
       const existing = await db.select().from(users).where(eq(users.email, email)).limit(1)
       if (existing.length > 0) {
         return c.json({ error: "Email already registered" }, 409)
       }
+      // We can't yet reuse the helper `insertUser` because we need the
+      // transaction to also insert a tenant + refresh token atomically;
+      // the catch block below keeps the contract honest under concurrency.
 
       const id = `usr-${randomUUID()}`
       const passwordHash = await hash(password, 12)
@@ -158,59 +164,71 @@ export function authRoutes(deps: AuthRouteDeps) {
       // preventing orphan tenants with no owner.
       // The refresh token is also inserted in the same tx so there is
       // never a user without a usable refresh handle.
+      // Postgres 23505 (unique_violation) on email is translated to 409
+      // below so concurrent registrations see the same status as the
+      // pre-checked fast path — closing the TOCTOU window.
       let tenantId: string | undefined
       let role: string
-      if (multiTenant) {
-        const tenantRowId = `tnt-${randomUUID()}`
-        const slug = `t-${randomUUID().slice(0, 8)}`
-        await db.transaction(async (tx) => {
-          await tx.insert(tenants).values({
-            id: tenantRowId,
-            name: `${email}'s workspace`,
-            slug,
-            plan: "free",
-            createdAt: now,
-            updatedAt: now,
+      try {
+        if (multiTenant) {
+          const tenantRowId = `tnt-${randomUUID()}`
+          const slug = `t-${randomUUID().slice(0, 8)}`
+          await db.transaction(async (tx) => {
+            await tx.insert(tenants).values({
+              id: tenantRowId,
+              name: `${email}'s workspace`,
+              slug,
+              plan: "free",
+              createdAt: now,
+              updatedAt: now,
+            })
+            await tx.insert(users).values({
+              id,
+              email,
+              passwordHash,
+              role: "admin", // owner of the personal tenant
+              tenantId: tenantRowId,
+              createdAt: now,
+              updatedAt: now,
+            })
+            await tx.insert(refreshTokens).values({
+              id: `rt-${randomUUID()}`,
+              jti,
+              userId: id,
+              tokenHash: await hash(refreshToken, 12),
+              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            })
           })
-          await tx.insert(users).values({
-            id,
-            email,
-            passwordHash,
-            role: "admin", // owner of the personal tenant
-            tenantId: tenantRowId,
-            createdAt: now,
-            updatedAt: now,
+          tenantId = tenantRowId
+          role = "admin"
+        } else {
+          role = "viewer"
+          await db.transaction(async (tx) => {
+            await tx.insert(users).values({
+              id,
+              email,
+              passwordHash,
+              role,
+              tenantId: null,
+              createdAt: now,
+              updatedAt: now,
+            })
+            await tx.insert(refreshTokens).values({
+              id: `rt-${randomUUID()}`,
+              jti,
+              userId: id,
+              tokenHash: await hash(refreshToken, 12),
+              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            })
           })
-          await tx.insert(refreshTokens).values({
-            id: `rt-${randomUUID()}`,
-            jti,
-            userId: id,
-            tokenHash: await hash(refreshToken, 12),
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          })
-        })
-        tenantId = tenantRowId
-        role = "admin"
-      } else {
-        role = "viewer"
-        await db.transaction(async (tx) => {
-          await tx.insert(users).values({
-            id,
-            email,
-            passwordHash,
-            role,
-            tenantId: null,
-            createdAt: now,
-            updatedAt: now,
-          })
-          await tx.insert(refreshTokens).values({
-            id: `rt-${randomUUID()}`,
-            jti,
-            userId: id,
-            tokenHash: await hash(refreshToken, 12),
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          })
-        })
+        }
+      } catch (err) {
+        // postgres-js surfaces 23505 with `code: "23505"` on the error object.
+        const code = (err as { code?: string } | null)?.code
+        if (code === "23505") {
+          return c.json({ error: "Email already registered" }, 409)
+        }
+        throw err
       }
 
       const accessToken = await signAccessToken(id, role, jwtSecret, jwtExpiresIn, tenantId)

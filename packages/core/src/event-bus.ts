@@ -215,18 +215,45 @@ export class EventBus<E extends { type: string } = { type: string }> {
         return undefined
       }
       case "waterfall": {
-        // Build a chain of listeners, each wrapping the next
-        const chain = subs.map((sub, i) => {
-          const nextFn = i < subs.length - 1 ? subs[i + 1].callback : () => undefined
-          return sub.callback
-        })
-        if (chain.length === 0) return undefined
-        // Build the waterfall chain
-        const index = 0
-        const runWaterfall = (listener: EventCallback<E>): unknown => {
-          return listener(event)
+        // Waterfall: each listener can short-circuit by NOT calling
+        // `next()`. Subscribers are cast to WaterfallListener for the
+        // (event, next) signature; callers using `subscribe()` with a
+        // plain EventCallback will simply ignore the unused `next`
+        // argument (their return value still acts as the chain value).
+        // For async waterfall support, callers should use
+        // `subscribeWaterfall()` or wrap async work in their listener.
+        let chainResult: unknown = undefined
+        let chainBroken = false
+        for (let i = 0; i < subs.length; i++) {
+          if (chainBroken) break
+          const sub = subs[i]!
+          const next =
+            i < subs.length - 1
+              ? () => {
+                  chainBroken = true
+                  return undefined
+                }
+              : () => undefined
+          try {
+            const ret = (sub.callback as unknown as WaterfallListener<E>)(event, next)
+            // Async listeners are not awaited here — dispatch() is
+            // sync. Callers needing async waterfall should compose
+            // promises themselves or call dispatch in a Promise.all.
+            if (ret && typeof (ret as Promise<unknown>).then === "function") {
+              // Fire-and-forget; document the limitation rather than
+              // silently dropping the promise.
+              void ret.catch((err) => {
+                console.error("[EventBus] waterfall async listener error:", err)
+              })
+            } else {
+              chainResult = ret
+              if (chainResult !== undefined) chainBroken = true
+            }
+          } catch (err) {
+            console.error("[EventBus] waterfall subscriber error:", err)
+          }
         }
-        return runWaterfall(chain[0])
+        return chainResult
       }
     }
   }

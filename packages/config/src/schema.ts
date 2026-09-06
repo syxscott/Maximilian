@@ -1,26 +1,22 @@
-import { z } from "zod";
-import { resolve as resolvePath } from "node:path";
+import { z } from "zod"
+import { resolve as resolvePath } from "node:path"
 
 const booleanString = z
   .enum(["true", "false"])
   .default("true")
-  .transform((v) => v === "true");
+  .transform((v) => v === "true")
 
 const optionalBooleanString = z
   .enum(["true", "false"])
   .default("false")
-  .transform((v) => v === "true");
+  .transform((v) => v === "true")
 
-const RolloutModeSchema = z
-  .enum(["shadow", "canary", "full"])
-  .default("shadow");
+const RolloutModeSchema = z.enum(["shadow", "canary", "full"]).default("shadow")
 
 export const ConfigSchema = z.object({
   // Server
   PORT: z.coerce.number().int().positive().default(3001),
-  NODE_ENV: z
-    .enum(["development", "production", "test"])
-    .default("development"),
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
   // Storage. WORKSPACE_DIR is normalized to an absolute path at parse time so
   // every consumer (file stores, blueprint store, execution store) sees the
@@ -77,6 +73,15 @@ export const ConfigSchema = z.object({
   DAGS_MODE: optionalBooleanString,
   META_AGENT_ENABLED: optionalBooleanString,
   EVOLUTION_ENABLED: booleanString,
+  // Directory of sealed files (benchmark corpus / eval fixtures) that the
+  // evolution engine must not modify mid-run. When set, every evolution
+  // cycle is guarded by a SealedFileVault rooted here; a changed sealed
+  // file aborts the cycle instead of promoting a candidate that was
+  // measured against a silently-moved target. Unset = no vault (default).
+  EVOLUTION_SEALED_DIR: z
+    .string()
+    .optional()
+    .transform((p) => (p ? resolvePath(p) : undefined)),
   DIGITAL_TWIN_ENABLED: optionalBooleanString,
   TELEMETRY_ENABLED: booleanString,
   SAFE_ROLLOUT_MODE: RolloutModeSchema,
@@ -105,15 +110,11 @@ export const ConfigSchema = z.object({
   EVENTS_DIR: z.string().optional(),
 
   // Logging
-  LOG_LEVEL: z
-    .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
-    .default("info"),
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 
   // Sandbox backend (借鉴 Open Interpreter multi-backend)
   // Supported values: local | docker | mac-sandbox-exec | process
-  SANDBOX_BACKEND: z
-    .enum(["local", "docker", "mac-sandbox-exec", "process"])
-    .default("local"),
-});
+  SANDBOX_BACKEND: z.enum(["local", "docker", "mac-sandbox-exec", "process"]).default("local"),
+})
 
-export type Config = z.infer<typeof ConfigSchema>;
+export type Config = z.infer<typeof ConfigSchema>

@@ -6,7 +6,20 @@ import { EmbeddingRouter } from "../src/embedding-router.js"
 const mockEmbed = async (text: string): Promise<number[]> => {
   // Simple bag-of-words style embedding for testing
   const words = text.toLowerCase().split(/\s+/)
-  const vocab = ["build", "code", "ui", "app", "design", "system", "fix", "bug", "simple", "complex", "write", "refactor"]
+  const vocab = [
+    "build",
+    "code",
+    "ui",
+    "app",
+    "design",
+    "system",
+    "fix",
+    "bug",
+    "simple",
+    "complex",
+    "write",
+    "refactor",
+  ]
   return vocab.map((w) => (words.some((word) => word.includes(w)) ? 1 : 0))
 }
 
@@ -21,20 +34,29 @@ describe("EmbeddingRouter", () => {
   })
 
   it("reuses classification on similar description (cache hit)", async () => {
-    const router = new EmbeddingRouter(createDefaultModelRouter(), { embed: mockEmbed, similarityThreshold: 0.5 })
+    const router = new EmbeddingRouter(createDefaultModelRouter(), {
+      embed: mockEmbed,
+      similarityThreshold: 0.5,
+    })
 
     // First call — cache miss
     const first = await router.selectModel({ agentRole: "frontend", description: "build a UI app" })
     expect(first.source).toBe("heuristic")
 
     // Second call with similar description — should hit cache
-    const second = await router.selectModel({ agentRole: "frontend", description: "build a complex UI app" })
+    const second = await router.selectModel({
+      agentRole: "frontend",
+      description: "build a complex UI app",
+    })
     expect(second.source).toBe("cache")
     expect(second.characteristics).toEqual(first.characteristics)
   })
 
   it("tracks hit/miss stats", async () => {
-    const router = new EmbeddingRouter(createDefaultModelRouter(), { embed: mockEmbed, similarityThreshold: 0.5 })
+    const router = new EmbeddingRouter(createDefaultModelRouter(), {
+      embed: mockEmbed,
+      similarityThreshold: 0.5,
+    })
     await router.selectModel({ agentRole: "frontend", description: "build a UI" })
     await router.selectModel({ agentRole: "frontend", description: "build a UI" }) // hit
     await router.selectModel({ agentRole: "backend", description: "different completely unique" }) // miss
@@ -69,15 +91,35 @@ describe("EmbeddingRouter", () => {
     expect(stats.cacheSize).toBeLessThanOrEqual(3)
   })
 
-  it("injectClassification adds to cache", () => {
+  it("injectClassification adds to cache with valid embedding", async () => {
     const router = new EmbeddingRouter(createDefaultModelRouter(), { embed: mockEmbed })
-    router.injectClassification("manual entry", {
-      complexity: "complex",
-      type: "code",
-      agentRole: "backend",
-    })
+    const embedding = await mockEmbed("manual entry")
+    router.injectClassification(
+      "manual entry",
+      {
+        complexity: "complex",
+        type: "code",
+        agentRole: "backend",
+      },
+      embedding,
+    )
     const stats = router.getStats()
     expect(stats.cacheSize).toBe(1)
+  })
+
+  it("injectClassification rejects empty embeddings", () => {
+    const router = new EmbeddingRouter(createDefaultModelRouter(), { embed: mockEmbed })
+    expect(() =>
+      router.injectClassification(
+        "manual entry",
+        {
+          complexity: "complex",
+          type: "code",
+          agentRole: "backend",
+        },
+        [],
+      ),
+    ).toThrow(/requires a non-empty embedding vector/)
   })
 
   it("clearCache resets state", async () => {

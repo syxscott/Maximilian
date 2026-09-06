@@ -177,6 +177,86 @@ export async function readWorkerHeartbeat(redisUrl: string): Promise<number | un
   }
 }
 
+// ---------------------------------------------------------------------------
+// Runtime-event backflow (queue mode).
+//
+// In queue mode the runtime executes inside the worker process, so the
+// API never sees task/task-stream events from its own runtime listener —
+// SSE clients would connect and hang on a single snapshot. The worker
+// publishes every runtime event on this channel; the API subscribes and
+// feeds them into the same fan-out path as locally-produced events
+// (in-memory log, SSE, durable JSONL log, webhook subscriptions).
+// ---------------------------------------------------------------------------
+
+export const WORKSPACE_EVENTS_CHANNEL = "maximilian:workspace-events"
+
+/** Envelope published by the worker for every runtime event. */
+export interface WorkspaceEventEnvelope {
+  workspaceId: string
+  /** Tenant scope of the job — lets the API route webhook/SSE without a DB lookup. */
+  tenantId?: string
+  /** A @max/core RuntimeEvent (untyped here to avoid a package dependency cycle). */
+  event: unknown
+}
+
+/**
+ * Create a publisher used by the worker to forward runtime events to the
+ * API. Returns an async publish function; failures are the caller's to
+ * log (publishing is best-effort — losing one progress event must not
+ * crash execution).
+ */
+export function createWorkspaceEventPublisher(
+  redisUrl: string,
+): (envelope: WorkspaceEventEnvelope) => Promise<void> {
+  const conn = new Redis(redisUrl, { maxRetriesPerRequest: 1, lazyConnect: false })
+  conn.on("error", () => {
+    // Surface via the publish promise; keep the connection alive.
+  })
+  return async (envelope) => {
+    await conn.publish(WORKSPACE_EVENTS_CHANNEL, JSON.stringify(envelope))
+  }
+}
+
+/**
+ * Subscribe to worker-forwarded runtime events (API side). Returns a
+ * close() for shutdown. Messages that fail to parse are dropped — a
+ * malformed envelope must never take down the API process.
+ */
+export function subscribeWorkspaceEvents(
+  redisUrl: string,
+  handler: (envelope: WorkspaceEventEnvelope) => void,
+): { close: () => void } {
+  // Redis pub/sub requires a dedicated connection in subscriber mode.
+  const conn = new Redis(redisUrl, { maxRetriesPerRequest: null, lazyConnect: false })
+  conn.on("error", () => {
+    // ioredis auto-reconnects; transient errors are expected during blips.
+  })
+  conn.subscribe(WORKSPACE_EVENTS_CHANNEL).catch(() => {
+    // Subscription retries with the connection; nothing to do here.
+  })
+  conn.on("message", (channel: string, raw: string) => {
+    if (channel !== WORKSPACE_EVENTS_CHANNEL) return
+    try {
+      const parsed = JSON.parse(raw) as WorkspaceEventEnvelope
+      if (parsed && typeof parsed.workspaceId === "string" && parsed.event) {
+        handler(parsed)
+      }
+    } catch {
+      // Malformed envelope — drop.
+    }
+  })
+  return {
+    close: () => {
+      try {
+        void conn.unsubscribe()
+      } catch {
+        // ignore
+      }
+      conn.disconnect()
+    },
+  }
+}
+
 /**
  * Start a background heartbeat. Writes a timestamp to Redis every
  * `HEARTBEAT_TTL_SECONDS / 2` seconds with a TTL of `HEARTBEAT_TTL_SECONDS`.

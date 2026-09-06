@@ -14,9 +14,9 @@
  *     forgot to include one
  *   - Workspace + Plan ids / timestamps are populated correctly
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ChatResponse, Provider } from "@max/providers";
-import { Commander } from "../src/index.js";
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import type { ChatResponse, Provider } from "@max/providers"
+import { Commander } from "../src/index.js"
 
 function stubProvider(id: string, fn: (system: string, user: string) => string): Provider {
   return {
@@ -25,20 +25,20 @@ function stubProvider(id: string, fn: (system: string, user: string) => string):
     defaultModel: "stub-model",
     isConfigured: () => true,
     async chat(messages) {
-      const system = messages.find((m) => m.role === "system")?.content ?? "";
-      const user = messages.find((m) => m.role === "user")?.content ?? "";
-      const content = fn(system, user);
+      const system = messages.find((m) => m.role === "system")?.content ?? ""
+      const user = messages.find((m) => m.role === "user")?.content ?? ""
+      const content = fn(system, user)
       const response: ChatResponse = {
         content,
         usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
         finishReason: "stop",
-      };
-      return response;
+      }
+      return response
     },
     async stream() {
-      throw new Error("not used in tests");
+      throw new Error("not used in tests")
     },
-  };
+  }
 }
 
 describe("extractJson (via Commander.plan edge cases)", () => {
@@ -54,32 +54,34 @@ describe("extractJson (via Commander.plan edge cases)", () => {
           { agentRole: "review", description: "Review the API.", dependsOn: ["task-1"] },
         ],
       }),
-    );
-    const commander = new Commander(() => provider);
-    const { plan } = await commander.plan("Build a TODO API");
-    expect(plan.tasks).toHaveLength(2);
-    expect(plan.tasks[0].agentRole).toBe("backend");
-    expect(plan.tasks[1].agentRole).toBe("review");
-    expect(plan.rationale).toMatch(/backend/i);
-  });
+    )
+    const commander = new Commander(() => provider)
+    const { plan } = await commander.plan("Build a TODO API")
+    expect(plan.tasks).toHaveLength(2)
+    expect(plan.tasks[0].agentRole).toBe("backend")
+    expect(plan.tasks[1].agentRole).toBe("review")
+    expect(plan.rationale).toMatch(/backend/i)
+  })
 
   it("Commander.plan() extracts JSON from markdown-fenced text", async () => {
-    const provider = stubProvider("stub", () =>
-      "```json\n" +
-      JSON.stringify({
-        rationale: "Frontend + review.",
-        tasks: [
-          { agentRole: "frontend", description: "Build UI.", dependsOn: [] },
-          { agentRole: "review", description: "Review.", dependsOn: ["task-1"] },
-        ],
-      }) +
-      "\n```",
-    );
-    const commander = new Commander(() => provider);
-    const { plan } = await commander.plan("Build a todo web app");
-    expect(plan.tasks).toHaveLength(2);
-    expect(plan.tasks[0].agentRole).toBe("frontend");
-  });
+    const provider = stubProvider(
+      "stub",
+      () =>
+        "```json\n" +
+        JSON.stringify({
+          rationale: "Frontend + review.",
+          tasks: [
+            { agentRole: "frontend", description: "Build UI.", dependsOn: [] },
+            { agentRole: "review", description: "Review.", dependsOn: ["task-1"] },
+          ],
+        }) +
+        "\n```",
+    )
+    const commander = new Commander(() => provider)
+    const { plan } = await commander.plan("Build a todo web app")
+    expect(plan.tasks).toHaveLength(2)
+    expect(plan.tasks[0].agentRole).toBe("frontend")
+  })
 
   it("Commander.plan() falls back to defaultPlan when the planner throws", async () => {
     const provider: Provider = {
@@ -88,48 +90,46 @@ describe("extractJson (via Commander.plan edge cases)", () => {
       defaultModel: "m",
       isConfigured: () => true,
       async chat() {
-        throw new Error("planner down");
+        throw new Error("planner down")
       },
       async stream() {
-        throw new Error("nope");
+        throw new Error("nope")
       },
-    };
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const commander = new Commander(() => provider);
-    const { plan } = await commander.plan("Solve a math problem");
+    }
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const commander = new Commander(() => provider)
+    const { plan } = await commander.plan("Solve a math problem")
     // defaultPlan: pure-doc → general + review.
-    expect(plan.tasks).toHaveLength(2);
-    expect(plan.tasks[0].agentRole).toBe("general");
-    expect(plan.tasks[1].agentRole).toBe("review");
-    expect(plan.tasks[1].dependsOn).toEqual(["task-1"]);
-    warn.mockRestore();
-  });
+    expect(plan.tasks).toHaveLength(2)
+    expect(plan.tasks[0].agentRole).toBe("general")
+    expect(plan.tasks[1].agentRole).toBe("review")
+    expect(plan.tasks[1].dependsOn).toEqual(["task-1"])
+    warn.mockRestore()
+  })
 
   it("Commander.plan() falls back to defaultPlan when planner JSON is unparseable", async () => {
-    const provider = stubProvider("stub", () => "this is not json at all");
-    const commander = new Commander(() => provider);
-    const { plan } = await commander.plan("Anything");
+    const provider = stubProvider("stub", () => "this is not json at all")
+    const commander = new Commander(() => provider)
+    const { plan } = await commander.plan("Anything")
     // defaultPlan heuristic: "anything" doesn't match the frontend pattern.
-    expect(plan.tasks[0].agentRole).toBe("general");
-    expect(plan.tasks.at(-1)?.agentRole).toBe("review");
-  });
+    expect(plan.tasks[0].agentRole).toBe("general")
+    expect(plan.tasks.at(-1)?.agentRole).toBe("review")
+  })
 
   it("Commander.plan() appends a review task if the LLM forgot one", async () => {
     const provider = stubProvider("stub", () =>
       JSON.stringify({
         rationale: "Missing review.",
-        tasks: [
-          { agentRole: "backend", description: "API.", dependsOn: [] },
-        ],
+        tasks: [{ agentRole: "backend", description: "API.", dependsOn: [] }],
       }),
-    );
-    const commander = new Commander(() => provider);
-    const { plan } = await commander.plan("API only");
-    expect(plan.tasks).toHaveLength(2);
-    expect(plan.tasks.at(-1)?.agentRole).toBe("review");
+    )
+    const commander = new Commander(() => provider)
+    const { plan } = await commander.plan("API only")
+    expect(plan.tasks).toHaveLength(2)
+    expect(plan.tasks.at(-1)?.agentRole).toBe("review")
     // The appended review depends on all prior tasks (only task-1 here).
-    expect(plan.tasks.at(-1)?.dependsOn).toEqual(["task-1"]);
-  });
+    expect(plan.tasks.at(-1)?.dependsOn).toEqual(["task-1"])
+  })
 
   it("Commander.plan() populates workspace + plan ids and ISO timestamps", async () => {
     const provider = stubProvider("stub", () =>
@@ -140,21 +140,21 @@ describe("extractJson (via Commander.plan edge cases)", () => {
           { agentRole: "review", description: "y", dependsOn: ["task-1"] },
         ],
       }),
-    );
-    const commander = new Commander(() => provider);
-    const { workspace, plan } = await commander.plan("trivial request");
-    expect(workspace.id).toMatch(/^ws-[0-9a-f]{8}$/);
-    expect(plan.id).toMatch(/^plan-[0-9a-f]{8}$/);
-    expect(workspace.status).toBe("planning");
-    expect(plan.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(workspace.createdAt).toBe(plan.createdAt);
-    expect(workspace.plan).toBe(plan);
-  });
-});
+    )
+    const commander = new Commander(() => provider)
+    const { workspace, plan } = await commander.plan("trivial request")
+    expect(workspace.id).toMatch(/^ws-[0-9a-f]{8}$/)
+    expect(plan.id).toMatch(/^plan-[0-9a-f]{8}$/)
+    expect(workspace.status).toBe("planning")
+    expect(plan.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(workspace.createdAt).toBe(plan.createdAt)
+    expect(workspace.plan).toBe(plan)
+  })
+})
 
 describe("defaultPlan heuristic", () => {
-  let provider: Provider;
-  let commander: Commander;
+  let provider: Provider
+  let commander: Commander
 
   beforeEach(() => {
     provider = {
@@ -163,36 +163,32 @@ describe("defaultPlan heuristic", () => {
       defaultModel: "m",
       isConfigured: () => true,
       async chat() {
-        throw new Error("always fails — force defaultPlan");
+        throw new Error("always fails — force defaultPlan")
       },
       async stream() {
-        throw new Error("nope");
+        throw new Error("nope")
       },
-    };
-    commander = new Commander(() => provider);
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-  });
+    }
+    commander = new Commander(() => provider)
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+  })
 
   it("frontend-y requests → backend + frontend + review", async () => {
-    const { plan } = await commander.plan("Build a todo web app");
-    expect(plan.tasks.map((t) => t.agentRole)).toEqual([
-      "backend",
-      "frontend",
-      "review",
-    ]);
-    expect(plan.tasks[2].dependsOn).toEqual(["task-1", "task-2"]);
-  });
+    const { plan } = await commander.plan("Build a todo web app")
+    expect(plan.tasks.map((t) => t.agentRole)).toEqual(["backend", "frontend", "review"])
+    expect(plan.tasks[2].dependsOn).toEqual(["task-1", "task-2"])
+  })
 
   it("non-frontend requests → general + review", async () => {
-    const { plan } = await commander.plan("Solve a math problem");
-    expect(plan.tasks.map((t) => t.agentRole)).toEqual(["general", "review"]);
-  });
+    const { plan } = await commander.plan("Solve a math problem")
+    expect(plan.tasks.map((t) => t.agentRole)).toEqual(["general", "review"])
+  })
 
   it("UI request (Chinese) triggers frontend branch", async () => {
-    const { plan } = await commander.plan("做一个前端 UI");
-    expect(plan.tasks.map((t) => t.agentRole)).toContain("frontend");
-  });
-});
+    const { plan } = await commander.plan("做一个前端 UI")
+    expect(plan.tasks.map((t) => t.agentRole)).toContain("frontend")
+  })
+})
 
 describe("Planner schema — estimatedComplexity + preferredCapabilities (借鉴 1+2)", () => {
   it("propagates estimatedComplexity + preferredCapabilities from LLM JSON into task.metadata", async () => {
@@ -216,15 +212,15 @@ describe("Planner schema — estimatedComplexity + preferredCapabilities (借鉴
           },
         ],
       }),
-    );
-    const commander = new Commander(() => provider);
-    const { plan } = await commander.plan("Build a users API");
-    expect(plan.tasks).toHaveLength(2);
-    expect(plan.tasks[0]!.metadata?.estimatedComplexity).toBe("complex");
-    expect(plan.tasks[0]!.metadata?.preferredCapabilities).toEqual(["api-design", "auth"]);
-    expect(plan.tasks[1]!.metadata?.estimatedComplexity).toBe("simple");
-    expect(plan.tasks[1]!.metadata?.preferredCapabilities).toEqual(["critique"]);
-  });
+    )
+    const commander = new Commander(() => provider)
+    const { plan } = await commander.plan("Build a users API")
+    expect(plan.tasks).toHaveLength(2)
+    expect(plan.tasks[0]!.metadata?.estimatedComplexity).toBe("complex")
+    expect(plan.tasks[0]!.metadata?.preferredCapabilities).toEqual(["api-design", "auth"])
+    expect(plan.tasks[1]!.metadata?.estimatedComplexity).toBe("simple")
+    expect(plan.tasks[1]!.metadata?.preferredCapabilities).toEqual(["critique"])
+  })
 
   it("does not set task.metadata when planner omits the new fields", async () => {
     const provider = stubProvider("stub", () =>
@@ -235,12 +231,12 @@ describe("Planner schema — estimatedComplexity + preferredCapabilities (借鉴
           { agentRole: "review", description: "Review.", dependsOn: ["task-1"] },
         ],
       }),
-    );
-    const commander = new Commander(() => provider);
-    const { plan } = await commander.plan("anything");
-    expect(plan.tasks[0]!.metadata?.estimatedComplexity).toBeUndefined();
-    expect(plan.tasks[0]!.metadata?.preferredCapabilities).toBeUndefined();
-  });
+    )
+    const commander = new Commander(() => provider)
+    const { plan } = await commander.plan("anything")
+    expect(plan.tasks[0]!.metadata?.estimatedComplexity).toBeUndefined()
+    expect(plan.tasks[0]!.metadata?.preferredCapabilities).toBeUndefined()
+  })
 
   it("defaultPlan fallback includes estimatedComplexity + preferredCapabilities", async () => {
     const provider: Provider = {
@@ -248,27 +244,31 @@ describe("Planner schema — estimatedComplexity + preferredCapabilities (借鉴
       name: "Stub",
       defaultModel: "m",
       isConfigured: () => true,
-      async chat() { throw new Error("force fallback"); },
-      async stream() { throw new Error("nope"); },
-    };
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const commander = new Commander(() => provider);
-    const { plan } = await commander.plan("做一个前端 UI");
+      async chat() {
+        throw new Error("force fallback")
+      },
+      async stream() {
+        throw new Error("nope")
+      },
+    }
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const commander = new Commander(() => provider)
+    const { plan } = await commander.plan("做一个前端 UI")
     // 3-task frontend branch: backend + frontend + review.
     for (const t of plan.tasks) {
-      expect(t.metadata?.estimatedComplexity).toMatch(/^(simple|medium|complex)$/);
-      expect(Array.isArray(t.metadata?.preferredCapabilities)).toBe(true);
+      expect(t.metadata?.estimatedComplexity).toMatch(/^(simple|medium|complex)$/)
+      expect(Array.isArray(t.metadata?.preferredCapabilities)).toBe(true)
     }
-  });
-});
+  })
+})
 
 describe("Commander.replan (借鉴 3 — Magentic-One outer loop)", () => {
   it("returns null when remainingTasks is empty (no stall possible)", async () => {
-    const provider = stubProvider("stub", () => "{}");
-    const commander = new Commander(() => provider);
-    const out = await commander.replan("original request", [], []);
-    expect(out).toBeNull();
-  });
+    const provider = stubProvider("stub", () => "{}")
+    const commander = new Commander(() => provider)
+    const out = await commander.replan("original request", [], [])
+    expect(out).toBeNull()
+  })
 
   it("returns replacement tasks when the LLM produces valid JSON", async () => {
     const provider = stubProvider("stub", () =>
@@ -291,31 +291,39 @@ describe("Commander.replan (借鉴 3 — Magentic-One outer loop)", () => {
           },
         ],
       }),
-    );
-    const commander = new Commander(() => provider);
+    )
+    const commander = new Commander(() => provider)
     const out = await commander.replan(
       "build a thing",
       [],
-      [{ id: "task-2", agentRole: "general", description: "stuck", status: "pending", dependsOn: [] }],
-    );
-    expect(out).not.toBeNull();
-    expect(out!.tasks).toHaveLength(2);
+      [
+        {
+          id: "task-2",
+          agentRole: "general",
+          description: "stuck",
+          status: "pending",
+          dependsOn: [],
+        },
+      ],
+    )
+    expect(out).not.toBeNull()
+    expect(out!.tasks).toHaveLength(2)
     // Replan re-uses the original task-2 prefix so dependsOn refs stay valid.
-    expect(out!.tasks[0]!.id).toBe("task-2");
-    expect(out!.tasks[1]!.id).toBe("task-3");
-    expect(out!.tasks[0]!.metadata?.estimatedComplexity).toBe("simple");
-  });
+    expect(out!.tasks[0]!.id).toBe("task-2")
+    expect(out!.tasks[1]!.id).toBe("task-3")
+    expect(out!.tasks[0]!.metadata?.estimatedComplexity).toBe("simple")
+  })
 
   it("returns null when the LLM response is malformed", async () => {
-    const provider = stubProvider("stub", () => "definitely not JSON");
-    const commander = new Commander(() => provider);
+    const provider = stubProvider("stub", () => "definitely not JSON")
+    const commander = new Commander(() => provider)
     const out = await commander.replan(
       "x",
       [],
       [{ id: "task-2", agentRole: "general", description: "x", status: "pending", dependsOn: [] }],
-    );
-    expect(out).toBeNull();
-  });
+    )
+    expect(out).toBeNull()
+  })
 
   it("returns null when the LLM throws", async () => {
     const provider: Provider = {
@@ -323,29 +331,110 @@ describe("Commander.replan (借鉴 3 — Magentic-One outer loop)", () => {
       name: "Stub",
       defaultModel: "m",
       isConfigured: () => true,
-      async chat() { throw new Error("replan LLM down"); },
-      async stream() { throw new Error("nope"); },
-    };
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const commander = new Commander(() => provider);
+      async chat() {
+        throw new Error("replan LLM down")
+      },
+      async stream() {
+        throw new Error("nope")
+      },
+    }
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const commander = new Commander(() => provider)
     const out = await commander.replan(
       "x",
       [],
       [{ id: "task-2", agentRole: "general", description: "x", status: "pending", dependsOn: [] }],
-    );
-    expect(out).toBeNull();
-  });
+    )
+    expect(out).toBeNull()
+  })
 
   it("returns null when the LLM JSON has no tasks array", async () => {
-    const provider = stubProvider("stub", () =>
-      JSON.stringify({ rationale: "no tasks here" }),
-    );
-    const commander = new Commander(() => provider);
+    const provider = stubProvider("stub", () => JSON.stringify({ rationale: "no tasks here" }))
+    const commander = new Commander(() => provider)
     const out = await commander.replan(
       "x",
       [],
       [{ id: "task-2", agentRole: "general", description: "x", status: "pending", dependsOn: [] }],
-    );
-    expect(out).toBeNull();
-  });
-});
+    )
+    expect(out).toBeNull()
+  })
+})
+
+/**
+ * Verifies that the borrowed Kosmos PlanReviewer module is wired into
+ * Commander.plan() (借鉴 Kosmos plan_reviewer.py). The reviewer must run
+ * after the planner materializes tasks, with its verdict stashed on the
+ * returned workspace's metadata.
+ */
+describe("Commander.plan() PlanReviewer wiring", () => {
+  it("runs the core reviewer by default and stashes the verdict", async () => {
+    const provider = stubProvider("stub", () =>
+      JSON.stringify({
+        rationale: "Backend + frontend + review.",
+        tasks: [
+          {
+            agentRole: "backend",
+            description: "Design and implement the backend API.",
+            dependsOn: [],
+          },
+          {
+            agentRole: "frontend",
+            description: "Implement the UI for the backend API.",
+            dependsOn: ["task-1"],
+          },
+          {
+            agentRole: "review",
+            description: "Review the generated artifacts.",
+            dependsOn: ["task-1", "task-2"],
+          },
+        ],
+      }),
+    )
+    const commander = new Commander(() => provider)
+    const { workspace } = await commander.plan("Build a TODO app")
+    expect(workspace.metadata.planReview).toBeDefined()
+    const review = workspace.metadata.planReview as {
+      approved: boolean
+      averageScore: number
+      scores: Record<string, number>
+      feedback: string
+    }
+    expect(typeof review.approved).toBe("boolean")
+    expect(review.averageScore).toBeGreaterThan(0)
+    // Three distinct tasks across multiple roles should clear the base
+    // thresholds in the core reviewer's heuristic scorers.
+    expect(review.approved).toBe(true)
+  })
+
+  it("planReviewer: null disables it", async () => {
+    const provider = stubProvider("stub", () =>
+      JSON.stringify({
+        rationale: "single task",
+        tasks: [{ agentRole: "general", description: "do the thing", dependsOn: [] }],
+      }),
+    )
+    const commander = new Commander(() => provider, { planReviewer: null })
+    const { workspace } = await commander.plan("simple request")
+    expect(workspace.metadata.planReview).toBeUndefined()
+    expect(workspace.metadata).toEqual({})
+  })
+
+  it("a throwing custom reviewer does not block planning", async () => {
+    const provider = stubProvider("stub", () =>
+      JSON.stringify({
+        rationale: "throwing-review test",
+        tasks: [{ agentRole: "general", description: "do the thing", dependsOn: [] }],
+      }),
+    )
+    const commander = new Commander(() => provider, {
+      planReviewer: () => {
+        throw new Error("reviewer boom")
+      },
+    })
+    // Plan must still succeed — a buggy reviewer logs + skips, never blocks.
+    // (Commander auto-appends a review task, so total length is 2.)
+    const { workspace, plan } = await commander.plan("anything")
+    expect(plan.tasks.length).toBeGreaterThanOrEqual(1)
+    expect(workspace.metadata.planReview).toBeUndefined()
+  })
+})

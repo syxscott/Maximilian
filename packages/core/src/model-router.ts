@@ -163,6 +163,8 @@ export class ModelRouter {
    * block can switch on `profile.health === "alpha"` themselves.
    */
   private health: Map<string, { attempts: number; successes: number }> = new Map()
+  /** Last time `maybeRecoverDemoted` ran (ms epoch). Throttles the scan. */
+  private lastRecoveryMs = 0
 
   constructor(profiles?: ModelProfile[]) {
     if (profiles) {
@@ -221,10 +223,38 @@ export class ModelRouter {
   }
 
   /**
+   * Recovery check — promote an `alpha` profile back to `active` once
+   * health has stabilised. Without this, a transient 5-minute outage
+   * would demote a model permanently (the previous one-way demote).
+   * Called from `selectModel` on a budget so the cost is amortised —
+   * we don't need to scan every call.
+   */
+  private maybeRecoverDemoted(): void {
+    const now = Date.now()
+    if (now - this.lastRecoveryMs < RECOVERY_CHECK_INTERVAL_MS) return
+    this.lastRecoveryMs = now
+    for (const [key, entry] of this.health) {
+      if (entry.attempts < RECOVERY_MIN_SAMPLES) continue
+      const failureRate = 1 - entry.successes / entry.attempts
+      if (failureRate > RECOVERY_FAILURE_THRESHOLD) continue
+      const [provider, model] = key.split("/", 2) as [string, string]
+      const profile = this.profiles.find((p) => p.provider === provider && p.model === model)
+      if (profile && profile.status === "alpha") {
+        profile.status = "active"
+      }
+    }
+  }
+
+  /**
    * Read-only health snapshot. Useful for debugging the router from the
    * dashboard or for tests that need to assert outcomes were recorded.
    */
-  getHealthSnapshot(): Array<{ key: string; attempts: number; successes: number; failureRate: number }> {
+  getHealthSnapshot(): Array<{
+    key: string
+    attempts: number
+    successes: number
+    failureRate: number
+  }> {
     const out: Array<{ key: string; attempts: number; successes: number; failureRate: number }> = []
     for (const [key, entry] of this.health) {
       out.push({
@@ -249,6 +279,11 @@ export class ModelRouter {
       // Absolute fallback — no profiles registered.
       return { provider: "anthropic", model: "claude-3-haiku-20240307" }
     }
+
+    // Periodic recovery check: promote any "alpha" model that has
+    // stabilised. Throttled to once per RECOVERY_CHECK_INTERVAL_MS so
+    // the per-call cost is bounded.
+    this.maybeRecoverDemoted()
 
     // 借鉴 opencode - 跳过 deprecated 模型,它们不应进入打分池
     const eligible = this.profiles.filter((p) => (p.status ?? "active") !== "deprecated")
@@ -281,6 +316,13 @@ export class ModelRouter {
 const HEALTH_MIN_SAMPLES = 10
 /** Above this failure rate (over HEALTH_MIN_SAMPLES), the model is "alpha". */
 const HEALTH_FAILURE_THRESHOLD = 0.5
+
+// Recovery: once a model is "alpha" we re-check health periodically. After
+// it accumulates RECOVERY_MIN_SAMPLES with failure rate below
+// RECOVERY_FAILURE_THRESHOLD, we promote it back to "active".
+const RECOVERY_MIN_SAMPLES = 20
+const RECOVERY_FAILURE_THRESHOLD = 0.1
+const RECOVERY_CHECK_INTERVAL_MS = 60_000
 
 // ---------------------------------------------------------------------------
 // TaskCharacteristics derivation

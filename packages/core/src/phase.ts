@@ -273,8 +273,16 @@ export class PhaseRunner<S = unknown> {
         throw new Error(`Phase "${result.phaseId}" gate returned 'fail'`)
       }
 
-      // 'skip' verdict → stop sequence early.
+      // 'skip' verdict → stop sequence early. Advance currentPhaseIdx past
+      // the skipped phase so a subsequent runUntil() with a later target
+      // doesn't re-enter the same phase. Without this, calling
+      // runUntil('c') after skipping 'b' would re-execute 'b' — the
+      // history already contains the skip result, so re-running would
+      // produce a duplicate (and potentially a non-deterministic second
+      // verdict, since skip verdicts can be derived from runtime state).
       if (result.verdict === "skip") {
+        this.currentPhaseIdx++
+        this.retryCount = 0
         await this.eventBus.publishAsync({
           type: "runner:complete",
           workspaceId: this.ctx.workspaceId,
