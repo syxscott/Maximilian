@@ -201,7 +201,10 @@ describe("PermissionDialog — embedded diff", () => {
         pending={makePending({
           tool: "edit",
           target: "/app/main.ts",
-          input: { old_string: "const x = 1", new_string: "const x = 2" },
+          // camelCase to match packages/tools/src/edit.ts input schema
+          // (snake_case would silently produce no preview — see the
+          // diff-preview.test.tsx regression test).
+          input: { oldString: "const x = 1", newString: "const x = 2" },
         })}
         onAnswer={vi.fn()}
       />,

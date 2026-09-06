@@ -11,7 +11,7 @@
  * util module.
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import path from "node:path"
 import { createSimpleContext } from "../../context/helper"
 import { useTuiPaths } from "../../context/runtime"
@@ -93,81 +93,91 @@ type PromptHistoryValue = {
   append: (item: PromptInfo) => void
 }
 
-export const { use: usePromptHistory, provider: PromptHistoryProvider } = createSimpleContext<PromptHistoryValue, Record<string, never>>({
+export const { use: usePromptHistory, provider: PromptHistoryProvider } = createSimpleContext<
+  PromptHistoryValue,
+  Record<string, never>
+>({
   name: "PromptHistory",
   init: () => {
     const paths = useTuiPaths()
     const historyPath = path.join(paths.state, "prompt-history.jsonl")
     const [state, setState] = useState<HistoryState>({ index: 0, history: [] })
+    // Synchronous mirror of `state`: mutators can fire several times within
+    // one render tick (rapid arrow-key recalls, submit right after recall)
+    // and useState commits are async — reading render-closure state there
+    // loses updates. The ref is advanced eagerly in commit() and kept in
+    // step everywhere state changes.
+    const stateRef = useRef(state)
+    const commit = useCallback((next: HistoryState) => {
+      stateRef.current = next
+      setState(next)
+    }, [])
 
     useEffect(() => {
       let cancelled = false
       void readText(historyPath).then((text) => {
         if (cancelled) return
         const lines = parsePromptHistory(text)
-        setState((prev) => ({ ...prev, history: lines }))
+        commit({ ...stateRef.current, history: lines })
         // Self-heal on load: rewrite any retained entries so corruption is
         // trimmed and the limit is enforced.
         if (lines.length > 0) {
-          void writeText(historyPath, lines.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(() => {})
+          void writeText(
+            historyPath,
+            lines.map((line) => JSON.stringify(line)).join("\n") + "\n",
+          ).catch(() => {})
         }
       })
       return () => {
         cancelled = true
       }
-    }, [historyPath])
+    }, [historyPath, commit])
 
     const move = useCallback(
       (direction: 1 | -1, input: string): PromptInfo | undefined => {
-        const current = state.history.at(state.index)
+        // Read the ref, not the render closure: the returned entry must
+        // reflect every move() that already ran in this render tick.
+        const { index, history } = stateRef.current
+        const current = history.at(index)
         if (!current) return undefined
-        if (current.input !== input && input.length) return
-        // Compute the next index synchronously so the return value
-        // matches what the caller will see after the setState commit.
-        // The previous implementation returned `state.history.at(state.index)`
-        // which is the OLD index (because setState is async), so the
-        // caller always saw the prior history entry.
-        const nextIndex = state.index + direction
-        if (Math.abs(nextIndex) > state.history.length) return current
+        if (current.input !== input && input.length) return undefined
+        const nextIndex = index + direction
+        if (Math.abs(nextIndex) > history.length) return current
         if (nextIndex > 0) return current
-        setState((prev) =>
-          Math.abs(prev.index + direction) > prev.history.length || prev.index + direction > 0
-            ? prev
-            : { ...prev, index: prev.index + direction },
-        )
-        if (nextIndex === 0) return { input: "", parts: [] }
-        return state.history.at(nextIndex)
+        commit({ index: nextIndex, history })
+        return nextIndex === 0 ? { input: "", parts: [] } : history.at(nextIndex)
       },
-      [state],
+      [commit],
     )
 
     const append = useCallback(
       (item: PromptInfo) => {
-        // Move side effects OUT of the setState updater — Strict Mode
-        // runs the updater twice and concurrent rendering may skip it,
-        // both of which would either duplicate the disk write or lose
-        // it entirely.
+        // Compute from the ref and persist OUTSIDE any setState updater —
+        // an updater can run twice (Strict Mode) or be skipped (concurrent
+        // rendering), which would duplicate or drop the disk write.
         const entry = structuredClone(item)
-        if (isDuplicateEntry(state.history.at(-1), entry)) {
-          setState((prev) => ({ ...prev, index: 0 }))
+        const { history } = stateRef.current
+        if (isDuplicateEntry(history.at(-1), entry)) {
+          commit({ index: 0, history })
           return
         }
-        const nextHistory = [...state.history, entry]
+        const nextHistory = [...history, entry]
         let trimmed = false
         if (nextHistory.length > MAX_HISTORY_ENTRIES) {
           nextHistory.splice(0, nextHistory.length - MAX_HISTORY_ENTRIES)
           trimmed = true
         }
-        setState({ history: nextHistory, index: 0 })
+        commit({ history: nextHistory, index: 0 })
         if (trimmed) {
-          void writeText(historyPath, nextHistory.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(
-            () => {},
-          )
+          void writeText(
+            historyPath,
+            nextHistory.map((line) => JSON.stringify(line)).join("\n") + "\n",
+          ).catch(() => {})
         } else {
           void appendText(historyPath, JSON.stringify(entry) + "\n").catch(() => {})
         }
       },
-      [historyPath, state.history],
+      [historyPath, commit],
     )
 
     return { move, append }

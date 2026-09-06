@@ -13,7 +13,6 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { usageApi } from "../api"
-import { queryKeys } from "../lib/api/hooks.js"
 
 export interface LiveUsage {
   totalCostUsd: number
@@ -27,15 +26,17 @@ export interface LiveUsage {
 
 const POLL_INTERVAL_MS = 30_000
 
+// Distinct prefix from `queryKeys.usageSummary("today")` so the cached
+// trimmed `LiveUsage` shape (this hook) never gets read back as the full
+// `UsageSummary` (which has `latency.sampleCount`, etc). Mounting order
+// was previously: LiveUsagePill ran first → cached the trimmed object →
+// UsagePanel then selected "today" → TanStack handed it the trimmed
+// shape and crashed on `s.latency.sampleCount`.
+const LIVE_USAGE_KEY = ["live-usage", "today"] as const
+
 export function useLiveUsage(enabled = true) {
-  // Reuse `useUsageSummary("today")`'s query key so TanStack Query dedupes
-  // the poll with the on-demand fetch from `UsagePanel`. The previous
-  // version suffixed "live" which forced the two hooks to make independent
-  // HTTP requests for the same data (twice the bandwidth, twice the
-  // server load, and a small chance of seeing two slightly different
-  // snapshots in the same render). Refetch cadence is shared too.
   return useQuery<LiveUsage>({
-    queryKey: queryKeys.usageSummary("today"),
+    queryKey: LIVE_USAGE_KEY,
     queryFn: async ({ signal }) => {
       const s = await usageApi.summary("today", signal)
       return {

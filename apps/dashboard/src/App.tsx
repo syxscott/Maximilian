@@ -12,7 +12,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { useHealth, useWorkspaces } from "@/lib/api/hooks"
 import { useLocale, t } from "@max/i18n"
 import { chatApi, openWorkspaceStream } from "./api"
-import type { Workspace, RuntimeEvent } from "./api"
+import type { Workspace, RuntimeEvent, WorkspaceStreamHandle } from "./api"
 import { ChatPanel } from "./components/ChatPanel"
 import { AgentPanel } from "./components/AgentPanel"
 import { TaskPanel } from "./components/TaskPanel"
@@ -75,19 +75,32 @@ export function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [events, setEvents] = useState<RuntimeEvent[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const esRef = useRef<EventSource | null>(null)
+  // Holds the active stream handle returned by `openWorkspaceStream`.
+  // The implementation switched from native EventSource to fetch +
+  // ReadableStream so the Authorization bearer token can ride along;
+  // the handle exposes `.close()` to mirror the EventSource lifecycle.
+  const streamRef = useRef<WorkspaceStreamHandle | null>(null)
   // Used to cancel an in-flight POST when the user re-submits. SSE itself
   // can't be aborted (browser API doesn't allow it), but the chat request
-  // can, and we close the previous EventSource in stopStream().
+  // can, and we close the previous stream in stopStream().
   const abortRef = useRef<AbortController | null>(null)
-  // Latest un-answered permission prompt. We track the requestId so the
-  // answer call always pairs with the event the user actually saw.
-  const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null)
-  // Consecutive error count for the current EventSource. The browser
-  // auto-reconnects on transient failure and resends `Last-Event-ID` so the
-  // server can replay missed events — but for permanent failures (404,
-  // 403, repeated 5xx) we cap retries and close the stream so the UI
-  // doesn't spin forever.
+  // Queue of un-answered permission/approval prompts, keyed by
+  // `requestId`. The runtime emits a fresh resolver for every prompt and
+  // multiple DAG tasks can prompt in parallel — the previous single-slot
+  // state would overwrite the earlier pending and orphan its resolver
+  // forever (the user could only answer whichever prompt was displayed
+  // last). The dialog renders one at a time (FIFO) with a "skip" action
+  // when more are queued. `currentPending` is derived for the dialog
+  // and `parkedTaskIds` collects every taskId for the sidebar.
+  const [pendingPermissions, setPendingPermissions] = useState<Map<string, PendingPermission>>(
+    () => new Map(),
+  )
+  const currentPending: PendingPermission | null =
+    pendingPermissions.size > 0 ? (pendingPermissions.values().next().value ?? null) : null
+  // Consecutive error count for the current stream. We reconnect up to
+  // SSE_MAX_RETRIES transient failures before giving up; beyond that we
+  // close the stream so the UI doesn't spin forever on a permanent
+  // failure (404, 403, repeated 5xx).
   const sseErrorCount = useRef(0)
   const SSE_MAX_RETRIES = 5
   // Request token — monotonically increasing per submit. Every async
@@ -104,22 +117,26 @@ export function App() {
   const tokenRef = useRef(0)
 
   const stopStream = useCallback(() => {
-    if (esRef.current) {
-      esRef.current.close()
-      esRef.current = null
+    if (streamRef.current) {
+      streamRef.current.close()
+      streamRef.current = null
     }
   }, [])
 
   // Abort the in-flight submission + close the SSE stream. Bound to the
-  // Stop button in ChatPanel. Note: this does NOT cancel the server-side
-  // workspace execution — the backend has no cancel endpoint yet. The
-  // orphaned workspace continues running and its events fire into the
-  // void (no subscriber); the user's UI clears and they can start fresh.
+  // Stop button in ChatPanel. STOPS UI ONLY: this aborts the browser
+  // fetch and closes the local stream, but the backend workspace keeps
+  // executing until a `/api/workspaces/:id/cancel` endpoint exists and
+  // is wired through. The orphan workspace continues running and its
+  // events fire into the void (no subscriber); the user's UI clears
+  // and they can start fresh. Adding the cancel endpoint is tracked as
+  // a follow-up — it would call `runtime.interrupt(workspaceId, ...)`
+  // to surface a `RuntimeInterrupt` to the executing task loop.
   const abortSubmission = useCallback(() => {
     abortRef.current?.abort()
     stopStream()
-    // Bump the token so any pending `es.onmessage` / `es.onerror` from
-    // the old stream short-circuits (line 130/201) without flipping
+    // Bump the token so any pending stream `onMessage` / `onError`
+    // callbacks from the old stream short-circuit without flipping
     // `submitting` after we've already cleared it below.
     tokenRef.current++
     setSubmitting(false)
@@ -164,7 +181,7 @@ export function App() {
   async function handleSubmit(message: string) {
     // Cancel any in-flight request and close any open stream first. Without
     // this, rapid clicks on the Send button would open N parallel SSE
-    // connections and leak EventSources when the user navigates away mid-stream.
+    // connections and leak streams when the user navigates away mid-stream.
     abortRef.current?.abort()
     abortRef.current = new AbortController()
     stopStream()
@@ -177,20 +194,19 @@ export function App() {
       if (tokenRef.current !== myToken) return
       setEvents([])
 
-      const es = openWorkspaceStream(workspaceId)
-      esRef.current = es
-      sseErrorCount.current = 0
-
-      es.onmessage = (e) => {
+      // Build the message handlers first so the retry path inside
+      // `onError` can re-open with the same callbacks. Each handler
+      // closes over `myToken` to filter out stale frames after a newer
+      // submit has replaced this one.
+      const handleMessage = (data: Record<string, unknown>) => {
         // Ignore messages from a stale stream (a newer submit replaced us).
         if (tokenRef.current !== myToken) return
         // A successful message resets the retry counter — the connection
         // is healthy and we should tolerate the next transient failure.
         sseErrorCount.current = 0
         try {
-          const data = JSON.parse(e.data)
           if (data.type === "workspace") {
-            setWorkspace(data.workspace)
+            setWorkspace(data.workspace as Workspace)
           } else if (data.type === "event") {
             const ev = data.event as { type?: string } & Record<string, unknown>
             setEvents((prev) => [...prev, ev as RuntimeEvent])
@@ -208,44 +224,63 @@ export function App() {
             if (ev.type === "permission-request") {
               const requestId = strField("requestId")
               if (!requestId) return
-              setPendingPermission({
-                kind: "permission",
-                requestId,
-                workspaceId: strField("workspaceId") ?? "",
-                taskId: strField("taskId") ?? "",
-                tool: strField("tool") ?? "",
-                target: strField("target") ?? "",
-                input: ev.input ?? undefined,
+              setPendingPermissions((prev) => {
+                const next = new Map(prev)
+                next.set(requestId, {
+                  kind: "permission",
+                  requestId,
+                  workspaceId: strField("workspaceId") ?? "",
+                  taskId: strField("taskId") ?? "",
+                  tool: strField("tool") ?? "",
+                  target: strField("target") ?? "",
+                  input: ev.input ?? undefined,
+                })
+                return next
               })
             } else if (ev.type === "permission-resolved") {
               const requestId = strField("requestId")
               if (!requestId) return
-              setPendingPermission((p) => (p && p.requestId === requestId ? null : p))
+              setPendingPermissions((prev) => {
+                if (!prev.has(requestId)) return prev
+                const next = new Map(prev)
+                next.delete(requestId)
+                return next
+              })
             } else if (ev.type === "approval-request") {
               const requestId = strField("requestId")
               if (!requestId) return
-              setPendingPermission({
-                kind: "approval",
-                requestId,
-                workspaceId: strField("workspaceId") ?? "",
-                taskId: strField("taskId") ?? "",
-                prompt: strField("prompt") ?? "",
-                reason: strField("reason"),
-                requireComment: boolField("requireComment"),
+              setPendingPermissions((prev) => {
+                const next = new Map(prev)
+                next.set(requestId, {
+                  kind: "approval",
+                  requestId,
+                  workspaceId: strField("workspaceId") ?? "",
+                  taskId: strField("taskId") ?? "",
+                  prompt: strField("prompt") ?? "",
+                  reason: strField("reason"),
+                  requireComment: boolField("requireComment"),
+                })
+                return next
               })
             } else if (ev.type === "approval-resolved") {
               const requestId = strField("requestId")
               if (!requestId) return
-              setPendingPermission((p) => (p && p.requestId === requestId ? null : p))
+              setPendingPermissions((prev) => {
+                if (!prev.has(requestId)) return prev
+                const next = new Map(prev)
+                next.delete(requestId)
+                return next
+              })
             }
           } else if (data.type === "done") {
-            // Detach onerror before close: closing the EventSource fires a
-            // final ERROR event which would otherwise re-enter our onerror
-            // and double-flip submitting.
-            es.onerror = null
-            es.close()
-            if (esRef.current === es) esRef.current = null
-            // Reset submitting only if this submit is still the active one.
+            // Tear the stream down. The fetch+ReadableStream impl does
+            // not auto-reconnect like EventSource did, so the retry
+            // counter is driven from `onError` and we reopen manually
+            // from there on transient failures.
+            streamRef.current?.close()
+            if (streamRef.current && tokenRef.current === myToken) {
+              // submit succeeded; the `done` event closes the lifecycle.
+            }
             if (tokenRef.current === myToken) setSubmitting(false)
           }
         } catch (err) {
@@ -253,35 +288,62 @@ export function App() {
         }
       }
 
-      es.onerror = () => {
+      const handleError = (err: unknown) => {
         // Ignore errors from a stale stream.
         if (tokenRef.current !== myToken) return
-        // The browser's EventSource auto-reconnects after a transient
-        // failure and resends `Last-Event-ID` so the server can replay
-        // missed events. We let it retry up to SSE_MAX_RETRIES; beyond
-        // that we close the stream so the UI doesn't spin forever on a
-        // permanent failure (404, 403, repeated 5xx).
+        // The fetch+ReadableStream impl does NOT auto-reconnect like
+        // EventSource did. We manually re-open up to SSE_MAX_RETRIES
+        // transient failures before giving up; beyond that we close
+        // the stream so the UI doesn't spin forever on a permanent
+        // failure (404, 403, repeated 5xx).
         sseErrorCount.current += 1
         if (sseErrorCount.current >= SSE_MAX_RETRIES) {
-          console.warn(`SSE gave up after ${sseErrorCount.current} consecutive errors`)
-          if (esRef.current === es) {
-            es.onerror = null
-            es.close()
-            esRef.current = null
-          }
-          // Only flip submitting off if we're still the current submit.
+          console.warn(`SSE gave up after ${sseErrorCount.current} consecutive errors`, err)
+          streamRef.current?.close()
           if (tokenRef.current === myToken) setSubmitting(false)
         } else {
           console.warn(
-            `SSE connection error (auto-reconnecting, attempt ${sseErrorCount.current}/${SSE_MAX_RETRIES})`,
+            `SSE connection error (reconnecting, attempt ${sseErrorCount.current}/${SSE_MAX_RETRIES})`,
+            err,
           )
-          // During auto-reconnect, KEEP submitting=true so the user knows
-          // the workspace is still in-flight. Previously this branch reset
-          // submitting on every transient blip, making the button flicker
-          // between disabled and enabled while the browser was still
-          // trying to recover.
+          // During reconnect, KEEP submitting=true so the user knows
+          // the workspace is still in-flight. The previous EventSource
+          // implementation reset submitting on every transient blip,
+          // making the button flicker between disabled and enabled
+          // while we were still trying to recover.
+          const current = streamRef.current
+          if (current) {
+            current.close()
+            streamRef.current = openWorkspaceStream(workspaceId, {
+              onMessage: handleMessage,
+              onError: handleError,
+              onClose: () => {
+                if (streamRef.current && tokenRef.current === myToken) {
+                  // Only null out if this is still our stream — a newer
+                  // submit may have already replaced it.
+                  // (No-op: the retry path's reassignment below is the
+                  // only writer.)
+                }
+              },
+            })
+          }
         }
       }
+
+      streamRef.current = openWorkspaceStream(workspaceId, {
+        onMessage: handleMessage,
+        onError: handleError,
+        onClose: () => {
+          // The handle self-nulls only when we're still the current
+          // submit. A newer submit has its own stream and its own
+          // ref value, so this branch leaves a replacement alone.
+          if (tokenRef.current === myToken) {
+            // Stream closed cleanly (e.g. terminal `done`); the `done`
+            // handler above already flipped submitting back. No-op here.
+          }
+        },
+      })
+      sseErrorCount.current = 0
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
       console.error("chat error", err)
@@ -299,8 +361,9 @@ export function App() {
 
   const answerPermission = useCallback(
     async (decision: "allow" | "deny") => {
-      if (!pendingPermission || pendingPermission.kind !== "permission") return
-      const id = pendingPermission.requestId
+      const target = pendingPermissions.values().next().value as PendingPermission | undefined
+      if (!target || target.kind !== "permission") return
+      const id = target.requestId
       try {
         await permissionsApi.answer(id, decision)
         // Close the dialog only after the server has acknowledged the
@@ -310,7 +373,12 @@ export function App() {
         // backend never received the decision and the next tool call
         // will re-prompt (now with no UX indication that the previous
         // attempt failed).
-        setPendingPermission(null)
+        setPendingPermissions((prev) => {
+          if (!prev.has(id)) return prev
+          const next = new Map(prev)
+          next.delete(id)
+          return next
+        })
       } catch (err) {
         console.error("[perms] answer failed", err)
         // Leave the dialog open so the user can retry. A subsequent
@@ -319,25 +387,53 @@ export function App() {
         // dialog via the SSE handler.
       }
     },
-    [pendingPermission],
+    [pendingPermissions],
   )
 
   const answerApproval = useCallback(
     async (decision: "approve" | "reject", comment?: string) => {
-      if (!pendingPermission || pendingPermission.kind !== "approval") return
-      const id = pendingPermission.requestId
+      const target = pendingPermissions.values().next().value as PendingPermission | undefined
+      if (!target || target.kind !== "approval") return
+      const id = target.requestId
       try {
         await permissionsApi.answerApproval(id, decision, comment)
         // Same reasoning as answerPermission above: only close on
         // server acknowledgement so a failed POST doesn't leave the
         // user thinking their decision was recorded.
-        setPendingPermission(null)
+        setPendingPermissions((prev) => {
+          if (!prev.has(id)) return prev
+          const next = new Map(prev)
+          next.delete(id)
+          return next
+        })
       } catch (err) {
         console.error("[approvals] answer failed", err)
       }
     },
-    [pendingPermission],
+    [pendingPermissions],
   )
+
+  // Skip the currently-displayed prompt without sending a decision to
+  // the server. Used when multiple prompts are queued and the user
+  // wants to defer the current one to the back of the queue.
+  // The prompt stays pending (its resolver still lives on the runtime
+  // side); we just rotate the dialog to the next entry. The user can
+  // come back via "Previous" or simply by re-opening the queue, but
+  // for now we keep it minimal — the FIFO rotation is the only path.
+  const skipCurrentPermission = useCallback(() => {
+    setPendingPermissions((prev) => {
+      if (prev.size <= 1) return prev
+      const first = prev.keys().next().value
+      if (!first) return prev
+      const entry = prev.get(first)
+      if (!entry) return prev
+      const next = new Map(prev)
+      next.delete(first)
+      // Reinsert at the back so the dialog advances to the next entry.
+      next.set(first, entry)
+      return next
+    })
+  }, [])
 
   // Cmd/Ctrl+K opens the command palette. Bound at the App level so it works
   // regardless of which tab is active. Skipped when typing in an input,
@@ -380,7 +476,9 @@ export function App() {
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Toaster />
       <PermissionDialog
-        pending={pendingPermission}
+        pending={currentPending}
+        queueSize={pendingPermissions.size}
+        onSkip={skipCurrentPermission}
         onAnswer={answerPermission}
         onApprovalAnswer={answerApproval}
       />
@@ -447,7 +545,9 @@ export function App() {
                     <AgentPanel
                       workspace={workspace}
                       parkedTaskIds={
-                        pendingPermission ? new Set([pendingPermission.taskId]) : undefined
+                        pendingPermissions.size > 0
+                          ? new Set(Array.from(pendingPermissions.values()).map((p) => p.taskId))
+                          : undefined
                       }
                     />
                     <TaskPanel workspace={workspace} />

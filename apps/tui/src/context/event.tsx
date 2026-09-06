@@ -28,13 +28,12 @@ export function useEvent() {
       if (event.type === "sync") return
       handler(
         { type: event.type, properties: event.properties },
-        // Previously this was hardcoded to `""` / `undefined`. That meant
-        // every downstream consumer (permission routing, workspace-scoped
-        // telemetry, governance filters) thought events came from "nowhere"
-        // — they'd drop the event, fall back to global aggregation, or log
-        // a confusing "no workspace" warning. Pipe the real SDK directory
-        // and project workspace through so multi-tenant routing actually
-        // works.
+        // Previously this was hardcoded to `""` / `undefined`. Pipe the real
+        // SDK directory and project workspace through so consumers receive
+        // accurate metadata instead of "nowhere". Note: nothing currently
+        // sets `workspace` in the project context, so the field is still
+        // `undefined` in practice — the directory is the only meaningful
+        // value today, kept for future workspace-scoped consumers.
         { directory: sdk.directory ?? "", workspace: project.workspace.current() },
       )
     })

@@ -38,11 +38,152 @@ export async function fetchJson<T>(
 }
 
 /**
- * Open the workspace SSE stream (arch guard: the ONLY place besides
- * fetchJson allowed to touch the network).
+ * Handle returned by `openWorkspaceStream`. Mirrors the EventSource shape
+ * callers expect (a `close()` method to tear down the stream) so the
+ * SSE wiring in `App.tsx` can swap implementations without changing
+ * lifecycle code.
  */
-export function openWorkspaceStream(workspaceId: string): EventSource {
-  return new EventSource(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/stream`)
+export interface WorkspaceStreamHandle {
+  close(): void
+}
+
+/**
+ * Open the workspace SSE stream (arch guard: the ONLY place besides
+ * `fetchJson` allowed to touch the network).
+ *
+ * Uses `fetch` + `ReadableStream` rather than the native `EventSource`
+ * because EventSource cannot send custom headers — and the backend
+ * route `GET /api/workspaces/:id/stream` is gated by `requireAuthMiddleware`,
+ * which expects `Authorization: Bearer <token>`. Without that header
+ * the server rejects the request with 401 and the UI never sees a single
+ * frame.
+ *
+ * Wire format (matches `apps/api/src/lib/sse-replay.ts encodeSseFrame`):
+ *   id: <seq>
+ *   data: <json>
+ *   <blank line>
+ * Ephemeral frames (workspace snapshot, terminal `done`) omit the `id:`
+ * line and look like:
+ *   data: <json>
+ *   <blank line>
+ * Heartbeat comments (`: ping`) are ignored.
+ */
+export function openWorkspaceStream(
+  workspaceId: string,
+  handlers: {
+    onMessage: (data: Record<string, unknown>, lastEventId?: string) => void
+    onError?: (err: unknown) => void
+    onOpen?: () => void
+    onClose?: () => void
+  },
+  options?: { lastEventId?: string; signal?: AbortSignal },
+): WorkspaceStreamHandle {
+  const url = `${BASE}/workspaces/${encodeURIComponent(workspaceId)}/stream`
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let lastEventId: string | undefined = options?.lastEventId
+  let closed = false
+  let cleanup: () => void = () => {}
+
+  const headers: Record<string, string> = {
+    Accept: "text/event-stream",
+    ...authHeaders(),
+  }
+  if (lastEventId) headers["Last-Event-ID"] = lastEventId
+
+  const controller = new AbortController()
+  const externalSignal = options?.signal
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort(externalSignal.reason)
+    else externalSignal.addEventListener("abort", () => controller.abort(), { once: true })
+  }
+
+  const finalize = () => {
+    if (closed) return
+    closed = true
+    cleanup()
+    handlers.onClose?.()
+  }
+
+  fetch(url, { method: "GET", headers, signal: controller.signal })
+    .then(async (res) => {
+      if (closed) return
+      if (!res.ok || !res.body) {
+        const body = await res.text().catch(() => "")
+        const detail = body ? `: ${body.slice(0, 200)}` : ""
+        handlers.onError?.(new Error(`${res.status} ${res.statusText}${detail}`))
+        finalize()
+        return
+      }
+      handlers.onOpen?.()
+      const reader = res.body.getReader()
+      cleanup = () => {
+        try {
+          reader.cancel().catch(() => {})
+        } catch {}
+      }
+      try {
+        for (;;) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          // SSE frames are separated by a blank line. Walk the buffer
+          // and emit each complete frame as we find the `\n\n` boundary.
+          let frameEnd: number
+          while ((frameEnd = buffer.indexOf("\n\n")) !== -1) {
+            const rawFrame = buffer.slice(0, frameEnd)
+            buffer = buffer.slice(frameEnd + 2)
+            const lines = rawFrame.split("\n")
+            let data: string | undefined
+            for (const line of lines) {
+              // Lines starting with `:` are SSE comments (heartbeats);
+              // ignore them entirely.
+              if (line.startsWith(":")) continue
+              if (line.startsWith("id:")) {
+                const v = line.length > 3 ? line.slice(3).replace(/^ /, "") : ""
+                if (v) lastEventId = v
+              } else if (line.startsWith("data:")) {
+                // Per the SSE spec, multiple `data:` lines concatenate
+                // with `\n` between them; for our wire format there's
+                // exactly one per frame so simple append is fine.
+                const piece = line.length > 5 ? line.slice(5).replace(/^ /, "") : ""
+                data = data === undefined ? piece : data + "\n" + piece
+              }
+            }
+            if (data === undefined) continue
+            try {
+              const parsed = JSON.parse(data) as Record<string, unknown>
+              handlers.onMessage(parsed, lastEventId)
+            } catch (err) {
+              console.error("[api] SSE parse error", err)
+            }
+          }
+        }
+      } catch (err) {
+        if (!closed) handlers.onError?.(err)
+      } finally {
+        finalize()
+      }
+    })
+    .catch((err) => {
+      if (closed) return
+      // AbortError is the expected close path — surface the close
+      // callback without treating it as an error.
+      if (err instanceof Error && err.name === "AbortError") {
+        finalize()
+        return
+      }
+      handlers.onError?.(err)
+      finalize()
+    })
+
+  return {
+    close() {
+      if (closed) return
+      controller.abort()
+      finalize()
+    },
+  }
 }
 
 // Re-export zod so feature modules can share the runtime schema.
@@ -268,31 +409,35 @@ export const obsApi = {
   listExecutions: (signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/obs/executions`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({ count: z.number(), executions: z.array(ExecutionTraceSchema) }),
     ),
 
   listEvolutions: (signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/obs/evolutions`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({ count: z.number(), evolutions: z.array(EvolutionTraceSchema) }),
     ),
 
   getGraph: (executionId: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/obs/graph/${executionId}`, { signal }, UIGraphSchema),
+    fetchJson(
+      `${BASE}/obs/graph/${executionId}`,
+      { headers: authHeaders(), signal },
+      UIGraphSchema,
+    ),
 
   getTimeline: (signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/obs/timeline`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({ timeline: z.array(TimelineEntrySchema) }),
     ),
 
   lineageByRole: (role: string, signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/obs/lineage/agent/${encodeURIComponent(role)}`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({
         role: z.string(),
         count: z.number(),
@@ -340,12 +485,16 @@ export const metaApi = {
   listCapabilities: (signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/meta/capabilities`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({ count: z.number(), capabilities: z.array(CapabilityRecordSchema) }),
     ),
 
   getGovernanceConfig: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/meta/governance/config`, { signal }, GovernanceConfigSchema),
+    fetchJson(
+      `${BASE}/meta/governance/config`,
+      { headers: authHeaders(), signal },
+      GovernanceConfigSchema,
+    ),
 
   updateGovernanceConfig: (config: Partial<GovernanceConfig>, signal?: AbortSignal) =>
     fetchJson(
@@ -359,7 +508,8 @@ export const metaApi = {
       z.object({ ok: z.boolean(), config: GovernanceConfigSchema }),
     ),
 
-  health: (signal?: AbortSignal) => fetchJson(`${BASE}/health`, { signal }, HealthSchema),
+  health: (signal?: AbortSignal) =>
+    fetchJson(`${BASE}/health`, { headers: authHeaders(), signal }, HealthSchema),
 }
 
 // ── Workspace / Chat Schemas ─────────────────────────────────────────────
@@ -578,7 +728,11 @@ export const chatApi = {
     ),
 
   getWorkspace: (id: string, signal?: AbortSignal) =>
-    fetchJson(`${BASE}/workspaces/${encodeURIComponent(id)}`, { signal }, WorkspaceSchema),
+    fetchJson(
+      `${BASE}/workspaces/${encodeURIComponent(id)}`,
+      { headers: authHeaders(), signal },
+      WorkspaceSchema,
+    ),
 
   /**
    * List workspace ids visible to the current tenant. Used by the
@@ -596,7 +750,7 @@ export const chatApi = {
     const qs = params.toString()
     return fetchJson(
       `${BASE}/workspaces${qs ? `?${qs}` : ""}`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({
         items: z.array(z.string()),
         nextCursor: z.string().optional(),
@@ -608,7 +762,7 @@ export const chatApi = {
   listArtifacts: (id: string, signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/workspaces/${encodeURIComponent(id)}/artifacts`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({
         workspaceId: z.string(),
         artifacts: z.array(z.string()),
@@ -618,6 +772,7 @@ export const chatApi = {
   readArtifact: async (workspaceId: string, name: string): Promise<string> => {
     const res = await fetch(
       `${BASE}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(name)}`,
+      { headers: authHeaders() },
     )
     if (!res.ok) throw new Error(`Artifact not found: ${name}`)
     return res.text()
@@ -626,7 +781,7 @@ export const chatApi = {
   getEvents: (id: string, signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/workspaces/${encodeURIComponent(id)}/events`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({
         workspaceId: z.string(),
         events: z.array(RuntimeEventSchema),
@@ -634,7 +789,7 @@ export const chatApi = {
     ),
 
   listProviders: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/providers`, { signal }, ProviderListResponseSchema),
+    fetchJson(`${BASE}/providers`, { headers: authHeaders(), signal }, ProviderListResponseSchema),
 
   setDefaultProvider: (providerId: string, signal?: AbortSignal) =>
     fetchJson(
@@ -666,7 +821,7 @@ export const chatApi = {
   getProviderHealth: (providerId: string, signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/system/providers/${encodeURIComponent(providerId)}/health`,
-      { signal },
+      { headers: authHeaders(), signal },
       ProviderHealthSchema,
     ),
 
@@ -674,7 +829,7 @@ export const chatApi = {
   getFailoverQueue: (signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/system/failover/queue`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({
         queue: z.array(
           z.object({
@@ -714,7 +869,11 @@ export const chatApi = {
 
   /** Get auto-failover enabled state. */
   getAutoFailoverEnabled: (signal?: AbortSignal) =>
-    fetchJson(`${BASE}/system/failover/auto`, { signal }, z.object({ enabled: z.boolean() })),
+    fetchJson(
+      `${BASE}/system/failover/auto`,
+      { headers: authHeaders(), signal },
+      z.object({ enabled: z.boolean() }),
+    ),
 
   /** Set auto-failover enabled state. */
   setAutoFailoverEnabled: (enabled: boolean, signal?: AbortSignal) =>
@@ -745,7 +904,7 @@ export const chatApi = {
   getCircuitBreakerStats: (providerId: string, signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/system/providers/${encodeURIComponent(providerId)}/circuit-breaker/stats`,
-      { signal },
+      { headers: authHeaders(), signal },
       z.object({
         state: z.enum(["closed", "open", "half-open"]),
         failures: z.number().int().nonnegative(),
@@ -761,14 +920,14 @@ export const usageApi = {
   summary: (range: string, signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/obs/usage/summary?range=${encodeURIComponent(range)}`,
-      { signal },
+      { headers: authHeaders(), signal },
       UsageSummarySchema,
     ),
 
   daily: (range: string, signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/obs/usage/daily?range=${encodeURIComponent(range)}`,
-      { signal },
+      { headers: authHeaders(), signal },
       UsageDailyResponseSchema,
     ),
 }

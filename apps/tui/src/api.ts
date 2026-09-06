@@ -88,6 +88,8 @@ export interface UsageSummary {
   totalCacheCreationTokens: number
   realTotalTokens: number
   totalCostUsd: number
+  /** False when any request in the window lacked pricing (total is partial). */
+  totalCostUsdKnown?: boolean
   successRate: number
   cacheHitRate: number
   unpricedRequestCount: number
@@ -103,7 +105,9 @@ export interface ChatResponse {
 export interface MaximilianClient {
   health(signal?: AbortSignal): Promise<Health>
   listExecutions(signal?: AbortSignal): Promise<{ count: number; executions: ExecutionTrace[] }>
-  listPendingProposals(signal?: AbortSignal): Promise<{ count: number; proposals: PendingProposal[] }>
+  listPendingProposals(
+    signal?: AbortSignal,
+  ): Promise<{ count: number; proposals: PendingProposal[] }>
   getUsageSummary(range: UsageRange, signal?: AbortSignal): Promise<UsageSummary>
   chat(message: string, signal?: AbortSignal): Promise<ChatResponse>
 }
@@ -141,9 +145,12 @@ export function createMaximilianClient(baseUrl: string, token?: string): Maximil
 
   return {
     health: (signal) => getJson<Health>("/api/health", signal),
-    listExecutions: (signal) => getJson<{ count: number; executions: ExecutionTrace[] }>("/api/obs/executions", signal),
-    listPendingProposals: (signal) => getJson<{ count: number; proposals: PendingProposal[] }>("/api/gov/pending", signal),
-    getUsageSummary: (range, signal) => getJson<UsageSummary>(`/api/obs/usage/summary?range=${encodeURIComponent(range)}`, signal),
+    listExecutions: (signal) =>
+      getJson<{ count: number; executions: ExecutionTrace[] }>("/api/obs/executions", signal),
+    listPendingProposals: (signal) =>
+      getJson<{ count: number; proposals: PendingProposal[] }>("/api/gov/pending", signal),
+    getUsageSummary: (range, signal) =>
+      getJson<UsageSummary>(`/api/obs/usage/summary?range=${encodeURIComponent(range)}`, signal),
     chat: (message, signal) => postJson<ChatResponse>("/api/chat", { message }, signal),
   }
 }

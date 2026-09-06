@@ -29,16 +29,18 @@ interface ExtractedChange {
 
 /**
  * Pull an (old, new) text pair out of a tool input. Supports the edit tool
- * (`old_string`/`new_string`) and the write tool (`content` replaces the
- * whole file; `oldText` empty → all-added view).
+ * (`oldString`/`newString` — camelCase, matching `packages/tools/src/edit.ts`
+ * input schema) and the write tool (`content` replaces the whole file;
+ * the server doesn't ship a pre-existing body, so we render an all-added
+ * view).
  */
 export function extractChange(tool: string | undefined, input: unknown): ExtractedChange | null {
   if (!input || typeof input !== "object") return null
   const obj = input as Record<string, unknown>
   const str = (v: unknown): string | null => (typeof v === "string" ? v : null)
   if (tool === "edit") {
-    const oldText = str(obj.old_string)
-    const newText = str(obj.new_string)
+    const oldText = str(obj.oldString)
+    const newText = str(obj.newString)
     if (oldText === null || newText === null) return null
     return { kind: "edit", oldText, newText }
   }
@@ -107,16 +109,22 @@ export function DiffPreview({ tool, input, maxLines = 24 }: DiffPreviewProps) {
   const overflow = lines.length > maxLines
   const visible = overflow ? lines.slice(0, maxLines) : lines
 
-  const isNewFile = change.kind === "write" && change.oldText.length === 0
-  const header = isNewFile
-    ? `${t("diffPreview.write")} · ${t("diffPreview.newFile")}`
-    : `${t(change.kind === "edit" ? "diffPreview.edit" : "diffPreview.write")} · ${t(
-        "diffPreview.linesChanged",
-        {
+  // For `write` we can't tell from the tool input alone whether the file
+  // already exists — `packages/tools/src/write.ts` will stat() and overwrite
+  // either way. So label it as a plain "write" and avoid the misleading
+  // "new file" claim (which was previously driven solely by `oldText === ""`,
+  // i.e. always true for write). The previous header would have lied on
+  // every overwrite of an existing file.
+  const header =
+    change.kind === "edit"
+      ? `${t("diffPreview.edit")} · ${t("diffPreview.linesChanged", {
           old: change.oldText.split("\n").length,
           new: change.newText.split("\n").length,
-        },
-      )}`
+        })}`
+      : `${t("diffPreview.write")} · ${t("diffPreview.linesChanged", {
+          old: 0,
+          new: change.newText.split("\n").length,
+        })}`
 
   return (
     <div

@@ -24,11 +24,25 @@ import { useLocale, t } from "@max/i18n"
 
 export interface PermissionDialogProps {
   pending: PendingPermission | null
+  /**
+   * Total number of queued prompts (including the currently displayed one).
+   * When > 1, a "Next" button is shown so the user can skip a prompt they
+   * don't want to think about right now without blocking the entire queue.
+   */
+  queueSize?: number
+  /** Skip the current prompt without answering it. */
+  onSkip?: () => void
   onAnswer: (decision: "allow" | "deny") => Promise<void>
   onApprovalAnswer?: (decision: "approve" | "reject", comment: string | undefined) => Promise<void>
 }
 
-export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: PermissionDialogProps) {
+export function PermissionDialog({
+  pending,
+  queueSize = 1,
+  onSkip,
+  onAnswer,
+  onApprovalAnswer,
+}: PermissionDialogProps) {
   useLocale()
   const open = pending !== null
   const isApproval = pending?.kind === "approval"
@@ -98,6 +112,10 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
     }
   }
 
+  // Show a queue counter when more than one prompt is waiting, so the
+  // user knows there are siblings they haven't seen yet.
+  const hasQueue = queueSize > 1
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent data-testid="permission-dialog">
@@ -105,6 +123,14 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4" />
             {isApproval ? t("approvals.required.title") : t("permissions.required.title")}
+            {hasQueue ? (
+              <span
+                className="ml-1 text-xs font-normal text-muted-foreground"
+                data-testid="perm-dialog-queue"
+              >
+                {t("permissions.queueCounter", { current: 1, total: queueSize })}
+              </span>
+            ) : null}
           </DialogTitle>
           <DialogDescription>
             {isApproval
@@ -183,6 +209,16 @@ export function PermissionDialog({ pending, onAnswer, onApprovalAnswer }: Permis
         )}
 
         <DialogFooter className="gap-2">
+          {hasQueue && onSkip ? (
+            <Button
+              variant="ghost"
+              onClick={onSkip}
+              disabled={submitting}
+              data-testid="perm-dialog-skip"
+            >
+              {t("permissions.skip")}
+            </Button>
+          ) : null}
           {isApproval ? (
             <>
               <Button

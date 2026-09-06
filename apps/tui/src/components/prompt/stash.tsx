@@ -7,7 +7,7 @@
  * trimmed past the cap we rewrite the file in full.
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import path from "node:path"
 import { createSimpleContext } from "../../context/helper"
 import { useTuiPaths } from "../../context/runtime"
@@ -62,83 +62,95 @@ type PromptStashValue = {
   remove: (index: number) => void
 }
 
-export const { use: usePromptStash, provider: PromptStashProvider } = createSimpleContext<PromptStashValue, Record<string, never>>({
+export const { use: usePromptStash, provider: PromptStashProvider } = createSimpleContext<
+  PromptStashValue,
+  Record<string, never>
+>({
   name: "PromptStash",
   init: () => {
     const paths = useTuiPaths()
     const stashPath = path.join(paths.state, "prompt-stash.jsonl")
     const [entries, setEntries] = useState<StashEntry[]>([])
+    // Synchronous mirror of `entries`: push/pop/remove can fire several
+    // times within one render tick, and useState commits are async — a
+    // render-closure read would return the same top entry twice and lose
+    // the intermediate mutations.
+    const entriesRef = useRef(entries)
+    const commitEntries = useCallback((next: StashEntry[]) => {
+      entriesRef.current = next
+      setEntries(next)
+    }, [])
 
     useEffect(() => {
       let cancelled = false
       void readText(stashPath).then((text) => {
         if (cancelled) return
         const lines = parsePromptStash(text)
-        setEntries(lines)
+        commitEntries(lines)
         if (lines.length > 0) {
-          void writeText(stashPath, lines.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(() => {})
+          void writeText(
+            stashPath,
+            lines.map((line) => JSON.stringify(line)).join("\n") + "\n",
+          ).catch(() => {})
         }
       })
       return () => {
         cancelled = true
       }
-    }, [stashPath])
+    }, [stashPath, commitEntries])
 
     const persist = (next: StashEntry[]) => {
       if (next.length === 0) {
         void writeText(stashPath, "").catch(() => {})
       } else {
-        void writeText(stashPath, next.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(() => {})
+        void writeText(stashPath, next.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(
+          () => {},
+        )
       }
     }
 
     const push = useCallback(
       (entry: Omit<StashEntry, "timestamp">) => {
         const stash: StashEntry = { ...structuredClone(entry), timestamp: Date.now() }
-        setEntries((prev) => {
-          let trimmed = false
-          const next = [...prev, stash]
-          if (next.length > MAX_STASH_ENTRIES) {
-            next.splice(0, next.length - MAX_STASH_ENTRIES)
-            trimmed = true
-          }
-          if (trimmed) {
-            persist(next)
-          } else {
-            void appendText(stashPath, JSON.stringify(stash) + "\n").catch(() => {})
-          }
-          return next
-        })
+        const next = [...entriesRef.current, stash]
+        let trimmed = false
+        if (next.length > MAX_STASH_ENTRIES) {
+          next.splice(0, next.length - MAX_STASH_ENTRIES)
+          trimmed = true
+        }
+        // Keep the disk write OUTSIDE any setState updater — an updater can
+        // run twice (Strict Mode) or be skipped (concurrent rendering).
+        commitEntries(next)
+        if (trimmed) {
+          persist(next)
+        } else {
+          void appendText(stashPath, JSON.stringify(stash) + "\n").catch(() => {})
+        }
       },
-      [stashPath],
+      [stashPath, commitEntries],
     )
 
     const pop = useCallback((): StashEntry | undefined => {
-      // Snapshot the entry synchronously BEFORE dispatching the state
-      // update — the previous implementation captured `popped` inside
-      // a setEntries updater, which React Strict Mode runs twice, so
-      // the second invocation could see an empty array and clobber
-      // the snapshot with `undefined`. The outer state had already
-      // been mutated by the first run, losing the popped entry.
-      const snapshot = entries[entries.length - 1]
+      // Snapshot from the ref: consecutive pops in one tick must each return
+      // the then-current top entry, even though React state hasn't committed.
+      const snapshot = entriesRef.current[entriesRef.current.length - 1]
       if (!snapshot) return undefined
-      const next = entries.slice(0, -1)
-      setEntries(next)
+      const next = entriesRef.current.slice(0, -1)
+      commitEntries(next)
       persist(next)
       return snapshot
-    }, [entries, persist])
+    }, [commitEntries])
 
     const remove = useCallback(
       (index: number) => {
-        setEntries((prev) => {
-          if (index < 0 || index >= prev.length) return prev
-          const next = [...prev]
-          next.splice(index, 1)
-          persist(next)
-          return next
-        })
+        const prev = entriesRef.current
+        if (index < 0 || index >= prev.length) return
+        const next = [...prev]
+        next.splice(index, 1)
+        commitEntries(next)
+        persist(next)
       },
-      [stashPath],
+      [commitEntries],
     )
 
     return {

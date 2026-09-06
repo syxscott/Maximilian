@@ -56,7 +56,10 @@ type KvValue = {
   set: (key: string, value: unknown) => void
 }
 
-export const { use: useKV, provider: KVProvider } = createSimpleContext<KvValue, Record<string, never>>({
+export const { use: useKV, provider: KVProvider } = createSimpleContext<
+  KvValue,
+  Record<string, never>
+>({
   name: "KV",
   init: () => {
     const paths = useTuiPaths()
@@ -125,10 +128,12 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext<KvValue,
           set(name, defaultValue as unknown)
         }
         // Track the live value in a ref so the getter returns the most
-        // recent write immediately, not the value from whichever render
-        // closure captured `store`. Without this, code that does
-        //   const v = getter(); setter(x); console.log(getter())
-        // sees v repeated (closure stale) instead of v then x.
+        // recent write in the common case, not the value from whichever
+        // render closure captured `store`. Limitation: React only runs
+        // the setStore updater eagerly when no update is queued — with
+        // updates pending, liveRef.current stays stale until commit, so
+        // getter() after setter() is not a hard read-your-writes
+        // guarantee. Treat the ref as best-effort freshness only.
         const liveRef: { current: T } = { current: (store[name] as T | undefined) ?? defaultValue }
         const getter = () => liveRef.current
         const setter = (next: Setter<T>) => {

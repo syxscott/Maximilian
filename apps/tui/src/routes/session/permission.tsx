@@ -96,9 +96,7 @@ function TextBody(props: { title: string; description?: string; icon?: string })
   return (
     <Box flexDirection="column">
       <Box flexDirection="row" gap={1} paddingLeft={1}>
-        {props.icon ? (
-          <Text dimColor>{props.icon}</Text>
-        ) : null}
+        {props.icon ? <Text dimColor>{props.icon}</Text> : null}
         <Text dimColor>{props.title}</Text>
       </Box>
       {props.description ? (
@@ -154,7 +152,10 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
         <Text dimColor>Tell OpenCode what to do differently</Text>
       </Box>
       <Box paddingLeft={1} paddingTop={1}>
-        <Text color={theme.text}>{value}<Text color={theme.primary}>_</Text></Text>
+        <Text color={theme.text}>
+          {value}
+          <Text color={theme.primary}>_</Text>
+        </Text>
       </Box>
       <Box flexDirection="row" gap={2} paddingTop={1}>
         <Text>
@@ -225,18 +226,9 @@ function Prompt<const T extends Record<string, string>>(props: {
         </Box>
       )}
       {props.body}
-      <Box
-        flexDirection="row"
-        flexShrink={0}
-        gap={1}
-        paddingTop={1}
-      >
+      <Box flexDirection="row" flexShrink={0} gap={1} paddingTop={1}>
         {keys.map((option) => (
-          <Box
-            key={option as string}
-            paddingLeft={1}
-            paddingRight={1}
-          >
+          <Box key={option as string} paddingLeft={1} paddingRight={1}>
             <Text
               color={option === selected ? selectedForeground(theme, theme.warning) : undefined}
               dimColor={option !== selected}
@@ -271,14 +263,19 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   const { theme } = useTheme()
 
   const session = useMemo(
-    () => (sync.data.session as Array<{ id: string; parentID?: string }>).find((s) => s.id === props.request.sessionID),
+    () =>
+      (sync.data.session as Array<{ id: string; parentID?: string }>).find(
+        (s) => s.id === props.request.sessionID,
+      ),
     [sync.data.session, props.request.sessionID],
   )
 
   const input = useMemo(() => {
     const tool = props.request.tool
     if (!tool) return {}
-    const parts = ((sync.data.part as Record<string, unknown[]>)?.[tool.messageID] ?? []) as Array<Record<string, unknown>>
+    const parts = ((sync.data.part as Record<string, unknown[]>)?.[tool.messageID] ?? []) as Array<
+      Record<string, unknown>
+    >
     for (const part of parts) {
       if (
         part.type === "tool" &&
@@ -299,11 +296,15 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
         body={
           props.request.always.length === 1 && props.request.always[0] === "*" ? (
             <TextBody
-              title={"This will allow " + props.request.permission + " until OpenCode is restarted."}
+              title={
+                "This will allow " + props.request.permission + " until OpenCode is restarted."
+              }
             />
           ) : (
             <Box paddingLeft={1} gap={1} flexDirection="column">
-              <Text dimColor>This will allow the following patterns until OpenCode is restarted</Text>
+              <Text dimColor>
+                This will allow the following patterns until OpenCode is restarted
+              </Text>
               {props.request.always.map((pattern) => (
                 <Text key={pattern} color={theme.text}>
                   - {pattern}
@@ -419,7 +420,9 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
 
     if (permission === "bash") {
       const title =
-        typeof data.description === "string" && data.description ? data.description : "Shell command"
+        typeof data.description === "string" && data.description
+          ? data.description
+          : "Shell command"
       const command = typeof data.command === "string" ? data.command : ""
       return {
         icon: "#",
@@ -478,23 +481,32 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
       const filepath = typeof meta["filepath"] === "string" ? meta["filepath"] : undefined
       const pattern = props.request.patterns?.[0]
       const derived =
-        typeof pattern === "string" ? (pattern.includes("*") ? dirname(pattern) : pattern) : undefined
+        typeof pattern === "string"
+          ? pattern.includes("*")
+            ? dirname(pattern)
+            : pattern
+          : undefined
 
       const raw = parent ?? filepath ?? derived
       const dir = pathFormatter.format(raw)
-      const patterns = (props.request.patterns ?? []).filter((p): p is string => typeof p === "string")
+      const patterns = (props.request.patterns ?? []).filter(
+        (p): p is string => typeof p === "string",
+      )
 
       return {
         icon: "<-",
         title: `Access external directory ${dir}`,
-        body: patterns.length > 0 ? (
-          <Box paddingLeft={1} gap={1} flexDirection="column">
-            <Text dimColor>Patterns</Text>
-            {patterns.map((p) => (
-              <Text key={p} color={theme.text}>- {p}</Text>
-            ))}
-          </Box>
-        ) : null,
+        body:
+          patterns.length > 0 ? (
+            <Box paddingLeft={1} gap={1} flexDirection="column">
+              <Text dimColor>Patterns</Text>
+              {patterns.map((p) => (
+                <Text key={p} color={theme.text}>
+                  - {p}
+                </Text>
+              ))}
+            </Box>
+          ) : null,
       }
     }
 
@@ -542,12 +554,15 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
       options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
       escapeKey="reject"
       onSelect={(option) => {
-        // If the Maximilian SDK stub doesn't implement the permission
-        // surface, every option is a silent no-op and the dialog stays
-        // open forever with the agent blocked. Surface that to the
-        // user (and to operators) and bail out of the prompt.
+        // If the SDK client lacks the permission surface, every option
+        // below would be a silent no-op. Warn and close the prompt
+        // instead of leaving a dialog that can never be resolved.
+        // (Defensive only: createDefaultClient doesn't model `permission`
+        // today, so this component is not mounted anywhere yet.)
         if (!sdk.client.permission?.reply) {
-          console.warn("[permission] SDK does not implement permission.reply; cannot resolve prompt")
+          console.warn(
+            "[permission] SDK does not implement permission.reply; cannot resolve prompt",
+          )
           props.onComplete?.()
           return
         }

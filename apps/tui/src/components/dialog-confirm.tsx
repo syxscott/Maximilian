@@ -51,15 +51,9 @@ export function DialogConfirm(props: DialogConfirmProps) {
       return
     }
     if (key.escape) {
-      // ESC means "cancel" — explicit resolve so callers awaiting the
-      // promise don't hang until the dialog's onClose fires.
-      if (active === "confirm") {
-        // active was on confirm but ESC cancels; resolve false.
-        props.onCancel?.()
-      } else {
-        props.onCancel?.()
-      }
-      dialog.clear()
+      // ESC means "cancel" — always, regardless of which option is
+      // currently highlighted.
+      commit("cancel")
       return
     }
     if (key.leftArrow || key.rightArrow) {
@@ -110,11 +104,14 @@ DialogConfirm.show = (
   label?: string,
 ): Promise<DialogConfirmResult> => {
   return new Promise<DialogConfirmResult>((resolve) => {
-    // onClose is the "I gave up / dialog was dismissed" path; resolve
-    // to `undefined` ONLY if no user-driven resolve fired first. With
-    // the fix above, commit() always resolves before clearing, so
-    // onClose here is a true safety net for forced dismissals (e.g.
-    // DialogProvider unmount) — in practice it should rarely fire.
+    // A confirm dialog resolves `true` only via the Confirm option; every
+    // other exit — Cancel option, ESC, forced dismissal (provider
+    // unmount, replace) — resolves `false`. Resolve-close (onClose) and
+    // the dialog's own ESC handler race on the same keypress (both the
+    // provider and this component have active useInput handlers, and
+    // ink's listener order flips across re-renders), so onClose MUST
+    // resolve `false` rather than `undefined` to keep the outcome
+    // deterministic no matter which handler wins.
     let settled = false
     const safeResolve = (value: DialogConfirmResult) => {
       if (settled) return
@@ -129,7 +126,7 @@ DialogConfirm.show = (
         onCancel={() => safeResolve(false)}
         label={label}
       />,
-      { onClose: () => safeResolve(undefined) },
+      { onClose: () => safeResolve(false) },
     )
   })
 }

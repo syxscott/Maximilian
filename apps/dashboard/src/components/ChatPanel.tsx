@@ -165,13 +165,11 @@ export function ChatPanel({
             {submitting && onAbort ? (
               // Stop button — aborts the in-flight POST + closes the
               // SSE stream so the user can recover from a wrong input.
-              // Server-side workspace execution isn't cancelled (no
-              // cancel endpoint yet); it just becomes orphaned and the
-              // UI no longer listens to it.
-              <Button
-                onClick={onAbort}
-                variant="destructive"
-              >
+              // IMPORTANT: this stops the UI only. The server-side
+              // workspace execution continues until a cancel endpoint
+              // is wired through; the orphaned workspace keeps running
+              // and emits events to no subscriber.
+              <Button onClick={onAbort} variant="destructive" title={t("chat.stopServerHint")}>
                 {t("common.stop")}
               </Button>
             ) : (

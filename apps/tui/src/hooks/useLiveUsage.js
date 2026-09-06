@@ -9,32 +9,13 @@
  * (e.g. navigating to a session) cancels any in-flight request — otherwise
  * React 19 + ink would warn about state updates on an unmounted component.
  */
-
 import { useEffect, useState } from "react"
 import { useSDK } from "../context/sdk"
-import type { UsageSummary } from "../api"
-
-export interface LiveUsage {
-  totalCostUsd: number
-  /** False when any request in the window lacked pricing (total is partial). */
-  totalCostUsdKnown?: boolean
-  totalTokens: number
-  cacheReadTokens: number
-  cacheHitRate: number
-  totalRequests: number
-}
-
-export interface UseLiveUsageResult {
-  data: LiveUsage | null
-  isError: boolean
-  isLoading: boolean
-}
-
 const POLL_INTERVAL_MS = 30_000
-
-function trim(summary: UsageSummary): LiveUsage {
+function trim(summary) {
   return {
     totalCostUsd: summary.totalCostUsd,
+    // False when any request in the window lacked pricing (total is partial).
     totalCostUsdKnown: summary.totalCostUsdKnown,
     totalTokens: summary.realTotalTokens,
     cacheReadTokens: summary.totalCacheReadTokens,
@@ -42,21 +23,18 @@ function trim(summary: UsageSummary): LiveUsage {
     totalRequests: summary.totalRequests,
   }
 }
-
-export function useLiveUsage(enabled = true): UseLiveUsageResult {
+export function useLiveUsage(enabled = true) {
   const sdk = useSDK()
-  const [data, setData] = useState<LiveUsage | null>(null)
+  const [data, setData] = useState(null)
   const [isError, setIsError] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-
   useEffect(() => {
     if (!enabled) return
     const ctrl = new AbortController()
     let cancelled = false
-
     async function poll() {
       try {
-        const summary = await sdk.client.get<UsageSummary>("/api/obs/usage/summary?range=today")
+        const summary = await sdk.client.get("/api/obs/usage/summary?range=today")
         if (cancelled || ctrl.signal.aborted) return
         setData(trim(summary))
         setIsError(false)
@@ -70,7 +48,6 @@ export function useLiveUsage(enabled = true): UseLiveUsageResult {
         if (!cancelled && !ctrl.signal.aborted) setIsLoading(false)
       }
     }
-
     void poll()
     const id = setInterval(poll, POLL_INTERVAL_MS)
     return () => {
@@ -79,6 +56,5 @@ export function useLiveUsage(enabled = true): UseLiveUsageResult {
       ctrl.abort()
     }
   }, [sdk.client, enabled])
-
   return { data, isError, isLoading }
 }

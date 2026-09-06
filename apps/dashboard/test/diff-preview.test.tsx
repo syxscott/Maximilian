@@ -12,8 +12,8 @@ import { render, screen } from "@testing-library/react"
 import { DiffPreview, buildDiffLines, extractChange } from "../src/components/_helpers/DiffPreview"
 
 describe("extractChange", () => {
-  it("reads edit old_string/new_string pairs", () => {
-    const change = extractChange("edit", { old_string: "a\nb", new_string: "a\nc" })
+  it("reads edit oldString/newString pairs (camelCase, matching tools/src/edit.ts)", () => {
+    const change = extractChange("edit", { oldString: "a\nb", newString: "a\nc" })
     expect(change).toEqual({ kind: "edit", oldText: "a\nb", newText: "a\nc" })
   })
 
@@ -24,8 +24,15 @@ describe("extractChange", () => {
 
   it("returns null for other tools and malformed inputs", () => {
     expect(extractChange("bash", { command: "ls" })).toBeNull()
-    expect(extractChange("edit", { old_string: 42 })).toBeNull()
+    expect(extractChange("edit", { oldString: 42 })).toBeNull()
     expect(extractChange("edit", null)).toBeNull()
+  })
+
+  it("returns null when old_string/new_string snake_case keys are used (legacy mistake)", () => {
+    // Guards against re-introducing the snake_case typo that crashed
+    // approval previews on real runtime events (the runtime always sends
+    // camelCase per the edit tool's input schema).
+    expect(extractChange("edit", { old_string: "a", new_string: "b" })).toBeNull()
   })
 })
 
@@ -56,7 +63,7 @@ describe("buildDiffLines", () => {
 describe("DiffPreview component", () => {
   it("renders for an edit permission with +/− gutters", () => {
     render(
-      <DiffPreview tool="edit" input={{ old_string: "const x = 1", new_string: "const x = 2" }} />,
+      <DiffPreview tool="edit" input={{ oldString: "const x = 1", newString: "const x = 2" }} />,
     )
     expect(screen.getByTestId("diff-preview")).toBeTruthy()
     expect(screen.getByText(/const x = 2/)).toBeTruthy()

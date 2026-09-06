@@ -176,6 +176,11 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
     let last = 0
     const retryDelay = 1000
     const maxRetryDelay = 30000
+    // A stream that stayed up this long counts as "healthy"; only healthy
+    // closes reset the reconnect backoff. A server that accepts the
+    // connection but closes it immediately never qualifies, so it still
+    // gets capped backoff instead of an unbounded 1-reconnect/second loop.
+    const healthyStreamMs = 30_000
 
     const flush = () => {
       if (queue.length === 0) return
@@ -202,16 +207,17 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
       const ctrl = new AbortController()
       sseRef.current = ctrl
       void (async () => {
-        // Track consecutive *failed* connect attempts so a stable connection
-        // that closes cleanly (server restart, idle timeout) reconnects
-        // quickly. The previous implementation bumped `attempt` on every
-        // loop iteration including successful ones, so after a long-running
-        // healthy stream the backoff could be stuck at the 30s cap even
-        // though the next attempt would almost certainly succeed.
+        // `attempt` counts consecutive UNHEALTHY closes (connect errors and
+        // streams that dropped before healthyStreamMs). The previous
+        // implementation bumped `attempt` on every loop iteration including
+        // successful ones, so after a long-running healthy stream the
+        // backoff could be stuck at the 30s cap even though the next
+        // attempt would almost certainly succeed.
         let attempt = 0
         while (true) {
           if (abort.signal.aborted || ctrl.signal.aborted) break
           let failed = false
+          const connectedAt = Date.now()
           try {
             const res = await sdk.raw("/global/event", { signal: ctrl.signal })
             if (!res.ok || !res.body) throw new Error(`SSE failed: ${res.status}`)
@@ -247,46 +253,45 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext<
           }
           if (timer) clearTimeout(timer)
           if (queue.length > 0) flush()
-          if (failed) {
-            attempt += 1
-          } else {
-            // Clean close: reset the failure counter so the next reconnect
-            // doesn't inherit a 30s backoff from a prior outage.
-            attempt = 0
-          }
+          const healthyClose = !failed && Date.now() - connectedAt >= healthyStreamMs
+          attempt = healthyClose ? 0 : attempt + 1
           if (abort.signal.aborted || ctrl.signal.aborted) break
-          const backoff = failed
-            ? Math.min(retryDelay * 2 ** (attempt - 1), maxRetryDelay)
-            : retryDelay
+          // attempt === 0 → reconnect immediately; otherwise 1s, 2s, … capped.
+          const backoff =
+            attempt === 0 ? 0 : Math.min(retryDelay * 2 ** (attempt - 1), maxRetryDelay)
           await new Promise((resolve) => setTimeout(resolve, backoff))
         }
       })()
     }
 
-    if (typeof window === "undefined") {
-      // Node: only start an event source if the caller asked for one.
-      // Maximilian's API has no global SSE endpoint (events are per-workspace
-      // via /api/workspaces/:id/events), so the TUI defaults to no SSE —
-      // otherwise we'd spin forever retrying a 404 on /global/event.
+    const eventsUnsubRef = useRef<(() => void) | undefined>(undefined)
+    // Subscribe / start the SSE stream exactly once per mount. init() runs
+    // on EVERY render (see helper.tsx), so doing this in the render body
+    // would stack a new subscription per render, each with its own private
+    // event queue — duplicated events and leaked handlers.
+    useEffect(() => {
+      if (typeof window !== "undefined") return
+      let cancelled = false
       if (props.events) {
-        // Stash the unsubscribe in a ref so the unmount cleanup can call it.
-        // Without this, the events source would hold a reference to a dead
-        // handleEvent closure after the provider unmounts, leaking memory
-        // across remounts (HMR, settings reopen, etc.).
         void props.events.subscribe(handleEvent).then((unsub) => {
+          if (cancelled) {
+            // Unmounted before the subscription resolved — tear it down
+            // immediately instead of leaking the handler.
+            unsub?.()
+            return
+          }
           eventsUnsubRef.current = unsub
         })
       } else if (props.enableSSE) {
         startSSE()
       }
-    }
-
-    const eventsUnsubRef = useRef<(() => void) | undefined>(undefined)
-    // Abort on unmount to prevent SSE/orphan-handler leaks.
-    useEffect(() => () => {
-      eventsUnsubRef.current?.()
-      sseRef.current?.abort()
-      abort.abort()
+      // Abort on unmount to prevent SSE/orphan-handler leaks.
+      return () => {
+        cancelled = true
+        eventsUnsubRef.current?.()
+        sseRef.current?.abort()
+        abort.abort()
+      }
     }, [])
 
     return {

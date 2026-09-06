@@ -52,7 +52,10 @@ const cli = meow(
       continue: { type: "boolean", default: false },
       url: { type: "string", default: process.env.MAX_TUI_URL ?? "http://localhost:3001" },
       directory: { type: "string" },
-      token: { type: "string", default: process.env.MAX_TUI_TOKEN ?? process.env.ADMIN_TOKEN ?? "" },
+      token: {
+        type: "string",
+        default: process.env.MAX_TUI_TOKEN ?? process.env.ADMIN_TOKEN ?? "",
+      },
     },
   },
 )
@@ -73,6 +76,11 @@ const noopPluginHost: PluginHost = {
   },
 }
 
+// The --continue flag needs the most recent execution id from the API;
+// we resolve it inside the App component (which already has the SDK
+// client and the right provider stack), so this entry point just packages
+// the parsed flags. The App's CLI flag wiring effect takes care of the
+// rest.
 const input: TuiInput = {
   args,
   config: TUI_CONFIG_DEFAULT,
