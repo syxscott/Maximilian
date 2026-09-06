@@ -58,11 +58,11 @@ flowchart TB
 
 ## 数据契约
 
-| 数据 | 生产者 | 消费者 |
-|---|---|---|
-| `ExecutionRecord` | ExecutionStore.save | FailurePatternAnalyzer, PromotionEngine, LearningAPI |
-| `StructuredReview` | ReviewIntelligence | EvolutionPlanner, FailurePatternAnalyzer |
-| `FailureInsight` | FailurePatternAnalyzer | EvolutionPlanner, LearningAPI |
-| `EvolutionPlan` | EvolutionPlanner | CandidateGenerator, LearningAPI |
-| `CandidateVersion` | CandidateGenerator | PromotionEngine, LearningAPI |
-| `PromotionRecord` | PromotionEngine | LearningAPI |
+| 数据               | 生产者                 | 消费者                                               |
+| ------------------ | ---------------------- | ---------------------------------------------------- |
+| `ExecutionRecord`  | ExecutionStore.save    | FailurePatternAnalyzer, PromotionEngine, LearningAPI |
+| `StructuredReview` | ReviewIntelligence     | EvolutionPlanner, FailurePatternAnalyzer             |
+| `FailureInsight`   | FailurePatternAnalyzer | EvolutionPlanner, LearningAPI                        |
+| `EvolutionPlan`    | EvolutionPlanner       | CandidateGenerator, LearningAPI                      |
+| `CandidateVersion` | CandidateGenerator     | PromotionEngine, LearningAPI                         |
+| `PromotionRecord`  | PromotionEngine        | LearningAPI                                          |

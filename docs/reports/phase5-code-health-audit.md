@@ -152,49 +152,50 @@ flowchart TB
 
 ### 2.1 前端 → 后端（前端实际只调用 4 个端点）
 
-| 端点 | 前端调用方 | 后端 Handler | 落库位置 |
-|---|---|---|---|
-| `GET /api/health` | `App.tsx:18` | `index.ts:247` | — |
-| `POST /api/chat` | `App.tsx:32` | `routes/chat.ts:18` | `workspaces/<id>.json` |
-| `GET /api/workspaces/:id` | `App.tsx:37` | `routes/workspace.ts` | — |
-| `GET /api/workspaces/:id/events` | `App.tsx:39` | `index.ts:271` | — |
+| 端点                             | 前端调用方   | 后端 Handler          | 落库位置               |
+| -------------------------------- | ------------ | --------------------- | ---------------------- |
+| `GET /api/health`                | `App.tsx:18` | `index.ts:247`        | —                      |
+| `POST /api/chat`                 | `App.tsx:32` | `routes/chat.ts:18`   | `workspaces/<id>.json` |
+| `GET /api/workspaces/:id`        | `App.tsx:37` | `routes/workspace.ts` | —                      |
+| `GET /api/workspaces/:id/events` | `App.tsx:39` | `index.ts:271`        | —                      |
 
 **前端定义了但未调用**：`listProviders`、`listArtifacts`、`readArtifact`
 
 ### 2.2 后端注册的 30 个端点（覆盖率分析）
 
-| 端点 | 注册位置 | 被前端调用 | 被测试调用 | 状态 |
-|---|---|---|---|---|
-| `GET  /api/health` | `index.ts:247` | ✅ | ✅ | 生产 |
-| `GET  /api/providers` | `index.ts:257` | ❌ | ❌ | **孤儿**（curl 可用） |
-| `POST /api/chat` | `index.ts:259` | ✅ | ✅ | 生产 |
-| `GET  /api/workspaces` | `index.ts:269` | ❌ | ❌ | **孤儿**（无前端页） |
-| `GET  /api/workspaces/:id` | `index.ts:270` | ✅ | ✅ | 生产 |
-| `GET  /api/workspaces/:id/events` | `index.ts:271` | ✅ | ❌ | 生产 |
-| `GET  /api/workspaces/:id/artifacts` | `index.ts:276` | ❌ | ❌ | **孤儿** |
-| `GET  /api/workspaces/:id/artifacts/:name` | `index.ts:277` | ❌ | ❌ | **孤儿** |
-| `GET  /api/evolution/metrics` | `index.ts:285` | ❌ | ❌ | **孤儿**（Phase 3 无人用） |
-| `GET  /api/evolution/metrics/:taskId` | `index.ts:286` | ❌ | ❌ | **孤儿** |
-| `GET  /api/evolution/agents` | `index.ts:287` | ❌ | ❌ | **孤儿** |
-| `GET  /api/evolution/agents/:role` | `index.ts:288` | ❌ | ❌ | **孤儿** |
-| `GET  /api/evolution/leaderboard` | `index.ts:289` | ❌ | ❌ | **孤儿** |
-| `GET  /api/evolution/leaderboard/:role` | `index.ts:290` | ❌ | ❌ | **孤儿** |
-| `GET  /api/evolution/versions/:role` | `index.ts:291` | ❌ | ❌ | **孤儿** |
-| `GET  /api/evolution/versions/:role/decisions` | `index.ts:292` | ❌ | ❌ | **孤儿** |
-| `POST /api/evolution/feedback` | `index.ts:293` | ❌ | ❌ | **孤儿** |
-| `POST /api/evolution/evolve/:role` | `index.ts:294` | ❌ | ❌ | **孤儿** |
-| `GET  /api/learning/status` | `index.ts:300` | ❌ | ✅ | **未接入前端** |
-| `GET  /api/learning/agents` | `index.ts:301` | ❌ | ❌ | **孤儿** |
-| `GET  /api/learning/evolution-history` | `index.ts:302` | ❌ | ✅ | **未接入前端** |
-| `GET  /api/learning/failure-patterns` | `index.ts:303` | ❌ | ❌ | **孤儿** |
-| `POST /api/learning/mine-failure-patterns` | `index.ts:304` | ❌ | ❌ | **孤儿** |
-| `GET  /api/executions` | `index.ts:310` | ❌ | ✅ | **未接入前端** |
-| `GET  /api/executions/workspace/:workspaceId` | `index.ts:311` | ❌ | ❌ | **孤儿** |
-| `GET  /api/executions/role/:role` | `index.ts:312` | ❌ | ❌ | **孤儿** |
-| `GET  /api/executions/:id` | `index.ts:313` | ❌ | ✅ | **未接入前端** |
-| `POST /api/executions/:id/feedback` | `index.ts:314` | ❌ | ❌ | **孤儿** |
+| 端点                                           | 注册位置       | 被前端调用 | 被测试调用 | 状态                       |
+| ---------------------------------------------- | -------------- | ---------- | ---------- | -------------------------- |
+| `GET  /api/health`                             | `index.ts:247` | ✅         | ✅         | 生产                       |
+| `GET  /api/providers`                          | `index.ts:257` | ❌         | ❌         | **孤儿**（curl 可用）      |
+| `POST /api/chat`                               | `index.ts:259` | ✅         | ✅         | 生产                       |
+| `GET  /api/workspaces`                         | `index.ts:269` | ❌         | ❌         | **孤儿**（无前端页）       |
+| `GET  /api/workspaces/:id`                     | `index.ts:270` | ✅         | ✅         | 生产                       |
+| `GET  /api/workspaces/:id/events`              | `index.ts:271` | ✅         | ❌         | 生产                       |
+| `GET  /api/workspaces/:id/artifacts`           | `index.ts:276` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/workspaces/:id/artifacts/:name`     | `index.ts:277` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/evolution/metrics`                  | `index.ts:285` | ❌         | ❌         | **孤儿**（Phase 3 无人用） |
+| `GET  /api/evolution/metrics/:taskId`          | `index.ts:286` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/evolution/agents`                   | `index.ts:287` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/evolution/agents/:role`             | `index.ts:288` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/evolution/leaderboard`              | `index.ts:289` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/evolution/leaderboard/:role`        | `index.ts:290` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/evolution/versions/:role`           | `index.ts:291` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/evolution/versions/:role/decisions` | `index.ts:292` | ❌         | ❌         | **孤儿**                   |
+| `POST /api/evolution/feedback`                 | `index.ts:293` | ❌         | ❌         | **孤儿**                   |
+| `POST /api/evolution/evolve/:role`             | `index.ts:294` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/learning/status`                    | `index.ts:300` | ❌         | ✅         | **未接入前端**             |
+| `GET  /api/learning/agents`                    | `index.ts:301` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/learning/evolution-history`         | `index.ts:302` | ❌         | ✅         | **未接入前端**             |
+| `GET  /api/learning/failure-patterns`          | `index.ts:303` | ❌         | ❌         | **孤儿**                   |
+| `POST /api/learning/mine-failure-patterns`     | `index.ts:304` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/executions`                         | `index.ts:310` | ❌         | ✅         | **未接入前端**             |
+| `GET  /api/executions/workspace/:workspaceId`  | `index.ts:311` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/executions/role/:role`              | `index.ts:312` | ❌         | ❌         | **孤儿**                   |
+| `GET  /api/executions/:id`                     | `index.ts:313` | ❌         | ✅         | **未接入前端**             |
+| `POST /api/executions/:id/feedback`            | `index.ts:314` | ❌         | ❌         | **孤儿**                   |
 
 **统计**：
+
 - 真正"被前端用 + 被测试覆盖"：4 个端点（health, chat, getWorkspace, events）
 - 后端注册但前端未消费：**24 个端点**（84%）
 - 被前端消费但无测试覆盖：1 个（events）
@@ -321,34 +322,34 @@ POST /api/chat
 
 ### 4.1 完全无生产调用方
 
-| 项目 | 位置 | 类型 |
-|---|---|---|
-| `BlueprintStore.listGraphs()` | `packages/dags/src/blueprint-store.ts:105` | 方法 |
-| `BlueprintStore.findByCapability()` | `packages/dags/src/blueprint-store.ts:74` | 方法 |
-| `BlueprintStore.retire()` | `packages/dags/src/blueprint-store.ts:79` | 方法 |
-| `ExecutionStore.listForBlueprint()` | `packages/autonomy/src/execution-store.ts:63` | 方法 |
-| `AgentRuntime.abort()` | `packages/core/src/runtime.ts:187` | 公共方法 |
-| `EvolutionFacade.newEvolutionId()` | `packages/evolution/src/profile-store.ts:115` | 函数 |
-| `AgentMemoryStore.freshMemory()` | `packages/evolution/src/memory.ts:129` | 函数 |
-| `TeamGraph.edges` | `packages/dags/src/types.ts:159` | 字段（TeamGraphBuilder 构建但消费者不读） |
-| `apps/api/src/demo.ts` | 整个文件 | CLI 脚本（手动 `pnpm demo`） |
-| `apps/api/src/routes/chat.ts:_Unused` | `routes/chat.ts:158` | 类型导出 |
+| 项目                                  | 位置                                          | 类型                                      |
+| ------------------------------------- | --------------------------------------------- | ----------------------------------------- |
+| `BlueprintStore.listGraphs()`         | `packages/dags/src/blueprint-store.ts:105`    | 方法                                      |
+| `BlueprintStore.findByCapability()`   | `packages/dags/src/blueprint-store.ts:74`     | 方法                                      |
+| `BlueprintStore.retire()`             | `packages/dags/src/blueprint-store.ts:79`     | 方法                                      |
+| `ExecutionStore.listForBlueprint()`   | `packages/autonomy/src/execution-store.ts:63` | 方法                                      |
+| `AgentRuntime.abort()`                | `packages/core/src/runtime.ts:187`            | 公共方法                                  |
+| `EvolutionFacade.newEvolutionId()`    | `packages/evolution/src/profile-store.ts:115` | 函数                                      |
+| `AgentMemoryStore.freshMemory()`      | `packages/evolution/src/memory.ts:129`        | 函数                                      |
+| `TeamGraph.edges`                     | `packages/dags/src/types.ts:159`              | 字段（TeamGraphBuilder 构建但消费者不读） |
+| `apps/api/src/demo.ts`                | 整个文件                                      | CLI 脚本（手动 `pnpm demo`）              |
+| `apps/api/src/routes/chat.ts:_Unused` | `routes/chat.ts:158`                          | 类型导出                                  |
 
 ### 4.2 仅在测试中使用
 
-| 项目 | 位置 |
-|---|---|
+| 项目                                                                   | 位置                                |
+| ---------------------------------------------------------------------- | ----------------------------------- |
 | `AgentMemoryStore.recordSuccess/recordFailure/recordReviewSuggestions` | 仅 facade.ts 生产代码使用 ✓（误判） |
-| `ToolSpec` 类型 | schema 定义但无生产消费者 |
+| `ToolSpec` 类型                                                        | schema 定义但无生产消费者           |
 
 ### 4.3 Blueprint 字段未被消费
 
-| 字段 | schema 位置 | 状态 |
-|---|---|---|
-| `Blueprint.preferredModels` | `dags/types.ts:89` | DynamicAgentFactory 只用 graph 分配的 model，不读 blueprint.preferredModels |
-| `Blueprint.tools` | `dags/types.ts:88` | 无生产代码读取（测试中提供空数组） |
-| `Blueprint.capabilities` | `dags/types.ts:87` | 仅 TeamGraphBuilder 读 `.includes("review")`，主流程不消费 |
-| `Blueprint.retiredAt` | `dags/types.ts:102` | 仅 `findByRole/ByCapability` 用作过滤条件，`retire()` 方法无生产调用 |
+| 字段                        | schema 位置         | 状态                                                                        |
+| --------------------------- | ------------------- | --------------------------------------------------------------------------- |
+| `Blueprint.preferredModels` | `dags/types.ts:89`  | DynamicAgentFactory 只用 graph 分配的 model，不读 blueprint.preferredModels |
+| `Blueprint.tools`           | `dags/types.ts:88`  | 无生产代码读取（测试中提供空数组）                                          |
+| `Blueprint.capabilities`    | `dags/types.ts:87`  | 仅 TeamGraphBuilder 读 `.includes("review")`，主流程不消费                  |
+| `Blueprint.retiredAt`       | `dags/types.ts:102` | 仅 `findByRole/ByCapability` 用作过滤条件，`retire()` 方法无生产调用        |
 
 ---
 
@@ -356,13 +357,13 @@ POST /api/chat
 
 ### 5.1 完全无生产调用方
 
-| 模块 / 组件 | 定义位置 | 备注 |
-|---|---|---|
-| `AgentMemoryStore.freshMemory()` | `evolution/memory.ts:129` | 导出但无生产引用 |
+| 模块 / 组件                                         | 定义位置                  | 备注                                       |
+| --------------------------------------------------- | ------------------------- | ------------------------------------------ |
+| `AgentMemoryStore.freshMemory()`                    | `evolution/memory.ts:129` | 导出但无生产引用                           |
 | `BlueprintStore.findByCapability/retire/listGraphs` | `dags/blueprint-store.ts` | 提供 API 但 orchestrator 只用 `findByRole` |
-| `AgentRuntime.abort()` | `core/runtime.ts:187` | AbortController 已创建但无外部 abort 触发 |
-| `TeamGraph.edges` | `dags/types.ts:159` | 运行时只用 `nodes[].dependsOn`，不读 edges |
-| `apps/api/src/demo.ts` | 整个文件 | 仅手动 CLI，不在服务器启动路径 |
+| `AgentRuntime.abort()`                              | `core/runtime.ts:187`     | AbortController 已创建但无外部 abort 触发  |
+| `TeamGraph.edges`                                   | `dags/types.ts:159`       | 运行时只用 `nodes[].dependsOn`，不读 edges |
+| `apps/api/src/demo.ts`                              | 整个文件                  | 仅手动 CLI，不在服务器启动路径             |
 
 ### 5.2 注册但前端不消费（24 个 API 端点）
 
@@ -377,6 +378,7 @@ POST /api/chat
 ```
 
 **最严重的孤儿**：
+
 - `POST /api/evolution/feedback` — 用户反馈入口，没有任何 UI 接入
 - `POST /api/evolution/evolve/:role` — 手动触发演化，无 UI
 - `POST /api/learning/mine-failure-patterns` — 手动触发挖掘，无 UI
@@ -384,13 +386,13 @@ POST /api/chat
 
 ### 5.3 关键模块未接入主流程
 
-| 模块 | 定义 | 当前状态 |
-|---|---|---|
-| `LearningAPI` | Phase 5.7 已完成 | HTTP 端点暴露但前端无 Dashboard |
-| `FailurePatternAnalyzer.leaderboardInsight` | 自动在 observe() 中调用 | 无独立查询 UI |
-| `EvolutionPlanner` | 自动在 observe() 中调用 | 无手动触发 UI（`POST /api/evolution/evolve/:role` 是 Phase 3 的旧入口，不调用 Phase 5 planner） |
-| `CandidateGenerator` | 自动在 observe() 中调用 | 无独立查询 UI |
-| `PromotionEngine` | 自动在 observe() 中调用 | 无独立查询 UI |
+| 模块                                        | 定义                    | 当前状态                                                                                        |
+| ------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `LearningAPI`                               | Phase 5.7 已完成        | HTTP 端点暴露但前端无 Dashboard                                                                 |
+| `FailurePatternAnalyzer.leaderboardInsight` | 自动在 observe() 中调用 | 无独立查询 UI                                                                                   |
+| `EvolutionPlanner`                          | 自动在 observe() 中调用 | 无手动触发 UI（`POST /api/evolution/evolve/:role` 是 Phase 3 的旧入口，不调用 Phase 5 planner） |
+| `CandidateGenerator`                        | 自动在 observe() 中调用 | 无独立查询 UI                                                                                   |
+| `PromotionEngine`                           | 自动在 observe() 中调用 | 无独立查询 UI                                                                                   |
 
 ---
 
@@ -404,11 +406,12 @@ POST /api/chat
 function extractProvider(_agentId: string, candidates: Provider[]): string {
   // We don't have provider info on the agent id, so default to the
   // first candidate. The selector's choice is the system of record.
-  return candidates[0]?.id ?? "unknown";
+  return candidates[0]?.id ?? "unknown"
 }
 ```
 
 **问题**：
+
 - 参数 `agentId` 完全忽略（`_` 前缀）
 - 永远返回 `candidates[0]?.id`，与 selector 的实际选择脱节
 - 注释承认"The selector's choice is the system of record"——所以这个函数名误导
@@ -429,6 +432,7 @@ function defaultPlan(userRequest: string): PlannerOutput {
 ```
 
 **问题**：
+
 - 仅基于关键字判断
 - 只支持 backend+frontend+review 三件套
 - LLM 失败时静默 fallback（`console.warn` 后继续）
@@ -438,6 +442,7 @@ function defaultPlan(userRequest: string): PlannerOutput {
 **位置**：`packages/autonomy/src/review-intelligence.ts`（forceHeuristic 路径）
 
 仅识别：
+
 - `truncation`（输出 < 50 字符）
 - `no_code_blocks`（无 fenced code）
 - `placeholder_content`（含 "TODO"/"placeholder" 字样）
@@ -452,7 +457,7 @@ function defaultPlan(userRequest: string): PlannerOutput {
 ```typescript
 // Suppress unused-import warning for sink type when DAGS_MODE branch
 // is not active.
-export type _Unused = RuntimeSink;
+export type _Unused = RuntimeSink
 ```
 
 **问题**：掩盖了"导入但未使用"——`RuntimeSink` 在 chat.ts 中实际从未使用，应该直接删除 import
@@ -465,8 +470,8 @@ export type _Unused = RuntimeSink;
 async function readDecisions(facade: EvolutionFacade, role: AgentRole) {
   // Delegate to evolution engine's own read; kept here so the API surface
   // doesn't leak storage paths.
-  const versions = await facade.evolution.listVersions(role);
-  return versions;
+  const versions = await facade.evolution.listVersions(role)
+  return versions
 }
 ```
 
@@ -478,17 +483,17 @@ async function readDecisions(facade: EvolutionFacade, role: AgentRole) {
 
 ### 7.1 实际 TODO 标记
 
-| 文件 | 行 | 内容 |
-|---|---|---|
-| `packages/autonomy/src/review-intelligence.ts` | 119 | `failurePatterns.push("placeholder_content")` |
+| 文件                                           | 行  | 内容                                                                           |
+| ---------------------------------------------- | --- | ------------------------------------------------------------------------------ |
+| `packages/autonomy/src/review-intelligence.ts` | 119 | `failurePatterns.push("placeholder_content")`                                  |
 | `packages/autonomy/src/review-intelligence.ts` | 120 | `improvementSuggestions.push("replace TODO markers with real implementation")` |
 
 这是 heuristic 模式检测到"TODO"字样后**生成**的输出字符串，不是源码 TODO 注释。
 
 ### 7.2 隐含的 TODO（"we don't have" / "stub" / "fake"）
 
-| 文件 | 含义 |
-|---|---|
+| 文件                        | 含义                                                                |
+| --------------------------- | ------------------------------------------------------------------- |
 | `apps/api/src/index.ts:170` | `extractProvider` 注释：We don't have provider info on the agent id |
 
 ### 7.3 源码 `// TODO` 注释搜索
@@ -506,25 +511,25 @@ $ grep -rn "// TODO\|//FIXME\|// HACK\|// XXX" packages apps --include="*.ts"
 
 ### 8.1 测试文件中的 Mock（合法）
 
-| Mock | 位置 | 用途 |
-|---|---|---|
-| `fakeProvider` | `apps/api/test/smoke.test.ts:21` | 测试 Provider 实现 |
-| `StubAgent` | `apps/api/test/smoke.test.ts:35` | 测试 Agent 实现 |
-| `class extends Agent` (匿名) | `apps/api/test/smoke.test.ts:135` | 失败场景 |
-| `makeProvider` | `packages/autonomy/test/autonomy-unit.test.ts:32` | 单元测试 Provider |
-| `makeTmp` | 多处 | 临时目录 |
-| `makeExecution` / `makeReview` / `makeParent` | autonomy test 文件 | 工厂函数 |
+| Mock                                          | 位置                                              | 用途               |
+| --------------------------------------------- | ------------------------------------------------- | ------------------ |
+| `fakeProvider`                                | `apps/api/test/smoke.test.ts:21`                  | 测试 Provider 实现 |
+| `StubAgent`                                   | `apps/api/test/smoke.test.ts:35`                  | 测试 Agent 实现    |
+| `class extends Agent` (匿名)                  | `apps/api/test/smoke.test.ts:135`                 | 失败场景           |
+| `makeProvider`                                | `packages/autonomy/test/autonomy-unit.test.ts:32` | 单元测试 Provider  |
+| `makeTmp`                                     | 多处                                              | 临时目录           |
+| `makeExecution` / `makeReview` / `makeParent` | autonomy test 文件                                | 工厂函数           |
 
 **结论**：所有 Mock 都在测试文件中，生产代码无 Mock
 
 ### 8.2 假数据 fallbacks（生产路径的"软失败"）
 
-| 路径 | Fallback 行为 |
-|---|---|
-| `Commander.callPlanner()` | LLM 失败 → `defaultPlan()`（关键字 heuristic） |
-| `ReviewIntelligence.review()` | 无 provider 或 LLM 失败 → `heuristic()` |
-| `BlueprintAgent.persistStats()` | 写盘失败 → `console.warn`（不抛） |
-| `failureAnalyzer.analyze()` | 无 review → 返回 `[]` |
+| 路径                            | Fallback 行为                                  |
+| ------------------------------- | ---------------------------------------------- |
+| `Commander.callPlanner()`       | LLM 失败 → `defaultPlan()`（关键字 heuristic） |
+| `ReviewIntelligence.review()`   | 无 provider 或 LLM 失败 → `heuristic()`        |
+| `BlueprintAgent.persistStats()` | 写盘失败 → `console.warn`（不抛）              |
+| `failureAnalyzer.analyze()`     | 无 review → 返回 `[]`                          |
 
 ---
 
