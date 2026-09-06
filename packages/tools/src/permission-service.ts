@@ -9,11 +9,14 @@
  * Borrowed from two sources:
  *   - **opencode** `packages/opencode/src/permission/index.ts`: answering
  *     "always" stores a pattern rule and then *retroactively approves*
- *     every matching pending request already parked in this session —
- *     and rejecting one request batch-rejects all pending requests that
- *     match the same pattern. In a DAG runtime a whole wave of agents can
- *     ask for the same thing at once; one answer should unblock them all
- *     instead of N rounds of prompts.
+ *     every matching pending request already parked in this session.
+ *     Deliberate deviation from upstream: rejecting one request here
+ *     batch-rejects only pending requests that match the same pattern,
+ *     whereas upstream rejects ALL pending in the session regardless of
+ *     pattern. In a DAG runtime a whole wave of agents can ask for the
+ *     same thing at once; one answer should unblock them all instead of
+ *     N rounds of prompts — but unrelated pending asks are left for
+ *     their own human decision.
  *   - **deepseek-harness** `docs/subsystems/approval.md`: fail-closed
  *     answers only — the decision set is exactly
  *     `allowed-once | always | rejected | cancelled | unavailable`.

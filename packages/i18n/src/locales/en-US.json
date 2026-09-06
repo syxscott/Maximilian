@@ -347,5 +347,20 @@
   "approvals.commentPlaceholder": "Optional comment (required if marked)",
   "approvals.commentRequired": "A comment is required.",
   "approvals.approve": "Approve",
-  "approvals.reject": "Reject"
+  "approvals.reject": "Reject",
+  "chat.stopServerHint": "Abort the running request on the server",
+  "opencode.sessions.title": "Active opencode sessions",
+  "opencode.sessions.refresh": "Refresh sessions",
+  "opencode.sessions.loading": "Loading sessions…",
+  "opencode.sessions.empty": "No active sessions",
+  "opencode.sessions.generatedAt": "Snapshot {ts}",
+  "permissions.queueCounter": "Request {current} of {total} waiting",
+  "permissions.skip": "Skip",
+  "permissions.saveFailed": "Failed to save permission settings: {error}",
+  "review.issuesHeader": "{count} issue(s)",
+  "review.suggestionsHeader": "{count} suggestion(s)",
+  "review.viewRaw": "View raw",
+  "theme.toggleTitle": "Current: {current}. Switch to {next}",
+  "theme.toggleAria": "Switch theme (current: {mode})",
+  "usage.cost.partial": "partial estimate — unpriced requests in window"
 }

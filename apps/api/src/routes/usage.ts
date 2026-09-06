@@ -145,6 +145,13 @@ export interface DailyUsageEntry {
   totalCacheCreationTokens: number
   totalTokens: number
   totalCostUsd: number
+  /**
+   * False when ANY request that day lacked a pricing-table entry — the
+   * day's cost is a partial estimate (same honesty flag as the summary's
+   * `totalCostUsdKnown`). Previously only the summary carried this, so
+   * day rows silently showed fabricated-certain numbers.
+   */
+  totalCostUsdKnown: boolean
 }
 
 function dateOf(iso: string): string {
@@ -306,19 +313,22 @@ export function computeLatencyStats(samples: number[]): LatencyStats {
 export function aggregateDailyUsage(
   records: MetricRecord[],
   range: ResolvedUsageRange,
+  pricingLookup: (provider: string, model: string) => boolean = () => true,
 ): DailyUsageEntry[] {
   const byDay = new Map<string, DailyUsageEntry>()
+  const entryFor = (day: string): DailyUsageEntry => ({
+    date: day,
+    requestCount: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalCacheReadTokens: 0,
+    totalCacheCreationTokens: 0,
+    totalTokens: 0,
+    totalCostUsd: 0,
+    totalCostUsdKnown: true,
+  })
   for (const day of range.days) {
-    byDay.set(day, {
-      date: day,
-      requestCount: 0,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      totalCacheReadTokens: 0,
-      totalCacheCreationTokens: 0,
-      totalTokens: 0,
-      totalCostUsd: 0,
-    })
+    byDay.set(day, entryFor(day))
   }
   for (const r of records) {
     if (!inRange(r, range)) continue
@@ -327,16 +337,7 @@ export function aggregateDailyUsage(
     if (!entry) {
       // Range was "all" or we got a record outside the predicted days list ?
       // still keep it so the dashboard doesn't miss outliers.
-      entry = {
-        date: day,
-        requestCount: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalCacheReadTokens: 0,
-        totalCacheCreationTokens: 0,
-        totalTokens: 0,
-        totalCostUsd: 0,
-      }
+      entry = entryFor(day)
       byDay.set(day, entry)
     }
     entry.requestCount++
@@ -346,6 +347,7 @@ export function aggregateDailyUsage(
     entry.totalCacheCreationTokens += r.cacheCreationTokens ?? 0
     entry.totalTokens += r.tokenInput + r.tokenOutput
     entry.totalCostUsd += MetricsStore.estimateCostUSD(r)
+    if (isUnpriced(r, pricingLookup)) entry.totalCostUsdKnown = false
   }
   return [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date))
 }
@@ -602,7 +604,7 @@ export function usageRoutes(deps: UsageRouteDeps) {
       try {
         const tenantId = c.get("tenantId" as never) as string | undefined
         const records = await evolution.metrics.listAll({ tenantId })
-        const daily = aggregateDailyUsage(records, range)
+        const daily = aggregateDailyUsage(records, range, hasExactPricingEntry)
         const page = paginate(daily, parsePagination(c), (d) => d.date)
         return c.json({
           range: preset,

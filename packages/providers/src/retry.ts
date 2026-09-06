@@ -50,6 +50,12 @@ export interface RetryOptions {
    * backoff sleep so callers can surface progress to users.
    */
   onRetryStatus?: (status: ProviderRetryStatus) => void
+  /**
+   * Injectable sleep (test seam): overrides the real timer so tests can
+   * assert resolved delays (e.g. an untruncated server Retry-After)
+   * without actually waiting.
+   */
+  sleep?: (ms: number) => Promise<void>
 }
 
 /** Map an error to a short human action (opencode retry-action borrowing). */
@@ -85,6 +91,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
     jitter = true,
     retryableStatuses = DEFAULT_RETRYABLE_STATUSES,
   } = options ?? {}
+  const pause = options?.sleep ?? sleep
 
   function emitStatus(attempt: number, delayMs: number, err: unknown): void {
     if (!options?.onRetryStatus) return
@@ -111,7 +118,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())
         emitStatus(attempt, delay, err)
-        await sleep(delay)
+        await pause(delay)
       }
     }
     throw lastError
@@ -136,7 +143,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())
         emitStatus(attempt, delay, err)
-        await sleep(delay)
+        await pause(delay)
         // Continue to next attempt
       }
     }
@@ -159,7 +166,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())
         emitStatus(attempt, delay, err)
-        await sleep(delay)
+        await pause(delay)
       }
     }
     throw lastError
@@ -239,8 +246,10 @@ function resolveDelay(
 ): number {
   const serverMs = parseRetryAfter(headers)
   if (serverMs !== undefined) {
-    // server 给出了重试窗口,默认尊重 server 但不超过 maxDelay 上限
-    return Math.min(serverMs, maxDelay)
+    // server 给出了重试窗口:尊重 server 的值,只钳到 32-bit setTimeout 上限
+    // (parseRetryAfter 已做 cap)。不再截到 maxDelay——上游语义是服务端
+    // 显式给出的窗口(如 Retry-After: 120)优先于本地退避策略。
+    return serverMs
   }
   // 修复 HIGH 5 - 没有 server 提示时,把 baseDelay 钳到 RETRY_MAX_DELAY_NO_HEADERS
   // (借鉴 opencode - 防止本地 config 设了超大 baseDelay 后无限退避)
@@ -258,6 +267,13 @@ function isRetryable(err: unknown, retryableStatuses: number[]): boolean {
       msg.includes("etimedout") ||
       msg.includes("fetch failed")
     ) {
+      return true
+    }
+    // Timeouts (borrowed from opencode's retryable patterns): covers
+    // sse-guard's "SSE headers/chunk timeout after …ms" and format-layer
+    // idle watchdogs, so a stalled stream is retried instead of failing
+    // the call outright.
+    if (msg.includes("timed out") || msg.includes("timeout")) {
       return true
     }
     // ProviderError with status code

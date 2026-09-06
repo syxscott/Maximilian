@@ -41,6 +41,13 @@ describe("PolicyDeniedError", () => {
     expect(isPolicyDeniedMessage("TypeError: boom")).toBe(false)
     expect(isPolicyDeniedMessage(undefined)).toBe(false)
   })
+
+  it("recognizes the colon-less interactive-deny message", () => {
+    // tool-integration.ts emits this exact shape on interactive deny —
+    // previously missed by the /^Permission denied:/i filter.
+    expect(isPolicyDeniedMessage('Permission denied for tool "bash"')).toBe(true)
+    expect(isPolicyDeniedMessage('permission denied for tool "write"')).toBe(true)
+  })
 })
 
 describe("classifyTaskError — policy denials", () => {

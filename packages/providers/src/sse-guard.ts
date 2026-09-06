@@ -48,8 +48,10 @@ import type { Provider, ChatMessage, ChatOptions, ChatChunk, EmbeddingResponse }
 /**
  * Provider decorator: run every `stream()` through `guardSse` so a stalled
  * SSE connection fails the task instead of pinning it forever. Compose
- * innermost: `withCircuitBreaker(withRetry(withSseGuard(p)))` — retry sees
- * the timeout as a retryable network-class failure.
+ * innermost: `withCircuitBreaker(withRetry(withSseGuard(p)))` — retry's
+ * `isRetryable` matches the "…timeout" message shape, so a guard timeout
+ * is retried as a transient network-class failure (regression-tested in
+ * retry-sse.test.ts).
  */
 export function withSseGuard(provider: Provider, opts: SseGuardOptions = {}): Provider {
   function retryStream(messages: ChatMessage[], options?: ChatOptions): AsyncIterable<ChatChunk> {

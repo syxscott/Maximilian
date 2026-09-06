@@ -66,6 +66,47 @@ describe("retry status broadcast", () => {
     expect(statuses[0]!.delayMs).toBe(250)
   })
 
+  it("does not truncate a server retry-after hint to maxDelay", async () => {
+    // opencode semantics: an explicit server window wins over the local
+    // backoff cap — only the 32-bit setTimeout limit may clamp it.
+    const statuses: ProviderRetryStatus[] = []
+    const provider = withRetry(failingProvider(1), {
+      maxAttempts: 2,
+      baseDelay: 1,
+      headers: () => ({ "retry-after-ms": "60000" }),
+      onRetryStatus: (s) => statuses.push(s),
+      sleep: async () => {},
+    })
+    await provider.chat(messages)
+    expect(statuses[0]!.delayMs).toBe(60000)
+  })
+
+  it("retries an SSE-guard timeout as a transient failure", async () => {
+    // Regression: sse-guard's "SSE headers timeout …" must classify as
+    // retryable (the borrowed guard×retry contract), not fail the call.
+    let calls = 0
+    const provider = withRetry(
+      {
+        id: "sse-timeout-provider",
+        name: "Test",
+        defaultModel: "m",
+        isConfigured: () => true,
+        async chat() {
+          calls += 1
+          if (calls === 1) throw new SseTimeoutError("SSE headers timeout after 300000ms")
+          return { content: "ok", model: "m" }
+        },
+        async *stream() {
+          throw new Error("ECONNRESET")
+        },
+      },
+      { maxAttempts: 2, baseDelay: 1, jitter: false, sleep: async () => {} },
+    )
+    const res = await provider.chat(messages)
+    expect(res.content).toBe("ok")
+    expect(calls).toBe(2)
+  })
+
   it("describeRetryAction maps network errors to readable actions", () => {
     expect(describeRetryAction(new Error("connect ECONNREFUSED x"))).toContain("unreachable")
     expect(describeRetryAction(new Error("socket ETIMEDOUT"))).toContain("timed out")

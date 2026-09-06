@@ -621,6 +621,8 @@ export const DailyUsageEntrySchema = z.object({
   totalCacheCreationTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
   totalCostUsd: z.number().nonnegative(),
+  /** False when any request that day lacked pricing (cost is a partial estimate). */
+  totalCostUsdKnown: z.boolean().optional(),
 })
 export type DailyUsageEntry = z.infer<typeof DailyUsageEntrySchema>
 

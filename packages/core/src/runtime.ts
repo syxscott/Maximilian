@@ -1557,9 +1557,11 @@ export class AgentRuntime {
       }
 
       // Leftover followups (pi borrowing): the run finished but the user
-      // queued "keep going with this" messages. Surface them so the API
-      // layer can start a new cycle instead of silently dropping them in
-      // the finally-block cleanup.
+      // queued "keep going with this" messages. Surface them so a caller
+      // can start a new cycle instead of silently dropping them in the
+      // finally-block cleanup. NOTE: no production consumer subscribes to
+      // this event yet — until one exists, leftover followups after a
+      // finished run are surfaced to listeners but not auto-continued.
       const leftoverFollowups = this.followUpQueues.get(workspace.id)
       if (leftoverFollowups && leftoverFollowups.length > 0) {
         this.followUpQueues.delete(workspace.id)

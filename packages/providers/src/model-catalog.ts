@@ -190,14 +190,25 @@ async function acquireLock(
   now: () => number,
 ): Promise<LockHandle | null> {
   const lockPath = path.join(dir, "catalog.lock")
+  // Unique per-acquisition token: release() must only delete the lock it
+  // owns, never one a successor claimed after our stale takeover.
+  const token = `${process.pid} ${now()} ${Math.random().toString(36).slice(2)}`
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const fh = await fs.open(lockPath, "wx")
-      await fh.write(`${process.pid} ${now()}`)
+      await fh.write(token)
       await fh.close()
       return {
         path: lockPath,
         release: async () => {
+          try {
+            const current = await fs.readFile(lockPath, "utf-8")
+            // Someone else took over (stale takeover while our release was
+            // delayed) — leave their lock alone.
+            if (current !== token) return
+          } catch {
+            return // already gone
+          }
           await fs.rm(lockPath, { force: true })
         },
       }
@@ -259,12 +270,20 @@ export class ModelCatalog {
     }
     await this.initPromise
     if (this.opts.backgroundRefresh !== false && this.refreshTimer === null) {
+      // Re-arm after every refresh (upstream models.dev repeats hourly via
+      // Effect.repeat); the previous one-shot timer stopped refreshing after
+      // the first fire for the whole process lifetime.
       const interval = this.opts.refreshIntervalMs ?? 60 * 60_000
-      this.refreshTimer = setTimeout(() => {
-        void this.refresh().catch(() => {})
-      }, interval)
-      // Never hold the process open for a background refresh.
-      this.refreshTimer.unref?.()
+      const schedule = () => {
+        this.refreshTimer = setTimeout(() => {
+          void this.refresh()
+            .catch(() => {})
+            .finally(schedule)
+        }, interval)
+        // Never hold the process open for a background refresh.
+        this.refreshTimer.unref?.()
+      }
+      schedule()
     }
   }
 
@@ -314,24 +333,35 @@ export class ModelCatalog {
   }
 
   private async fetchRemote(): Promise<boolean> {
-    try {
-      const fetchImpl = this.opts.fetchImpl ?? fetch
-      const res = await fetchImpl(this.remoteUrl)
-      if (!res.ok) return false
-      const raw: unknown = await res.json()
-      const entries = parseModelsDevCatalog(raw)
-      if (entries.length === 0) return false
-      this.entries = entries
-      this.source = "remote"
-      this.fetchedAt = this.now()
-      await fs.mkdir(this.cacheDir, { recursive: true })
-      const cache: CacheFile = { version: 1, fetchedAt: this.fetchedAt, entries }
-      await fs.writeFile(this.cacheFile, JSON.stringify(cache))
-      for (const cb of this.refreshedCbs) cb()
-      return true
-    } catch {
-      return false
+    // 10s timeout + one transient retry (mirrors upstream models-dev.ts);
+    // without a timeout a hung endpoint would block init() indefinitely.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const fetchImpl = this.opts.fetchImpl ?? fetch
+        const res = await fetchImpl(this.remoteUrl, { signal: AbortSignal.timeout(10_000) })
+        if (!res.ok) return false
+        const raw: unknown = await res.json()
+        const entries = parseModelsDevCatalog(raw)
+        if (entries.length === 0) return false
+        this.entries = entries
+        this.source = "remote"
+        this.fetchedAt = this.now()
+        await fs.mkdir(this.cacheDir, { recursive: true })
+        const cache: CacheFile = { version: 1, fetchedAt: this.fetchedAt, entries }
+        // Atomic write: a concurrent reader must never see a half-written
+        // cache file (upstream models.dev does temp+rename for the same
+        // reason; corruption here is self-healing via the version check,
+        // but a crash mid-write would still lose the warm tier).
+        const tmp = `${this.cacheFile}.tmp`
+        await fs.writeFile(tmp, JSON.stringify(cache))
+        await fs.rename(tmp, this.cacheFile)
+        for (const cb of this.refreshedCbs) cb()
+        return true
+      } catch {
+        // transient (network/timeout) — retry once, then fall back
+      }
     }
+    return false
   }
 
   /**

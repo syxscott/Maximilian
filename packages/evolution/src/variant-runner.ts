@@ -17,8 +17,9 @@
  *     captures grounded quality.
  *   - `speed` (1 / normalized duration) captures latency cost so a
  *     marginally-better-scoring variant doesn't win if it's twice as slow.
- *   - `cost` penalty (USD) keeps token spend visible (borrowed from
- *     EvoAgentBench's `costDeltaUSD` dimension).
+ *   - `cost` penalty (USD) keeps token spend visible. (Maximilian's own
+ *     design — an earlier comment attributed it to EvoAgentBench, but
+ *     that benchmark has no such ranking dimension.)
  */
 
 import { randomUUID } from "node:crypto"
@@ -155,9 +156,10 @@ export interface VariantRunOptions {
   feedback?: string[]
   /**
    * Early-stop after N consecutive variants that fail to beat the best
-   * combined score so far (wshobson/agents `optimize()` no-improvement
-   * stop). Saves judge/executor budget when mutations have plateaued.
-   * Default: disabled.
+   * combined score so far. Saves judge/executor budget when mutations
+   * have plateaued. (Maximilian's own mechanism — an earlier comment
+   * attributed it to wshobson/agents `optimize()`, which does not exist
+   * upstream.) Default: disabled.
    */
   patience?: number
 }
@@ -218,8 +220,9 @@ const defaultJudge: VariantJudge = (input) => {
 }
 
 /**
- * Combined score formula (higher = better). Borrowed shape from
- * EvoAgentBench's `combined` ranking:
+ * Combined score formula (higher = better). Maximilian's own design (an
+ * earlier comment attributed it to EvoAgentBench's `combined` ranking,
+ * which does not exist upstream):
  *   combined = quality - speedPenalty - costPenalty
  * where:
  *   speedPenalty = log(1 + durationMs / 1000) * 0.5   (0..2-ish)

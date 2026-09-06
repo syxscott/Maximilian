@@ -112,11 +112,13 @@ const AUTH_PERMANENT_PATTERNS = [
  * Permission-denied patterns. When the user (or the config) denies a
  * tool call, retrying won't change the outcome - the runtime would
  * just re-run the LLM, hit the same deny, and burn tokens. These must
- * NOT be classified as retryable. The message is produced by
- * `PermissionDeniedError` in `@max/tools/with-permission`:
- *   "Permission denied: <tool> -> <target>"
+ * NOT be classified as retryable. Two producers:
+ *   - `PermissionDeniedError` in `@max/tools/with-permission`:
+ *       "Permission denied: <tool> -> <target>"
+ *   - the interactive-deny path in `tool-integration.ts`:
+ *       "Permission denied for tool \"<tool>\"" (no colon)
  */
-const PERMISSION_DENIED_PATTERNS = [/^Permission denied:/i, /permission required:/i]
+const PERMISSION_DENIED_PATTERNS = [/^permission denied\b/i, /permission required:/i]
 
 /** Known billing exhaustion patterns. */
 const BILLING_PATTERNS = [

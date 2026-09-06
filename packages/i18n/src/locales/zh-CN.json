@@ -347,5 +347,20 @@
   "approvals.commentPlaceholder": "可选评论（如标注必填则需填写）",
   "approvals.commentRequired": "请填写评论。",
   "approvals.approve": "通过",
-  "approvals.reject": "拒绝"
+  "approvals.reject": "拒绝",
+  "chat.stopServerHint": "中止服务端正在运行的请求",
+  "opencode.sessions.title": "活跃 opencode 会话",
+  "opencode.sessions.refresh": "刷新会话",
+  "opencode.sessions.loading": "会话加载中…",
+  "opencode.sessions.empty": "当前没有活跃会话",
+  "opencode.sessions.generatedAt": "快照 {ts}",
+  "permissions.queueCounter": "第 {current} / {total} 个请求待处理",
+  "permissions.skip": "跳过",
+  "permissions.saveFailed": "保存权限设置失败：{error}",
+  "review.issuesHeader": "{count} 个问题",
+  "review.suggestionsHeader": "{count} 条建议",
+  "review.viewRaw": "查看原文",
+  "theme.toggleTitle": "当前：{current}，点击切换到 {next}",
+  "theme.toggleAria": "切换主题（当前：{mode}）",
+  "usage.cost.partial": "部分估算——窗口内含无价目请求"
 }

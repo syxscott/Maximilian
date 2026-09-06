@@ -186,13 +186,20 @@ function DailyTrendCard({ daily, range }: { daily: DailyUsageEntry[]; range: Usa
   const maxCost = Math.max(1e-9, ...daily.map((d) => d.totalCostUsd))
   const totalCost = daily.reduce((a, d) => a + d.totalCostUsd, 0)
   const totalReq = daily.reduce((a, d) => a + d.requestCount, 0)
+  // Same honesty flag as the summary card: if any day contains unpriced
+  // requests, the aggregate is a partial estimate, not a certain number.
+  const anyDayPartial = daily.some((d) => d.totalCostUsdKnown === false)
   return (
     <Card className="bg-muted/30">
       <CardHeader className="py-3 px-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base text-foreground">{t("usage.daily.title")}</CardTitle>
-          <Badge variant="outline">
-            {range} · {totalReq} {t("usage.metric.requests")} · {formatUsd(totalCost)}
+          <Badge
+            variant="outline"
+            className={anyDayPartial ? "border-destructive text-destructive" : undefined}
+          >
+            {range} · {totalReq} {t("usage.metric.requests")} ·{" "}
+            {anyDayPartial ? `— (${t("usage.cost.partial")})` : formatUsd(totalCost)}
           </Badge>
         </div>
       </CardHeader>
@@ -233,11 +240,18 @@ function DailyBars({ daily, maxCost }: { daily: DailyUsageEntry[]; maxCost: numb
               y={y}
               width={Math.max(barWidth, 1)}
               height={h}
-              className="fill-primary/70 hover:fill-primary"
+              className={
+                d.totalCostUsdKnown === false
+                  ? "fill-destructive/50 hover:fill-destructive/70"
+                  : "fill-primary/70 hover:fill-primary"
+              }
               rx={1}
             >
               <title>
-                {d.date}: {d.requestCount} req · {formatUsd(d.totalCostUsd)}
+                {d.date}: {d.requestCount} req ·{" "}
+                {d.totalCostUsdKnown === false
+                  ? `— (${t("usage.cost.partial")})`
+                  : formatUsd(d.totalCostUsd)}
               </title>
             </rect>
           </g>

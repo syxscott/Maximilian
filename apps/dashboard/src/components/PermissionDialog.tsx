@@ -128,6 +128,8 @@ export function PermissionDialog({
                 className="ml-1 text-xs font-normal text-muted-foreground"
                 data-testid="perm-dialog-queue"
               >
+                {/* current is always 1 by construction: the dialog only ever
+                    renders the FIFO head of the pending queue. */}
                 {t("permissions.queueCounter", { current: 1, total: queueSize })}
               </span>
             ) : null}

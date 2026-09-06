@@ -5,11 +5,13 @@
  * Persists the assignment back into the graph and the blueprint.
  *
  * No hardcoded model. Selection is driven entirely by historical metrics,
- * annotated with a **role tier** (wshobson/agents model-tier borrowing):
- * review work lands on frontier models, deterministic utility work on
- * economy ones. The tier is recorded on every node so a tier-enforcing
- * selector can key on it, and so the leaderboard can later answer "does
- * the review role actually need a frontier model?".
+ * annotated with a **role tier**. The frontier/standard/economy vocabulary
+ * is inspired by wshobson/agents' per-agent model tiers but is a
+ * Maximilian invention (upstream tiers map to concrete models at agent
+ * generation time; here tier is currently ANNOTATION-ONLY — the selector
+ * does not read it yet). The tier is recorded on every node so a future
+ * tier-enforcing selector can key on it, and so the leaderboard can later
+ * answer "does the review role actually need a frontier model?".
  */
 
 import type { EvolutionFacade } from "@max/evolution"

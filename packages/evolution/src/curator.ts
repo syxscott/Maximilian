@@ -83,8 +83,11 @@ export class MemoryCurator {
   /**
    * Collapse near-duplicate entries within one bucket: keep the newest
    * active copy (or the pinned copy, which wins over recency), archive the
-   * rest. Pinned entries are *never* archived — immunity beats dedupe, so
-   * a pinned duplicate of a newer unpinned entry keeps both copies.
+   * rest. Pinned entries are *never* archived — immunity beats dedupe.
+   * NOTE: when a pinned entry and an unpinned entry share the same
+   * normalized key, the pinned one becomes canonical and the unpinned
+   * copy IS archived (pinned wins the key; it does not force both copies
+   * to coexist). Two pinned duplicates of each other do coexist.
    * Comparison is normalization-based (case, whitespace and punctuation
    * insensitive) so "avoid X." and "Avoid  X" collapse.
    */

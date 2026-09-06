@@ -46,7 +46,10 @@ export function isPolicyDeniedMessage(message: string | undefined | null): boole
   if (!message) return false
   return (
     message.startsWith(POLICY_DENIED_PREFIX) ||
-    /^Permission denied:/i.test(message) ||
+    // Matches both producers: with-permission's "Permission denied: <tool> ->
+    // <target>" AND tool-integration's interactive-deny path, which emits the
+    // colon-less "Permission denied for tool \"<tool>\"" (previously missed).
+    /^permission denied\b/i.test(message) ||
     /^Permission required:/i.test(message)
   )
 }
