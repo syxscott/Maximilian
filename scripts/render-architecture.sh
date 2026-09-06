@@ -78,30 +78,46 @@ render_one() {
       continue
     fi
 
-    # Render via mermaid-cli. Use a stable puppeteer config to avoid
-    # downloading a fresh chromium on every run.
-    export PUPPETEER_CONFIG="${PUPPETEER_CONFIG:-$ROOT/.mermaid-config.json}"
-    if [[ ! -f "$PUPPETEER_CONFIG" ]]; then
-      cat > "$PUPPETEER_CONFIG" <<'CFG'
-{ "args": ["--no-sandbox", "--disable-setuid-sandbox"] }
-CFG
+    # Render via mermaid-cli. mermaid-cli's puppeteer does NOT auto-download
+    # a browser in npx contexts (install scripts are skipped), so we must
+    # point it at a real Chrome executable — system chrome on GitHub
+    # runners, otherwise any chrome in the puppeteer cache. Generating a
+    # per-run config (instead of the static .mermaid-config.json) lets us
+    # embed the resolved executablePath. stderr is deliberately NOT
+    # discarded: hiding it turned an actionable "Could not find Chrome"
+    # error into a silent exit-1 for months.
+    if [[ -z "${CHROME_BIN:-}" ]]; then
+      for c in google-chrome google-chrome-stable chromium chromium-browser; do
+        if command -v "$c" >/dev/null 2>&1; then CHROME_BIN="$(command -v "$c")"; break; fi
+      done
+      if [[ -z "${CHROME_BIN:-}" ]]; then
+        CHROME_BIN="$(find ~/.cache/puppeteer -type f \( -name chrome -o -name chrome-headless-shell \) 2>/dev/null | head -1 || true)"
+      fi
+      if [[ -z "${CHROME_BIN:-}" ]]; then
+        echo "error: no Chrome/Chromium found (tried google-chrome, chromium, ~/.cache/puppeteer)." >&2
+        echo "       install one, or run: npx -y @puppeteer/browsers install chrome-headless-shell@stable" >&2
+        exit 1
+      fi
+      export CHROME_BIN
     fi
+
+    local puppeteer_config="$TMP_DIR/puppeteer-config.json"
+    printf '{ "args": ["--no-sandbox", "--disable-setuid-sandbox"], "executablePath": "%s" }\n' \
+      "$CHROME_BIN" > "$puppeteer_config"
 
     npx -y @mermaid-js/mermaid-cli@latest \
       --input "$mmd" \
       --output "$png" \
       --outputFormat png \
-      --puppeteerConfigFile "$PUPPETEER_CONFIG" \
-      --quiet \
-      2>/dev/null
+      --puppeteerConfigFile "$puppeteer_config" \
+      --quiet
 
     npx -y @mermaid-js/mermaid-cli@latest \
       --input "$mmd" \
       --output "$svg" \
       --outputFormat svg \
-      --puppeteerConfigFile "$PUPPETEER_CONFIG" \
-      --quiet \
-      2>/dev/null
+      --puppeteerConfigFile "$puppeteer_config" \
+      --quiet
 
     echo "rendered: $rel -> diagrams/$base.{png,svg}"
   done

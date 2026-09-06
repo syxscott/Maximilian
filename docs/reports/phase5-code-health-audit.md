@@ -120,7 +120,7 @@ flowchart TB
 
   RT -.emit events.-> IDX
 
-  IDX -.runtime.on.-> FAC
+  IDX -.->|runtime.on| FAC
 
   ORCH --> EXS
   ORCH --> RI

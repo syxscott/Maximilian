@@ -45,7 +45,7 @@ flowchart TB
     EXF --> LD[LearningAPI]
     CDF --> LD
     PHF --> LD
-    LD --> JSON[/api/learning/*]
+    LD --> JSON["GET /api/learning/*"]
   end
 
   subgraph "Stage 5.8 - Take Over"
