@@ -66,10 +66,7 @@ export class EmbeddingRouter {
    * Classify a task and select the best model.
    * Tries embedding similarity first, falls back to heuristics.
    */
-  async selectModel(task: {
-    agentRole: AgentRole
-    description: string
-  }): Promise<{
+  async selectModel(task: { agentRole: AgentRole; description: string }): Promise<{
     provider: string
     model: string
     characteristics: TaskCharacteristics

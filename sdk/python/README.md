@@ -77,12 +77,12 @@ for event in client.stream_events(workspace="demo"):
 All API failures raise an exception from the `maximilian.errors` module.
 The SDK maps HTTP status codes to specific subclasses:
 
-| Status | Exception            |
-|--------|----------------------|
-| 401, 403 | `AuthError`        |
-| 404    | `NotFoundError`      |
-| 429    | `RateLimitError`     |
-| other  | `ApiError`           |
+| Status   | Exception        |
+| -------- | ---------------- |
+| 401, 403 | `AuthError`      |
+| 404      | `NotFoundError`  |
+| 429      | `RateLimitError` |
+| other    | `ApiError`       |
 
 All four are subclasses of `MaximilianError`, so a single `except
 MaximilianError` clause catches them all. Import the typed classes

@@ -412,24 +412,22 @@ function PendingRow({ pending }) {
         color: "yellow",
         children: ["Pending governance (", pending.length, ")"],
       }),
-      pending
-        .slice(0, 3)
-        .map((p) =>
-          _jsxs(
-            Text,
-            {
-              children: [
-                " ",
-                p.proposal.action,
-                " ",
-                p.proposal.subject,
-                " \u00B7 utility ",
-                p.score.utility.toFixed(2),
-              ],
-            },
-            p.proposalId,
-          ),
+      pending.slice(0, 3).map((p) =>
+        _jsxs(
+          Text,
+          {
+            children: [
+              " ",
+              p.proposal.action,
+              " ",
+              p.proposal.subject,
+              " \u00B7 utility ",
+              p.score.utility.toFixed(2),
+            ],
+          },
+          p.proposalId,
         ),
+      ),
     ],
   })
 }
