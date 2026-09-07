@@ -1,0 +1,36 @@
+name: matrix-probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe-a:
+    name: probe-a cartesian + expr runs-on
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, worker]
+        platform:
+          - { platforms: linux/amd64, runner: ubuntu-latest }
+          - { platforms: linux/arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - run: echo "A ${{ matrix.target }} ${{ matrix.platform.platforms }} on ${{ matrix.runner }}"
+  probe-b:
+    name: probe-b include + expr runs-on
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platforms: linux/amd64
+            runner: ubuntu-latest
+          - platforms: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - run: echo "B ${{ matrix.platforms }} on ${{ matrix.runner }}"
+  probe-c:
+    name: probe-c static arm label
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - run: echo "C on arm"
