@@ -34,7 +34,9 @@ jobs:
   publish:
     name: build & push (${{ matrix.target }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # QEMU-emulated arm64 builds are slow and variable (observed 21m clean,
+    # >30m under runner load) — 30min caused spurious job cancellations.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
