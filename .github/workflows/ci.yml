@@ -58,7 +58,7 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # fetch-depth: 2 keeps the previous commit on the branch in the
         # local clone so `git diff ${{ github.event.before }} ${{ github.sha }}`
         # in the "Format check" step resolves both SHAs. The default of 1
@@ -200,7 +200,7 @@ jobs:
     needs: [verify, secret-scan]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v3
 
