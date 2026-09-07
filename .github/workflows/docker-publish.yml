@@ -43,19 +43,53 @@ jobs:
   # and blew through first a 30min then a 60min job timeout. Native arm
   # builds complete in a few minutes.
   build:
-    name: build ${{ matrix.target.name }} (${{ matrix.platform.platforms }})
+    name: build ${{ matrix.target }} (${{ matrix.platforms }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
+    # NOTE: include-style matrix, NOT cartesian object arrays — GitHub
+    # currently silently drops jobs defined as a cartesian matrix of
+    # object-valued keys with an expression runs-on (diagnosed via a
+    # probe workflow; include entries expand fine).
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - { name: api, context: ".", dockerfile: "./apps/api/Dockerfile" }
-          - { name: dashboard, context: ".", dockerfile: "./apps/dashboard/Dockerfile" }
-          - { name: worker, context: ".", dockerfile: "./apps/worker/Dockerfile" }
-        platform:
-          - { platforms: linux/amd64, runner: ubuntu-latest }
-          - { platforms: linux/arm64, runner: ubuntu-24.04-arm }
+        include:
+          - {
+              target: api,
+              dockerfile: "./apps/api/Dockerfile",
+              platforms: linux/amd64,
+              runner: ubuntu-latest,
+            }
+          - {
+              target: api,
+              dockerfile: "./apps/api/Dockerfile",
+              platforms: linux/arm64,
+              runner: ubuntu-24.04-arm,
+            }
+          - {
+              target: dashboard,
+              dockerfile: "./apps/dashboard/Dockerfile",
+              platforms: linux/amd64,
+              runner: ubuntu-latest,
+            }
+          - {
+              target: dashboard,
+              dockerfile: "./apps/dashboard/Dockerfile",
+              platforms: linux/arm64,
+              runner: ubuntu-24.04-arm,
+            }
+          - {
+              target: worker,
+              dockerfile: "./apps/worker/Dockerfile",
+              platforms: linux/amd64,
+              runner: ubuntu-latest,
+            }
+          - {
+              target: worker,
+              dockerfile: "./apps/worker/Dockerfile",
+              platforms: linux/arm64,
+              runner: ubuntu-24.04-arm,
+            }
     steps:
       - uses: actions/checkout@v4
 
@@ -74,20 +108,20 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.target.context }}
-          file: ${{ matrix.target.dockerfile }}
-          platforms: ${{ matrix.platform.platforms }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
           push: true
           # Tagless here — the merge job assembles the multi-platform
           # manifest list and applies the tags.
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/maximilian-${{ matrix.target.name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/maximilian-${{ matrix.target }},push-by-digest=true,name-canonical=true,push=true
           labels: |
-            org.opencontainers.image.title=maximilian-${{ matrix.target.name }}
+            org.opencontainers.image.title=maximilian-${{ matrix.target }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ github.ref_name }}
-          cache-from: type=gha,scope=${{ matrix.target.name }}-${{ matrix.platform.platforms }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.target.name }}-${{ matrix.platform.platforms }}
+          cache-from: type=gha,scope=${{ matrix.target.name }}-${{ matrix.platforms }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target.name }}-${{ matrix.platforms }}
           provenance: true
           sbom: true
 
@@ -100,7 +134,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.target.name }}-${{ matrix.platform.runner }}
+          name: digests-${{ matrix.target.name }}-${{ matrix.runner }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
