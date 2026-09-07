@@ -43,7 +43,7 @@ jobs:
   # and blew through first a 30min then a 60min job timeout. Native arm
   # builds complete in a few minutes.
   build:
-    name: build ${{ matrix.target.name }} (${{ matrix.platforms }})
+    name: build ${{ matrix.target.name }} (${{ matrix.platform.platforms }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     strategy:
@@ -100,7 +100,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.target.name }}-${{ matrix.platform.platforms }}
+          name: digests-${{ matrix.target.name }}-${{ matrix.platform.runner }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
