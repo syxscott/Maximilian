@@ -120,8 +120,8 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ github.ref_name }}
-          cache-from: type=gha,scope=${{ matrix.target.name }}-${{ matrix.platforms }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.target.name }}-${{ matrix.platforms }}
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.platforms }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}-${{ matrix.platforms }}
           provenance: true
           sbom: true
 
@@ -134,7 +134,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.target.name }}-${{ matrix.runner }}
+          name: digests-${{ matrix.target }}-${{ matrix.runner }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
