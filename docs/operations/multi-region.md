@@ -45,22 +45,22 @@ components are regional vs global, so the failure modes stay simple.
 
 ## Per-region vs global
 
-| Component | Scope | Why |
-| --------- | ----- | --- |
-| Postgres | Global (managed multi-region) | Customer data is one logical DB |
-| Redis (BullMQ) | Per-region | Jobs are tagged with origin region; failover re-enqueues to peer |
-| opencode serve | Per-region | Local LLM call latency matters; sessions are per-region |
-| API / Worker / Dashboard | Per-region | Stateless; behind a global LB |
-| Secrets | Global (AWS Secrets Manager) | Mirrored to each region's K8s Secret via ESO |
-| OTel / Honeycomb | Global | One workspace, multiple datasets (one per region) |
-| TruthAudit data | Global (in Postgres) | Calibration is global — local drift is the same signal everywhere |
+| Component                | Scope                         | Why                                                               |
+| ------------------------ | ----------------------------- | ----------------------------------------------------------------- |
+| Postgres                 | Global (managed multi-region) | Customer data is one logical DB                                   |
+| Redis (BullMQ)           | Per-region                    | Jobs are tagged with origin region; failover re-enqueues to peer  |
+| opencode serve           | Per-region                    | Local LLM call latency matters; sessions are per-region           |
+| API / Worker / Dashboard | Per-region                    | Stateless; behind a global LB                                     |
+| Secrets                  | Global (AWS Secrets Manager)  | Mirrored to each region's K8s Secret via ESO                      |
+| OTel / Honeycomb         | Global                        | One workspace, multiple datasets (one per region)                 |
+| TruthAudit data          | Global (in Postgres)          | Calibration is global — local drift is the same signal everywhere |
 
 ## RTO / RPO targets
 
-| Tier | Target | Why |
-| ---- | ------ | --- |
-| RTO (Recovery Time Objective) | 5 min for read traffic, 60s for write traffic | DNS failover is automatic via Route 53 health checks |
-| RPO (Recovery Point Objective) | 30s for writes | Aurora Global replication lag < 1s in practice; budget allows for re-promotion latency |
+| Tier                           | Target                                        | Why                                                                                    |
+| ------------------------------ | --------------------------------------------- | -------------------------------------------------------------------------------------- |
+| RTO (Recovery Time Objective)  | 5 min for read traffic, 60s for write traffic | DNS failover is automatic via Route 53 health checks                                   |
+| RPO (Recovery Point Objective) | 30s for writes                                | Aurora Global replication lag < 1s in practice; budget allows for re-promotion latency |
 
 If your cloud provider can't meet these, the multi-region overlay is
 not for you — fall back to a single-region deployment + offline
@@ -79,7 +79,7 @@ backups.
    the application's perspective).
 4. **Redis**: New writes go to the peer region. Jobs that were
    in-flight in the dead region are re-enqueued against the peer via
-   `scripts/requeue-orphans.ts`.
+   `scripts/requeue-orphans.ts` (**planned — not yet implemented**).
 5. **opencode**: opencode sessions that were running in the dead
    region are abandoned (the `OpencodeExecutor.shutdown()` doesn't
    get called). The leak metric
@@ -131,10 +131,10 @@ Quarterly DR drill:
 1. Pick a non-production cluster with the multi-region overlay
    applied.
 2. Block egress from one region's API pods to Postgres (`kubectl
-   exec` + `iptables`).
+exec` + `iptables`).
 3. Confirm the global LB shifts traffic within 60s.
 4. Confirm writes succeed against the peer region's DB.
-5. Run `scripts/requeue-orphans.ts --from-region=<dead>` and verify
+5. Run `scripts/requeue-orphans.ts --from-region=<dead>` (planned — not yet implemented) and verify
    BullMQ drains.
 6. Restore egress.
 7. File the drill in the incident log under tag `dr-drill`.
