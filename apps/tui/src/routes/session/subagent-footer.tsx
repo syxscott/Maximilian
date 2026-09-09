@@ -21,7 +21,12 @@ import { Locale } from "../../util/locale"
 
 type AssistantMessage = {
   role: "assistant"
-  tokens: { input: number; output: number; reasoning: number; cache: { read: number; write: number } }
+  tokens: {
+    input: number
+    output: number
+    reasoning: number
+    cache: { read: number; write: number }
+  }
   providerID?: string
   modelID?: string
   [k: string]: unknown
@@ -43,7 +48,9 @@ export function SubagentFooter() {
   const keymap = useOpencodeKeymap()
 
   const messages = useMemo(
-    () => ((sync.data.message as Record<string, unknown[]>)?.[route.sessionID] ?? []) as AssistantMessage[],
+    () =>
+      ((sync.data.message as Record<string, unknown[]>)?.[route.sessionID] ??
+        []) as AssistantMessage[],
     [sync.data.message, route.sessionID],
   )
 
@@ -75,14 +82,23 @@ export function SubagentFooter() {
     if (!last) return undefined
 
     const tokens =
-      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
+      last.tokens.input +
+      last.tokens.output +
+      last.tokens.reasoning +
+      last.tokens.cache.read +
+      last.tokens.cache.write
     if (tokens <= 0) return undefined
 
-    const provider = (sync.data.provider as Array<{ id: string; models: Record<string, { limit?: { context?: number } }> }>).find(
-      (item) => item.id === last.providerID,
-    )
+    const provider = (
+      sync.data.provider as Array<{
+        id: string
+        models: Record<string, { limit?: { context?: number } }>
+      }>
+    ).find((item) => item.id === last.providerID)
     const model = provider?.models?.[last.modelID ?? ""]
-    const pct = model?.limit?.context ? `${Math.round((tokens / model.limit.context) * 100)}%` : undefined
+    const pct = model?.limit?.context
+      ? `${Math.round((tokens / model.limit.context) * 100)}%`
+      : undefined
     const cost = session?.cost ?? 0
 
     const money = new Intl.NumberFormat("en-US", {
@@ -125,9 +141,7 @@ export function SubagentFooter() {
               </Text>
             ) : null}
             {usage ? (
-              <Text dimColor>
-                {[usage.context, usage.cost].filter(Boolean).join(" . ")}
-              </Text>
+              <Text dimColor>{[usage.context, usage.cost].filter(Boolean).join(" . ")}</Text>
             ) : null}
           </Box>
           <Box flexDirection="row" gap={2}>

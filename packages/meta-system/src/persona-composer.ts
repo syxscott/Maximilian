@@ -21,27 +21,28 @@
  * All personas are referenced by their `PersonaId` literal type.
  */
 
-import type { AgentRole } from "@max/core";
+import type { AgentRole } from "@max/core"
 
-export type PersonaId = "developer" | "reviewer" | "tester" | "planner" | "operator" | "orchestrator";
+export type PersonaId =
+  "developer" | "reviewer" | "tester" | "planner" | "operator" | "orchestrator"
 
 export interface Persona {
-  id: PersonaId;
-  name: string;
-  description: string;
+  id: PersonaId
+  name: string
+  description: string
   /** Base system prompt for this persona (TS template literal at use-site). */
-  systemPrompt: string;
+  systemPrompt: string
   /** Optional thinking budget (0 disables extended thinking; >0 enables it). */
-  thinkingBudget?: number;
+  thinkingBudget?: number
   /** Optional preferred model. */
-  model?: string;
+  model?: string
 }
 
 export interface PersonaComposerOptions {
   /** Default persona to use when a role doesn't have an explicit mapping. */
-  defaultPersona?: PersonaId;
+  defaultPersona?: PersonaId
   /** Whether to include the ORCHESTRATOR persona in composite prompts. */
-  includeOrchestrator?: boolean;
+  includeOrchestrator?: boolean
 }
 
 export const HARD_RULES_FOOTER = `
@@ -50,33 +51,34 @@ export const HARD_RULES_FOOTER = `
 - Do NOT expose capability IDs, tool names, or routing details to the user.
 - Maintain the unified "Maximilian" voice — the user talks to one brain.
 - If a task crosses persona boundaries, stay in the orchestrator's voice.
-`.trim();
+`.trim()
 
-export const PERSONA_HEADER = (p: Persona): string => `
+export const PERSONA_HEADER = (p: Persona): string =>
+  `
 === [${p.name}] ===
 ${p.description}
-`.trim();
+`.trim()
 
 export class PersonaComposer {
-  private readonly personas = new Map<PersonaId, Persona>();
-  private defaultPersona: PersonaId;
-  private includeOrchestrator: boolean;
+  private readonly personas = new Map<PersonaId, Persona>()
+  private defaultPersona: PersonaId
+  private includeOrchestrator: boolean
 
   constructor(opts: PersonaComposerOptions = {}) {
-    this.defaultPersona = opts.defaultPersona ?? "developer";
-    this.includeOrchestrator = opts.includeOrchestrator ?? true;
+    this.defaultPersona = opts.defaultPersona ?? "developer"
+    this.includeOrchestrator = opts.includeOrchestrator ?? true
   }
 
   register(persona: Persona): void {
-    this.personas.set(persona.id, persona);
+    this.personas.set(persona.id, persona)
   }
 
   has(id: PersonaId): boolean {
-    return this.personas.has(id);
+    return this.personas.has(id)
   }
 
   list(): ReadonlyArray<Persona> {
-    return [...this.personas.values()];
+    return [...this.personas.values()]
   }
 
   /** Default role → persona mapping (Maximilian's 5 standard roles). */
@@ -86,18 +88,20 @@ export class PersonaComposer {
       backend: "developer",
       review: "reviewer",
       general: "operator",
-    };
+    }
   }
 
   /** Pick the persona for a role; falls back to the default. */
   forRole(role: AgentRole, map?: Record<AgentRole, PersonaId>): Persona {
-    const m = map ?? PersonaComposer.defaultRoleMap();
-    const id = m[role] ?? this.defaultPersona;
-    const p = this.personas.get(id) ?? this.personas.get(this.defaultPersona);
+    const m = map ?? PersonaComposer.defaultRoleMap()
+    const id = m[role] ?? this.defaultPersona
+    const p = this.personas.get(id) ?? this.personas.get(this.defaultPersona)
     if (!p) {
-      throw new Error(`No persona registered for role "${role}" (tried "${id}" and default "${this.defaultPersona}")`);
+      throw new Error(
+        `No persona registered for role "${role}" (tried "${id}" and default "${this.defaultPersona}")`,
+      )
     }
-    return p;
+    return p
   }
 
   /**
@@ -106,24 +110,24 @@ export class PersonaComposer {
    * a meta-agent (e.g. the `META_AGENT_ENABLED` role).
    */
   composeMasterPrompt(): string {
-    const all = [...this.personas.values()];
-    const orchestrator = all.find((p) => p.id === "orchestrator");
-    const parts: string[] = [];
+    const all = [...this.personas.values()]
+    const orchestrator = all.find((p) => p.id === "orchestrator")
+    const parts: string[] = []
 
     if (orchestrator && this.includeOrchestrator) {
-      parts.push("# ORCHESTRATOR", orchestrator.systemPrompt);
-      parts.push("");
+      parts.push("# ORCHESTRATOR", orchestrator.systemPrompt)
+      parts.push("")
     }
 
-    const sub = all.filter((p) => p.id !== "orchestrator");
+    const sub = all.filter((p) => p.id !== "orchestrator")
     for (const p of sub) {
-      parts.push(PERSONA_HEADER(p));
-      parts.push(p.systemPrompt);
-      parts.push("");
+      parts.push(PERSONA_HEADER(p))
+      parts.push(p.systemPrompt)
+      parts.push("")
     }
 
-    parts.push(HARD_RULES_FOOTER);
-    return parts.join("\n\n");
+    parts.push(HARD_RULES_FOOTER)
+    return parts.join("\n\n")
   }
 
   /**
@@ -135,19 +139,19 @@ export class PersonaComposer {
     map: Record<AgentRole, PersonaId> | undefined,
     context: { sharedContext?: string; priorFailures?: string[] } = {},
   ): string {
-    const p = this.forRole(role, map);
-    const parts: string[] = [p.systemPrompt];
+    const p = this.forRole(role, map)
+    const parts: string[] = [p.systemPrompt]
     if (context.sharedContext) {
-      parts.push("\n# Shared context (auto-injected)\n" + context.sharedContext);
+      parts.push("\n# Shared context (auto-injected)\n" + context.sharedContext)
     }
     if (context.priorFailures && context.priorFailures.length > 0) {
       parts.push(
         "\n# Avoid these failure modes (auto-injected)\n" +
           context.priorFailures.map((f, i) => `${i + 1}. ${f}`).join("\n"),
-      );
+      )
     }
-    parts.push(HARD_RULES_FOOTER);
-    return parts.join("\n\n");
+    parts.push(HARD_RULES_FOOTER)
+    return parts.join("\n\n")
   }
 }
 
@@ -190,4 +194,4 @@ export const BUILT_IN_PERSONAS: ReadonlyArray<Persona> = [
     description: "Routes work to the right persona; never reveals routing.",
     systemPrompt: `You are the orchestrator. Route the user's request to the right persona. Speak in a unified voice — do not reveal which persona you picked.`,
   },
-];
+]

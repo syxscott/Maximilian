@@ -18,6 +18,6 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `packages/autonomy/src/review-intelligence.ts` | 180 |
+| 文件                                           | 行数 |
+| ---------------------------------------------- | ---- |
+| `packages/autonomy/src/review-intelligence.ts` | 180  |

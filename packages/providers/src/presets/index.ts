@@ -5,17 +5,9 @@
  * individual files. Keeps the module graph stable when we shuffle internals.
  */
 
-export type {
-  ApiFormat,
-  ProviderCategory,
-  ProviderPreset,
-} from "./types.js"
+export type { ApiFormat, ProviderCategory, ProviderPreset } from "./types.js"
 
-export {
-  PROVIDER_PRESETS,
-  PROVIDER_PRESETS_BY_ID,
-  VISIBLE_PROVIDER_PRESETS,
-} from "./data.js"
+export { PROVIDER_PRESETS, PROVIDER_PRESETS_BY_ID, VISIBLE_PROVIDER_PRESETS } from "./data.js"
 
 import { PROVIDER_PRESETS_BY_ID } from "./data.js"
 

@@ -5,13 +5,13 @@ https://demo.maximilian.dev.
 
 ## What's here
 
-| File | Purpose |
-|---|---|
-| `fly.api.toml` | Fly.io app config for the API |
-| `fly.worker.toml` | Fly.io app config for the worker |
-| `vercel.json` | Vercel project config for the dashboard |
-| `reset-cron.json` | Daily reset cron job |
-| `README.md` | This file |
+| File              | Purpose                                 |
+| ----------------- | --------------------------------------- |
+| `fly.api.toml`    | Fly.io app config for the API           |
+| `fly.worker.toml` | Fly.io app config for the worker        |
+| `vercel.json`     | Vercel project config for the dashboard |
+| `reset-cron.json` | Daily reset cron job                    |
+| `README.md`       | This file                               |
 
 ## Prerequisites
 

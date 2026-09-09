@@ -80,9 +80,7 @@ export class InstanceState<T> {
 
   /** 当前活跃 key 列表(排除 closed) */
   keys(): string[] {
-    return [...this.map.entries()]
-      .filter(([, e]) => !e.closed)
-      .map(([k]) => k)
+    return [...this.map.entries()].filter(([, e]) => !e.closed).map(([k]) => k)
   }
 
   size(): number {

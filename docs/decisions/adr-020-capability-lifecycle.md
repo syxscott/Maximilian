@@ -29,6 +29,7 @@ proposed → experimental → active → deprecated → retired
 Implemented in `CapabilityRegistry.transition()` with a `VALID_TRANSITIONS` map. Illegal transitions throw (e.g., proposed → deprecated is forbidden).
 
 Auto-promotion in `MetaOrchestrator.cycle()`:
+
 - `proposed` → `experimental` (always, on cycle)
 - `experimental` → `active` (always, on cycle)
 
@@ -37,10 +38,12 @@ The conservative defaults keep new capabilities on a fast track but still observ
 ## Consequences
 
 **正面**：
+
 - Traceable history: every transition logged to `OrganizationMemory`
 - Safe experimentation: capabilities can be `experimental` without serving traffic
 - Easy revival: `deprecated → active` is valid
 
 **负面**：
+
 - More state to track (5 states vs 2)
 - Auto-promotion may move capabilities too fast (mitigation: `experimental` window in future)

@@ -235,8 +235,7 @@ describe("AgentRuntime — opencode executor (Phase 2)", () => {
     })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
-    const factory: AgentFactory = () =>
-      new StubAgent(new StubProvider(), { throwOnExecute: true })
+    const factory: AgentFactory = () => new StubAgent(new StubProvider(), { throwOnExecute: true })
     const sink = makeSink()
     const rt = new AgentRuntime(factory, sink, {
       maxConcurrency: 1,
@@ -330,8 +329,7 @@ describe("AgentRuntime — opencode executor (Phase 2)", () => {
     })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
-    const factory: AgentFactory = () =>
-      new StubAgent(new StubProvider(), { throwOnExecute: true })
+    const factory: AgentFactory = () => new StubAgent(new StubProvider(), { throwOnExecute: true })
     const sink = makeSink()
     const rt = new AgentRuntime(factory, sink, {
       maxConcurrency: 1,

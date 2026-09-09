@@ -167,7 +167,10 @@ export async function publishEvent(
           }
         }
       }
-      console.warn(`[subscription ${sub.id}] webhook delivery failed after ${maxRetries} attempts:`, lastError?.message)
+      console.warn(
+        `[subscription ${sub.id}] webhook delivery failed after ${maxRetries} attempts:`,
+        lastError?.message,
+      )
     }),
   )
 }

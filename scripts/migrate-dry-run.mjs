@@ -60,7 +60,10 @@ try {
       WHERE table_schema = 'public'
       ORDER BY table_name, ordinal_position;
     "
-  `).trim().split("\n").filter(Boolean)
+  `)
+    .trim()
+    .split("\n")
+    .filter(Boolean)
 
   const tableMap = new Map()
   for (const row of tables) {
@@ -84,7 +87,10 @@ try {
       FROM information_schema.table_constraints tc
       WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public';
     "
-  `).trim().split("\n").filter(Boolean)
+  `)
+    .trim()
+    .split("\n")
+    .filter(Boolean)
   const pkSet = new Set(pkRows)
   for (const table of tableMap.keys()) {
     if (!pkSet.has(table)) {
@@ -98,7 +104,10 @@ try {
     psql "${DRY_URL}" -t -A -F'|' -c "
       SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public';
     "
-  `).trim().split("\n").filter(Boolean)
+  `)
+    .trim()
+    .split("\n")
+    .filter(Boolean)
   for (const row of indexRows) {
     const [name, def] = row.split("|")
     if (!def) continue

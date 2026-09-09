@@ -57,8 +57,9 @@ export const AccordionV2Header = React.forwardRef<
 ))
 AccordionV2Header.displayName = "AccordionV2Header"
 
-export interface AccordionV2TriggerProps
-  extends React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger> {
+export interface AccordionV2TriggerProps extends React.ComponentPropsWithoutRef<
+  typeof AccordionPrimitive.Trigger
+> {
   hideChevron?: boolean
 }
 

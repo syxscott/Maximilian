@@ -20,7 +20,7 @@ declare module "@opentui/core" {
     [key: string]: unknown
   }
   export class SyntaxStyle {
-    static default: SyntaxStyle
+    static default: SyntaxStyle;
     [key: string]: unknown
   }
   export class RGBA {

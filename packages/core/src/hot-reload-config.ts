@@ -21,29 +21,29 @@ export type ConfigListener<T = unknown> = (
   key: string,
   newValue: T | undefined,
   oldValue: T | undefined,
-) => void | Promise<void>;
+) => void | Promise<void>
 
 export interface HotReloadConfigOptions<T = Record<string, unknown>> {
   /** Initial in-memory snapshot. The file is loaded lazily on first `start()`. */
-  initial?: T;
+  initial?: T
   /** Polling interval. Default: 5000ms. */
-  intervalMs?: number;
+  intervalMs?: number
   /** Custom JSON parser. Default: `JSON.parse`. */
-  parse?: (raw: string) => T;
+  parse?: (raw: string) => T
 }
 
 export class HotReloadConfig<T = Record<string, unknown>> {
-  private snapshot: T | undefined;
-  private listeners = new Map<string, Set<ConfigListener>>();
-  private globalListeners = new Set<ConfigListener>();
-  private timer: ReturnType<typeof setInterval> | undefined;
-  private reading = false;
+  private snapshot: T | undefined
+  private listeners = new Map<string, Set<ConfigListener>>()
+  private globalListeners = new Set<ConfigListener>()
+  private timer: ReturnType<typeof setInterval> | undefined
+  private reading = false
 
   constructor(
     private filePath: string,
     private opts: HotReloadConfigOptions<T> = {},
   ) {
-    this.snapshot = opts.initial;
+    this.snapshot = opts.initial
   }
 
   /** Start polling for changes. */
@@ -51,134 +51,134 @@ export class HotReloadConfig<T = Record<string, unknown>> {
     // Initial load if no snapshot was provided.
     if (this.snapshot === undefined) {
       try {
-        this.snapshot = await this.readFile();
+        this.snapshot = await this.readFile()
       } catch {
         // File missing — start with empty config; we'll retry on next tick.
-        this.snapshot = {} as T;
+        this.snapshot = {} as T
       }
     }
-    if (this.timer) return;
+    if (this.timer) return
     this.timer = setInterval(() => {
-      void this.tick();
-    }, this.opts.intervalMs ?? 5_000);
+      void this.tick()
+    }, this.opts.intervalMs ?? 5_000)
   }
 
   /** Stop polling. */
   stop(): void {
     if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
+      clearInterval(this.timer)
+      this.timer = undefined
     }
   }
 
   /** Subscribe to a specific key. */
   on<K extends keyof T & string>(key: K, listener: ConfigListener<T[K]>): () => void {
-    let set = this.listeners.get(key);
+    let set = this.listeners.get(key)
     if (!set) {
-      set = new Set();
-      this.listeners.set(key, set as Set<ConfigListener>);
+      set = new Set()
+      this.listeners.set(key, set as Set<ConfigListener>)
     }
-    set.add(listener as ConfigListener);
+    set.add(listener as ConfigListener)
     return () => {
-      set?.delete(listener as ConfigListener);
-    };
+      set?.delete(listener as ConfigListener)
+    }
   }
 
   /** Subscribe to every key. */
   onAny(listener: ConfigListener): () => void {
-    this.globalListeners.add(listener);
+    this.globalListeners.add(listener)
     return () => {
-      this.globalListeners.delete(listener);
-    };
+      this.globalListeners.delete(listener)
+    }
   }
 
   /** Current snapshot (last loaded). */
   current(): T | undefined {
-    return this.snapshot;
+    return this.snapshot
   }
 
   /** Read a single key with default. */
   get<K extends keyof T & string>(key: K, fallback: T[K]): T[K] {
-    const s = this.snapshot;
-    if (s === undefined) return fallback;
-    const v = (s as Record<string, unknown>)[key];
-    return v === undefined ? fallback : (v as T[K]);
+    const s = this.snapshot
+    if (s === undefined) return fallback
+    const v = (s as Record<string, unknown>)[key]
+    return v === undefined ? fallback : (v as T[K])
   }
 
   private async tick(): Promise<void> {
-    if (this.reading) return;
-    this.reading = true;
+    if (this.reading) return
+    this.reading = true
     try {
-      const next = await this.readFile();
-      const prev = this.snapshot;
-      this.snapshot = next;
-      this.diff(prev, next);
+      const next = await this.readFile()
+      const prev = this.snapshot
+      this.snapshot = next
+      this.diff(prev, next)
     } catch {
       // Read failure: leave snapshot as-is. Could publish a metric.
     } finally {
-      this.reading = false;
+      this.reading = false
     }
   }
 
   private async readFile(): Promise<T> {
-    const fs = await import("node:fs/promises");
-    const raw = await fs.readFile(this.filePath, "utf-8");
-    const parse = this.opts.parse ?? ((s: string) => JSON.parse(s) as T);
-    return parse(raw);
+    const fs = await import("node:fs/promises")
+    const raw = await fs.readFile(this.filePath, "utf-8")
+    const parse = this.opts.parse ?? ((s: string) => JSON.parse(s) as T)
+    return parse(raw)
   }
 
   private diff(prev: T | undefined, next: T): void {
     if (prev === undefined) {
       // First read: notify all listeners with their key.
       for (const [k, v] of Object.entries(next as Record<string, unknown>)) {
-        this.fire(k, v, undefined);
+        this.fire(k, v, undefined)
       }
-      return;
+      return
     }
-    const prevKeys = new Set(Object.keys(prev as Record<string, unknown>));
-    const nextKeys = Object.keys(next as Record<string, unknown>);
+    const prevKeys = new Set(Object.keys(prev as Record<string, unknown>))
+    const nextKeys = Object.keys(next as Record<string, unknown>)
     for (const k of nextKeys) {
-      const oldV = (prev as Record<string, unknown>)[k];
-      const newV = (next as Record<string, unknown>)[k];
+      const oldV = (prev as Record<string, unknown>)[k]
+      const newV = (next as Record<string, unknown>)[k]
       if (!deepEqual(oldV, newV)) {
-        this.fire(k, newV, oldV);
+        this.fire(k, newV, oldV)
       }
     }
     for (const k of prevKeys) {
       if (!nextKeys.includes(k)) {
-        this.fire(k, undefined, (prev as Record<string, unknown>)[k]);
+        this.fire(k, undefined, (prev as Record<string, unknown>)[k])
       }
     }
   }
 
   private fire(key: string, newValue: unknown, oldValue: unknown): void {
-    const set = this.listeners.get(key);
+    const set = this.listeners.get(key)
     if (set) {
       for (const listener of set) {
-        void Promise.resolve(listener(key, newValue, oldValue));
+        void Promise.resolve(listener(key, newValue, oldValue))
       }
     }
     for (const listener of this.globalListeners) {
-      void Promise.resolve(listener(key, newValue, oldValue));
+      void Promise.resolve(listener(key, newValue, oldValue))
     }
   }
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a === null || b === null) return a === b;
-  if (typeof a !== typeof b) return false;
+  if (a === b) return true
+  if (a === null || b === null) return a === b
+  if (typeof a !== typeof b) return false
   if (typeof a === "object") {
-    if (Array.isArray(a) !== Array.isArray(b)) return false;
-    const ak = Object.keys(a as Record<string, unknown>);
-    const bk = Object.keys(b as Record<string, unknown>);
-    if (ak.length !== bk.length) return false;
+    if (Array.isArray(a) !== Array.isArray(b)) return false
+    const ak = Object.keys(a as Record<string, unknown>)
+    const bk = Object.keys(b as Record<string, unknown>)
+    if (ak.length !== bk.length) return false
     for (const k of ak) {
       if (!deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])) {
-        return false;
+        return false
       }
     }
-    return true;
+    return true
   }
-  return false;
+  return false
 }

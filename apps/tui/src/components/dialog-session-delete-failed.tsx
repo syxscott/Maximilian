@@ -94,10 +94,7 @@ export function DialogSessionDeleteFailed(props: DialogSessionDeleteFailedProps)
             paddingBottom={1}
             backgroundColor={item.id === active ? theme.primary : undefined}
           >
-            <Text
-              bold
-              color={item.id === active ? theme.selectedListItemText : theme.text}
-            >
+            <Text bold color={item.id === active ? theme.selectedListItemText : theme.text}>
               {item.title}
             </Text>
             <Text

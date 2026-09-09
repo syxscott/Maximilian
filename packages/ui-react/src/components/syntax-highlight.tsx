@@ -13,7 +13,10 @@ export type ShikiHighlighter = (input: {
   theme?: string
 }) => Promise<string>
 
-export interface SyntaxHighlightProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+export interface SyntaxHighlightProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "children"
+> {
   code: string
   lang?: string
   theme?: string
@@ -27,14 +30,22 @@ export interface SyntaxHighlightProps extends Omit<React.HTMLAttributes<HTMLDivE
 const defaultHighlighter: ShikiHighlighter = async ({ code, lang }) => {
   // Minimal, dependency-free highlighter: HTML-escape and tag spans.
   // Replace with a shiki-based highlighter by passing the `highlighter` prop.
-  const escape = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   return `<pre class="shiki" data-lang="${escape(lang)}"><code>${escape(code)}</code></pre>`
 }
 
 export const SyntaxHighlight = React.forwardRef<HTMLDivElement, SyntaxHighlightProps>(
   function SyntaxHighlight(
-    { code, lang = "text", theme, highlighter = defaultHighlighter, showLineNumbers, startLine = 1, className, ...rest },
+    {
+      code,
+      lang = "text",
+      theme,
+      highlighter = defaultHighlighter,
+      showLineNumbers,
+      startLine = 1,
+      className,
+      ...rest
+    },
     ref,
   ) {
     const [html, setHtml] = React.useState<string>("")

@@ -90,17 +90,59 @@ export type TeamOrchestratorEvent =
 // ── Readable ID generator ─────────────────────────────────────────────────
 
 const ADJECTIVES = [
-  "elegant", "fierce", "gentle", "brave", "clever", "mighty", "noble",
-  "rapid", "silent", "vivid", "witty", "bold", "calm", "dapper",
-  "epic", "fancy", "golden", "happy", "iron", "jolly", "keen",
+  "elegant",
+  "fierce",
+  "gentle",
+  "brave",
+  "clever",
+  "mighty",
+  "noble",
+  "rapid",
+  "silent",
+  "vivid",
+  "witty",
+  "bold",
+  "calm",
+  "dapper",
+  "epic",
+  "fancy",
+  "golden",
+  "happy",
+  "iron",
+  "jolly",
+  "keen",
 ]
 const COLORS = [
-  "blue", "crimson", "amber", "emerald", "silver", "violet", "indigo",
-  "gold", "coral", "teal", "ruby", "jade", "plume", "azure",
+  "blue",
+  "crimson",
+  "amber",
+  "emerald",
+  "silver",
+  "violet",
+  "indigo",
+  "gold",
+  "coral",
+  "teal",
+  "ruby",
+  "jade",
+  "plume",
+  "azure",
 ]
 const ANIMALS = [
-  "tiger", "falcon", "panther", "lynx", "orca", "wolf", "eagle",
-  "fox", "bear", "hawk", "otter", "raven", "crane", "stoat",
+  "tiger",
+  "falcon",
+  "panther",
+  "lynx",
+  "orca",
+  "wolf",
+  "eagle",
+  "fox",
+  "bear",
+  "hawk",
+  "otter",
+  "raven",
+  "crane",
+  "stoat",
 ]
 
 /** Generate a readable `adjective-color-animal` ID for traceable delegations. */
@@ -142,18 +184,15 @@ export class TeamOrchestrator {
     eventBus: EventBus<TeamOrchestratorEvent> = new EventBus<TeamOrchestratorEvent>(),
   ) {
     const dd = opts.maxDelegationDepth
-    this.maxDelegationDepth =
-      Number.isSafeInteger(dd) && dd !== undefined && dd > 0 ? dd : 3
+    this.maxDelegationDepth = Number.isSafeInteger(dd) && dd !== undefined && dd > 0 ? dd : 3
 
     const ttl = opts.delegationTTLMs
-    this.delegationTTLMs =
-      Number.isSafeInteger(ttl) && ttl !== undefined && ttl > 0 ? ttl : 30_000
+    this.delegationTTLMs = Number.isSafeInteger(ttl) && ttl !== undefined && ttl > 0 ? ttl : 30_000
 
     this.emitEvents = opts.emitEvents ?? true
 
     const kr = opts.compactKeepRecent
-    this.compactKeepRecent =
-      Number.isSafeInteger(kr) && kr !== undefined && kr > 0 ? kr : 5
+    this.compactKeepRecent = Number.isSafeInteger(kr) && kr !== undefined && kr > 0 ? kr : 5
 
     this.registry = registry
     this.eventBus = eventBus
@@ -219,7 +258,10 @@ export class TeamOrchestrator {
     }
 
     this.emit({ type: "team:delegation-created", team: req.fromTeamId, delegation: req.id })
-    this.activeDelegations.set(req.fromTeamId, (this.activeDelegations.get(req.fromTeamId) ?? 0) + 1)
+    this.activeDelegations.set(
+      req.fromTeamId,
+      (this.activeDelegations.get(req.fromTeamId) ?? 0) + 1,
+    )
     this.delegationStartTimes.set(req.id, startMs)
 
     try {
@@ -477,7 +519,4 @@ export class TeamOrchestrator {
   }
 }
 
-export type {
-  FactRecord as TeamFactRecord,
-  DecisionRecord as TeamDecisionRecord,
-}
+export type { FactRecord as TeamFactRecord, DecisionRecord as TeamDecisionRecord }

@@ -24,11 +24,13 @@ Maximilian 当前以"角色"（frontend / backend / review）作为 Agent 的第
 ## Consequences
 
 **正面**：
+
 - 能力可被复用、可被搜索
 - 同一能力可被多个角色实现（多模型协作）
 - 用户可在请求中显式指定能力
 
 **负面**：
+
 - 概念层级加深一层（Capability → Blueprint → Agent）
 - 现有 `AgentRole` 类型仍需保留（向后兼容）
 

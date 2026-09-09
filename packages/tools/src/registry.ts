@@ -83,7 +83,9 @@ export function createToolRegistry(): ToolRegistry {
     register(tools: Record<string, AnyTool>, scope?: string): void {
       for (const [name, tool] of Object.entries(tools)) {
         if (!validateToolName(name)) {
-          throw new Error(`Invalid tool name: "${name}". Must match /^[A-Za-z][A-Za-z0-9_-]{0,63}$/`)
+          throw new Error(
+            `Invalid tool name: "${name}". Must match /^[A-Za-z][A-Za-z0-9_-]{0,63}$/`,
+          )
         }
         if (scope) {
           if (!scopedTools.has(scope)) {
@@ -148,10 +150,16 @@ export function createToolRegistry(): ToolRegistry {
           return { result, output }
         } catch (error) {
           if (error instanceof ToolFailure) {
-            return { result: { error: error.message }, output: { structured: { error: error.message }, content: [] } }
+            return {
+              result: { error: error.message },
+              output: { structured: { error: error.message }, content: [] },
+            }
           }
           const message = error instanceof Error ? error.message : String(error)
-          return { result: { error: message }, output: { structured: { error: message }, content: [] } }
+          return {
+            result: { error: message },
+            output: { structured: { error: message }, content: [] },
+          }
         }
       }
 

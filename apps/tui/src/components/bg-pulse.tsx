@@ -38,7 +38,13 @@ export function BgPulse({
   const cols = 24
 
   return (
-    <Box flexDirection="column" width={width} height={height} alignItems="center" justifyContent="center">
+    <Box
+      flexDirection="column"
+      width={width}
+      height={height}
+      alignItems="center"
+      justifyContent="center"
+    >
       {Array.from({ length: rows }).map((_, r) => (
         <Box key={r} flexDirection="row">
           {Array.from({ length: cols }).map((__, c) => {

@@ -1,12 +1,12 @@
-import { Switch } from "@/components/ui/switch";
+import { Switch } from "@/components/ui/switch"
 
 export interface ToggleRowProps {
-  icon: React.ReactNode;
-  title: string;
-  description?: string;
-  checked: boolean;
-  onCheckedChange: (value: boolean) => void;
-  disabled?: boolean;
+  icon: React.ReactNode
+  title: string
+  description?: string
+  checked: boolean
+  onCheckedChange: (value: boolean) => void
+  disabled?: boolean
 }
 
 export function ToggleRow({
@@ -25,9 +25,7 @@ export function ToggleRow({
         </div>
         <div className="space-y-1">
           <p className="text-sm font-medium leading-none">{title}</p>
-          {description ? (
-            <p className="text-xs text-muted-foreground">{description}</p>
-          ) : null}
+          {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
         </div>
       </div>
       <Switch
@@ -37,5 +35,5 @@ export function ToggleRow({
         aria-label={title}
       />
     </div>
-  );
+  )
 }

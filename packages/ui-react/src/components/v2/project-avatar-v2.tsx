@@ -2,8 +2,16 @@ import * as React from "react"
 import { cn } from "../../lib/utils.js"
 
 const segmenter =
-  typeof Intl !== "undefined" && typeof (Intl as unknown as { Segmenter?: unknown }).Segmenter !== "undefined"
-    ? new (Intl as unknown as { Segmenter: new (l?: string, o?: { granularity: string }) => { segment: (s: string) => Iterable<{ segment: string }> } }).Segmenter(undefined, { granularity: "grapheme" })
+  typeof Intl !== "undefined" &&
+  typeof (Intl as unknown as { Segmenter?: unknown }).Segmenter !== "undefined"
+    ? new (
+        Intl as unknown as {
+          Segmenter: new (
+            l?: string,
+            o?: { granularity: string },
+          ) => { segment: (s: string) => Iterable<{ segment: string }> }
+        }
+      ).Segmenter(undefined, { granularity: "grapheme" })
     : undefined
 
 function first(value: string): string {
@@ -37,19 +45,7 @@ export interface ProjectAvatarProps extends React.HTMLAttributes<HTMLDivElement>
 }
 
 export const ProjectAvatar = React.forwardRef<HTMLDivElement, ProjectAvatarProps>(
-  (
-    {
-      className,
-      fallback,
-      src,
-      variant = "gray",
-      unread,
-      loading,
-      style,
-      ...rest
-    },
-    ref,
-  ) => {
+  ({ className, fallback, src, variant = "gray", unread, loading, style, ...rest }, ref) => {
     const mergedStyle: React.CSSProperties =
       typeof style === "object" && style !== null ? style : {}
     return (

@@ -57,13 +57,15 @@ export const ToolErrorCard: React.FC<ToolErrorCardProps> = ({
     return cleaned
   })()
 
-  const computedSubtitle = subtitle ?? (() => {
-    const parts = tail.split(": ")
-    if (parts.length <= 1) return "Failed"
-    const head = (parts[0] ?? "").trim()
-    if (!head) return "Failed"
-    return head[0] ? head[0].toUpperCase() + head.slice(1) : "Failed"
-  })()
+  const computedSubtitle =
+    subtitle ??
+    (() => {
+      const parts = tail.split(": ")
+      if (parts.length <= 1) return "Failed"
+      const head = (parts[0] ?? "").trim()
+      if (!head) return "Failed"
+      return head[0] ? head[0].toUpperCase() + head.slice(1) : "Failed"
+    })()
 
   const body = (() => {
     const parts = tail.split(": ")

@@ -18,7 +18,13 @@ describe("TodoStore (借鉴 opencode - SessionTodo)", () => {
 
   it("nextPending skips completed/cancelled items", () => {
     const s = new TodoStore()
-    s.upsert({ id: "1", content: "high but done", status: "completed", priority: "high", position: 0 })
+    s.upsert({
+      id: "1",
+      content: "high but done",
+      status: "completed",
+      priority: "high",
+      position: 0,
+    })
     s.upsert({ id: "2", content: "low todo", status: "pending", priority: "low", position: 1 })
     expect(s.nextPending()?.id).toBe("2")
   })

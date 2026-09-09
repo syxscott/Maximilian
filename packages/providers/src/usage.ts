@@ -15,17 +15,17 @@
  * were missed by the price table.
  */
 
-import { PROVIDER_PRESETS, getProviderPreset } from "./presets/index.js";
+import { PROVIDER_PRESETS, getProviderPreset } from "./presets/index.js"
 
 export interface UsageLike {
   /** Provider id — e.g. "openai", "anthropic", "openrouter", "deepseek". */
-  provider: string;
+  provider: string
   /** Total input tokens as reported by the provider (may include cache). */
-  promptTokens: number;
+  promptTokens: number
   /** Tokens served from provider-side cache (0 if not reported). */
-  cacheReadTokens?: number;
+  cacheReadTokens?: number
   /** Tokens written into provider-side prompt cache (0 for OpenAI-style protocols). */
-  cacheCreationTokens?: number;
+  cacheCreationTokens?: number
 }
 
 /**
@@ -38,7 +38,7 @@ function baseSlugOf(id: string): string {
   return id.replace(
     /(-openai|-anthropic|-gemini|-responses|-claudecode|-openai-2|-v|-2|-3|-4|-5|-6|-7|-8|-9|-coding|-openai-3|-claude-code-proxy)*$/,
     "",
-  );
+  )
 }
 
 /**
@@ -51,7 +51,7 @@ const LEGACY_CACHE_INCLUSIVE_PROVIDERS: ReadonlySet<string> = new Set([
   "openai",
   "openrouter",
   "deepseek",
-]);
+])
 
 /**
  * Cache-inclusion is a property of the *protocol*, not the *vendor*. Any
@@ -68,13 +68,9 @@ const LEGACY_CACHE_INCLUSIVE_PROVIDERS: ReadonlySet<string> = new Set([
  */
 function isCacheInclusiveProtocol(providerId: string): boolean {
   // Quick path: the requested id's own preset is openai_chat/openai_responses.
-  const preset = getProviderPreset(providerId);
-  if (
-    preset &&
-    (preset.apiFormat === "openai_chat" ||
-      preset.apiFormat === "openai_responses")
-  ) {
-    return true;
+  const preset = getProviderPreset(providerId)
+  if (preset && (preset.apiFormat === "openai_chat" || preset.apiFormat === "openai_responses")) {
+    return true
   }
   // Sibling-variant check: any openai_chat/openai_responses preset that
   // shares the base slug indicates the provider is *known* to speak the
@@ -82,18 +78,15 @@ function isCacheInclusiveProtocol(providerId: string): boolean {
   // `deepseek` resolves to an anthropic-compatible URL, but `deepseek-2`
   // speaks OpenAI Chat — and most DeepSeek traffic in practice goes over
   // the OpenAI dialect, so we treat the id as cache-inclusive.
-  const base = baseSlugOf(providerId);
+  const base = baseSlugOf(providerId)
   for (const p of PROVIDER_PRESETS) {
     if (baseSlugOf(p.id) === base) {
-      if (
-        p.apiFormat === "openai_chat" ||
-        p.apiFormat === "openai_responses"
-      ) {
-        return true;
+      if (p.apiFormat === "openai_chat" || p.apiFormat === "openai_responses") {
+        return true
       }
     }
   }
-  return LEGACY_CACHE_INCLUSIVE_PROVIDERS.has(providerId);
+  return LEGACY_CACHE_INCLUSIVE_PROVIDERS.has(providerId)
 }
 
 /**
@@ -102,11 +95,11 @@ function isCacheInclusiveProtocol(providerId: string): boolean {
  * For OpenAI-style protocols (cache_inclusive), subtracts cacheReadTokens.
  */
 export function getFreshInputTokens(usage: UsageLike): number {
-  const cacheRead = usage.cacheReadTokens ?? 0;
+  const cacheRead = usage.cacheReadTokens ?? 0
   if (isCacheInclusiveProtocol(usage.provider)) {
-    return Math.max(0, usage.promptTokens - cacheRead);
+    return Math.max(0, usage.promptTokens - cacheRead)
   }
-  return usage.promptTokens;
+  return usage.promptTokens
 }
 
 /**
@@ -117,20 +110,20 @@ export function getFreshInputTokens(usage: UsageLike): number {
  * denominator collapses to promptTokens (with cacheRead already inside).
  */
 export function getCacheHitRate(usage: UsageLike): number {
-  const prompt = usage.promptTokens;
-  const cacheRead = usage.cacheReadTokens ?? 0;
-  const cacheCreation = usage.cacheCreationTokens ?? 0;
-  const denom = prompt + cacheCreation;
-  if (denom <= 0) return 0;
-  return cacheRead / denom;
+  const prompt = usage.promptTokens
+  const cacheRead = usage.cacheReadTokens ?? 0
+  const cacheCreation = usage.cacheCreationTokens ?? 0
+  const denom = prompt + cacheCreation
+  if (denom <= 0) return 0
+  return cacheRead / denom
 }
 
 export interface PricedUsage extends UsageLike {
   /** Output tokens as reported by the provider. */
-  completionTokens: number;
-  statusCode: number;
+  completionTokens: number
+  statusCode: number
   /** Total cost in USD as reported by the caller (already computed). */
-  totalCostUsd: number;
+  totalCostUsd: number
 }
 
 /**
@@ -143,18 +136,15 @@ export interface PricedUsage extends UsageLike {
  * actually being routed to.
  */
 export function isUnpricedUsage(usage: PricedUsage): boolean {
-  const cacheRead = usage.cacheReadTokens ?? 0;
-  const cacheCreation = usage.cacheCreationTokens ?? 0;
+  const cacheRead = usage.cacheReadTokens ?? 0
+  const cacheCreation = usage.cacheCreationTokens ?? 0
   const hasTokens =
-    usage.promptTokens > 0 ||
-    usage.completionTokens > 0 ||
-    cacheRead > 0 ||
-    cacheCreation > 0;
+    usage.promptTokens > 0 || usage.completionTokens > 0 || cacheRead > 0 || cacheCreation > 0
   return (
     usage.statusCode >= 200 &&
     usage.statusCode < 300 &&
     hasTokens &&
     Number.isFinite(usage.totalCostUsd) &&
     usage.totalCostUsd === 0
-  );
+  )
 }

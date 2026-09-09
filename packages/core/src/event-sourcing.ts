@@ -16,7 +16,7 @@
  *   const state = store.project("ws-1", workspaceReducer)
  */
 
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto"
 
 export interface StoredEvent<T = unknown> {
   /** Unique event id. */

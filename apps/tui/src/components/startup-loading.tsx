@@ -75,7 +75,12 @@ export function StartupLoading({ ready }: StartupLoadingProps) {
 
   return (
     <Box alignItems="center" justifyContent="center" marginBottom={1} flexDirection="column">
-      <Box borderStyle="single" borderColor={DEFAULT_COLORS.textMuted} paddingLeft={1} paddingRight={1}>
+      <Box
+        borderStyle="single"
+        borderColor={DEFAULT_COLORS.textMuted}
+        paddingLeft={1}
+        paddingRight={1}
+      >
         <Spinner color={DEFAULT_COLORS.textMuted}>{label}</Spinner>
       </Box>
     </Box>

@@ -12,8 +12,10 @@ export interface TabBarItem<TValue extends string = string> {
   disabled?: boolean
 }
 
-export interface TabBarProps<TValue extends string = string>
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange" | "onClose"> {
+export interface TabBarProps<TValue extends string = string> extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "onChange" | "onClose"
+> {
   items: TabBarItem<TValue>[]
   value?: TValue
   defaultValue?: TValue

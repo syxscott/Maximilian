@@ -1,9 +1,9 @@
 ---
 name: 📝 RFC proposal
 about: Propose a non-trivial change for community discussion
-title: '[RFC] '
+title: "[RFC] "
 labels: rfc
-assignees: ''
+assignees: ""
 ---
 
 ## Summary

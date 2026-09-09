@@ -37,13 +37,15 @@ describe("ReminderCollector", () => {
   it("registers and collects tool reminders", () => {
     collector.registerToolReminders("bash", {
       collectReminders(input, output) {
-        return [{
-          type: "tool-tip",
-          content: "Custom reminder",
-          source: "bash",
-          priority: "medium",
-          timestamp: Date.now(),
-        }]
+        return [
+          {
+            type: "tool-tip",
+            content: "Custom reminder",
+            source: "bash",
+            priority: "medium",
+            timestamp: Date.now(),
+          },
+        ]
       },
     })
 
@@ -57,13 +59,15 @@ describe("ReminderCollector", () => {
 
     collector.registerToolReminders("bash", {
       collectReminders() {
-        return [{
-          type: "tool-tip",
-          content: "Should not appear",
-          source: "bash",
-          priority: "medium",
-          timestamp: Date.now(),
-        }]
+        return [
+          {
+            type: "tool-tip",
+            content: "Should not appear",
+            source: "bash",
+            priority: "medium",
+            timestamp: Date.now(),
+          },
+        ]
       },
     })
 
@@ -84,13 +88,17 @@ describe("ReminderCollector", () => {
       name: "test",
       type: "info",
       priority: "low",
-      check() { return "Test reminder" },
+      check() {
+        return "Test reminder"
+      },
     })
     collector.addSystemReminder({
       name: "test2",
       type: "info",
       priority: "low",
-      check() { return "Test reminder 2" },
+      check() {
+        return "Test reminder 2"
+      },
     })
 
     const reminders = collector.collect("bash", { command: "npm build" }, {})
@@ -100,13 +108,15 @@ describe("ReminderCollector", () => {
   it("unregisters tool reminders", () => {
     collector.registerToolReminders("bash", {
       collectReminders() {
-        return [{
-          type: "tool-tip",
-          content: "Reminder",
-          source: "bash",
-          priority: "medium",
-          timestamp: Date.now(),
-        }]
+        return [
+          {
+            type: "tool-tip",
+            content: "Reminder",
+            source: "bash",
+            priority: "medium",
+            timestamp: Date.now(),
+          },
+        ]
       },
     })
 

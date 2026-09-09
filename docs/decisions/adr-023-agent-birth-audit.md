@@ -40,10 +40,12 @@ The audit file is append-only and queryable separately from the live `BlueprintS
 ## Consequences
 
 **正面**：
+
 - Consumer controls persistence (`BlueprintStore` schema respected)
 - Audit trail captures every birth (compliance + debugging)
 - Births can be replayed (re-run birth with same proposal → same blueprintId pattern)
 
 **负面**：
+
 - Callback contract adds a layer of indirection
 - Audit files accumulate (mitigation: rotation policy in future)

@@ -12,7 +12,7 @@
  * and multi-table JOIN optimization.
  */
 
-import type { BenchmarkTask, DatabaseTaskContext } from "../../packages/benchmark-core/src/types.js";
+import type { BenchmarkTask, DatabaseTaskContext } from "../../packages/benchmark-core/src/types.js"
 
 // ── Task 1: Recursive CTE — Employee Hierarchy ──────────────────────────────
 
@@ -61,7 +61,7 @@ const task1Context: DatabaseTaskContext = {
     { name: "Grace", department: "Engineering", salary: 115000, depth: 2 },
     { name: "Hank", department: "Engineering", salary: 105000, depth: 2 },
   ],
-};
+}
 
 // ── Task 2: Window Functions — Running Totals with Gaps ─────────────────────
 
@@ -104,18 +104,88 @@ const task2Context: DatabaseTaskContext = {
     ORDER BY txn_date, id;
   `,
   goldResult: [
-    { txn_date: "2024-01-01", category: "sales", amount: 100, cumulative_sales: 100, cumulative_returns: 0, cumulative_net: 100 },
-    { txn_date: "2024-01-01", category: "returns", amount: -50, cumulative_sales: 100, cumulative_returns: 50, cumulative_net: 50 },
-    { txn_date: "2024-01-03", category: "sales", amount: 200, cumulative_sales: 300, cumulative_returns: 50, cumulative_net: 250 },
-    { txn_date: "2024-01-03", category: "sales", amount: 75, cumulative_sales: 375, cumulative_returns: 50, cumulative_net: 325 },
-    { txn_date: "2024-01-05", category: "returns", amount: -150, cumulative_sales: 375, cumulative_returns: 200, cumulative_net: 175 },
-    { txn_date: "2024-01-07", category: "sales", amount: 300, cumulative_sales: 675, cumulative_returns: 200, cumulative_net: 475 },
-    { txn_date: "2024-01-07", category: "returns", amount: -25, cumulative_sales: 675, cumulative_returns: 225, cumulative_net: 450 },
-    { txn_date: "2024-01-10", category: "sales", amount: 400, cumulative_sales: 1075, cumulative_returns: 225, cumulative_net: 850 },
-    { txn_date: "2024-01-10", category: "sales", amount: 100, cumulative_sales: 1175, cumulative_returns: 225, cumulative_net: 950 },
-    { txn_date: "2024-01-12", category: "returns", amount: -50, cumulative_sales: 1175, cumulative_returns: 275, cumulative_net: 900 },
+    {
+      txn_date: "2024-01-01",
+      category: "sales",
+      amount: 100,
+      cumulative_sales: 100,
+      cumulative_returns: 0,
+      cumulative_net: 100,
+    },
+    {
+      txn_date: "2024-01-01",
+      category: "returns",
+      amount: -50,
+      cumulative_sales: 100,
+      cumulative_returns: 50,
+      cumulative_net: 50,
+    },
+    {
+      txn_date: "2024-01-03",
+      category: "sales",
+      amount: 200,
+      cumulative_sales: 300,
+      cumulative_returns: 50,
+      cumulative_net: 250,
+    },
+    {
+      txn_date: "2024-01-03",
+      category: "sales",
+      amount: 75,
+      cumulative_sales: 375,
+      cumulative_returns: 50,
+      cumulative_net: 325,
+    },
+    {
+      txn_date: "2024-01-05",
+      category: "returns",
+      amount: -150,
+      cumulative_sales: 375,
+      cumulative_returns: 200,
+      cumulative_net: 175,
+    },
+    {
+      txn_date: "2024-01-07",
+      category: "sales",
+      amount: 300,
+      cumulative_sales: 675,
+      cumulative_returns: 200,
+      cumulative_net: 475,
+    },
+    {
+      txn_date: "2024-01-07",
+      category: "returns",
+      amount: -25,
+      cumulative_sales: 675,
+      cumulative_returns: 225,
+      cumulative_net: 450,
+    },
+    {
+      txn_date: "2024-01-10",
+      category: "sales",
+      amount: 400,
+      cumulative_sales: 1075,
+      cumulative_returns: 225,
+      cumulative_net: 850,
+    },
+    {
+      txn_date: "2024-01-10",
+      category: "sales",
+      amount: 100,
+      cumulative_sales: 1175,
+      cumulative_returns: 225,
+      cumulative_net: 950,
+    },
+    {
+      txn_date: "2024-01-12",
+      category: "returns",
+      amount: -50,
+      cumulative_sales: 1175,
+      cumulative_returns: 275,
+      cumulative_net: 900,
+    },
   ],
-};
+}
 
 // ── Task 3: Multi-Table JOIN Optimization ────────────────────────────────────
 
@@ -228,40 +298,40 @@ const task3Context: DatabaseTaskContext = {
       category_list: "services,widgets",
     },
   ],
-};
+}
 
 // ── Assertion Functions ──────────────────────────────────────────────────────
 
 async function assertRecursiveCte(output: string): Promise<boolean> {
   // Must contain a WITH RECURSIVE keyword (case-insensitive).
-  if (!/WITH\s+RECURSIVE/i.test(output)) return false;
+  if (!/WITH\s+RECURSIVE/i.test(output)) return false
   // Must reference the employees table.
-  if (!/employees/i.test(output)) return false;
+  if (!/employees/i.test(output)) return false
   // Must have a UNION ALL (recursive CTE requirement).
-  if (!/UNION\s+ALL/i.test(output)) return false;
-  return true;
+  if (!/UNION\s+ALL/i.test(output)) return false
+  return true
 }
 
 async function assertWindowFunction(output: string): Promise<boolean> {
   // Must use a window function (SUM ... OVER or similar).
-  if (!/OVER\s*\(/i.test(output)) return false;
+  if (!/OVER\s*\(/i.test(output)) return false
   // Must reference the transactions table.
-  if (!/transactions/i.test(output)) return false;
+  if (!/transactions/i.test(output)) return false
   // Must use ORDER BY in the window.
-  if (!/ORDER\s+BY/i.test(output)) return false;
-  return true;
+  if (!/ORDER\s+BY/i.test(output)) return false
+  return true
 }
 
 async function assertJoinOptimization(output: string): Promise<boolean> {
   // Must use JOIN (not subqueries for each row).
-  if (!/JOIN/i.test(output)) return false;
+  if (!/JOIN/i.test(output)) return false
   // Must reference at least 3 tables (customers, orders, order_items or products).
-  const tables = ["customers", "orders", "order_items", "products"];
-  const referenced = tables.filter((t) => new RegExp(t, "i").test(output));
-  if (referenced.length < 3) return false;
+  const tables = ["customers", "orders", "order_items", "products"]
+  const referenced = tables.filter((t) => new RegExp(t, "i").test(output))
+  if (referenced.length < 3) return false
   // Must use GROUP BY (aggregation required).
-  if (!/GROUP\s+BY/i.test(output)) return false;
-  return true;
+  if (!/GROUP\s+BY/i.test(output)) return false
+  return true
 }
 
 // ── Exported Tasks ───────────────────────────────────────────────────────────
@@ -299,4 +369,4 @@ export const DATABASE_TASKS: BenchmarkTask[] = [
     context: task3Context as unknown as Record<string, unknown>,
     expectedOutputAssertion: assertJoinOptimization,
   },
-];
+]

@@ -36,7 +36,9 @@ export function cliErrorMessage(input: unknown): string | undefined {
   const json = configData(input, "ConfigJsonError")
   if (json) {
     const message = field(json, "message")
-    return `Config file at ${field(json, "path")} is not valid JSON(C)` + (message ? `: ${message}` : "")
+    return (
+      `Config file at ${field(json, "path")} is not valid JSON(C)` + (message ? `: ${message}` : "")
+    )
   }
 
   const directory = configData(input, "ConfigDirectoryTypoError")
@@ -62,7 +64,8 @@ export function cliErrorMessage(input: unknown): string | undefined {
         })
       : []
     return [
-      `Configuration is invalid${path && path !== "config" ? ` at ${path}` : ""}` + (message ? `: ${message}` : ""),
+      `Configuration is invalid${path && path !== "config" ? ` at ${path}` : ""}` +
+        (message ? `: ${message}` : ""),
       ...issues.map((issue) => "↳ " + issue.message + " " + issue.path.join(".")),
     ].join("\n")
   }
@@ -132,7 +135,12 @@ export function errorMessage(error: unknown): string {
     return error.message
   }
 
-  if (isRecord(error) && isRecord(error.data) && typeof error.data.message === "string" && error.data.message) {
+  if (
+    isRecord(error) &&
+    isRecord(error.data) &&
+    typeof error.data.message === "string" &&
+    error.data.message
+  ) {
     return error.data.message
   }
 

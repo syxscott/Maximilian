@@ -14,12 +14,7 @@ export type LineCommentVariant = "default" | "editor" | "add"
 
 function InlineGlyph({ icon }: { icon: "comment" | "plus" }) {
   return (
-    <svg
-      data-slot="line-comment-icon"
-      viewBox="0 0 20 20"
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg data-slot="line-comment-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
       {icon === "comment" ? (
         <path
           d="M16.25 3.75H3.75V16.25L6.875 14.4643H16.25V3.75Z"
@@ -100,7 +95,11 @@ export function LineCommentAnchor(props: LineCommentAnchorProps) {
           data-inline-body=""
           className={cn(popoverClass)}
           onMouseDown={(e) => e.stopPropagation()}
-          onClick={onClick ? (onClick as unknown as (e: ReactMouseEvent<HTMLDivElement>) => void) : undefined}
+          onClick={
+            onClick
+              ? (onClick as unknown as (e: ReactMouseEvent<HTMLDivElement>) => void)
+              : undefined
+          }
           onMouseEnter={
             onMouseEnter
               ? (onMouseEnter as unknown as (e: ReactMouseEvent<HTMLDivElement>) => void)
@@ -143,8 +142,7 @@ export function LineCommentAnchor(props: LineCommentAnchorProps) {
   )
 }
 
-export interface LineCommentProps
-  extends Omit<LineCommentAnchorProps, "children" | "variant"> {
+export interface LineCommentProps extends Omit<LineCommentAnchorProps, "children" | "variant"> {
   comment: ReactNode
   selection: ReactNode
   actions?: ReactNode
@@ -169,26 +167,22 @@ export function LineComment(props: LineCommentProps) {
   )
 }
 
-export interface LineCommentAddProps
-  extends Omit<LineCommentAnchorProps, "children" | "variant" | "open" | "icon"> {
+export interface LineCommentAddProps extends Omit<
+  LineCommentAnchorProps,
+  "children" | "variant" | "open" | "icon"
+> {
   label?: string
 }
 
 export function LineCommentAdd(props: LineCommentAddProps) {
   const { label = "Comment", ...rest } = props
-  return (
-    <LineCommentAnchor
-      {...rest}
-      open={false}
-      variant="add"
-      icon="plus"
-      buttonLabel={label}
-    />
-  )
+  return <LineCommentAnchor {...rest} open={false} variant="add" icon="plus" buttonLabel={label} />
 }
 
-export interface LineCommentEditorProps
-  extends Omit<LineCommentAnchorProps, "children" | "open" | "variant" | "onClick"> {
+export interface LineCommentEditorProps extends Omit<
+  LineCommentAnchorProps,
+  "children" | "open" | "variant" | "onClick"
+> {
   value: string
   selection: ReactNode
   onInput: (value: string) => void
@@ -259,7 +253,9 @@ export function LineCommentEditor(props: LineCommentEditorProps) {
     if (!mention) return
     setMentionOpen(true)
     const paths = await Promise.resolve(mention.items(item.query))
-    const filtered = paths.filter((p) => p.toLowerCase().includes(item.query.toLowerCase())).slice(0, 10)
+    const filtered = paths
+      .filter((p) => p.toLowerCase().includes(item.query.toLowerCase()))
+      .slice(0, 10)
     setMentionItems(filtered)
     setActiveMention(filtered[0] ?? null)
   }
@@ -451,5 +447,9 @@ export type LineCommentSelection = { start: number; end: number; side?: "additio
 
 export function formatSelectedLineLabel(selection: LineCommentSelection): ReactNode {
   if (selection.start === selection.end) return <>line {selection.start}</>
-  return <>lines {selection.start}-{selection.end}</>
+  return (
+    <>
+      lines {selection.start}-{selection.end}
+    </>
+  )
 }

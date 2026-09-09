@@ -52,10 +52,32 @@ import { EventBus } from "./event-bus.js"
 export type OpencodePhaseEvent =
   | { type: "phase:start"; workspaceId: string; phaseId: string; taskCount: number }
   | { type: "task:start"; workspaceId: string; phaseId: string; taskId: string; sessionId: string }
-  | { type: "task:complete"; workspaceId: string; phaseId: string; taskId: string; sessionId: string; resultId: string; durationMs: number }
+  | {
+      type: "task:complete"
+      workspaceId: string
+      phaseId: string
+      taskId: string
+      sessionId: string
+      resultId: string
+      durationMs: number
+    }
   | { type: "task:failed"; workspaceId: string; phaseId: string; taskId: string; error: string }
-  | { type: "session:idle"; workspaceId: string; phaseId: string; sessionId: string; taskId: string }
-  | { type: "phase:end"; workspaceId: string; phaseId: string; verdict: PhaseVerdict; taskCount: number; failedCount: number; durationMs: number }
+  | {
+      type: "session:idle"
+      workspaceId: string
+      phaseId: string
+      sessionId: string
+      taskId: string
+    }
+  | {
+      type: "phase:end"
+      workspaceId: string
+      phaseId: string
+      verdict: PhaseVerdict
+      taskCount: number
+      failedCount: number
+      durationMs: number
+    }
 
 /**
  * Per-task result produced during phase execution.
@@ -147,7 +169,10 @@ export class OpencodePhaseRunner {
     const { phase, tasks, executor, workspaceId } = opts
     const startMs = performance.now()
     const bus = opts.eventBus ?? this.defaultEventBus ?? new EventBus<OpencodePhaseEvent>()
-    const maxConcurrency = Math.max(1, opts.maxConcurrency ?? this.defaultMaxConcurrency ?? tasks.length)
+    const maxConcurrency = Math.max(
+      1,
+      opts.maxConcurrency ?? this.defaultMaxConcurrency ?? tasks.length,
+    )
 
     await this.publish(bus, {
       type: "phase:start",
@@ -427,7 +452,10 @@ export class OpencodePhaseRunner {
     }
   }
 
-  private async publish(bus: EventBus<OpencodePhaseEvent>, event: OpencodePhaseEvent): Promise<void> {
+  private async publish(
+    bus: EventBus<OpencodePhaseEvent>,
+    event: OpencodePhaseEvent,
+  ): Promise<void> {
     // EventBus.publishAsync isolates per-subscriber failures and never throws.
     await bus.publishAsync(event)
   }
@@ -440,7 +468,11 @@ export class OpencodePhaseRunner {
     return this.failureOutcome(taskId, "aborted")
   }
 
-  private missingOutcome(taskId: string, deps: ReadonlyArray<string>, byId: Map<string, Task>): PhaseTaskOutcome {
+  private missingOutcome(
+    taskId: string,
+    deps: ReadonlyArray<string>,
+    byId: Map<string, Task>,
+  ): PhaseTaskOutcome {
     const missing = deps.filter((d) => !byId.has(d))
     return this.failureOutcome(taskId, `missing dependencies: ${missing.join(", ")}`)
   }

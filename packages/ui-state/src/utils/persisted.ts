@@ -172,7 +172,10 @@ function merge(defaults: unknown, value: unknown): unknown {
     const result: Record<string, unknown> = { ...defaults }
     for (const key of Object.keys(value)) {
       if (key in defaults) {
-        result[key] = merge((defaults as Record<string, unknown>)[key], (value as Record<string, unknown>)[key])
+        result[key] = merge(
+          (defaults as Record<string, unknown>)[key],
+          (value as Record<string, unknown>)[key],
+        )
       } else {
         result[key] = (value as Record<string, unknown>)[key]
       }
@@ -221,7 +224,11 @@ function syncGet(storage: StateStorage, key: string): string | null {
   // `createJSONStorage` wrapper handles hydration asynchronously.
   const value = storage.getItem(key) as string | null | Promise<string | null>
   if (value === null) return null
-  if (typeof value === "object" && value !== null && "then" in (value as unknown as Record<string, unknown>)) {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "then" in (value as unknown as Record<string, unknown>)
+  ) {
     return null
   }
   return value as string
@@ -363,14 +370,21 @@ function buildStorage(config: PersistTarget) {
     // Desktop platform storage is wired by the host; for the web build we
     // fall through to the localStorage-backed implementations below.
   }
-  const currentStorage = config.storage ? localStorageWithPrefix(config.storage) : localStorageDirect()
+  const currentStorage = config.storage
+    ? localStorageWithPrefix(config.storage)
+    : localStorageDirect()
   const legacyStorage = localStorageDirect()
   const legacyStores = (config.legacyStorageNames ?? []).map(localStorageWithPrefix)
   const legacy = config.legacy ?? []
 
   return (): StateStorage => ({
     getItem: (key) => {
-      const value = readCurrent({ storage: currentStorage, key, defaults: undefined, migrate: config.migrate })
+      const value = readCurrent({
+        storage: currentStorage,
+        key,
+        defaults: undefined,
+        migrate: config.migrate,
+      })
       if (value !== undefined && value !== null) return value
       const migrated = migrateLegacy({
         current: currentStorage,
@@ -420,7 +434,11 @@ export function persisted<T extends object>(
   return created as unknown as UseBoundStore<StoreApi<T>>
 }
 
-export function removePersisted(target: { storage?: string; legacyStorageNames?: string[]; key: string }) {
+export function removePersisted(target: {
+  storage?: string
+  legacyStorageNames?: string[]
+  key: string
+}) {
   if (!target.storage) {
     localStorageDirect().removeItem(target.key)
     return

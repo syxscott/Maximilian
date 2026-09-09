@@ -41,11 +41,7 @@ export function usableTokens(cfg: CompactionConfig): number {
 
 /** 借鉴 opencode - isOverflow(): total usage >= usable */
 export function isOverflow(usage: TokenUsage, cfg: CompactionConfig): boolean {
-  const total =
-    usage.input +
-    usage.output +
-    (usage.cacheRead ?? 0) +
-    (usage.cacheWrite ?? 0)
+  const total = usage.input + usage.output + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)
   return total >= usableTokens(cfg)
 }
 
@@ -64,10 +60,7 @@ export function compactMessages(
     cfg.preserveRecentTokens ??
     Math.min(
       MAX_PRESERVE_RECENT_TOKENS,
-      Math.max(
-        MIN_PRESERVE_RECENT_TOKENS,
-        Math.floor(usableTokens(cfg) * 0.25),
-      ),
+      Math.max(MIN_PRESERVE_RECENT_TOKENS, Math.floor(usableTokens(cfg) * 0.25)),
     )
   const toolCap = cfg.maxToolOutputChars ?? TOOL_OUTPUT_MAX_CHARS
 
@@ -115,9 +108,7 @@ function truncateToolOutput(m: Message, max: number): Message {
     content: [
       {
         type: "text" as const,
-        text:
-          text.slice(0, max) +
-          `\n\n[借鉴 opencode Compaction] 截断 ${text.length - max} 字符`,
+        text: text.slice(0, max) + `\n\n[借鉴 opencode Compaction] 截断 ${text.length - max} 字符`,
       },
     ],
   } as unknown as Message

@@ -79,9 +79,7 @@ function applyMaximilianWebpackDefaults(config) {
         const isWorkspace =
           request === "react" ||
           request === "react-dom" ||
-          workspacePackages.some(
-            (pkg) => request === pkg || request.startsWith(`${pkg}/`),
-          )
+          workspacePackages.some((pkg) => request === pkg || request.startsWith(`${pkg}/`))
         if (isWorkspace) {
           // Emit `import * as ns from "react"` so the resulting bundle
           // is valid ESM and webpack's module concatenation pass can

@@ -19,6 +19,7 @@ The error is expected to clear on retry — network blips, upstream rate
 limits, transient resource exhaustion.
 
 Examples:
+
 - `fetch` ECONNRESET, ETIMEDOUT
 - HTTP 502, 503, 504 from upstreams
 - `opencode serve` returning `session.error{ type: "provider_error", retryable: true }`
@@ -32,6 +33,7 @@ The error will not clear without operator intervention — schema drift,
 configuration drift, exhausted budget.
 
 Examples:
+
 - HTTP 400, 401, 403, 404
 - Zod schema parse failure on a known-good input (regression)
 - `opencode serve` returning `session.error{ type: "configuration_error" }`
@@ -44,6 +46,7 @@ The error is a budget / quota exhaustion — meaningful for cost-aware
 routing and SLO dashboards, not for reliability.
 
 Examples:
+
 - Anthropic 429 with `anthropic-ratelimit-tokens-remaining: 0`
 - Stripe-style "credit exhausted" responses
 
@@ -59,12 +62,12 @@ single retry, then `permanent`.
 
 ## Where the taxonomy is enforced
 
-| Layer | File | Behaviour |
-| ----- | ---- | --------- |
-| opencode executor | `packages/core/src/opencode-executor.ts` | Maps `session.error.type` → taxonomy tag, sets `metadata.retryable` |
-| provider failover | `packages/providers/src/circuit-breaker.ts` | Counts `retryable` errors against circuit; `permanent` errors skip the retry path |
-| runtime | `packages/core/src/runtime.ts` (Phase 3 H5) | AbortError → propagate; other errors → fallback to in-process path |
-| orchestrator | `packages/meta-system/src/orchestrator.ts` | `permanent` errors mark proposal `failed`; `retryable` errors keep proposal `pending` |
+| Layer             | File                                        | Behaviour                                                                             |
+| ----------------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
+| opencode executor | `packages/core/src/opencode-executor.ts`    | Maps `session.error.type` → taxonomy tag, sets `metadata.retryable`                   |
+| provider failover | `packages/providers/src/circuit-breaker.ts` | Counts `retryable` errors against circuit; `permanent` errors skip the retry path     |
+| runtime           | `packages/core/src/runtime.ts` (Phase 3 H5) | AbortError → propagate; other errors → fallback to in-process path                    |
+| orchestrator      | `packages/meta-system/src/orchestrator.ts`  | `permanent` errors mark proposal `failed`; `retryable` errors keep proposal `pending` |
 
 ## Adding a new category
 

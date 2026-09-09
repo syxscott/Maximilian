@@ -43,9 +43,7 @@ export function WaveIndicator({ waves, className }: WaveIndicatorProps) {
         ))}
       </div>
       <div className="wave-indicator__legend font-mono tabular-nums">
-        <span>
-          {t("task.wave.label", { current: current + 1, total: waves.length })}
-        </span>
+        <span>{t("task.wave.label", { current: current + 1, total: waves.length })}</span>
         {currentActive > 0 && (
           <>
             <span aria-hidden>·</span>

@@ -40,8 +40,8 @@
 ## Replay the Org State at Time `t`
 
 ```typescript
-const events = await orgMemory.listAll();
-const beforeT = events.filter((e) => e.at <= t);
+const events = await orgMemory.listAll()
+const beforeT = events.filter((e) => e.at <= t)
 
 // Replay:
 //   1. Apply capability_proposed → create
@@ -51,7 +51,7 @@ const beforeT = events.filter((e) => e.at <= t);
 //   5. Apply team_optimized → log hint
 //   6. Apply governance_violation → record
 
-const state = reconstructOrgState(beforeT);
+const state = reconstructOrgState(beforeT)
 // state.activeCapabilities: number
 // state.activeAgents: number
 // state.retiredAgents: number

@@ -56,12 +56,5 @@ export function Markdown({ text, className, streaming: _streaming, ...rest }: Ma
     decorate(el)
   }, [text])
 
-  return (
-    <div
-      ref={containerRef}
-      data-component="markdown"
-      className={cn(className)}
-      {...rest}
-    />
-  )
+  return <div ref={containerRef} data-component="markdown" className={cn(className)} {...rest} />
 }

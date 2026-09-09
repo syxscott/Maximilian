@@ -10,25 +10,25 @@
  * The init function is called directly in the component body (not inside useMemo)
  * to comply with Rules of Hooks — init functions may call React hooks internally.
  */
-import { createContext, createElement, useContext } from "react";
+import { createContext, createElement, useContext } from "react"
 export function createSimpleContext(input) {
-    const Ctx = createContext(undefined);
-    function ProviderInner(props) {
-        const { children, ...rest } = props;
-        // Call init directly (not in useMemo) so hooks inside init are called every render
-        const value = input.init(rest);
-        return createElement(Ctx.Provider, { value }, children);
-    }
-    const handle = {
-        context: Ctx,
-        provider: ((props) => createElement(ProviderInner, props)),
-        use() {
-            const value = useContext(Ctx);
-            if (value === undefined) {
-                throw new Error(`${input.name} context must be used within a context provider`);
-            }
-            return value;
-        },
-    };
-    return handle;
+  const Ctx = createContext(undefined)
+  function ProviderInner(props) {
+    const { children, ...rest } = props
+    // Call init directly (not in useMemo) so hooks inside init are called every render
+    const value = input.init(rest)
+    return createElement(Ctx.Provider, { value }, children)
+  }
+  const handle = {
+    context: Ctx,
+    provider: (props) => createElement(ProviderInner, props),
+    use() {
+      const value = useContext(Ctx)
+      if (value === undefined) {
+        throw new Error(`${input.name} context must be used within a context provider`)
+      }
+      return value
+    },
+  }
+  return handle
 }

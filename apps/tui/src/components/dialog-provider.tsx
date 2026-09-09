@@ -330,19 +330,13 @@ export function DialogPrompt(props: DialogPromptProps) {
       {props.description && <Box marginY={1}>{props.description}</Box>}
       <Box>
         <Text>{props.placeholder ?? "Value"}: </Text>
-        <TextInput
-          value={value}
-          onChange={setValue}
-          onSubmit={(v) => void props.onConfirm?.(v)}
-        />
+        <TextInput value={value} onChange={setValue} onSubmit={(v) => void props.onConfirm?.(v)} />
       </Box>
     </Box>
   )
 }
 
-DialogPrompt.show = (
-  props: DialogPromptProps,
-): Promise<string | null> => {
+DialogPrompt.show = (props: DialogPromptProps): Promise<string | null> => {
   return new Promise((resolve) => {
     resolve(null)
     void props

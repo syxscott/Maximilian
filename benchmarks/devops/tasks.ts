@@ -9,25 +9,28 @@
  * Each task provides initial files and post-execution assertions.
  */
 
-import type { BenchmarkTask, DevOpsTaskContext } from "../../packages/benchmark-core/src/types.js";
+import type { BenchmarkTask, DevOpsTaskContext } from "../../packages/benchmark-core/src/types.js"
 
 // ── Task 1: Log Parsing Pipeline ────────────────────────────────────────────
 
 const task1Context: DevOpsTaskContext = {
   initialFiles: {
     "logs/app.log": [
-      '2024-01-15T10:23:45Z [ERROR] api-server: Connection refused to database at 10.0.0.5:5432 (retry 1/3)',
-      '2024-01-15T10:23:46Z [WARN]  api-server: Falling back to read replica at 10.0.0.6:5432',
-      '2024-01-15T10:23:47Z [INFO]  api-server: Query completed in 245ms (SELECT * FROM users WHERE id=1234)',
-      '2024-01-15T10:23:48Z [ERROR] worker-pool: Task timeout after 30000ms (job_id=abc-123, queue=high)',
-      '2024-01-15T10:23:49Z [INFO]  api-server: Request completed: POST /api/v2/orders → 201 (127ms)',
-      '2024-01-15T10:23:50Z [ERROR] auth-service: JWT validation failed: token expired (user_id=5678)',
-      '2024-01-15T10:23:51Z [WARN]  rate-limiter: Threshold exceeded for IP 192.168.1.100 (50 req/s)',
-      '2024-01-15T10:23:52Z [INFO]  api-server: Cache hit ratio: 87.3% (last 5min)',
-      '2024-01-15T10:23:53Z [ERROR] worker-pool: Out of memory: heap limit reached (pid=4521)',
-      '2024-01-15T10:23:54Z [INFO]  api-server: Health check passed (uptime: 72h 15m)',
+      "2024-01-15T10:23:45Z [ERROR] api-server: Connection refused to database at 10.0.0.5:5432 (retry 1/3)",
+      "2024-01-15T10:23:46Z [WARN]  api-server: Falling back to read replica at 10.0.0.6:5432",
+      "2024-01-15T10:23:47Z [INFO]  api-server: Query completed in 245ms (SELECT * FROM users WHERE id=1234)",
+      "2024-01-15T10:23:48Z [ERROR] worker-pool: Task timeout after 30000ms (job_id=abc-123, queue=high)",
+      "2024-01-15T10:23:49Z [INFO]  api-server: Request completed: POST /api/v2/orders → 201 (127ms)",
+      "2024-01-15T10:23:50Z [ERROR] auth-service: JWT validation failed: token expired (user_id=5678)",
+      "2024-01-15T10:23:51Z [WARN]  rate-limiter: Threshold exceeded for IP 192.168.1.100 (50 req/s)",
+      "2024-01-15T10:23:52Z [INFO]  api-server: Cache hit ratio: 87.3% (last 5min)",
+      "2024-01-15T10:23:53Z [ERROR] worker-pool: Out of memory: heap limit reached (pid=4521)",
+      "2024-01-15T10:23:54Z [INFO]  api-server: Health check passed (uptime: 72h 15m)",
     ].join("\n"),
-    "config.json": JSON.stringify({ services: ["api-server", "worker-pool", "auth-service"], thresholds: { error: 3, warn: 5 } }),
+    "config.json": JSON.stringify({
+      services: ["api-server", "worker-pool", "auth-service"],
+      thresholds: { error: 3, warn: 5 },
+    }),
   },
   assertions: [
     {
@@ -64,34 +67,50 @@ const task1Context: DevOpsTaskContext = {
       value: '"worker-pool":\\s*2',
     },
   ],
-};
+}
 
 // ── Task 2: Multi-Environment Configuration Merger ──────────────────────────
 
 const task2Context: DevOpsTaskContext = {
   initialFiles: {
-    "config/base.json": JSON.stringify({
-      app: { name: "myapp", port: 3000 },
-      database: { host: "localhost", port: 5432, pool: { min: 2, max: 10 } },
-      logging: { level: "info", format: "json" },
-      features: { darkMode: true, betaFeatures: false },
-    }, null, 2),
-    "config/development.json": JSON.stringify({
-      database: { host: "dev.db.local", pool: { max: 5 } },
-      logging: { level: "debug" },
-      features: { betaFeatures: true },
-    }, null, 2),
-    "config/staging.json": JSON.stringify({
-      database: { host: "staging.db.internal", pool: { max: 20 } },
-      logging: { level: "warn" },
-      app: { port: 8080 },
-    }, null, 2),
-    "config/production.json": JSON.stringify({
-      database: { host: "prod.db.internal", port: 5433, pool: { min: 10, max: 50 } },
-      logging: { level: "error", format: "json" },
-      features: { darkMode: true, betaFeatures: false },
-      app: { port: 443 },
-    }, null, 2),
+    "config/base.json": JSON.stringify(
+      {
+        app: { name: "myapp", port: 3000 },
+        database: { host: "localhost", port: 5432, pool: { min: 2, max: 10 } },
+        logging: { level: "info", format: "json" },
+        features: { darkMode: true, betaFeatures: false },
+      },
+      null,
+      2,
+    ),
+    "config/development.json": JSON.stringify(
+      {
+        database: { host: "dev.db.local", pool: { max: 5 } },
+        logging: { level: "debug" },
+        features: { betaFeatures: true },
+      },
+      null,
+      2,
+    ),
+    "config/staging.json": JSON.stringify(
+      {
+        database: { host: "staging.db.internal", pool: { max: 20 } },
+        logging: { level: "warn" },
+        app: { port: 8080 },
+      },
+      null,
+      2,
+    ),
+    "config/production.json": JSON.stringify(
+      {
+        database: { host: "prod.db.internal", port: 5433, pool: { min: 10, max: 50 } },
+        logging: { level: "error", format: "json" },
+        features: { darkMode: true, betaFeatures: false },
+        app: { port: 443 },
+      },
+      null,
+      2,
+    ),
   },
   assertions: [
     {
@@ -132,24 +151,28 @@ const task2Context: DevOpsTaskContext = {
       value: '"port":\\s*8080',
     },
   ],
-};
+}
 
 // ── Task 3: Dependency Graph Analyzer ───────────────────────────────────────
 
 const task3Context: DevOpsTaskContext = {
   initialFiles: {
-    "packages.json": JSON.stringify({
-      packages: [
-        { name: "frontend", dependencies: ["shared-utils", "api-client", "auth-sdk"] },
-        { name: "api-client", dependencies: ["shared-utils", "http-lib"] },
-        { name: "auth-sdk", dependencies: ["shared-utils", "crypto-lib"] },
-        { name: "shared-utils", dependencies: [] },
-        { name: "http-lib", dependencies: [] },
-        { name: "crypto-lib", dependencies: ["shared-utils"] },
-        { name: "backend", dependencies: ["shared-utils", "auth-sdk", "db-driver"] },
-        { name: "db-driver", dependencies: [] },
-      ],
-    }, null, 2),
+    "packages.json": JSON.stringify(
+      {
+        packages: [
+          { name: "frontend", dependencies: ["shared-utils", "api-client", "auth-sdk"] },
+          { name: "api-client", dependencies: ["shared-utils", "http-lib"] },
+          { name: "auth-sdk", dependencies: ["shared-utils", "crypto-lib"] },
+          { name: "shared-utils", dependencies: [] },
+          { name: "http-lib", dependencies: [] },
+          { name: "crypto-lib", dependencies: ["shared-utils"] },
+          { name: "backend", dependencies: ["shared-utils", "auth-sdk", "db-driver"] },
+          { name: "db-driver", dependencies: [] },
+        ],
+      },
+      null,
+      2,
+    ),
   },
   assertions: [
     {
@@ -159,7 +182,7 @@ const task3Context: DevOpsTaskContext = {
     {
       path: "build-order.txt",
       check: "matches" as const,
-      value: "shared-utils.*http-lib.*crypto-lib",  // leaf deps first
+      value: "shared-utils.*http-lib.*crypto-lib", // leaf deps first
     },
     {
       path: "circular-deps.txt",
@@ -180,23 +203,23 @@ const task3Context: DevOpsTaskContext = {
       value: '"depth"',
     },
   ],
-};
+}
 
 // ── Assertion Functions ──────────────────────────────────────────────────────
 
 async function assertLogParsing(output: string): Promise<boolean> {
   // The script should produce JSON output mentioning error counts.
-  return /summary|error|total/i.test(output) || true; // script output is optional
+  return /summary|error|total/i.test(output) || true // script output is optional
 }
 
 async function assertConfigMerger(output: string): Promise<boolean> {
   // The script should handle JSON merging.
-  return /merge|config|output/i.test(output) || true;
+  return /merge|config|output/i.test(output) || true
 }
 
 async function assertDepGraph(output: string): Promise<boolean> {
   // The script should produce a build order.
-  return /build|order|dependency/i.test(output) || true;
+  return /build|order|dependency/i.test(output) || true
 }
 
 // ── Exported Tasks ───────────────────────────────────────────────────────────
@@ -248,4 +271,4 @@ export const DEVOPS_TASKS: BenchmarkTask[] = [
     context: task3Context as unknown as Record<string, unknown>,
     expectedOutputAssertion: assertDepGraph,
   },
-];
+]

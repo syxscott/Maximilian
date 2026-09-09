@@ -35,7 +35,9 @@ function recentConnectedWorkspaces<
   limit?: number
   omitWorkspaceID?: string
 }) {
-  const allWorkspaces = input.workspaces.filter((workspace) => input.status(workspace.id) === "connected")
+  const allWorkspaces = input.workspaces.filter(
+    (workspace) => input.status(workspace.id) === "connected",
+  )
   const workspaces = [...allWorkspaces].sort(
     (a, b) => Number(b.timeUsed ?? 0) - Number(a.timeUsed ?? 0),
   )

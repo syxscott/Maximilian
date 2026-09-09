@@ -12,29 +12,29 @@
  * fork/branch execution, and replay from any point.
  */
 
-import type { ChannelValues, ConfigurableDict } from '../types.js';
+import type { ChannelValues, ConfigurableDict } from "../types.js"
 
 /**
  * A single checkpoint snapshot — the atomic unit of workspace history.
  */
 export interface Checkpoint {
   /** Unique identifier for this checkpoint (similar to langgraph checkpoint_id). */
-  id: string;
+  id: string
   /** Parent checkpoint id — null for the root checkpoint. */
-  parentId: string | null;
+  parentId: string | null
   /** Snapshot of all channel values at this point. */
-  channelValues: ChannelValues;
+  channelValues: ChannelValues
   /** Per-channel version numbers (monotonically increasing integers). */
-  channelVersions: Record<string, number>;
+  channelVersions: Record<string, number>
   /** List of channel names updated since the parent checkpoint. */
-  updatedChannels: string[];
+  updatedChannels: string[]
   /** Metadata about how this checkpoint was created. */
   metadata: {
-    source: 'input' | 'loop' | 'update';
-    step: number;
+    source: "input" | "loop" | "update"
+    step: number
     /** Parent channel versions at time of creation (for conflict resolution). */
-    parents?: Record<string, string>;
-  };
+    parents?: Record<string, string>
+  }
 }
 
 /**
@@ -44,19 +44,19 @@ export interface Checkpoint {
  */
 export interface CheckpointTuple {
   /** Config used to retrieve this checkpoint (contains thread_id etc.). */
-  config: ConfigurableDict;
+  config: ConfigurableDict
   /** The checkpoint itself. */
-  checkpoint: Checkpoint;
+  checkpoint: Checkpoint
   /** Optional arbitrary metadata stored alongside the checkpoint. */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>
   /** Config for the parent checkpoint (null if this is a root). */
-  parentConfig: ConfigurableDict | null;
+  parentConfig: ConfigurableDict | null
   /**
    * Writes that have been applied to the store but not yet committed
    * as a full checkpoint (similar to langgraph's pending_writes).
    * Each entry is [channel, value, type].
    */
-  pendingWrites: Array<[string, unknown, unknown]>;
+  pendingWrites: Array<[string, unknown, unknown]>
 }
 
 /**
@@ -68,7 +68,7 @@ export interface BaseCheckpointSaver {
    * Retrieve a checkpoint by its config.
    * Returns undefined if not found.
    */
-  get(config: ConfigurableDict): Promise<CheckpointTuple | undefined>;
+  get(config: ConfigurableDict): Promise<CheckpointTuple | undefined>
 
   /**
    * Persist a checkpoint under the given config.
@@ -78,14 +78,14 @@ export interface BaseCheckpointSaver {
     config: ConfigurableDict,
     checkpoint: Checkpoint,
     metadata?: Record<string, unknown>,
-  ): Promise<void>;
+  ): Promise<void>
 
   /**
    * List all checkpoints for a thread, ordered newest-first.
    * @param config - must contain thread_id
    * @param limit - maximum number to return (default: all)
    */
-  list(config: ConfigurableDict, limit?: number): Promise<CheckpointTuple[]>;
+  list(config: ConfigurableDict, limit?: number): Promise<CheckpointTuple[]>
 
   /**
    * Batch-write pending writes (applied but not yet committed).
@@ -97,16 +97,16 @@ export interface BaseCheckpointSaver {
     config: ConfigurableDict,
     writes: Array<[string, unknown]>,
     force?: boolean,
-  ): Promise<void>;
+  ): Promise<void>
 
   /**
    * Copy an entire thread to a new thread id (fork operation).
    */
-  copyThread(srcConfig: ConfigurableDict, dstConfig: ConfigurableDict): Promise<void>;
+  copyThread(srcConfig: ConfigurableDict, dstConfig: ConfigurableDict): Promise<void>
 
   /**
    * Prune old checkpoints, keeping only those before the given id.
    * Used to reclaim storage without losing recent history.
    */
-  prune(config: ConfigurableDict, beforeId?: string): Promise<void>;
+  prune(config: ConfigurableDict, beforeId?: string): Promise<void>
 }

@@ -60,9 +60,7 @@
   "agentRole": "frontend",
   "fromVersion": "v1",
   "toVersion": "v2",
-  "changes": [
-    { "type": "systemPrompt", "from": "...", "to": "...", "reason": "..." }
-  ],
+  "changes": [{ "type": "systemPrompt", "from": "...", "to": "...", "reason": "..." }],
   "expectedImprovement": { "score": 1.5, "acceptance": 0.1 },
   "basedOn": {
     "metricCount": 30,
@@ -76,6 +74,7 @@
 ### `promotion-history.json`
 
 Append-only array of:
+
 ```json
 {
   "id": "promo-xxx",

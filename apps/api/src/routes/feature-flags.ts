@@ -16,10 +16,10 @@
  * never has to talk HTTP directly.
  */
 
-import { createRoute } from "@hono/zod-openapi";
-import { z } from "zod";
-import type { FeatureFlags } from "@max/config";
-import { createFeatureFlags } from "@max/config";
+import { createRoute } from "@hono/zod-openapi"
+import { z } from "zod"
+import type { FeatureFlags } from "@max/config"
+import { createFeatureFlags } from "@max/config"
 
 const FlagValueResponse = z.object({
   name: z.string(),
@@ -27,45 +27,45 @@ const FlagValueResponse = z.object({
   defaultValue: z.boolean(),
   rolloutPercentage: z.number().optional(),
   description: z.string().optional(),
-});
+})
 
 const FlagListResponse = z.object({
   flags: z.array(FlagValueResponse),
-});
+})
 
 const EvaluateRequest = z.object({
   flagNames: z.array(z.string()).min(1).max(50),
   userId: z.string().optional(),
-});
+})
 
 const EvaluateResponse = z.object({
   values: z.record(z.string(), z.boolean()),
-});
+})
 
 const OverrideRequest = z.object({
   value: z.boolean(),
   reason: z.string().optional(),
-});
+})
 
 const OverrideResponse = z.object({
   flagName: z.string(),
   value: z.boolean(),
   overriddenBy: z.string().optional(),
   overriddenAt: z.string(),
-});
+})
 
-let _flags: FeatureFlags | null = null;
+let _flags: FeatureFlags | null = null
 
 function getFlags(): FeatureFlags {
   if (!_flags) {
-    _flags = createFeatureFlags({ loadFromEnv: true });
+    _flags = createFeatureFlags({ loadFromEnv: true })
   }
-  return _flags;
+  return _flags
 }
 
 /** Replace the singleton (for testing). */
 export function __setFeatureFlagsForTests(f: FeatureFlags | null): void {
-  _flags = f;
+  _flags = f
 }
 
 export const listFlagsRoute = createRoute({
@@ -78,7 +78,7 @@ export const listFlagsRoute = createRoute({
       description: "List all flag definitions with current values",
     },
   },
-});
+})
 
 export const getFlagRoute = createRoute({
   method: "get",
@@ -92,7 +92,7 @@ export const getFlagRoute = createRoute({
     },
     404: { description: "Unknown flag" },
   },
-});
+})
 
 export const setOverrideRoute = createRoute({
   method: "post",
@@ -109,7 +109,7 @@ export const setOverrideRoute = createRoute({
     },
     404: { description: "Unknown flag" },
   },
-});
+})
 
 export const clearOverrideRoute = createRoute({
   method: "delete",
@@ -120,7 +120,7 @@ export const clearOverrideRoute = createRoute({
     204: { description: "Override cleared" },
     404: { description: "Unknown flag" },
   },
-});
+})
 
 export const evaluateRoute = createRoute({
   method: "post",
@@ -135,6 +135,6 @@ export const evaluateRoute = createRoute({
       description: "Evaluated flag values",
     },
   },
-});
+})
 
-export { getFlags };
+export { getFlags }

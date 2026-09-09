@@ -14,10 +14,7 @@
  *   - AbortSignal triggers early termination
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import {
-  OpencodeDagExecutor,
-  type TaskResult,
-} from "../src/opencode-dag-executor.js"
+import { OpencodeDagExecutor, type TaskResult } from "../src/opencode-dag-executor.js"
 import { OpencodeExecutor } from "../src/opencode-executor.js"
 import type { Task } from "../src/types.js"
 
@@ -42,7 +39,10 @@ interface Harness {
   fetchMock: ReturnType<typeof vi.fn>
 }
 
-function setupOK(harness: Harness, opts: { perCallDelay?: (taskDesc: string) => number } = {}): void {
+function setupOK(
+  harness: Harness,
+  opts: { perCallDelay?: (taskDesc: string) => number } = {},
+): void {
   let sessionCounter = 0
 
   harness.fetchMock.mockImplementation(async (url: string | URL, init?: RequestInit) => {
@@ -95,9 +95,7 @@ function setupOK(harness: Harness, opts: { perCallDelay?: (taskDesc: string) => 
   })
 }
 
-async function collect(
-  iter: AsyncIterableIterator<TaskResult>,
-): Promise<TaskResult[]> {
+async function collect(iter: AsyncIterableIterator<TaskResult>): Promise<TaskResult[]> {
   const out: TaskResult[] = []
   while (true) {
     const next = await iter.next()
@@ -123,9 +121,7 @@ describe("OpencodeDagExecutor (Phase 3d)", () => {
     const tasks = [mkTask("t1", "alpha"), mkTask("t2", "beta"), mkTask("t3", "gamma")]
     const dag = new OpencodeDagExecutor()
 
-    const results = await collect(
-      dag.execute({ tasks, executor, workspaceId: "ws-1" }),
-    )
+    const results = await collect(dag.execute({ tasks, executor, workspaceId: "ws-1" }))
 
     expect(results).toHaveLength(3)
     const ids = new Set(results.map((r) => r.taskId))
@@ -142,7 +138,10 @@ describe("OpencodeDagExecutor (Phase 3d)", () => {
   })
 
   it("streams results as soon as each task completes (parallel, not all-at-once)", async () => {
-    setupOK({ fetchMock }, { perCallDelay: (desc) => (desc === "alpha" ? 80 : desc === "beta" ? 30 : 10) })
+    setupOK(
+      { fetchMock },
+      { perCallDelay: (desc) => (desc === "alpha" ? 80 : desc === "beta" ? 30 : 10) },
+    )
 
     const executor = new OpencodeExecutor({ baseUrl: "http://oc.test", poolSessions: false })
     const tasks = [mkTask("t1", "alpha"), mkTask("t2", "beta"), mkTask("t3", "gamma")]
@@ -174,9 +173,7 @@ describe("OpencodeDagExecutor (Phase 3d)", () => {
       mkTask("t4", "delta", ["t2", "t3"]),
     ]
     const dag = new OpencodeDagExecutor()
-    const results = await collect(
-      dag.execute({ tasks, executor, workspaceId: "ws-1" }),
-    )
+    const results = await collect(dag.execute({ tasks, executor, workspaceId: "ws-1" }))
 
     expect(results).toHaveLength(4)
     expect(results[0]!.taskId).toBe("t1")
@@ -202,9 +199,7 @@ describe("OpencodeDagExecutor (Phase 3d)", () => {
     const tasks = [mkTask("a", "alpha"), mkTask("b", "beta")]
     const dag = new OpencodeDagExecutor()
 
-    const results = await collect(
-      dag.execute({ tasks, executor, workspaceId: "ws-1" }),
-    )
+    const results = await collect(dag.execute({ tasks, executor, workspaceId: "ws-1" }))
 
     expect(results).toHaveLength(2)
     for (const r of results) {
@@ -220,14 +215,9 @@ describe("OpencodeDagExecutor (Phase 3d)", () => {
 
     const executor = new OpencodeExecutor({ baseUrl: "http://oc.test", poolSessions: false })
     // t2 depends on a non-existent "ghost" task.
-    const tasks = [
-      mkTask("t1", "alpha"),
-      mkTask("t2", "beta", ["ghost"]),
-    ]
+    const tasks = [mkTask("t1", "alpha"), mkTask("t2", "beta", ["ghost"])]
     const dag = new OpencodeDagExecutor()
-    const results = await collect(
-      dag.execute({ tasks, executor, workspaceId: "ws-1" }),
-    )
+    const results = await collect(dag.execute({ tasks, executor, workspaceId: "ws-1" }))
 
     const t2Result = results.find((r) => r.taskId === "t2")
     expect(t2Result).toBeDefined()

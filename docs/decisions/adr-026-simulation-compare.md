@@ -16,13 +16,13 @@ Live experiments are expensive (real tokens, real latency). We need an offline p
 
 ```ts
 {
-  orgName: string;
-  teamSize: number;
-  totalEstimatedCost: number;       // sum of profile.costPerCall
-  totalEstimatedLatencyMs: number;  // sum * serialMultiplier
-  estimatedAvgQuality: number;      // avg of profile.qualityScore (0-10)
-  riskScore: number;                // 0-1, missing profiles + team size penalty
-  simulatedAt: string;
+  orgName: string
+  teamSize: number
+  totalEstimatedCost: number // sum of profile.costPerCall
+  totalEstimatedLatencyMs: number // sum * serialMultiplier
+  estimatedAvgQuality: number // avg of profile.qualityScore (0-10)
+  riskScore: number // 0-1, missing profiles + team size penalty
+  simulatedAt: string
 }
 ```
 
@@ -35,10 +35,12 @@ Risk model: `min(1, missingRatio + teamSizePenalty)` where `teamSizePenalty = 0.
 ## Consequences
 
 **正面**：
+
 - Cheap predictions before committing changes
 - `compare` answers "A or B?" for org evolution decisions
 - Serializable results (good for `OrganizationMemory` storage)
 
 **负面**：
+
 - Predictions depend on accurate `RoleProfile` data (currently not auto-populated)
 - Linear models miss non-linear effects (queue contention, etc.)

@@ -13,8 +13,7 @@ export type DialogThemeListProps = {
 
 export function DialogThemeList(props: DialogThemeListProps) {
   const sorted = useMemo(
-    () =>
-      [...props.themes].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
+    () => [...props.themes].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
     [props.themes],
   )
   const [confirmed, setConfirmed] = useState(false)

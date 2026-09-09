@@ -10,7 +10,7 @@
  *   TeamOptimizerHint     6.4 — suggested team adjustments
  */
 
-import { z } from "zod";
+import { z } from "zod"
 
 // ============================================================================
 // 6.1 — CapabilityProposal
@@ -21,8 +21,8 @@ export const ProposalSourceSchema = z.enum([
   "failure_pattern_mining",
   "review_suggestion",
   "capability_gap",
-]);
-export type ProposalSource = z.infer<typeof ProposalSourceSchema>;
+])
+export type ProposalSource = z.infer<typeof ProposalSourceSchema>
 
 export const CapabilityProposalSchema = z.object({
   id: z.string(),
@@ -32,8 +32,8 @@ export const CapabilityProposalSchema = z.object({
   source: ProposalSourceSchema,
   evidence: z.array(z.string()).default([]),
   proposedAt: z.string(),
-});
-export type CapabilityProposal = z.infer<typeof CapabilityProposalSchema>;
+})
+export type CapabilityProposal = z.infer<typeof CapabilityProposalSchema>
 
 // ============================================================================
 // 6.2 — CapabilityRecord (Lifecycle)
@@ -45,8 +45,8 @@ export const CapabilityStatusSchema = z.enum([
   "active",
   "deprecated",
   "retired",
-]);
-export type CapabilityStatus = z.infer<typeof CapabilityStatusSchema>;
+])
+export type CapabilityStatus = z.infer<typeof CapabilityStatusSchema>
 
 export const CapabilityRecordSchema = z.object({
   id: z.string(),
@@ -62,28 +62,23 @@ export const CapabilityRecordSchema = z.object({
   avgDurationMs: z.number().nonnegative().default(0),
   createdAt: z.string(),
   updatedAt: z.string(),
-});
-export type CapabilityRecord = z.infer<typeof CapabilityRecordSchema>;
+})
+export type CapabilityRecord = z.infer<typeof CapabilityRecordSchema>
 
 // ============================================================================
 // 6.3 — AgentChangePlan
 // ============================================================================
 
-export const ChangeActionSchema = z.enum([
-  "create",
-  "delete",
-  "merge",
-  "split",
-]);
-export type ChangeAction = z.infer<typeof ChangeActionSchema>;
+export const ChangeActionSchema = z.enum(["create", "delete", "merge", "split"])
+export type ChangeAction = z.infer<typeof ChangeActionSchema>
 
 export const AgentChangeSchema = z.object({
   action: ChangeActionSchema,
   agentRole: z.string(),
-  targetRole: z.string().optional(),  // for merge/split
+  targetRole: z.string().optional(), // for merge/split
   reason: z.string(),
-});
-export type AgentChange = z.infer<typeof AgentChangeSchema>;
+})
+export type AgentChange = z.infer<typeof AgentChangeSchema>
 
 export const AgentChangePlanSchema = z.object({
   id: z.string(),
@@ -96,8 +91,8 @@ export const AgentChangePlanSchema = z.object({
   rationale: z.string(),
   createdAt: z.string(),
   status: z.enum(["draft", "approved", "rejected", "applied"]).default("draft"),
-});
-export type AgentChangePlan = z.infer<typeof AgentChangePlanSchema>;
+})
+export type AgentChangePlan = z.infer<typeof AgentChangePlanSchema>
 
 // ============================================================================
 // 6.4 — TeamOptimizerHint
@@ -105,19 +100,27 @@ export type AgentChangePlan = z.infer<typeof AgentChangePlanSchema>;
 
 export const TeamOptimizerHintSchema = z.object({
   id: z.string(),
-  suggestions: z.array(z.object({
-    type: z.enum(["add_review_node", "parallelize", "shrink_team", "grow_team", "remove_redundant"]),
-    targetRole: z.string().optional(),
-    rationale: z.string(),
-    expectedCostDelta: z.number(),
-    expectedLatencyDeltaMs: z.number(),
-  })),
+  suggestions: z.array(
+    z.object({
+      type: z.enum([
+        "add_review_node",
+        "parallelize",
+        "shrink_team",
+        "grow_team",
+        "remove_redundant",
+      ]),
+      targetRole: z.string().optional(),
+      rationale: z.string(),
+      expectedCostDelta: z.number(),
+      expectedLatencyDeltaMs: z.number(),
+    }),
+  ),
   estimatedCost: z.number(),
   estimatedLatencyMs: z.number(),
   estimatedQuality: z.number().min(0).max(10),
   createdAt: z.string(),
-});
-export type TeamOptimizerHint = z.infer<typeof TeamOptimizerHintSchema>;
+})
+export type TeamOptimizerHint = z.infer<typeof TeamOptimizerHintSchema>
 
 // ============================================================================
 // 6.5 — AgentBirthResult
@@ -137,8 +140,8 @@ export const AgentBirthResultSchema = z.object({
   version: z.string().default("v1"),
   parentCapability: z.string(),
   createdAt: z.string(),
-});
-export type AgentBirthResult = z.infer<typeof AgentBirthResultSchema>;
+})
+export type AgentBirthResult = z.infer<typeof AgentBirthResultSchema>
 
 // ============================================================================
 // 6.6 — RetirementDecision
@@ -150,8 +153,8 @@ export const RetirementReasonSchema = z.enum([
   "replaced_by_newer",
   "capability_retired",
   "manual",
-]);
-export type RetirementReason = z.infer<typeof RetirementReasonSchema>;
+])
+export type RetirementReason = z.infer<typeof RetirementReasonSchema>
 
 export const RetirementDecisionSchema = z.object({
   blueprintId: z.string(),
@@ -163,8 +166,8 @@ export const RetirementDecisionSchema = z.object({
     sampleSize: z.number(),
   }),
   decidedAt: z.string(),
-});
-export type RetirementDecision = z.infer<typeof RetirementDecisionSchema>;
+})
+export type RetirementDecision = z.infer<typeof RetirementDecisionSchema>
 
 // ============================================================================
 // 6.7 — OrganizationEvent
@@ -183,17 +186,17 @@ export const OrgEventTypeSchema = z.enum([
   "governance_violation",
   "proposal_rejected_by_human",
   "proposal_approved_by_human",
-]);
-export type OrgEventType = z.infer<typeof OrgEventTypeSchema>;
+])
+export type OrgEventType = z.infer<typeof OrgEventTypeSchema>
 
 export const OrganizationEventSchema = z.object({
   id: z.string(),
   type: OrgEventTypeSchema,
-  subject: z.string(),  // capabilityId or blueprintId
+  subject: z.string(), // capabilityId or blueprintId
   payload: z.record(z.unknown()).default({}),
   at: z.string(),
-});
-export type OrganizationEvent = z.infer<typeof OrganizationEventSchema>;
+})
+export type OrganizationEvent = z.infer<typeof OrganizationEventSchema>
 
 // ============================================================================
 // 6.8 — SimulationResult
@@ -208,8 +211,8 @@ export const SimulationResultSchema = z.object({
   riskScore: z.number().min(0).max(1),
   comparedWith: z.string().optional(),
   simulatedAt: z.string(),
-});
-export type SimulationResult = z.infer<typeof SimulationResultSchema>;
+})
+export type SimulationResult = z.infer<typeof SimulationResultSchema>
 
 // ============================================================================
 // 6.9 — GovernanceConfig
@@ -225,8 +228,8 @@ export const GovernanceConfigSchema = z.object({
   hitlRiskThreshold: z.number().min(0).max(1).default(0.4),
   /** Phase 11 — proposal actions that always require human approval. */
   hitlAlwaysForActions: z.array(z.string()).default(["retire"]),
-});
-export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
+})
+export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>
 
 export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
   maxAgents: 20,
@@ -236,7 +239,7 @@ export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
   minUsageForBirth: 0,
   hitlRiskThreshold: 0.4,
   hitlAlwaysForActions: ["retire"],
-};
+}
 
 export const GovernanceVerdictSchema = z.object({
   allowed: z.boolean(),
@@ -248,8 +251,8 @@ export const GovernanceVerdictSchema = z.object({
   }),
   /** Phase 11 — HITL status. "pending_human" means paused for human review. */
   status: z.enum(["approved", "blocked", "pending_human"]).default("approved"),
-});
-export type GovernanceVerdict = z.infer<typeof GovernanceVerdictSchema>;
+})
+export type GovernanceVerdict = z.infer<typeof GovernanceVerdictSchema>
 
 // ============================================================================
 // Defaults
@@ -259,19 +262,19 @@ export const RETIREMENT_THRESHOLDS = {
   lookback: 100,
   minUsageToKeep: 2,
   minScoreToKeep: 4.0,
-};
+}
 
 export const DISCOVERY_CONFIG = {
   minFrequency: 2,
   minFailureRate: 0.3,
   minReviewOccurrences: 3,
-};
+}
 
 export const TEAM_OPTIMIZER_CONFIG = {
   minRedundancyThreshold: 0.8,
   minLatencyToShrinkMs: 30000,
   minQualityToGrow: 7.5,
-};
+}
 
 // ============================================================================
 // Phase 8 — Digital Twin & Safe Evolution
@@ -285,8 +288,8 @@ export const OrganizationSnapshotSchema = z.object({
   blueprints: z.array(z.record(z.unknown())),
   graphs: z.array(z.record(z.unknown())),
   leaderboards: z.record(z.unknown()),
-});
-export type OrganizationSnapshot = z.infer<typeof OrganizationSnapshotSchema>;
+})
+export type OrganizationSnapshot = z.infer<typeof OrganizationSnapshotSchema>
 
 // 8.3 — Proposal (unified mutation request)
 export const ProposalActionSchema = z.enum([
@@ -297,16 +300,16 @@ export const ProposalActionSchema = z.enum([
   "merge",
   "split",
   "rebalance_team",
-]);
-export type ProposalAction = z.infer<typeof ProposalActionSchema>;
+])
+export type ProposalAction = z.infer<typeof ProposalActionSchema>
 
 export const ProposalSourceEnumSchema = z.enum([
   "meta_agent",
   "team_optimizer",
   "evolution_planner",
   "manual",
-]);
-export type ProposalSourceEnum = z.infer<typeof ProposalSourceEnumSchema>;
+])
+export type ProposalSourceEnum = z.infer<typeof ProposalSourceEnumSchema>
 
 export const ProposalStatusSchema = z.enum([
   "draft",
@@ -318,8 +321,8 @@ export const ProposalStatusSchema = z.enum([
   "applied",
   "failed",
   "pending_human",
-]);
-export type ProposalStatus = z.infer<typeof ProposalStatusSchema>;
+])
+export type ProposalStatus = z.infer<typeof ProposalStatusSchema>
 
 export const ProposalSchema = z.object({
   id: z.string(),
@@ -331,8 +334,8 @@ export const ProposalSchema = z.object({
   status: ProposalStatusSchema.default("draft"),
   source: ProposalSourceEnumSchema,
   createdAt: z.string(),
-});
-export type Proposal = z.infer<typeof ProposalSchema>;
+})
+export type Proposal = z.infer<typeof ProposalSchema>
 
 // 8.1 — SimulationDelta (output of simulateDelta)
 export const SimulationDeltaSchema = z.object({
@@ -343,18 +346,18 @@ export const SimulationDeltaSchema = z.object({
   before: SimulationResultSchema.optional(),
   after: SimulationResultSchema.optional(),
   simulatedAt: z.string(),
-});
-export type SimulationDelta = z.infer<typeof SimulationDeltaSchema>;
+})
+export type SimulationDelta = z.infer<typeof SimulationDeltaSchema>
 
 // 8.4 — RolloutMode (shadow / canary / full)
-export const RolloutModeSchema = z.enum(["shadow", "canary", "full"]);
-export type RolloutMode = z.infer<typeof RolloutModeSchema>;
+export const RolloutModeSchema = z.enum(["shadow", "canary", "full"])
+export type RolloutMode = z.infer<typeof RolloutModeSchema>
 
 export const ROLLOUT_CONFIG = {
   defaultMode: "shadow" as RolloutMode,
   canaryFraction: 0.1,
   utilityThreshold: 0.0,
-};
+}
 
 // 8.5 — DecisionScore (utility formula)
 export const DecisionScoreSchema = z.object({
@@ -366,8 +369,8 @@ export const DecisionScoreSchema = z.object({
   utility: z.number(),
   approved: z.boolean(),
   reason: z.string(),
-});
-export type DecisionScore = z.infer<typeof DecisionScoreSchema>;
+})
+export type DecisionScore = z.infer<typeof DecisionScoreSchema>
 
 export const DECISION_SCORING_CONFIG = {
   costWeight: 1.0,
@@ -375,7 +378,7 @@ export const DECISION_SCORING_CONFIG = {
   riskWeight: 10.0,
   qualityWeight: 1.0,
   utilityThreshold: 0.0,
-};
+}
 
 // 8.6 — ReplayOutcome
 export const ReplayOutcomeSchema = z.object({
@@ -385,8 +388,8 @@ export const ReplayOutcomeSchema = z.object({
   qualityDelta: z.number(),
   affectedExecutions: z.number(),
   at: z.string(),
-});
-export type ReplayOutcome = z.infer<typeof ReplayOutcomeSchema>;
+})
+export type ReplayOutcome = z.infer<typeof ReplayOutcomeSchema>
 
 // ============================================================================
 // Phase 10 — TelemetrySink (inline interface, avoids @max/telemetry dependency)
@@ -399,21 +402,21 @@ export type ReplayOutcome = z.infer<typeof ReplayOutcomeSchema>;
  */
 export interface TelemetrySink {
   recordEvolution(input: {
-    proposalId: string;
-    proposalType: string;
-    subject: string;
-    snapshotId?: string;
+    proposalId: string
+    proposalType: string
+    subject: string
+    snapshotId?: string
     simulatedScores: {
-      costDelta: number;
-      latencyDeltaMs: number;
-      qualityDelta: number;
-      riskDelta: number;
-      utility: number;
-    };
-    governanceVerdict: { allowed: boolean; reason: string };
-    rolloutStatus: string;
-    approved: boolean;
-  }): Promise<unknown>;
+      costDelta: number
+      latencyDeltaMs: number
+      qualityDelta: number
+      riskDelta: number
+      utility: number
+    }
+    governanceVerdict: { allowed: boolean; reason: string }
+    rolloutStatus: string
+    approved: boolean
+  }): Promise<unknown>
 }
 
 // ============================================================================
@@ -431,8 +434,8 @@ export const PendingProposalSchema = z.object({
   resolvedAt: z.string().optional(),
   resolvedBy: z.string().optional(),
   resolutionReason: z.string().optional(),
-});
-export type PendingProposal = z.infer<typeof PendingProposalSchema>;
+})
+export type PendingProposal = z.infer<typeof PendingProposalSchema>
 
 // ============================================================================
 // Phase 8.7 — TruthAudit (prediction-vs-reality verification)
@@ -464,16 +467,16 @@ export const TruthMeasurementSchema = z.object({
   /** Sample size behind the actual measurement. */
   sampleSize: z.number().int().nonnegative().default(1),
   recordedAt: z.string(),
-});
-export type TruthMeasurement = z.infer<typeof TruthMeasurementSchema>;
+})
+export type TruthMeasurement = z.infer<typeof TruthMeasurementSchema>
 
 export const TruthVerdictSchema = z.enum([
-  "accurate",      // |error| within tolerance
+  "accurate", // |error| within tolerance
   "under_predicted", // reality was better than predicted
-  "over_predicted",  // reality was worse than predicted
+  "over_predicted", // reality was worse than predicted
   "insufficient_data",
-]);
-export type TruthVerdict = z.infer<typeof TruthVerdictSchema>;
+])
+export type TruthVerdict = z.infer<typeof TruthVerdictSchema>
 
 /** Per-proposal verdict emitted by TruthAudit.verify(). */
 export const TruthVerificationSchema = z.object({
@@ -495,8 +498,8 @@ export const TruthVerificationSchema = z.object({
   /** Whether the truth mismatch warrants a model adjustment. */
   needsRecalibration: z.boolean(),
   verifiedAt: z.string(),
-});
-export type TruthVerification = z.infer<typeof TruthVerificationSchema>;
+})
+export type TruthVerification = z.infer<typeof TruthVerificationSchema>
 
 /** Global calibration report across all measured proposals. */
 export const TruthReportSchema = z.object({
@@ -523,16 +526,18 @@ export const TruthReportSchema = z.object({
     insufficient_data: z.number().int().nonnegative(),
   }),
   /** Proposals with the worst drift (top N). */
-  driftLeaders: z.array(z.object({
-    proposalId: z.string(),
-    maxAbsoluteError: z.number(),
-    verdict: TruthVerdictSchema,
-  })),
+  driftLeaders: z.array(
+    z.object({
+      proposalId: z.string(),
+      maxAbsoluteError: z.number(),
+      verdict: TruthVerdictSchema,
+    }),
+  ),
   /** True if mean absolute error exceeds calibration threshold. */
   recalibrationRecommended: z.boolean(),
   generatedAt: z.string(),
-});
-export type TruthReport = z.infer<typeof TruthReportSchema>;
+})
+export type TruthReport = z.infer<typeof TruthReportSchema>
 
 export const TRUTH_AUDIT_CONFIG = {
   /** Per-dimension tolerance (|error| below this counts as accurate). */
@@ -548,4 +553,4 @@ export const TRUTH_AUDIT_CONFIG = {
   recalibrationThreshold: 1.0,
   /** Top N drift leaders included in TruthReport. */
   driftLeaderCount: 5,
-};
+}

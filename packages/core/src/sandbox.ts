@@ -131,10 +131,7 @@ export abstract class SandboxServiceBase {
  * This class also implements the legacy SandboxService interface so that
  * existing code using start/pause/resume/stop/get/exec continues to work.
  */
-export class LocalSandboxService
-  extends SandboxServiceBase
-  implements SandboxService
-{
+export class LocalSandboxService extends SandboxServiceBase implements SandboxService {
   readonly backend = "local" as const
   private readonly commandTimeout: number
   private readonly cwd: string
@@ -196,7 +193,9 @@ export class LocalSandboxService
         try {
           const escalate = setTimeout(() => {
             if (!child.killed && child.exitCode === null) {
-              try { child.kill("SIGKILL") } catch {}
+              try {
+                child.kill("SIGKILL")
+              } catch {}
             }
           }, 2_000)
           escalate.unref()
@@ -243,8 +242,12 @@ export class LocalSandboxService
       sb.childProcesses.add(child)
       let stdout = ""
       let stderr = ""
-      child.stdout?.on("data", (d) => { stdout += d.toString() })
-      child.stderr?.on("data", (d) => { stderr += d.toString() })
+      child.stdout?.on("data", (d) => {
+        stdout += d.toString()
+      })
+      child.stderr?.on("data", (d) => {
+        stderr += d.toString()
+      })
       const timer = setTimeout(() => {
         if (!child.killed) child.kill("SIGKILL")
       }, timeout)
@@ -351,7 +354,19 @@ export class DockerSandboxService extends SandboxServiceBase {
     try {
       // Use install(1) which takes dst as argv — dst is never a shell string.
       const result = await this.runDocker(
-        ["run", "--rm", "--interactive", "-v", `${tmpPath}:/tmp/content:ro`, this.image, "install", "-m", "0644", "/tmp/content", path],
+        [
+          "run",
+          "--rm",
+          "--interactive",
+          "-v",
+          `${tmpPath}:/tmp/content:ro`,
+          this.image,
+          "install",
+          "-m",
+          "0644",
+          "/tmp/content",
+          path,
+        ],
         this.commandTimeout,
         Date.now(),
       )
@@ -372,7 +387,16 @@ export class DockerSandboxService extends SandboxServiceBase {
       // Handle root-level files by using "." as parent dir
       const parentDir = path.match(/^[/\\]/) ? "." : path.replace(/[/\\][^/\\]*$/, "")
       const result = await this.runDocker(
-        ["run", "--rm", "--interactive", "-v", `${parentDir}:/tmp/srcdir:ro`, this.image, "cat", path],
+        [
+          "run",
+          "--rm",
+          "--interactive",
+          "-v",
+          `${parentDir}:/tmp/srcdir:ro`,
+          this.image,
+          "cat",
+          path,
+        ],
         this.commandTimeout,
         Date.now(),
       )
@@ -399,13 +423,18 @@ export class DockerSandboxService extends SandboxServiceBase {
     // Path is passed as individual spawn args to prevent shell injection.
     const result = await this.runDocker(
       [
-        "run", "--rm",
+        "run",
+        "--rm",
         "--interactive",
-        "-v", `${this.cwd}:/workspace`,
-        "--workdir", "/workspace",
+        "-v",
+        `${this.cwd}:/workspace`,
+        "--workdir",
+        "/workspace",
         this.image,
-        "rm", "-rf", "--",
-        path,  // passed as argv, not interpolated into shell string
+        "rm",
+        "-rf",
+        "--",
+        path, // passed as argv, not interpolated into shell string
       ],
       this.commandTimeout,
       Date.now(),
@@ -430,8 +459,12 @@ export class DockerSandboxService extends SandboxServiceBase {
       const child = spawn("docker", args)
       let stdout = ""
       let stderr = ""
-      child.stdout?.on("data", (d) => { stdout += d.toString() })
-      child.stderr?.on("data", (d) => { stderr += d.toString() })
+      child.stdout?.on("data", (d) => {
+        stdout += d.toString()
+      })
+      child.stderr?.on("data", (d) => {
+        stderr += d.toString()
+      })
 
       const timer = setTimeout(() => {
         child.kill("SIGKILL")
@@ -485,8 +518,12 @@ export class MacSandboxExecService extends SandboxServiceBase {
       })
       let stdout = ""
       let stderr = ""
-      child.stdout?.on("data", (d) => { stdout += d.toString() })
-      child.stderr?.on("data", (d) => { stderr += d.toString() })
+      child.stdout?.on("data", (d) => {
+        stdout += d.toString()
+      })
+      child.stderr?.on("data", (d) => {
+        stderr += d.toString()
+      })
 
       child.on("close", (code) => {
         resolve({
@@ -533,9 +570,7 @@ export class MacSandboxExecService extends SandboxServiceBase {
   /** Build a minimal SBPL profile. */
   private buildProfile(): string {
     const allowReadWrite = `(allow file-read* file-write* (glob "${this.cwd}/**"))`
-    const networkClause = this.allowNetwork
-      ? "(allow network*)"
-      : "(deny network*)"
+    const networkClause = this.allowNetwork ? "(allow network*)" : "(deny network*)"
     return `(version 1)
 (allow default)
 ${allowReadWrite}
@@ -575,8 +610,12 @@ export class ProcessSandboxService extends SandboxServiceBase {
       })
       let stdout = ""
       let stderr = ""
-      child.stdout?.on("data", (d) => { stdout += d.toString() })
-      child.stderr?.on("data", (d) => { stderr += d.toString() })
+      child.stdout?.on("data", (d) => {
+        stdout += d.toString()
+      })
+      child.stderr?.on("data", (d) => {
+        stderr += d.toString()
+      })
 
       const timer = setTimeout(() => {
         child.kill("SIGKILL")

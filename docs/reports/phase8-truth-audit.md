@@ -25,18 +25,18 @@ Walk through each line, classify by mutation kind, and verify whether Phase 8 pa
 
 ## Mutation sites in MetaOrchestrator
 
-| Line | Operation | File | Phase 8 path |
-|------|-----------|------|--------------|
-| 138 | `registry.propose()` | orchestrator.ts | Direct — discovery is advisory only |
-| 161 | `registry.transition(..., "experimental")` | orchestrator.ts | Direct — metadata only, no team structure change |
-| 190 | `registry.transition(..., "active")` | orchestrator.ts | **PIPELINE** (via `runPromotionProposal`) — auto-approved since governance-gated |
-| 199 | `registry.transition(..., "active")` | orchestrator.ts | Direct — Phase 7 fallback, only when `pipeline` not wired |
-| 232 | `birth.birth(c)` | orchestrator.ts | **PIPELINE** + `manualSaveBlueprint` (Phase 8 only) |
-| 246 | `birth.birth(c)` | orchestrator.ts | Direct — Phase 7 fallback, only when `pipeline` not wired |
-| 261 | `retirement.evaluateAll(...)` | orchestrator.ts | **PIPELINE** + `manualRetireBlueprint` (Phase 8 only) |
-| 314 | `metaAgent.decide(...)` | orchestrator.ts | Read-only — returns plan, no mutation |
-| 365 | `teamOptimizer.suggest(...)` | orchestrator.ts | Read-only — returns hint |
-| 388 | `teamOptimizer.applyHint(...)` | orchestrator.ts | **PIPELINE** (each suggestion → Proposal via `fromTeamHint`) |
+| Line | Operation                                  | File            | Phase 8 path                                                                     |
+| ---- | ------------------------------------------ | --------------- | -------------------------------------------------------------------------------- |
+| 138  | `registry.propose()`                       | orchestrator.ts | Direct — discovery is advisory only                                              |
+| 161  | `registry.transition(..., "experimental")` | orchestrator.ts | Direct — metadata only, no team structure change                                 |
+| 190  | `registry.transition(..., "active")`       | orchestrator.ts | **PIPELINE** (via `runPromotionProposal`) — auto-approved since governance-gated |
+| 199  | `registry.transition(..., "active")`       | orchestrator.ts | Direct — Phase 7 fallback, only when `pipeline` not wired                        |
+| 232  | `birth.birth(c)`                           | orchestrator.ts | **PIPELINE** + `manualSaveBlueprint` (Phase 8 only)                              |
+| 246  | `birth.birth(c)`                           | orchestrator.ts | Direct — Phase 7 fallback, only when `pipeline` not wired                        |
+| 261  | `retirement.evaluateAll(...)`              | orchestrator.ts | **PIPELINE** + `manualRetireBlueprint` (Phase 8 only)                            |
+| 314  | `metaAgent.decide(...)`                    | orchestrator.ts | Read-only — returns plan, no mutation                                            |
+| 365  | `teamOptimizer.suggest(...)`               | orchestrator.ts | Read-only — returns hint                                                         |
+| 388  | `teamOptimizer.applyHint(...)`             | orchestrator.ts | **PIPELINE** (each suggestion → Proposal via `fromTeamHint`)                     |
 
 ---
 
@@ -47,6 +47,7 @@ Walk through each line, classify by mutation kind, and verify whether Phase 8 pa
 `AgentBirthEngine.birth()` checks `if (this.deps.saveBlueprint) { await this.deps.saveBlueprint(...) }`. If the API constructs the engine WITH `saveBlueprint: blueprintStore.save`, then `birth.birth(c)` writes to disk regardless of pipeline state.
 
 **Fix applied**:
+
 - `apps/api/src/index.ts` lines 234-247: when `DIGITAL_TWIN_ENABLED=true`, the engine constructors **omit** `saveBlueprint`, `retireBlueprint`, and `applyToBlueprintStore` callbacks.
 - `MetaOrchestratorDeps` adds `manualSaveBlueprint` and `manualRetireBlueprint` optional fields.
 - Orchestrator's Phase 8 paths call these manual hooks **only after** `trace.pipelineApproved && trace.rollout?.applied`.
@@ -65,13 +66,13 @@ Same pattern. Fix: omit `applyToBlueprintStore` callback when Phase 8 enabled. I
 
 ## Direct mutations (NOT routed through pipeline)
 
-| Operation | Why allowed |
-|-----------|-------------|
-| `registry.propose(...)` | Pure advisory: creates a CapabilityRecord in "proposed" status. No team structure impact. Cannot be auto-applied (must be promoted through registry.transition). |
-| `registry.transition(..., "experimental")` | Metadata change within capability lifecycle. No team structure impact (no blueprints added). |
-| `OrganizationMemory.record(...)` | Audit log. Not a structural mutation. |
-| `GovernanceEngine.check(...)` | Read-only. |
-| `CapabilityRegistry.list*()` | Read-only. |
+| Operation                                  | Why allowed                                                                                                                                                      |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registry.propose(...)`                    | Pure advisory: creates a CapabilityRecord in "proposed" status. No team structure impact. Cannot be auto-applied (must be promoted through registry.transition). |
+| `registry.transition(..., "experimental")` | Metadata change within capability lifecycle. No team structure impact (no blueprints added).                                                                     |
+| `OrganizationMemory.record(...)`           | Audit log. Not a structural mutation.                                                                                                                            |
+| `GovernanceEngine.check(...)`              | Read-only.                                                                                                                                                       |
+| `CapabilityRegistry.list*()`               | Read-only.                                                                                                                                                       |
 
 These are either advisory, read-only, or audit-only — none change the blueprint store or team graph.
 
@@ -81,20 +82,20 @@ These are either advisory, read-only, or audit-only — none change the blueprin
 
 Every pipeline call originates from `MetaOrchestrator.runProposal(proposal)` or `MetaOrchestrator.runPromotionProposal(proposal)`:
 
-| Mutation | Entry point | Pipeline |
-|----------|-------------|----------|
-| Birth | `MetaOrchestrator.cycle()` line 220 (`createProposal("birth")`) | ✓ |
-| Retirement | `MetaOrchestrator.cycle()` line 256 (`createProposal("retire")`) | ✓ |
-| Promotion to active | `MetaOrchestrator.cycle()` line 174 (`createProposal("promote")`) | ✓ (auto-approved, governance-gated) |
-| MetaAgent create | `MetaOrchestrator.cycle()` line ~309 (`fromAgentChange`) | ✓ |
-| MetaAgent delete | same | ✓ |
-| MetaAgent merge | same | ✓ |
-| MetaAgent split | same | ✓ |
-| TeamOptimizer remove_redundant | `MetaOrchestrator.cycle()` line ~359 (`fromTeamHint`) | ✓ |
-| TeamOptimizer shrink_team | same | ✓ |
-| TeamOptimizer grow_team | same | ✓ |
-| TeamOptimizer add_review_node | same | ✓ |
-| TeamOptimizer parallelize | same | ✓ |
+| Mutation                       | Entry point                                                       | Pipeline                            |
+| ------------------------------ | ----------------------------------------------------------------- | ----------------------------------- |
+| Birth                          | `MetaOrchestrator.cycle()` line 220 (`createProposal("birth")`)   | ✓                                   |
+| Retirement                     | `MetaOrchestrator.cycle()` line 256 (`createProposal("retire")`)  | ✓                                   |
+| Promotion to active            | `MetaOrchestrator.cycle()` line 174 (`createProposal("promote")`) | ✓ (auto-approved, governance-gated) |
+| MetaAgent create               | `MetaOrchestrator.cycle()` line ~309 (`fromAgentChange`)          | ✓                                   |
+| MetaAgent delete               | same                                                              | ✓                                   |
+| MetaAgent merge                | same                                                              | ✓                                   |
+| MetaAgent split                | same                                                              | ✓                                   |
+| TeamOptimizer remove_redundant | `MetaOrchestrator.cycle()` line ~359 (`fromTeamHint`)             | ✓                                   |
+| TeamOptimizer shrink_team      | same                                                              | ✓                                   |
+| TeamOptimizer grow_team        | same                                                              | ✓                                   |
+| TeamOptimizer add_review_node  | same                                                              | ✓                                   |
+| TeamOptimizer parallelize      | same                                                              | ✓                                   |
 
 **12 of 12** structural mutation entry points go through the pipeline.
 
@@ -111,6 +112,7 @@ Every pipeline call originates from `MetaOrchestrator.runProposal(proposal)` or 
 ## Rollout coverage
 
 Every approved proposal goes through `SafeRollout.apply()` which respects the current mode:
+
 - `shadow`: never applies (default, ROLLOUT_CONFIG.defaultMode)
 - `canary`: applies only when `hash(canaryKey) < 0.1`
 - `full`: always applies
@@ -132,6 +134,7 @@ Every approved proposal goes through `SafeRollout.apply()` which respects the cu
 7. **No hidden paths** — engine callbacks disabled when Phase 8 wired
 
 The system can:
+
 > 提出变更 → 模拟结果 → 评估风险 → 灰度发布 → 收集反馈 → 再决定是否正式采用
 
 Default rollout mode is **shadow**, so out-of-the-box behavior is simulation-only. Switch to `SAFE_ROLLOUT_MODE=canary` or `=full` to actually apply mutations.

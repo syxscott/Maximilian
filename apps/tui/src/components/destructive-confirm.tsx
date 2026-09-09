@@ -19,65 +19,65 @@
  *   - also exposes a `<ConfirmBadge>` JSX fragment for inline rendering.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Text } from "ink";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { Text } from "ink"
 
-export const CONFIRM_WINDOW_MS = 3_000;
+export const CONFIRM_WINDOW_MS = 3_000
 
 export interface DestructiveConfirm {
   /** True when the action has been "armed" (first press fired). */
-  armed: boolean;
+  armed: boolean
   /** Trigger an action. First call within a window arms; second commits. */
-  trigger(actionKey: string, fn: () => void | Promise<void>): boolean;
+  trigger(actionKey: string, fn: () => void | Promise<void>): boolean
   /** Force-disarm (e.g. user pressed Esc). */
-  disarm(): void;
+  disarm(): void
 }
 
 export function useDestructiveConfirm(windowMs: number = CONFIRM_WINDOW_MS): DestructiveConfirm {
-  const [armed, setArmed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const armedKeyRef = useRef<string | null>(null);
+  const [armed, setArmed] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const armedKeyRef = useRef<string | null>(null)
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
+      clearTimeout(timerRef.current)
+      timerRef.current = null
     }
-  }, []);
+  }, [])
 
-  useEffect(() => () => clearTimer(), [clearTimer]);
+  useEffect(() => () => clearTimer(), [clearTimer])
 
   const disarm = useCallback(() => {
-    setArmed(false);
-    armedKeyRef.current = null;
-    clearTimer();
-  }, [clearTimer]);
+    setArmed(false)
+    armedKeyRef.current = null
+    clearTimer()
+  }, [clearTimer])
 
   const trigger = useCallback(
     (actionKey: string, fn: () => void | Promise<void>): boolean => {
       if (armed && armedKeyRef.current === actionKey) {
         // Second press within window — commit.
-        clearTimer();
-        setArmed(false);
-        armedKeyRef.current = null;
-        void fn();
-        return true;
+        clearTimer()
+        setArmed(false)
+        armedKeyRef.current = null
+        void fn()
+        return true
       }
       // First press — arm.
-      armedKeyRef.current = actionKey;
-      setArmed(true);
-      clearTimer();
+      armedKeyRef.current = actionKey
+      setArmed(true)
+      clearTimer()
       timerRef.current = setTimeout(() => {
-        setArmed(false);
-        armedKeyRef.current = null;
-        timerRef.current = null;
-      }, windowMs);
-      return false;
+        setArmed(false)
+        armedKeyRef.current = null
+        timerRef.current = null
+      }, windowMs)
+      return false
     },
     [armed, clearTimer, windowMs],
-  );
+  )
 
-  return { armed, trigger, disarm };
+  return { armed, trigger, disarm }
 }
 
 /**
@@ -88,14 +88,14 @@ export function ConfirmBadge({
   armed,
   action = "delete",
 }: {
-  armed: boolean;
-  action?: string;
+  armed: boolean
+  action?: string
 }): ReactNode {
-  if (!armed) return null;
+  if (!armed) return null
   return (
     <Text color="red" bold>
       {" "}
       ⚠ Press {action} again to confirm
     </Text>
-  );
+  )
 }
