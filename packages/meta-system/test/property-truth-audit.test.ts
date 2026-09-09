@@ -77,12 +77,9 @@ describe("TruthAudit — property-based invariants", () => {
         }
         const v = ta.verify(m.proposalId)
         expect(v).not.toBeNull()
-        expect([
-          "accurate",
-          "over_predicted",
-          "under_predicted",
-          "calibration_drift",
-        ]).toContain(v?.verdict)
+        expect(["accurate", "over_predicted", "under_predicted", "calibration_drift"]).toContain(
+          v?.verdict,
+        )
       }),
       { numRuns: 30 },
     )

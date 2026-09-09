@@ -20,13 +20,13 @@ pnpm db:push
 
 ## Workflow
 
-| Command | When to use |
-|---------|------------|
+| Command            | When to use                                                                |
+| ------------------ | -------------------------------------------------------------------------- |
 | `pnpm db:generate` | After editing `src/schema.ts` — creates a new migration file in `drizzle/` |
-| `pnpm db:migrate`  | Apply pending migrations to the configured database |
-| `pnpm db:push`     | Dev only — sync schema directly, skipping migration files |
-| `pnpm db:studio`   | Open Drizzle Studio to browse data |
-| `pnpm db:drop`     | Drop the database (DESTRUCTIVE — only for dev reset) |
+| `pnpm db:migrate`  | Apply pending migrations to the configured database                        |
+| `pnpm db:push`     | Dev only — sync schema directly, skipping migration files                  |
+| `pnpm db:studio`   | Open Drizzle Studio to browse data                                         |
+| `pnpm db:drop`     | Drop the database (DESTRUCTIVE — only for dev reset)                       |
 
 ## Layout
 

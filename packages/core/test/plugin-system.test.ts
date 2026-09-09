@@ -48,7 +48,11 @@ describe("PluginManager", () => {
     const handler = vi.fn()
     await pm.register({
       name: "bad",
-      hooks: { "task-start": () => { throw new Error("boom") } },
+      hooks: {
+        "task-start": () => {
+          throw new Error("boom")
+        },
+      },
     })
     await pm.register({ name: "good", hooks: { "task-start": handler } })
     await pm.dispatch("task-start", {})
@@ -58,7 +62,9 @@ describe("PluginManager", () => {
   it("throws on duplicate registration", async () => {
     const pm = new PluginManager()
     await pm.register({ name: "x", hooks: {} })
-    await expect(pm.register({ name: "x", hooks: {} })).rejects.toThrow('plugin "x" already registered')
+    await expect(pm.register({ name: "x", hooks: {} })).rejects.toThrow(
+      'plugin "x" already registered',
+    )
   })
 
   it("has() checks registration", async () => {
@@ -92,7 +98,12 @@ describe("PluginManager", () => {
     let resolved = false
     await pm.register({
       name: "async",
-      hooks: { "task-start": async () => { await new Promise((r) => setTimeout(r, 5)); resolved = true } },
+      hooks: {
+        "task-start": async () => {
+          await new Promise((r) => setTimeout(r, 5))
+          resolved = true
+        },
+      },
     })
     await pm.dispatch("task-start", {})
     expect(resolved).toBe(true)

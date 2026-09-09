@@ -13,24 +13,24 @@
  * generate a replacement plan.
  */
 
-import type { Provider } from "@max/providers";
-import type { ChatMessage } from "@max/providers";
-import type { SelfCritiqueResult } from "./runtime.js";
-import { detectFailures } from "./validation/failure-detector.js";
+import type { Provider } from "@max/providers"
+import type { ChatMessage } from "@max/providers"
+import type { SelfCritiqueResult } from "./runtime.js"
+import { detectFailures } from "./validation/failure-detector.js"
 
 /**
  * Options for constructing a SelfCritique evaluator.
  */
 export interface SelfCritiqueOptions {
   /** LLM provider to use for critique. */
-  llm: Provider;
+  llm: Provider
   /** Model to use (default: provider default). */
-  model?: string;
+  model?: string
   /**
    * Minimum score (0-10) below which a replan is triggered.
    * Default: 3.
    */
-  threshold?: number;
+  threshold?: number
 }
 
 /**
@@ -56,7 +56,7 @@ Respond with a JSON object:
   "score": number,         // 0-10 integer
   "reason": string,        // 1-2 sentence explanation
   "suggestions": string[]  // up to 3 concrete improvement suggestions
-}}`;
+}}`
 
 /**
  * Self-critique module.
@@ -64,10 +64,10 @@ Respond with a JSON object:
  * trigger re-planning when the agent is stuck in low-quality loops.
  */
 export class SelfCritique {
-  private threshold: number;
+  private threshold: number
 
   constructor(private opts: SelfCritiqueOptions) {
-    this.threshold = opts.threshold ?? 3;
+    this.threshold = opts.threshold ?? 3
   }
 
   /**
@@ -85,25 +85,22 @@ export class SelfCritique {
     const prompt = CRITIQUE_PROMPT.replace("{lastAction}", lastAction).replace(
       "{lastOutput}",
       lastOutput.slice(0, 1000), // truncate to avoid token blow-up
-    );
+    )
 
-    const messages: ChatMessage[] = [
-      ...historyTail,
-      { role: "user", content: prompt },
-    ];
+    const messages: ChatMessage[] = [...historyTail, { role: "user", content: prompt }]
 
     const response = await this.opts.llm.chat(messages, {
       model: this.opts.model,
       temperature: 0,
-    });
+    })
 
-    let parsed: SelfCritiqueResult | null;
+    let parsed: SelfCritiqueResult | null
     try {
       // Try to parse as JSON from the response content
-      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      parsed = JSON.parse(jsonMatch ? jsonMatch[0]! : response.content);
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/)
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0]! : response.content)
     } catch {
-      parsed = null;
+      parsed = null
     }
     if (!parsed || typeof parsed.score !== "number") {
       // Fallback: if we can't parse or score is missing, return a neutral result
@@ -112,10 +109,10 @@ export class SelfCritique {
         score: 5,
         reason: `Could not parse critique response: ${response.content.slice(0, 100)}`,
         suggestions: [],
-      };
+      }
     }
 
-    return { ...parsed, outputText: lastOutput };
+    return { ...parsed, outputText: lastOutput }
   }
 
   /**
@@ -124,24 +121,21 @@ export class SelfCritique {
    * @param results - recent SelfCritiqueResult entries (ordered oldest → newest)
    * @param consecutiveThreshold - number of consecutive low scores to trigger replan (default: 2)
    */
-  shouldReplan(
-    results: SelfCritiqueResult[],
-    consecutiveThreshold = 2,
-  ): boolean {
-    if (results.length < consecutiveThreshold) return false;
+  shouldReplan(results: SelfCritiqueResult[], consecutiveThreshold = 2): boolean {
+    if (results.length < consecutiveThreshold) return false
 
     // Look at the most recent `consecutiveThreshold` results
-    const recent = results.slice(-consecutiveThreshold);
-    const scoreDriven = recent.every((r) => !r.useful && r.score < this.threshold);
+    const recent = results.slice(-consecutiveThreshold)
+    const scoreDriven = recent.every((r) => !r.useful && r.score < this.threshold)
 
     // Also check for structural failures via FailureDetector (Kosmos pattern).
     // This catches over-interpretation, invented metrics, and rabbit-hole drift
     // even when the LLM critique score is ambiguous.
-    const lastResult = recent[recent.length - 1]!;
+    const lastResult = recent[recent.length - 1]!
     const failureDriven = lastResult.outputText
       ? detectFailures(lastResult.outputText).failed
-      : false;
+      : false
 
-    return scoreDriven || failureDriven;
+    return scoreDriven || failureDriven
   }
 }

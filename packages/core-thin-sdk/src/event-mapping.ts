@@ -15,7 +15,7 @@
  * without halting the bridge.
  */
 
-import type { StoredEventLike } from "./event-store-iface.js";
+import type { StoredEventLike } from "./event-store-iface.js"
 
 /**
  * A subset of the opencode event envelope that mappers consume.
@@ -24,17 +24,17 @@ import type { StoredEventLike } from "./event-store-iface.js";
  */
 export interface OpencodeEvent {
   /** "evt_<ascending>"; empty string if the server omits it. */
-  id?: string;
+  id?: string
   /** Discriminator, e.g. "session.next.text.delta". */
-  type: string;
+  type: string
   /** Payload; shape is type-specific. */
-  data?: unknown;
+  data?: unknown
   /** Optional metadata key/value bag. */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>
   /** Optional durable-hint (aggregate / seq / version). */
-  durable?: { aggregateID: string; seq: number; version: number };
+  durable?: { aggregateID: string; seq: number; version: number }
   /** Optional location hint (directory / workspaceID). */
-  location?: { directory?: string; workspaceID?: string };
+  location?: { directory?: string; workspaceID?: string }
 }
 
 /**
@@ -43,35 +43,35 @@ export interface OpencodeEvent {
  * `aggregateId`, and `data`.
  */
 export interface MappedEventDraft {
-  type: string;
-  aggregateId: string;
-  data: unknown;
+  type: string
+  aggregateId: string
+  data: unknown
 }
 
 /**
  * A single row in the opencode → Maximilian mapping table.
  */
 export interface OpencodeEventMapping {
-  opencodeType: string;
+  opencodeType: string
   /** Maximilian event type (becomes `StoredEvent.type`). */
-  maxType: string;
-  mapper: (event: OpencodeEvent) => MappedEventDraft;
+  maxType: string
+  mapper: (event: OpencodeEvent) => MappedEventDraft
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  return typeof value === "string" && value.length > 0 ? value : undefined
 }
 
 function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }
 
 function readObject(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
-    : undefined;
+    : undefined
 }
 
 /**
@@ -85,11 +85,11 @@ function resolveAggregateId(
   payload: Record<string, unknown> | undefined,
   fallback: string,
 ): string {
-  const fromLocation = event.location?.workspaceID;
-  if (fromLocation) return fromLocation;
-  const fromSession = payload ? readString(payload.sessionID) : undefined;
-  if (fromSession) return fromSession;
-  return fallback;
+  const fromLocation = event.location?.workspaceID
+  if (fromLocation) return fromLocation
+  const fromSession = payload ? readString(payload.sessionID) : undefined
+  if (fromSession) return fromSession
+  return fallback
 }
 
 /**
@@ -97,13 +97,13 @@ function resolveAggregateId(
  * to operate on. Always returns an object (empty if `data` was missing).
  */
 function payloadOf(event: OpencodeEvent): Record<string, unknown> {
-  return readObject(event.data) ?? {};
+  return readObject(event.data) ?? {}
 }
 
 // ── per-event mappers ───────────────────────────────────────────────────────
 
 function mapMessageDelta(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "message:delta",
     aggregateId: resolveAggregateId(event, data, "global"),
@@ -113,11 +113,11 @@ function mapMessageDelta(event: OpencodeEvent): MappedEventDraft {
       textID: readString(data.textID),
       delta: readString(data.delta),
     },
-  };
+  }
 }
 
 function mapMessagePart(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "message:part",
     aggregateId: resolveAggregateId(event, data, "global"),
@@ -127,11 +127,11 @@ function mapMessagePart(event: OpencodeEvent): MappedEventDraft {
       partID: readString(data.partID) ?? readString(data.textID),
       part: data.part ?? data,
     },
-  };
+  }
 }
 
 function mapToolCalled(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "tool:called",
     aggregateId: resolveAggregateId(event, data, "global"),
@@ -143,11 +143,11 @@ function mapToolCalled(event: OpencodeEvent): MappedEventDraft {
       input: data.input,
       provider: readObject(data.provider),
     },
-  };
+  }
 }
 
 function mapToolProgress(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "tool:progress",
     aggregateId: resolveAggregateId(event, data, "global"),
@@ -158,11 +158,11 @@ function mapToolProgress(event: OpencodeEvent): MappedEventDraft {
       structured: data.structured,
       content: data.content,
     },
-  };
+  }
 }
 
 function mapToolSuccess(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "tool:success",
     aggregateId: resolveAggregateId(event, data, "global"),
@@ -176,11 +176,11 @@ function mapToolSuccess(event: OpencodeEvent): MappedEventDraft {
       result: data.result,
       provider: readObject(data.provider),
     },
-  };
+  }
 }
 
 function mapToolFailed(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "tool:failed",
     aggregateId: resolveAggregateId(event, data, "global"),
@@ -192,11 +192,11 @@ function mapToolFailed(event: OpencodeEvent): MappedEventDraft {
       result: data.result,
       provider: readObject(data.provider),
     },
-  };
+  }
 }
 
 function mapMessageUser(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "message:user",
     aggregateId: resolveAggregateId(event, data, "global"),
@@ -206,11 +206,11 @@ function mapMessageUser(event: OpencodeEvent): MappedEventDraft {
       prompt: data.prompt,
       delivery: readString(data.delivery),
     },
-  };
+  }
 }
 
 function mapCompactionStart(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "compaction:start",
     aggregateId: resolveAggregateId(event, data, "global"),
@@ -219,22 +219,22 @@ function mapCompactionStart(event: OpencodeEvent): MappedEventDraft {
       messageID: readString(data.messageID),
       reason: readString(data.reason),
     },
-  };
+  }
 }
 
 function mapCompactionDone(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "compaction:done",
     aggregateId: resolveAggregateId(event, data, readString(data.sessionID) ?? "global"),
     data: {
       sessionID: readString(data.sessionID),
     },
-  };
+  }
 }
 
 function mapSessionError(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "session:error",
     aggregateId: resolveAggregateId(event, data, readString(data.sessionID) ?? "global"),
@@ -242,22 +242,22 @@ function mapSessionError(event: OpencodeEvent): MappedEventDraft {
       sessionID: readString(data.sessionID),
       error: data.error,
     },
-  };
+  }
 }
 
 function mapSessionIdle(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
-  const sessionID = readString(data.sessionID) ?? "global";
+  const data = payloadOf(event)
+  const sessionID = readString(data.sessionID) ?? "global"
   return {
     type: "session:idle",
     aggregateId: resolveAggregateId(event, data, sessionID),
     data: { sessionID },
-  };
+  }
 }
 
 function mapSessionStatus(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
-  const status = readObject(data.status) ?? {};
+  const data = payloadOf(event)
+  const status = readObject(data.status) ?? {}
   return {
     type: "session:status",
     aggregateId: resolveAggregateId(event, data, readString(data.sessionID) ?? "global"),
@@ -267,11 +267,11 @@ function mapSessionStatus(event: OpencodeEvent): MappedEventDraft {
       attempt: readNumber(status.attempt),
       message: readString(status.message),
     },
-  };
+  }
 }
 
 function mapPermissionAsked(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "permission:asked",
     aggregateId: resolveAggregateId(event, data, readString(data.sessionID) ?? "global"),
@@ -288,11 +288,11 @@ function mapPermissionAsked(event: OpencodeEvent): MappedEventDraft {
       always: data.always,
       tool: readObject(data.tool),
     },
-  };
+  }
 }
 
 function mapPermissionReplied(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "permission:replied",
     aggregateId: resolveAggregateId(event, data, readString(data.sessionID) ?? "global"),
@@ -301,11 +301,11 @@ function mapPermissionReplied(event: OpencodeEvent): MappedEventDraft {
       sessionID: readString(data.sessionID),
       reply: readString(data.reply),
     },
-  };
+  }
 }
 
 function mapQuestion(event: OpencodeEvent, type: string): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type,
     aggregateId: resolveAggregateId(event, data, readString(data.sessionID) ?? "global"),
@@ -316,11 +316,11 @@ function mapQuestion(event: OpencodeEvent, type: string): MappedEventDraft {
       answers: data.answers,
       tool: readObject(data.tool),
     },
-  };
+  }
 }
 
 function mapTodoUpdated(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "todo:updated",
     aggregateId: resolveAggregateId(event, data, readString(data.sessionID) ?? "global"),
@@ -328,7 +328,7 @@ function mapTodoUpdated(event: OpencodeEvent): MappedEventDraft {
       sessionID: readString(data.sessionID),
       todos: data.todos,
     },
-  };
+  }
 }
 
 function mapLspUpdated(event: OpencodeEvent): MappedEventDraft {
@@ -336,21 +336,21 @@ function mapLspUpdated(event: OpencodeEvent): MappedEventDraft {
     type: "lsp:updated",
     aggregateId: event.location?.workspaceID ?? "global",
     data: { metadata: readObject(event.metadata) ?? {} },
-  };
+  }
 }
 
 function mapMcpToolsChanged(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "mcp:tools:changed",
     aggregateId: event.location?.workspaceID ?? "global",
     data: { server: readString(data.server), raw: data },
-  };
+  }
 }
 
 function mapPtyCreated(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
-  const info = readObject(data.info) ?? {};
+  const data = payloadOf(event)
+  const info = readObject(data.info) ?? {}
   return {
     type: "pty:created",
     aggregateId: event.location?.workspaceID ?? "global",
@@ -360,11 +360,11 @@ function mapPtyCreated(event: OpencodeEvent): MappedEventDraft {
       command: readString(info.command),
       pid: readNumber(info.pid),
     },
-  };
+  }
 }
 
 function mapPtyExited(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "pty:exited",
     aggregateId: event.location?.workspaceID ?? "global",
@@ -372,29 +372,29 @@ function mapPtyExited(event: OpencodeEvent): MappedEventDraft {
       id: readString(data.id),
       exitCode: readNumber(data.exitCode),
     },
-  };
+  }
 }
 
 function mapWorkspaceReady(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "workspace:ready",
     aggregateId: event.location?.workspaceID ?? "global",
     data: { name: readString(data.name), raw: data },
-  };
+  }
 }
 
 function mapWorkspaceFailed(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "workspace:failed",
     aggregateId: event.location?.workspaceID ?? "global",
     data: { message: readString(data.message), raw: data },
-  };
+  }
 }
 
 function mapWorkspaceStatus(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: "workspace:status",
     aggregateId: readString(data.workspaceID) ?? event.location?.workspaceID ?? "global",
@@ -402,7 +402,7 @@ function mapWorkspaceStatus(event: OpencodeEvent): MappedEventDraft {
       workspaceID: readString(data.workspaceID),
       status: readString(data.status),
     },
-  };
+  }
 }
 
 function mapServerConnected(event: OpencodeEvent): MappedEventDraft {
@@ -410,23 +410,19 @@ function mapServerConnected(event: OpencodeEvent): MappedEventDraft {
     type: "server:connected",
     aggregateId: event.location?.workspaceID ?? "global",
     data: { id: readString(event.id), metadata: readObject(event.metadata) ?? {} },
-  };
+  }
 }
 
 /**
  * Fallback mapper: emit an `unknown:*` event so we never silently drop.
  */
 function mapUnknown(event: OpencodeEvent): MappedEventDraft {
-  const data = payloadOf(event);
+  const data = payloadOf(event)
   return {
     type: `unknown:${event.type}`,
-    aggregateId: resolveAggregateId(
-      event,
-      data,
-      event.location?.workspaceID ?? "global",
-    ),
+    aggregateId: resolveAggregateId(event, data, event.location?.workspaceID ?? "global"),
     data: { opencodeType: event.type, payload: data },
-  };
+  }
 }
 
 // ── the mapping table ───────────────────────────────────────────────────────
@@ -647,7 +643,7 @@ export const OPENCODE_EVENT_MAP: ReadonlyArray<OpencodeEventMapping> = Object.fr
     maxType: "server:connected",
     mapper: mapServerConnected,
   },
-]);
+])
 
 // ── resolver ─────────────────────────────────────────────────────────────────
 
@@ -658,14 +654,14 @@ export const OPENCODE_EVENT_MAP: ReadonlyArray<OpencodeEventMapping> = Object.fr
 export function buildMappingIndex(
   entries: ReadonlyArray<OpencodeEventMapping> = OPENCODE_EVENT_MAP,
 ): Map<string, OpencodeEventMapping> {
-  const idx = new Map<string, OpencodeEventMapping>();
+  const idx = new Map<string, OpencodeEventMapping>()
   for (const entry of entries) {
     // First-occurrence wins so an earlier alias takes precedence.
     if (!idx.has(entry.opencodeType)) {
-      idx.set(entry.opencodeType, entry);
+      idx.set(entry.opencodeType, entry)
     }
   }
-  return idx;
+  return idx
 }
 
 /**
@@ -676,13 +672,13 @@ export function mapperFor(
   type: string,
   index: Map<string, OpencodeEventMapping>,
 ): OpencodeEventMapping {
-  const direct = index.get(type);
-  if (direct) return direct;
+  const direct = index.get(type)
+  if (direct) return direct
   return {
     opencodeType: type,
     maxType: `unknown:${type}`,
     mapper: mapUnknown,
-  };
+  }
 }
 
 /**
@@ -699,12 +695,12 @@ export function mapOpencodeEvent(
   index: Map<string, OpencodeEventMapping>,
   workspaceIdHint: string,
 ): MappedEventDraft {
-  const { mapper } = mapperFor(event.type ?? "", index);
-  const draft = mapper(event);
+  const { mapper } = mapperFor(event.type ?? "", index)
+  const draft = mapper(event)
   if (!draft.aggregateId || draft.aggregateId === "global") {
-    draft.aggregateId = workspaceIdHint;
+    draft.aggregateId = workspaceIdHint
   }
-  return draft;
+  return draft
 }
 
 /**
@@ -713,10 +709,10 @@ export function mapOpencodeEvent(
  * them rather than attempting to map garbage.
  */
 export function isOpencodeEvent(value: unknown): value is OpencodeEvent {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.type === "string";
+  if (typeof value !== "object" || value === null) return false
+  const v = value as Record<string, unknown>
+  return typeof v.type === "string"
 }
 
 /** Convenience re-export so callers can use `StoredEvent` from one place. */
-export type { StoredEventLike as StoredEvent };
+export type { StoredEventLike as StoredEvent }

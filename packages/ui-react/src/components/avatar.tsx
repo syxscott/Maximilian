@@ -23,10 +23,7 @@ export interface AvatarProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
-  (
-    { fallback, src, background, foreground, size = "normal", className, style, ...rest },
-    ref
-  ) => {
+  ({ fallback, src, background, foreground, size = "normal", className, style, ...rest }, ref) => {
     const mergedStyle: CSSProperties = {
       ...(typeof style === "object" && style ? style : {}),
       ...(!src && background ? { "--avatar-bg": background } : {}),
@@ -49,6 +46,6 @@ export const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
         )}
       </div>
     )
-  }
+  },
 )
 Avatar.displayName = "Avatar"

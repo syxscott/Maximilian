@@ -24,17 +24,21 @@ class StubProvider implements Provider {
   id = "stub"
   name = "stub"
   defaultModel = "stub-1"
-  isConfigured(): boolean { return true }
+  isConfigured(): boolean {
+    return true
+  }
   async chat(_messages: ChatMessage[]): Promise<ChatResponse> {
     return {
       // Include a tool block so `parseToolCalls` yields a non-empty list and
       // the loop emits `tool-start` before invoking the registry.
-      content: "```tool\n{\"name\":\"echo\",\"input\":{\"x\":1}}\n```",
+      content: '```tool\n{"name":"echo","input":{"x":1}}\n```',
       model: "stub-1",
       usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 },
     }
   }
-  async *stream() { /* noop */ throw new Error("not used") }
+  async *stream() {
+    /* noop */ throw new Error("not used")
+  }
 }
 
 class ToolAgent extends Agent {
@@ -98,18 +102,21 @@ function makeWorkspace(id: string, n: number): Workspace {
 function makeSink() {
   return {
     workspaces: new Map<string, Workspace>(),
-    async saveWorkspace(w: Workspace) { this.workspaces.set(w.id, w) },
-    async loadWorkspace(id: string) { return this.workspaces.get(id) },
+    async saveWorkspace(w: Workspace) {
+      this.workspaces.set(w.id, w)
+    },
+    async loadWorkspace(id: string) {
+      return this.workspaces.get(id)
+    },
   }
 }
 
 describe("Runtime tool-loop integration (P0-A)", () => {
   it("emits tool-start when enableToolLoop is set and agent has a tool provider", async () => {
-    const rt = new AgentRuntime(
-      () => new ToolAgent(),
-      makeSink(),
-      { enableToolLoop: true, maxConcurrency: 1 },
-    )
+    const rt = new AgentRuntime(() => new ToolAgent(), makeSink(), {
+      enableToolLoop: true,
+      maxConcurrency: 1,
+    })
 
     const events: RuntimeEvent[] = []
     rt.on((e) => events.push(e))
@@ -125,11 +132,10 @@ describe("Runtime tool-loop integration (P0-A)", () => {
   })
 
   it("does not call execute() when tool loop handles the task", async () => {
-    const rt = new AgentRuntime(
-      () => new ToolAgent(),
-      makeSink(),
-      { enableToolLoop: true, maxConcurrency: 1 },
-    )
+    const rt = new AgentRuntime(() => new ToolAgent(), makeSink(), {
+      enableToolLoop: true,
+      maxConcurrency: 1,
+    })
     const ws = await rt.execute(makeWorkspace("ws-2", 1))
     // The tool path synthesizes a fresh id; the sentinel "should-not-be-called"
     // would only appear if execute() ran.
@@ -137,11 +143,10 @@ describe("Runtime tool-loop integration (P0-A)", () => {
   })
 
   it("falls through to execute() when agent has no tool provider (back-compat)", async () => {
-    const rt = new AgentRuntime(
-      () => new PlainAgent(),
-      makeSink(),
-      { enableToolLoop: true, maxConcurrency: 1 },
-    )
+    const rt = new AgentRuntime(() => new PlainAgent(), makeSink(), {
+      enableToolLoop: true,
+      maxConcurrency: 1,
+    })
     const events: RuntimeEvent[] = []
     rt.on((e) => events.push(e))
     const ws = await rt.execute(makeWorkspace("ws-3", 1))

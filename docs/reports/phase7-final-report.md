@@ -8,7 +8,7 @@
 
 ## TL;DR
 
-Phase 7 closed the **organizational closed loop**. The meta-system no longer just describes what *should* change — it now **actually changes** the system. After every workspace completes, Maximilian autonomously:
+Phase 7 closed the **organizational closed loop**. The meta-system no longer just describes what _should_ change — it now **actually changes** the system. After every workspace completes, Maximilian autonomously:
 
 1. Discovers new capabilities from user requests
 2. Registers & activates them in CapabilityRegistry
@@ -97,30 +97,31 @@ Phase 7 closed the **organizational closed loop**. The meta-system no longer jus
 
 ## Sub-Phase Completion Matrix
 
-| 任务 | 描述 | 状态 |
-|------|------|------|
-| 1 | Blueprint 真落盘 (`saveBlueprint` / `retireBlueprint` 回调) | ✅ |
-| 2 | Meta 自动触发 (`runtime.on("done")` → `cycle()`) | ✅ |
-| 3 | CapabilityRegistry 接管 DAGS (`syncDynamicCapabilities` + `replaceDynamic`) | ✅ |
-| 4 | TeamOptimizer 生效 (`applyHint` → blueprint metadata) | ✅ |
-| 5 | Governance 真阻断 (硬阻塞 birth / promote / create) | ✅ |
-| 6 | 真实闭环 E2E (6 个新测试覆盖 20 项目场景) | ✅ |
-| 7 | 系统瘦身 (删除 56 行死代码,审计报告) | ✅ |
+| 任务 | 描述                                                                        | 状态 |
+| ---- | --------------------------------------------------------------------------- | ---- |
+| 1    | Blueprint 真落盘 (`saveBlueprint` / `retireBlueprint` 回调)                 | ✅   |
+| 2    | Meta 自动触发 (`runtime.on("done")` → `cycle()`)                            | ✅   |
+| 3    | CapabilityRegistry 接管 DAGS (`syncDynamicCapabilities` + `replaceDynamic`) | ✅   |
+| 4    | TeamOptimizer 生效 (`applyHint` → blueprint metadata)                       | ✅   |
+| 5    | Governance 真阻断 (硬阻塞 birth / promote / create)                         | ✅   |
+| 6    | 真实闭环 E2E (6 个新测试覆盖 20 项目场景)                                   | ✅   |
+| 7    | 系统瘦身 (删除 56 行死代码,审计报告)                                        | ✅   |
 
 ---
 
 ## 测试统计
 
-| 层级 | Phase 6 末 | Phase 7 末 | 变化 |
-|---|---|---|---|
-| `@max/meta-system` 单测 | 71 | 73 | +3 governance 阻断 (替换 2 recordUsage → 1 removed 测试) |
-| `@max/dags` 单测 | 24 | 24 | 0 (改写 1 测试) |
-| `@max/autonomy` 单测 | 37 | 37 | 0 |
-| `@max/api` 集成 + E2E | 17 | 17 | 0 |
-| `@max/api` 闭环 E2E (新) | 0 | 6 | +6 |
-| **总计** | **149** | **157** | **+8** |
+| 层级                     | Phase 6 末 | Phase 7 末 | 变化                                                     |
+| ------------------------ | ---------- | ---------- | -------------------------------------------------------- |
+| `@max/meta-system` 单测  | 71         | 73         | +3 governance 阻断 (替换 2 recordUsage → 1 removed 测试) |
+| `@max/dags` 单测         | 24         | 24         | 0 (改写 1 测试)                                          |
+| `@max/autonomy` 单测     | 37         | 37         | 0                                                        |
+| `@max/api` 集成 + E2E    | 17         | 17         | 0                                                        |
+| `@max/api` 闭环 E2E (新) | 0          | 6          | +6                                                       |
+| **总计**                 | **149**    | **157**    | **+8**                                                   |
 
 **测试覆盖的关键路径**:
+
 - `discovers → registers → activates → births → persists blueprint (5+ signals)` — 闭环第一步
 - `scales to 20 data-pipeline projects with no regression` — 规模化
 - `DAGS uses the new data_pipeline blueprint after meta-cycle` — DAGS 集成
@@ -134,20 +135,22 @@ Phase 7 closed the **organizational closed loop**. The meta-system no longer jus
 
 来源: [`docs/reports/phase7-dead-code-audit.md`](phase7-dead-code-audit.md)
 
-| 项 | 行数 | 类型 |
-|---|---|---|
-| `BlueprintStore.findByCapability` | -7 | 死代码 (0 外部调用) |
-| `BlueprintStore.getGraph` | -8 | 死代码 (0 外部调用) |
-| `BlueprintStore.listGraphs` | -13 | 死代码 (0 外部调用) |
-| `CapabilityRegistry.recordUsage` | -25 | 死代码 (0 外部调用) |
-| `reorder` 枚举 + 分支 | -3 | 永不生成 |
-| **净删除** | **-56 行** | |
+| 项                                | 行数       | 类型                |
+| --------------------------------- | ---------- | ------------------- |
+| `BlueprintStore.findByCapability` | -7         | 死代码 (0 外部调用) |
+| `BlueprintStore.getGraph`         | -8         | 死代码 (0 外部调用) |
+| `BlueprintStore.listGraphs`       | -13        | 死代码 (0 外部调用) |
+| `CapabilityRegistry.recordUsage`  | -25        | 死代码 (0 外部调用) |
+| `reorder` 枚举 + 分支             | -3         | 永不生成            |
+| **净删除**                        | **-56 行** |                     |
 
 **技术债修复**:
+
 - `TeamOptimizer.estimatedCost` 从 `nodes.length` 改为真实累加 `modelAssignment.cost`
 - `(this.deps.governance as any)` 类型断言 → `governance.getConfig()`
 
 **保留供 Phase 8 解决**:
+
 - `MetaAgent.merge/split` 决策仍仅 log,未真正合并 / 拆分 BlueprintStore
 - `ProposalSource` 4 个信号源中 API 层只产生 `user_request_analysis`
 - `workspaceToGraphs` 是 lossy 转换
@@ -156,27 +159,28 @@ Phase 7 closed the **organizational closed loop**. The meta-system no longer jus
 
 ## Truth Audit 对比 (Phase 6.5 vs Phase 7)
 
-| 模块 | Phase 6.5 | Phase 7 | 升级 |
-|---|---|---|---|
-| DAGS.compose | TRUE CORE | TRUE CORE | — |
-| evolutionAwareFactory | TRUE CORE | TRUE CORE | — |
-| ModelAssigner | TRUE CORE | TRUE CORE | — |
-| MemoryAugmentedAgent | TRUE CORE | TRUE CORE | — |
-| AgentRuntime | TRUE CORE | TRUE CORE | — |
-| EvolutionFacade.recordCompletion | TRUE CORE | TRUE CORE | — |
-| **AgentBirthEngine** | SHADOW | **CORE** | saveBlueprint 回调已注入 |
-| **AgentRetirementEngine** | SHADOW | **CORE** | retireBlueprint 回调已注入 |
-| **CapabilityDiscoveryEngine** | SHADOW | **CORE** | 发现能力驱动 CapabilityRegistry → DAGS |
-| **CapabilityRegistry** | SHADOW | **CORE** | active 状态被 DAGS 同步消费 |
-| **MetaOrchestrator** | SHADOW | **PARTIAL CORE** | 自动触发,但决策应用待 Phase 8 |
-| **TeamOptimizer** | SHADOW | **PARTIAL CORE** | hint 写入 blueprint metadata |
-| **GovernanceEngine** | SHADOW | **PARTIAL CORE** | 硬阻塞 birth/promote/create |
-| MetaAgent | SHADOW | SHADOW | merge/split 仍未应用 |
-| SimulationEngine | SHADOW | SHADOW | 仍无消费者 |
-| LearningAPI | SHADOW | SHADOW | API 仅查询 |
-| OrganizationMemory | SHADOW | SHADOW | 按设计为审计专用 |
+| 模块                             | Phase 6.5 | Phase 7          | 升级                                   |
+| -------------------------------- | --------- | ---------------- | -------------------------------------- |
+| DAGS.compose                     | TRUE CORE | TRUE CORE        | —                                      |
+| evolutionAwareFactory            | TRUE CORE | TRUE CORE        | —                                      |
+| ModelAssigner                    | TRUE CORE | TRUE CORE        | —                                      |
+| MemoryAugmentedAgent             | TRUE CORE | TRUE CORE        | —                                      |
+| AgentRuntime                     | TRUE CORE | TRUE CORE        | —                                      |
+| EvolutionFacade.recordCompletion | TRUE CORE | TRUE CORE        | —                                      |
+| **AgentBirthEngine**             | SHADOW    | **CORE**         | saveBlueprint 回调已注入               |
+| **AgentRetirementEngine**        | SHADOW    | **CORE**         | retireBlueprint 回调已注入             |
+| **CapabilityDiscoveryEngine**    | SHADOW    | **CORE**         | 发现能力驱动 CapabilityRegistry → DAGS |
+| **CapabilityRegistry**           | SHADOW    | **CORE**         | active 状态被 DAGS 同步消费            |
+| **MetaOrchestrator**             | SHADOW    | **PARTIAL CORE** | 自动触发,但决策应用待 Phase 8          |
+| **TeamOptimizer**                | SHADOW    | **PARTIAL CORE** | hint 写入 blueprint metadata           |
+| **GovernanceEngine**             | SHADOW    | **PARTIAL CORE** | 硬阻塞 birth/promote/create            |
+| MetaAgent                        | SHADOW    | SHADOW           | merge/split 仍未应用                   |
+| SimulationEngine                 | SHADOW    | SHADOW           | 仍无消费者                             |
+| LearningAPI                      | SHADOW    | SHADOW           | API 仅查询                             |
+| OrganizationMemory               | SHADOW    | SHADOW           | 按设计为审计专用                       |
 
 **5 个模块从 SHADOW 升到 CORE / PARTIAL CORE**:
+
 1. `AgentBirthEngine` — 蓝图真落盘
 2. `AgentRetirementEngine` — 退役真生效
 3. `CapabilityDiscoveryEngine` — 闭环第一步已生效
@@ -184,6 +188,7 @@ Phase 7 closed the **organizational closed loop**. The meta-system no longer jus
 5. `MetaOrchestrator` — 自动触发
 
 **3 个模块升级到 PARTIAL CORE** (核心路径已生效,但完整功能待 Phase 8):
+
 1. `TeamOptimizer` — hint 写 metadata 已生效,真正影响下次 compose 待 DAGS 读取 metadata 逻辑
 2. `GovernanceEngine` — 硬阻塞已生效,SimulationEngine.compare 触发重检待补
 3. `MetaOrchestrator` — 自动触发已生效,merge/split 决策应用待补
@@ -194,15 +199,15 @@ Phase 7 closed the **organizational closed loop**. The meta-system no longer jus
 
 > 证明:系统能够:发现能力 → 创建 Agent → 更新 Blueprint → 调整团队 → 执行任务 → 收集反馈 → 再次优化,全流程自动完成。否则视为未完成。
 
-| 步骤 | Phase 7 验证证据 |
-|---|---|
-| 发现能力 | `e2e-closed-loop.test.ts > discovers → registers → activates → births` (5+ signals) |
-| 创建 Agent | 同上,AgentBirthEngine.birth() 返回 non-empty births |
-| 更新 Blueprint | 同上 + `e2e-closed-loop.test.ts > blueprint persists across restarts` |
-| 调整团队 | `e2e-closed-loop.test.ts > TeamOptimizer hint is materialized into blueprint metadata` |
-| 执行任务 | `DAGS.compose()` 在 Phase 7 仍正常工作(原有 DAGS 测试 24/24 通过) |
-| 收集反馈 | `runtime.on("done")` 收集 `event.workspace` → `AutonomyOrchestrator.observe()` → `executionStore.listAll()` |
-| 再次优化 | `metaOrchestrator.cycle()` 在 done 后自动调用,新一轮发现/创建/调整 |
+| 步骤           | Phase 7 验证证据                                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| 发现能力       | `e2e-closed-loop.test.ts > discovers → registers → activates → births` (5+ signals)                         |
+| 创建 Agent     | 同上,AgentBirthEngine.birth() 返回 non-empty births                                                         |
+| 更新 Blueprint | 同上 + `e2e-closed-loop.test.ts > blueprint persists across restarts`                                       |
+| 调整团队       | `e2e-closed-loop.test.ts > TeamOptimizer hint is materialized into blueprint metadata`                      |
+| 执行任务       | `DAGS.compose()` 在 Phase 7 仍正常工作(原有 DAGS 测试 24/24 通过)                                           |
+| 收集反馈       | `runtime.on("done")` 收集 `event.workspace` → `AutonomyOrchestrator.observe()` → `executionStore.listAll()` |
+| 再次优化       | `metaOrchestrator.cycle()` 在 done 后自动调用,新一轮发现/创建/调整                                          |
 
 **全部自动化,无任何 `POST /api/meta/cycle` 人工触发**。
 
@@ -211,6 +216,7 @@ Phase 7 closed the **organizational closed loop**. The meta-system no longer jus
 ## 变更文件清单
 
 ### Source
+
 ```
 packages/dags/src/
 ├── blueprint-store.ts        (删除 findByCapability / getGraph / listGraphs)
@@ -230,6 +236,7 @@ apps/api/src/
 ```
 
 ### Tests
+
 ```
 packages/meta-system/test/meta-unit.test.ts       (73 tests)
 packages/dags/test/dags.test.ts                  (24 tests, 1 改写)
@@ -239,6 +246,7 @@ apps/api/test/e2e-meta-mode.test.ts              (7 tests, unchanged)
 ```
 
 ### Documentation
+
 ```
 docs/changelogs/phase7-{1..7}-*.md               (7 changelogs)
 docs/reports/phase7-dead-code-audit.md           (审计报告)
@@ -250,12 +258,12 @@ docs/architecture/phase7-architecture.md         (架构图 / 数据流图 / 控
 
 ## 风险与缓解
 
-| 风险 | 缓解 |
-|------|------|
-| 频繁 cycle 影响响应 | 已加 try/catch,失败不中断 runtime 事件流;Phase 8 加节流 |
-| `MetaAgent` merge/split 决策不应用 | Phase 8 候选(已在 dead-code-audit 中标记) |
-| ProposalSource 多源未启用 | Phase 8 候选 |
-| `workspaceToGraphs` 丢失 Plan.edges | Phase 8 候选(让 Plan 携带 graphId) |
+| 风险                                   | 缓解                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------- |
+| 频繁 cycle 影响响应                    | 已加 try/catch,失败不中断 runtime 事件流;Phase 8 加节流                               |
+| `MetaAgent` merge/split 决策不应用     | Phase 8 候选(已在 dead-code-audit 中标记)                                             |
+| ProposalSource 多源未启用              | Phase 8 候选                                                                          |
+| `workspaceToGraphs` 丢失 Plan.edges    | Phase 8 候选(让 Plan 携带 graphId)                                                    |
 | CapabilityRegistry → DAGS 转换模板粗糙 | 当前 promptTemplate 是通用模板;Phase 8 可让 birth.birth() 写入更丰富的 promptTemplate |
 
 ---

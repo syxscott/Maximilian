@@ -24,23 +24,23 @@
  *     each other's seq counter.
  */
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { getLogger } from "@max/telemetry";
+import { promises as fs } from "node:fs"
+import path from "node:path"
+import { randomUUID } from "node:crypto"
+import { getLogger } from "@max/telemetry"
 
-const log = getLogger("api/event-log");
+const log = getLogger("api/event-log")
 
 /** One persisted event — wire-compatible with the buffer's `SseEvent`. */
 export interface LoggedEvent {
   /** Monotonic per-workspace sequence number. */
-  seq: number;
+  seq: number
   /** Event type, e.g. "task-start", "workspace", etc. */
-  type: string;
+  type: string
   /** Arbitrary JSON payload. */
-  payload: unknown;
+  payload: unknown
   /** ISO-8601 timestamp of when the event was appended. */
-  ts: string;
+  ts: string
 }
 
 /**
@@ -54,7 +54,7 @@ function serialize(event: LoggedEvent): string {
     type: event.type,
     payload: event.payload,
     ts: event.ts,
-  });
+  })
 }
 
 /**
@@ -63,19 +63,19 @@ function serialize(event: LoggedEvent): string {
  * without aborting.
  */
 function deserialize(line: string): LoggedEvent | null {
-  const trimmed = line.trim();
-  if (!trimmed) return null;
+  const trimmed = line.trim()
+  if (!trimmed) return null
   try {
-    const obj = JSON.parse(trimmed) as Partial<LoggedEvent>;
-    if (typeof obj.seq !== "number" || typeof obj.type !== "string") return null;
+    const obj = JSON.parse(trimmed) as Partial<LoggedEvent>
+    if (typeof obj.seq !== "number" || typeof obj.type !== "string") return null
     return {
       seq: obj.seq,
       type: obj.type,
       payload: obj.payload,
       ts: typeof obj.ts === "string" ? obj.ts : new Date().toISOString(),
-    };
+    }
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -88,15 +88,15 @@ function deserialize(line: string): LoggedEvent | null {
  * intentionally — see the atomic.ts module header.
  */
 async function writeFileAtomic(target: string, content: string): Promise<void> {
-  const dir = path.dirname(target);
-  await fs.mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `.${path.basename(target)}.${randomUUID()}.tmp`);
+  const dir = path.dirname(target)
+  await fs.mkdir(dir, { recursive: true })
+  const tmp = path.join(dir, `.${path.basename(target)}.${randomUUID()}.tmp`)
   try {
-    await fs.writeFile(tmp, content, "utf-8");
-    await fs.rename(tmp, target);
+    await fs.writeFile(tmp, content, "utf-8")
+    await fs.rename(tmp, target)
   } catch (err) {
-    await fs.unlink(tmp).catch(() => {});
-    throw err;
+    await fs.unlink(tmp).catch(() => {})
+    throw err
   }
 }
 
@@ -111,55 +111,55 @@ async function appendLocked(
   target: string,
   appendLine: (latestSeq: number) => string,
 ): Promise<{ seq: number }> {
-  const lockDir = `${target}.lock`;
-  const MAX_ATTEMPTS = 200;
-  const LOCK_TTL_MS = 5_000;
+  const lockDir = `${target}.lock`
+  const MAX_ATTEMPTS = 200
+  const LOCK_TTL_MS = 5_000
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      await fs.mkdir(lockDir);
+      await fs.mkdir(lockDir)
       try {
         // Stamp the lock dir with a timestamp so stale locks (e.g. from a
         // crashed process) can be reclaimed after the TTL expires.
-        await fs.writeFile(path.join(lockDir, "ts"), String(Date.now())).catch(() => {});
+        await fs.writeFile(path.join(lockDir, "ts"), String(Date.now())).catch(() => {})
         // Read latest seq if the file exists.
-        let latestSeq = 0;
+        let latestSeq = 0
         try {
-          const raw = await fs.readFile(target, "utf-8");
+          const raw = await fs.readFile(target, "utf-8")
           for (const line of raw.split("\n")) {
-            const ev = deserialize(line);
-            if (ev && ev.seq > latestSeq) latestSeq = ev.seq;
+            const ev = deserialize(line)
+            if (ev && ev.seq > latestSeq) latestSeq = ev.seq
           }
         } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+          if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
         }
-        const seq = latestSeq + 1;
-        const line = appendLine(seq);
-        await fs.appendFile(target, line + "\n", "utf-8");
-        return { seq };
+        const seq = latestSeq + 1
+        const line = appendLine(seq)
+        await fs.appendFile(target, line + "\n", "utf-8")
+        return { seq }
       } finally {
         try {
-          await fs.rm(path.join(lockDir, "ts"), { force: true });
-          await fs.rmdir(lockDir);
+          await fs.rm(path.join(lockDir, "ts"), { force: true })
+          await fs.rmdir(lockDir)
         } catch {}
       }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
       // Stale-lock reclaim: if lock dir is older than TTL, force-remove it.
       try {
-        const tsText = await fs.readFile(path.join(lockDir, "ts"), "utf-8");
-        const ts = parseInt(tsText, 10);
+        const tsText = await fs.readFile(path.join(lockDir, "ts"), "utf-8")
+        const ts = parseInt(tsText, 10)
         if (Number.isFinite(ts) && Date.now() - ts > LOCK_TTL_MS) {
           try {
-            const files = await fs.readdir(lockDir);
-            await Promise.all(files.map((f) => fs.rm(path.join(lockDir, f), { force: true })));
-            await fs.rmdir(lockDir);
+            const files = await fs.readdir(lockDir)
+            await Promise.all(files.map((f) => fs.rm(path.join(lockDir, f), { force: true })))
+            await fs.rmdir(lockDir)
           } catch {}
         }
       } catch {}
-      await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)));
+      await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)))
     }
   }
-  throw new Error(`event-log: could not acquire lock for ${target} (stale?)`);
+  throw new Error(`event-log: could not acquire lock for ${target} (stale?)`)
 }
 
 /**
@@ -170,12 +170,12 @@ async function appendLocked(
  * — safe to skip, all methods mkdir-aside.
  */
 export class JsonlEventLog {
-  private readonly workspaceId: string;
-  private readonly rootDir: string;
-  private readonly filePath: string;
-  private writeHandle: fs.FileHandle | undefined;
-  private writeSeq = 0;
-  private initialized = false;
+  private readonly workspaceId: string
+  private readonly rootDir: string
+  private readonly filePath: string
+  private writeHandle: fs.FileHandle | undefined
+  private writeSeq = 0
+  private initialized = false
 
   constructor(workspaceId: string, rootDir: string) {
     // SECURITY: workspaceId comes from untrusted URL params. Sanitize to
@@ -183,24 +183,24 @@ export class JsonlEventLog {
     // could resolve oddly; explicit rejection is safer).
     // Only allow URL-safe slug characters: letters, digits, hyphen,
     // underscore. Dots are rejected to prevent ".." / "../../" tricks.
-    const slug = workspaceId.replace(/[^a-zA-Z0-9_\-]/g, "");
+    const slug = workspaceId.replace(/[^a-zA-Z0-9_\-]/g, "")
     if (!slug || slug !== workspaceId || slug === "." || slug === "..") {
-      throw new Error(`Invalid workspaceId: ${JSON.stringify(workspaceId)}`);
+      throw new Error(`Invalid workspaceId: ${JSON.stringify(workspaceId)}`)
     }
     // Defense in depth: resolve under rootDir and verify containment.
-    const resolved = path.resolve(rootDir, "events", `${slug}.jsonl`);
-    const allowedRoot = path.resolve(rootDir, "events");
+    const resolved = path.resolve(rootDir, "events", `${slug}.jsonl`)
+    const allowedRoot = path.resolve(rootDir, "events")
     if (!resolved.startsWith(allowedRoot + path.sep) && resolved !== allowedRoot) {
-      throw new Error(`workspaceId escapes events dir: ${workspaceId}`);
+      throw new Error(`workspaceId escapes events dir: ${workspaceId}`)
     }
-    this.workspaceId = slug;
-    this.rootDir = rootDir;
-    this.filePath = resolved;
+    this.workspaceId = slug
+    this.rootDir = rootDir
+    this.filePath = resolved
   }
 
   /** Absolute path of the backing JSONL file. */
   get file(): string {
-    return this.filePath;
+    return this.filePath
   }
 
   /**
@@ -210,29 +210,29 @@ export class JsonlEventLog {
    * Idempotent — safe to call multiple times.
    */
   async initialize(): Promise<void> {
-    if (this.initialized) return;
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    if (this.initialized) return
+    await fs.mkdir(path.dirname(this.filePath), { recursive: true })
     // Read the latest seq so we never reuse an id after a restart.
     // (A fresh log starts at seq 0; the first append becomes seq 1.)
     try {
-      const raw = await fs.readFile(this.filePath, "utf-8");
+      const raw = await fs.readFile(this.filePath, "utf-8")
       for (const line of raw.split("\n")) {
-        const ev = deserialize(line);
-        if (ev && ev.seq > this.writeSeq) this.writeSeq = ev.seq;
+        const ev = deserialize(line)
+        if (ev && ev.seq > this.writeSeq) this.writeSeq = ev.seq
       }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
     }
-    this.writeHandle = await fs.open(this.filePath, "a");
-    this.initialized = true;
+    this.writeHandle = await fs.open(this.filePath, "a")
+    this.initialized = true
     log.debug(
       { workspaceId: this.workspaceId, file: this.filePath, seq: this.writeSeq },
       "event-log initialized",
-    );
+    )
   }
 
   private ensureInit(): Promise<void> {
-    return this.initialize();
+    return this.initialize()
   }
 
   /**
@@ -249,20 +249,20 @@ export class JsonlEventLog {
    * the on-disk counter and our next append will read the fresh value.
    */
   async append(type: string, payload: unknown): Promise<{ seq: number }> {
-    await this.ensureInit();
+    await this.ensureInit()
     const line: LoggedEvent = {
       seq: 0, // filled in by appendLocked
       type,
       payload,
       ts: new Date().toISOString(),
-    };
+    }
     const result = await appendLocked(this.filePath, (seq) => {
-      line.seq = seq;
-      return serialize(line);
-    });
+      line.seq = seq
+      return serialize(line)
+    })
     // Keep our own counter in sync for `latestSeq()` without a re-read.
-    if (result.seq > this.writeSeq) this.writeSeq = result.seq;
-    return result;
+    if (result.seq > this.writeSeq) this.writeSeq = result.seq
+    return result
   }
 
   /**
@@ -273,9 +273,9 @@ export class JsonlEventLog {
    * because writers always append in order.
    */
   async readAfter(seq: number): Promise<LoggedEvent[]> {
-    await this.ensureInit();
-    const events = await this.readAll();
-    return events.filter((e) => e.seq > seq);
+    await this.ensureInit()
+    const events = await this.readAll()
+    return events.filter((e) => e.seq > seq)
   }
 
   /**
@@ -284,30 +284,30 @@ export class JsonlEventLog {
    * `Last-Event-ID` can still get context on what happened recently.
    */
   async tail(n: number): Promise<LoggedEvent[]> {
-    await this.ensureInit();
-    if (n <= 0) return [];
-    const events = await this.readAll();
-    if (events.length <= n) return events;
-    return events.slice(events.length - n);
+    await this.ensureInit()
+    if (n <= 0) return []
+    const events = await this.readAll()
+    if (events.length <= n) return events
+    return events.slice(events.length - n)
   }
 
   /** Latest seq written to this log (0 if empty). Synchronous. */
   latestSeq(): number {
-    return this.writeSeq;
+    return this.writeSeq
   }
 
   private async readAll(): Promise<LoggedEvent[]> {
     try {
-      const raw = await fs.readFile(this.filePath, "utf-8");
-      const events: LoggedEvent[] = [];
+      const raw = await fs.readFile(this.filePath, "utf-8")
+      const events: LoggedEvent[] = []
       for (const line of raw.split("\n")) {
-        const ev = deserialize(line);
-        if (ev) events.push(ev);
+        const ev = deserialize(line)
+        if (ev) events.push(ev)
       }
-      return events;
+      return events
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw err;
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
+      throw err
     }
   }
 
@@ -318,13 +318,13 @@ export class JsonlEventLog {
   async close(): Promise<void> {
     if (this.writeHandle) {
       try {
-        await this.writeHandle.close();
+        await this.writeHandle.close()
       } catch {
         // ignore — close path, no recovery possible
       }
-      this.writeHandle = undefined;
+      this.writeHandle = undefined
     }
-    this.initialized = false;
+    this.initialized = false
   }
 }
 
@@ -333,28 +333,28 @@ export class JsonlEventLog {
  * the lifecycle of each `JsonlEventLog` themselves.
  */
 export class EventLogRegistry {
-  private readonly rootDir: string;
-  private readonly logs = new Map<string, JsonlEventLog>();
+  private readonly rootDir: string
+  private readonly logs = new Map<string, JsonlEventLog>()
 
   constructor(rootDir: string) {
-    this.rootDir = rootDir;
+    this.rootDir = rootDir
   }
 
   /** Get (and lazily create) the log for `workspaceId`. */
   for(workspaceId: string): JsonlEventLog {
-    let log = this.logs.get(workspaceId);
+    let log = this.logs.get(workspaceId)
     if (!log) {
-      log = new JsonlEventLog(workspaceId, this.rootDir);
-      this.logs.set(workspaceId, log);
+      log = new JsonlEventLog(workspaceId, this.rootDir)
+      this.logs.set(workspaceId, log)
     }
-    return log;
+    return log
   }
 
   /** Close every open log — call on server shutdown. */
   async closeAll(): Promise<void> {
     for (const log of this.logs.values()) {
-      await log.close().catch(() => {});
+      await log.close().catch(() => {})
     }
-    this.logs.clear();
+    this.logs.clear()
   }
 }

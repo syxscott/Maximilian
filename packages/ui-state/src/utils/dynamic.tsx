@@ -26,11 +26,20 @@ export type DynamicProps = {
 export function Dynamic(props: DynamicProps): ReactNode {
   const Component = props.component
   if (!Component) return null
-  const { component: _ignore, key, children, ...rest } = props as DynamicProps & {
+  const {
+    component: _ignore,
+    key,
+    children,
+    ...rest
+  } = props as DynamicProps & {
     component: unknown
     key?: string | number
     children?: ReactNode
   }
   void _ignore
-  return createElement(Component as ComponentType<Record<string, unknown>>, { key, children, ...rest })
+  return createElement(Component as ComponentType<Record<string, unknown>>, {
+    key,
+    children,
+    ...rest,
+  })
 }

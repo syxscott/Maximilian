@@ -17,52 +17,52 @@ All SLOs are measured over a rolling **30-day window**.
 
 ### SLO-1: API availability
 
-| Field         | Value |
-| ------------- | ----- |
-| Indicator     | `http_server_requests{outcome="success",api_route!~"/metrics|/health"}` |
-| Target        | ≥ 99.9% successful (non-5xx) responses |
-| Error budget  | 0.1% × 30d = ~43 minutes of downtime |
-| Alert         | Page on-call at 50% budget burned |
+| Field        | Value                                                        |
+| ------------ | ------------------------------------------------------------ |
+| Indicator    | `http_server_requests{outcome="success",api_route!~"/metrics | /health"}` |
+| Target       | ≥ 99.9% successful (non-5xx) responses                       |
+| Error budget | 0.1% × 30d = ~43 minutes of downtime                         |
+| Alert        | Page on-call at 50% budget burned                            |
 
 ### SLO-2: API latency
 
-| Field         | Value |
-| ------------- | ----- |
-| Indicator     | `http_server_request_duration_seconds{quantile="0.95"}` for `/api/chat` and `/api/plan` |
-| Target        | P95 ≤ 2.0s |
-| Error budget  | ≤ 2% of requests > 2.0s |
-| Alert         | Page on-call at 75% budget burned |
+| Field        | Value                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------- |
+| Indicator    | `http_server_request_duration_seconds{quantile="0.95"}` for `/api/chat` and `/api/plan` |
+| Target       | P95 ≤ 2.0s                                                                              |
+| Error budget | ≤ 2% of requests > 2.0s                                                                 |
+| Alert        | Page on-call at 75% budget burned                                                       |
 
 ## LLM Kernel SLOs
 
 ### SLO-3: TruthAudit calibration accuracy
 
-| Field         | Value |
-| ------------- | ----- |
-| Indicator     | `truth_audit_verdict_accuracy` (proportion of `correct` verdicts over `total` measurements) |
-| Target        | ≥ 80% over rolling 30d |
-| Error budget  | 20% incorrect verdicts |
-| Alert         | Page on-call at 100% budget burned (calibration drift) |
+| Field        | Value                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------- |
+| Indicator    | `truth_audit_verdict_accuracy` (proportion of `correct` verdicts over `total` measurements) |
+| Target       | ≥ 80% over rolling 30d                                                                      |
+| Error budget | 20% incorrect verdicts                                                                      |
+| Alert        | Page on-call at 100% budget burned (calibration drift)                                      |
 
 ### SLO-4: opencode session leak rate
 
-| Field         | Value |
-| ------------- | ----- |
-| Indicator     | `opencode_session_leak_total` (sessions abandoned without `abortSession` call) / `opencode_session_created_total` |
-| Target        | < 0.01% leak rate |
-| Error budget  | 1 leak per 10,000 sessions |
-| Alert         | Page on-call when leak rate > 0.1% over 1h window |
+| Field        | Value                                                                                                             |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Indicator    | `opencode_session_leak_total` (sessions abandoned without `abortSession` call) / `opencode_session_created_total` |
+| Target       | < 0.01% leak rate                                                                                                 |
+| Error budget | 1 leak per 10,000 sessions                                                                                        |
+| Alert        | Page on-call when leak rate > 0.1% over 1h window                                                                 |
 
 ## Orchestrator SLOs
 
 ### SLO-5: Meta-cycle duration
 
-| Field         | Value |
-| ------------- | ----- |
-| Indicator     | `meta_cycle_duration_seconds{quantile="0.95"}` |
-| Target        | P95 ≤ 60s |
-| Error budget  | ≤ 5% of cycles > 60s |
-| Alert         | Page on-call at 200% budget burned (10%+ cycles > 60s) |
+| Field        | Value                                                  |
+| ------------ | ------------------------------------------------------ |
+| Indicator    | `meta_cycle_duration_seconds{quantile="0.95"}`         |
+| Target       | P95 ≤ 60s                                              |
+| Error budget | ≤ 5% of cycles > 60s                                   |
+| Alert        | Page on-call at 200% budget burned (10%+ cycles > 60s) |
 
 ## Implementation notes
 

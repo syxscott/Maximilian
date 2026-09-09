@@ -213,10 +213,7 @@ export const TOOL_KIND_META: Record<ToolKind, ToolKindMeta> = {
 export type CapabilityMode = "read-only" | "read-write" | "execute" | "all"
 
 /** Capability Mode 偏序格子比较 */
-export function isCapabilitySubset(
-  child: CapabilityMode,
-  parent: CapabilityMode,
-): boolean {
+export function isCapabilitySubset(child: CapabilityMode, parent: CapabilityMode): boolean {
   // 格子顺序: read-only(0) < read-write(1) < execute(2) < all(3)
   // 子格子 ⊆ 父格子 = child <= parent
   const order: CapabilityMode[] = ["read-only", "read-write", "execute", "all"]
@@ -237,10 +234,7 @@ export function getRequiredCapability(kind: ToolKind): CapabilityMode {
  * 语义：kind 的能力级别 >= required 能力级别时，kind 可以处理 required 的操作。
  * 在格子中即 required ⊆ kind 的 defaultCapability。
  */
-export function kindAllowsCapability(
-  kind: ToolKind,
-  required: CapabilityMode,
-): boolean {
+export function kindAllowsCapability(kind: ToolKind, required: CapabilityMode): boolean {
   const kindDefault = TOOL_KIND_META[kind]?.defaultCapability ?? "read-only"
   // kind 可以处理 required 意味着 kind 的能力 >= required
   // 在格子中即 required 的位置 <= kind 的位置 (required ⊆ kind)
@@ -283,17 +277,11 @@ export function accessesNetwork(kind: ToolKind): boolean {
 function validateKindMeta(): void {
   const missing = ALL_TOOL_KINDS.filter((k) => !TOOL_KIND_META[k])
   if (missing.length > 0) {
-    throw new Error(
-      `TOOL_KIND_META is missing entries for: ${missing.join(", ")}`,
-    )
+    throw new Error(`TOOL_KIND_META is missing entries for: ${missing.join(", ")}`)
   }
-  const extra = Object.keys(TOOL_KIND_META).filter(
-    (k) => !ALL_TOOL_KINDS.includes(k as ToolKind),
-  )
+  const extra = Object.keys(TOOL_KIND_META).filter((k) => !ALL_TOOL_KINDS.includes(k as ToolKind))
   if (extra.length > 0) {
-    throw new Error(
-      `TOOL_KIND_META has extra entries not in ALL_TOOL_KINDS: ${extra.join(", ")}`,
-    )
+    throw new Error(`TOOL_KIND_META has extra entries not in ALL_TOOL_KINDS: ${extra.join(", ")}`)
   }
 }
 

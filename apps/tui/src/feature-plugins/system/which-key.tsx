@@ -110,7 +110,10 @@ function skin(api: TuiPluginApi): Skin {
 function activeKeyLabel(active: ActiveKey) {
   if (active.continues) return text(active.tokenName) ?? text(active.display) ?? UNKNOWN
   return (
-    text(active.commandAttrs?.title) ?? text(active.bindingAttrs?.desc) ?? text(active.commandAttrs?.desc) ?? UNKNOWN
+    text(active.commandAttrs?.title) ??
+    text(active.bindingAttrs?.desc) ??
+    text(active.commandAttrs?.desc) ??
+    UNKNOWN
   )
 }
 
@@ -145,7 +148,9 @@ function grouped(entries: Entry[]): Group[] {
       label,
       entries: entries.toSorted(
         (a, b) =>
-          Number(b.continues) - Number(a.continues) || a.label.localeCompare(b.label) || a.key.localeCompare(b.key),
+          Number(b.continues) - Number(a.continues) ||
+          a.label.localeCompare(b.label) ||
+          a.key.localeCompare(b.key),
       ),
     }))
     .toSorted((a, b) => a.label.localeCompare(b.label))
@@ -154,7 +159,8 @@ function grouped(entries: Entry[]): Group[] {
 function commandShortcut(api: TuiPluginApi, name: string) {
   return useKeymapSelector((keymap) =>
     api.keys.formatSequence(
-      keymap.getCommandBindings({ visibility: "registered", commands: [name] }).get(name)?.[0]?.sequence,
+      keymap.getCommandBindings({ visibility: "registered", commands: [name] }).get(name)?.[0]
+        ?.sequence,
     ),
   )
 }
@@ -190,22 +196,36 @@ function WhichKeyPanel(props: {
   const [activeGroup, setActiveGroup] = useState<string | undefined>()
   const pending = useKeymapSelector((keymap) => keymap.getPendingSequence())
   const active = useKeymapSelector((keymap) => keymap.getActiveKeys({ includeMetadata: true }))
-  const pendingActive = useMemo(() => pending().length > 0 && active().length > 0, [pending, active])
+  const pendingActive = useMemo(
+    () => pending().length > 0 && active().length > 0,
+    [pending, active],
+  )
   const pendingAutoVisible = useMemo(
     () => props.mode() === "overlay" && props.pendingPreview() && pendingActive,
     [props.mode(), props.pendingPreview(), pendingActive],
   )
-  const visible = useMemo(() => props.pinned() || pendingAutoVisible, [props.pinned(), pendingAutoVisible])
+  const visible = useMemo(
+    () => props.pinned() || pendingAutoVisible,
+    [props.pinned(), pendingAutoVisible],
+  )
   const pendingMode = useMemo(() => visible && pendingActive, [visible, pendingActive])
   const left = 0
   const width = useMemo(() => Math.max(1, terminalWidth), [terminalWidth])
   const panelHeight = useMemo(
-    () => Math.max(MIN_PANEL_HEIGHT, Math.min(MAX_PANEL_HEIGHT, Math.floor(terminalHeight * PANEL_HEIGHT_RATIO))),
+    () =>
+      Math.max(
+        MIN_PANEL_HEIGHT,
+        Math.min(MAX_PANEL_HEIGHT, Math.floor(terminalHeight * PANEL_HEIGHT_RATIO)),
+      ),
     [terminalHeight],
   )
   const contentWidth = useMemo(() => Math.max(1, width - 2), [width])
   const columns = useMemo(
-    () => Math.max(1, Math.min(3, Math.floor((contentWidth + COLUMN_GAP) / (MAX_COLUMN_WIDTH + COLUMN_GAP)) || 1)),
+    () =>
+      Math.max(
+        1,
+        Math.min(3, Math.floor((contentWidth + COLUMN_GAP) / (MAX_COLUMN_WIDTH + COLUMN_GAP)) || 1),
+      ),
     [contentWidth],
   )
   const entries = useMemo(() => active().map((item) => activeKeyEntry(props.api, item)), [active])
@@ -232,7 +252,10 @@ function WhichKeyPanel(props: {
   const activeEntries = useMemo(() => currentGroup?.entries ?? [], [currentGroup])
   const items = useMemo<Item[]>(() => {
     if (!pendingMode) return activeEntries
-    return groups.flatMap((group) => [{ type: "group" as const, label: group.label }, ...group.entries])
+    return groups.flatMap((group) => [
+      { type: "group" as const, label: group.label },
+      ...group.entries,
+    ])
   }, [pendingMode, activeEntries, groups])
   const maxOffset = useMemo(() => Math.max(0, items.length - pageSize), [items, pageSize])
   const shown = useMemo(() => {
@@ -268,12 +291,22 @@ function WhichKeyPanel(props: {
       (sum, item) => sum + (item.type === "tab" ? item.group.label.length + 2 : 3),
       0,
     )
-    return Math.max(MIN_TAB_GAP, Math.min(TAB_GAP, Math.floor((contentWidth - itemWidth) / (itemCount - 1))))
+    return Math.max(
+      MIN_TAB_GAP,
+      Math.min(TAB_GAP, Math.floor((contentWidth - itemWidth) / (itemCount - 1))),
+    )
   }, [headerItems, contentWidth])
   const nextMode = useMemo(() => (props.mode() === "dock" ? "overlay" : "dock"), [props.mode()])
   const look = useMemo(() => skin(props.api), [])
   const columnWidth = useMemo(
-    () => Math.max(1, Math.min(MAX_COLUMN_WIDTH, Math.floor((contentWidth - (columns - 1) * COLUMN_GAP) / columns))),
+    () =>
+      Math.max(
+        1,
+        Math.min(
+          MAX_COLUMN_WIDTH,
+          Math.floor((contentWidth - (columns - 1) * COLUMN_GAP) / columns),
+        ),
+      ),
     [contentWidth, columns],
   )
   const clamp = (value: number) => Math.max(0, Math.min(maxOffset, value))
@@ -298,56 +331,72 @@ function WhichKeyPanel(props: {
         title: "Previous key binding group",
         desc: "Show the previous which-key group",
         category: "System",
-        run() { moveGroup(-1) },
+        run() {
+          moveGroup(-1)
+        },
       },
       {
         name: command.groupNext,
         title: "Next key binding group",
         desc: "Show the next which-key group",
         category: "System",
-        run() { moveGroup(1) },
+        run() {
+          moveGroup(1)
+        },
       },
       {
         name: command.scrollUp,
         title: "Scroll key bindings up",
         desc: "Scroll the which-key panel up",
         category: "System",
-        run() { scroll(-columns) },
+        run() {
+          scroll(-columns)
+        },
       },
       {
         name: command.scrollDown,
         title: "Scroll key bindings down",
         desc: "Scroll the which-key panel down",
         category: "System",
-        run() { scroll(columns) },
+        run() {
+          scroll(columns)
+        },
       },
       {
         name: command.pageUp,
         title: "Page key bindings up",
         desc: "Page the which-key panel up",
         category: "System",
-        run() { scroll(-pageSize) },
+        run() {
+          scroll(-pageSize)
+        },
       },
       {
         name: command.pageDown,
         title: "Page key bindings down",
         desc: "Page the which-key panel down",
         category: "System",
-        run() { scroll(pageSize) },
+        run() {
+          scroll(pageSize)
+        },
       },
       {
         name: command.home,
         title: "First key binding",
         desc: "Jump to the first which-key binding",
         category: "System",
-        run() { setOffset(0) },
+        run() {
+          setOffset(0)
+        },
       },
       {
         name: command.end,
         title: "Last key binding",
         desc: "Jump to the last which-key binding",
         category: "System",
-        run() { setOffset(maxOffset) },
+        run() {
+          setOffset(maxOffset)
+        },
       },
     ],
     bindings: pendingMode
@@ -403,9 +452,9 @@ function WhichKeyPanel(props: {
               return (
                 <Box key={`scroll-${index}`} flexShrink={0}>
                   <Text wrap="truncate-end">
-                    <Text color={upActive ? look.text : look.muted}>{'↑'}</Text>
+                    <Text color={upActive ? look.text : look.muted}>{"↑"}</Text>
                     <Text color={look.muted}> </Text>
-                    <Text color={downActive ? look.text : look.muted}>{'↓'}</Text>
+                    <Text color={downActive ? look.text : look.muted}>{"↓"}</Text>
                   </Text>
                 </Box>
               )
@@ -441,13 +490,25 @@ function WhichKeyPanel(props: {
           <Text color={look.muted}>No reachable bindings</Text>
         ) : (
           rowIndexes.map((row) => (
-            <Box key={row} width="100%" flexDirection="row" justifyContent="center" gap={COLUMN_GAP}>
+            <Box
+              key={row}
+              width="100%"
+              flexDirection="row"
+              justifyContent="center"
+              gap={COLUMN_GAP}
+            >
               {shown.map((column, colIndex) => {
                 const item = column[row]
                 if (!item) return <Box key={colIndex} width={columnWidth} />
                 if (item.type !== "entry") {
                   return (
-                    <Box key={colIndex} width={columnWidth} flexDirection="row" gap={1} justifyContent="space-between">
+                    <Box
+                      key={colIndex}
+                      width={columnWidth}
+                      flexDirection="row"
+                      gap={1}
+                      justifyContent="space-between"
+                    >
                       <Text color={look.accent} bold wrap="truncate">
                         {item.label}
                       </Text>
@@ -456,7 +517,13 @@ function WhichKeyPanel(props: {
                 }
                 const binding = item as Entry
                 return (
-                  <Box key={colIndex} width={columnWidth} flexDirection="row" gap={1} justifyContent="space-between">
+                  <Box
+                    key={colIndex}
+                    width={columnWidth}
+                    flexDirection="row"
+                    gap={1}
+                    justifyContent="space-between"
+                  >
                     <Box flexGrow={1} minWidth={0}>
                       <Text color={binding.continues ? look.accent : look.muted} wrap="truncate">
                         {binding.label}
@@ -508,7 +575,9 @@ const tui: TuiPlugin = async (api) => {
         title: "Show key bindings",
         desc: "Toggle which-key overlay",
         category: "System",
-        run() { setPinned((value) => !value) },
+        run() {
+          setPinned((value) => !value)
+        },
       },
       {
         name: command.toggleLayout,
@@ -547,12 +616,24 @@ const tui: TuiPlugin = async (api) => {
       },
       app() {
         return mode === "overlay" ? (
-          <WhichKeyPanel api={api} layout="overlay" mode={() => mode} pendingPreview={() => pendingPreview} pinned={() => pinned} />
+          <WhichKeyPanel
+            api={api}
+            layout="overlay"
+            mode={() => mode}
+            pendingPreview={() => pendingPreview}
+            pinned={() => pinned}
+          />
         ) : null
       },
       app_bottom() {
         return mode === "dock" ? (
-          <WhichKeyPanel api={api} layout="dock" mode={() => mode} pendingPreview={() => pendingPreview} pinned={() => pinned} />
+          <WhichKeyPanel
+            api={api}
+            layout="dock"
+            mode={() => mode}
+            pendingPreview={() => pendingPreview}
+            pinned={() => pinned}
+          />
         ) : null
       },
     },

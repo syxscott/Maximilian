@@ -15,33 +15,28 @@
 // ============================================================================
 
 export type GraphOp =
-  | "node:add"
-  | "node:remove"
-  | "node:move"
-  | "edge:add"
-  | "edge:remove"
-  | "property:set";
+  "node:add" | "node:remove" | "node:move" | "edge:add" | "edge:remove" | "property:set"
 
 /** A single reversible graph mutation. */
 export interface GraphDelta {
   /** Unique delta id. */
-  id: string;
-  op: GraphOp;
+  id: string
+  op: GraphOp
   /** Node or edge id acted upon. */
-  target: string;
+  target: string
   /** Value before the op (for rollback). */
-  before: unknown;
+  before: unknown
   /** Value after the op. */
-  after: unknown;
+  after: unknown
   /**
    * Associated edges captured at node:remove time so that undo (node:add) can
    * restore the dropped edges ("reconnect" semantics).
    */
-  connectedEdges?: Array<{ id: string; source: string; target: string }>;
+  connectedEdges?: Array<{ id: string; source: string; target: string }>
   /** ISO timestamp of when the delta was produced. */
-  at: string;
+  at: string
   /** Optional trace id for debugging / audit. */
-  traceId?: string;
+  traceId?: string
 }
 
 /**
@@ -50,7 +45,7 @@ export interface GraphDelta {
  */
 export interface GraphDeltaReverse extends GraphDelta {
   /** The op type of the delta that produced this reverse. */
-  originalOp: GraphOp;
+  originalOp: GraphOp
 }
 
 // ============================================================================
@@ -64,7 +59,7 @@ const INVERSE_OP: Readonly<Record<GraphOp, GraphOp>> = {
   "edge:add": "edge:remove",
   "edge:remove": "edge:add",
   "property:set": "property:set",
-};
+}
 
 // ============================================================================
 // reverseDelta — compute the exact inverse of a delta (pure function)
@@ -89,7 +84,7 @@ const INVERSE_OP: Readonly<Record<GraphOp, GraphOp>> = {
  * This function is pure: it never mutates `delta`.
  */
 export function reverseDelta(delta: GraphDelta): GraphDeltaReverse {
-  const inverseOp = INVERSE_OP[delta.op];
+  const inverseOp = INVERSE_OP[delta.op]
   return {
     id: delta.id,
     op: inverseOp,
@@ -99,13 +94,11 @@ export function reverseDelta(delta: GraphDelta): GraphDeltaReverse {
     after: delta.before,
     // shallow-copy the holder so the reversed delta has its own array reference
     // (the inner edge records are treated as immutable value objects)
-    connectedEdges: delta.connectedEdges
-      ? delta.connectedEdges.slice()
-      : undefined,
+    connectedEdges: delta.connectedEdges ? delta.connectedEdges.slice() : undefined,
     at: new Date().toISOString(),
     traceId: delta.traceId,
     originalOp: delta.op,
-  };
+  }
 }
 
 // ============================================================================
@@ -114,24 +107,24 @@ export function reverseDelta(delta: GraphDelta): GraphDeltaReverse {
 
 export interface GraphUndoStackOptions {
   /** Beyond this, oldest entries are dropped. Defaults to 50. */
-  maxSize?: number;
+  maxSize?: number
 }
 
-export const DEFAULT_MAX_UNDO_SIZE = 50;
+export const DEFAULT_MAX_UNDO_SIZE = 50
 
 /** Internal bookkeeping entry pairing a delta with its precomputed inverse. */
 interface UndoEntry {
-  delta: GraphDelta;
-  inverse: GraphDeltaReverse;
+  delta: GraphDelta
+  inverse: GraphDeltaReverse
 }
 
 export class GraphUndoStack {
-  private readonly entries: UndoEntry[] = [];
-  private readonly redoStack: UndoEntry[] = [];
-  private readonly maxSize: number;
+  private readonly entries: UndoEntry[] = []
+  private readonly redoStack: UndoEntry[] = []
+  private readonly maxSize: number
 
   constructor(options: GraphUndoStackOptions = {}) {
-    this.maxSize = options.maxSize ?? DEFAULT_MAX_UNDO_SIZE;
+    this.maxSize = options.maxSize ?? DEFAULT_MAX_UNDO_SIZE
   }
 
   /**
@@ -142,12 +135,12 @@ export class GraphUndoStack {
     const entry: UndoEntry = {
       delta,
       inverse: reverseDelta(delta),
-    };
-    this.entries.push(entry);
-    if (this.entries.length > this.maxSize) {
-      this.entries.shift(); // drop oldest
     }
-    this.redoStack.length = 0;
+    this.entries.push(entry)
+    if (this.entries.length > this.maxSize) {
+      this.entries.shift() // drop oldest
+    }
+    this.redoStack.length = 0
   }
 
   /**
@@ -156,10 +149,10 @@ export class GraphUndoStack {
    * when the undo stack is empty.
    */
   undo(): GraphDeltaReverse | undefined {
-    const entry = this.entries.pop();
-    if (!entry) return undefined;
-    this.redoStack.push(entry);
-    return entry.inverse;
+    const entry = this.entries.pop()
+    if (!entry) return undefined
+    this.redoStack.push(entry)
+    return entry.inverse
   }
 
   /**
@@ -168,44 +161,44 @@ export class GraphUndoStack {
    * redo stack is empty.
    */
   redo(): GraphDelta | undefined {
-    const entry = this.redoStack.pop();
-    if (!entry) return undefined;
-    this.entries.push(entry);
-    return entry.delta;
+    const entry = this.redoStack.pop()
+    if (!entry) return undefined
+    this.entries.push(entry)
+    return entry.delta
   }
 
   canUndo(): boolean {
-    return this.entries.length > 0;
+    return this.entries.length > 0
   }
 
   canRedo(): boolean {
-    return this.redoStack.length > 0;
+    return this.redoStack.length > 0
   }
 
   /** Forward-history of applied deltas (oldest first). */
   getHistory(): ReadonlyArray<GraphDelta> {
-    return this.entries.map((e) => e.delta);
+    return this.entries.map((e) => e.delta)
   }
 
   /** Clear both undo and redo stacks. */
   clear(): void {
-    this.entries.length = 0;
-    this.redoStack.length = 0;
+    this.entries.length = 0
+    this.redoStack.length = 0
   }
 
   /** Alias of {@link clear}; releases all internal state. */
   dispose(): void {
-    this.clear();
+    this.clear()
   }
 
   /** Number of undoable entries. */
   get size(): number {
-    return this.entries.length;
+    return this.entries.length
   }
 
   /** Number of redoable entries. */
   get redoSize(): number {
-    return this.redoStack.length;
+    return this.redoStack.length
   }
 }
 
@@ -218,8 +211,8 @@ export class GraphUndoStack {
  * values are the user-supplied payloads.
  */
 export interface GraphSnapshot {
-  nodes: Map<string, unknown>;
-  edges: Map<string, unknown>;
+  nodes: Map<string, unknown>
+  edges: Map<string, unknown>
 }
 
 /**
@@ -232,14 +225,14 @@ export interface GraphSnapshot {
  * the caller for the CRDT inverse math to stay accurate.
  */
 export class GraphController {
-  private readonly undoStack: GraphUndoStack;
-  private nodes: Map<string, unknown>;
-  private edges: Map<string, unknown>;
+  private readonly undoStack: GraphUndoStack
+  private nodes: Map<string, unknown>
+  private edges: Map<string, unknown>
 
   constructor(initial: GraphSnapshot, options: GraphUndoStackOptions = {}) {
-    this.nodes = new Map(initial.nodes);
-    this.edges = new Map(initial.edges);
-    this.undoStack = new GraphUndoStack(options);
+    this.nodes = new Map(initial.nodes)
+    this.edges = new Map(initial.edges)
+    this.undoStack = new GraphUndoStack(options)
   }
 
   // -------------------------------------------------------------------------
@@ -248,17 +241,17 @@ export class GraphController {
 
   private writeNode(id: string, value: unknown): void {
     if (value === undefined || value === null) {
-      this.nodes.delete(id);
+      this.nodes.delete(id)
     } else {
-      this.nodes.set(id, value);
+      this.nodes.set(id, value)
     }
   }
 
   private writeEdge(id: string, value: unknown): void {
     if (value === undefined || value === null) {
-      this.edges.delete(id);
+      this.edges.delete(id)
     } else {
-      this.edges.set(id, value);
+      this.edges.set(id, value)
     }
   }
 
@@ -266,24 +259,24 @@ export class GraphController {
   private applyForward(delta: GraphDelta): void {
     switch (delta.op) {
       case "node:add":
-        this.writeNode(delta.target, delta.after);
-        break;
+        this.writeNode(delta.target, delta.after)
+        break
       case "node:remove":
-        this.nodes.delete(delta.target);
-        break;
+        this.nodes.delete(delta.target)
+        break
       case "node:move":
         // `after` is the new position/state; overwrite whatever is stored.
-        this.writeNode(delta.target, delta.after);
-        break;
+        this.writeNode(delta.target, delta.after)
+        break
       case "edge:add":
-        this.writeEdge(delta.target, delta.after);
-        break;
+        this.writeEdge(delta.target, delta.after)
+        break
       case "edge:remove":
-        this.edges.delete(delta.target);
-        break;
+        this.edges.delete(delta.target)
+        break
       case "property:set":
-        this.applyProperty(delta.target, delta.after);
-        break;
+        this.applyProperty(delta.target, delta.after)
+        break
     }
   }
 
@@ -299,33 +292,33 @@ export class GraphController {
     switch (reverse.op) {
       case "node:add": {
         // inverse of node:remove: restore the node payload and reconnect edges
-        this.writeNode(reverse.target, reverse.after);
+        this.writeNode(reverse.target, reverse.after)
         if (reverse.connectedEdges) {
           for (const e of reverse.connectedEdges) {
-            this.edges.set(e.id, { id: e.id, source: e.source, target: e.target });
+            this.edges.set(e.id, { id: e.id, source: e.source, target: e.target })
           }
         }
-        break;
+        break
       }
       case "node:remove":
         // inverse of node:add: drop the node
-        this.nodes.delete(reverse.target);
-        break;
+        this.nodes.delete(reverse.target)
+        break
       case "node:move":
         // symmetric: restore original.before position
-        this.writeNode(reverse.target, reverse.after);
-        break;
+        this.writeNode(reverse.target, reverse.after)
+        break
       case "edge:add":
         // inverse of edge:remove: restore the edge
-        this.writeEdge(reverse.target, reverse.after);
-        break;
+        this.writeEdge(reverse.target, reverse.after)
+        break
       case "edge:remove":
         // inverse of edge:add: drop the edge
-        this.edges.delete(reverse.target);
-        break;
+        this.edges.delete(reverse.target)
+        break
       case "property:set":
-        this.applyProperty(reverse.target, reverse.after);
-        break;
+        this.applyProperty(reverse.target, reverse.after)
+        break
     }
   }
 
@@ -336,22 +329,22 @@ export class GraphController {
    * the owner, not the graph).
    */
   private applyProperty(target: string, value: unknown): void {
-    const dot = target.indexOf(".");
+    const dot = target.indexOf(".")
     if (dot < 0) {
       // No dot path — fall back to treating target as a node id.
-      this.writeNode(target, value);
-      return;
+      this.writeNode(target, value)
+      return
     }
-    const ownerId = target.slice(0, dot);
-    const prop = target.slice(dot + 1);
-    const node = this.nodes.get(ownerId);
+    const ownerId = target.slice(0, dot)
+    const prop = target.slice(dot + 1)
+    const node = this.nodes.get(ownerId)
     if (node !== undefined && node !== null && typeof node === "object") {
-      (node as Record<string, unknown>)[prop] = value;
-      return;
+      ;(node as Record<string, unknown>)[prop] = value
+      return
     }
-    const edge = this.edges.get(ownerId);
+    const edge = this.edges.get(ownerId)
     if (edge !== undefined && edge !== null && typeof edge === "object") {
-      (edge as Record<string, unknown>)[prop] = value;
+      ;(edge as Record<string, unknown>)[prop] = value
     }
   }
 
@@ -363,8 +356,8 @@ export class GraphController {
    * Apply `delta` to the graph and push it onto the undo stack (clearing redo).
    */
   apply(delta: GraphDelta): void {
-    this.applyForward(delta);
-    this.undoStack.push(delta);
+    this.applyForward(delta)
+    this.undoStack.push(delta)
   }
 
   /**
@@ -372,10 +365,10 @@ export class GraphController {
    * delta applied, or undefined when there is nothing to undo.
    */
   undo(): GraphDeltaReverse | undefined {
-    const reverse = this.undoStack.undo();
-    if (!reverse) return undefined;
-    this.applyInverse(reverse);
-    return reverse;
+    const reverse = this.undoStack.undo()
+    if (!reverse) return undefined
+    this.applyInverse(reverse)
+    return reverse
   }
 
   /**
@@ -383,22 +376,22 @@ export class GraphController {
    * forward delta applied, or undefined when there is nothing to redo.
    */
   redo(): GraphDelta | undefined {
-    const delta = this.undoStack.redo();
-    if (!delta) return undefined;
-    this.applyForward(delta);
-    return delta;
+    const delta = this.undoStack.redo()
+    if (!delta) return undefined
+    this.applyForward(delta)
+    return delta
   }
 
   canUndo(): boolean {
-    return this.undoStack.canUndo();
+    return this.undoStack.canUndo()
   }
 
   canRedo(): boolean {
-    return this.undoStack.canRedo();
+    return this.undoStack.canRedo()
   }
 
   getHistory(): ReadonlyArray<GraphDelta> {
-    return this.undoStack.getHistory();
+    return this.undoStack.getHistory()
   }
 
   /**
@@ -410,16 +403,16 @@ export class GraphController {
     return {
       nodes: new Map(this.nodes),
       edges: new Map(this.edges),
-    };
+    }
   }
 
   clear(): void {
-    this.undoStack.clear();
+    this.undoStack.clear()
   }
 
   dispose(): void {
-    this.undoStack.dispose();
-    this.nodes.clear();
-    this.edges.clear();
+    this.undoStack.dispose()
+    this.nodes.clear()
+    this.edges.clear()
   }
 }

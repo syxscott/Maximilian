@@ -220,6 +220,7 @@ ReplayOutcome {
 ```
 
 Used for:
+
 1. Pre-rollout validation
 2. Post-rollout audit
 3. A/B comparison of competing proposals

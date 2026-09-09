@@ -62,7 +62,9 @@ export const createModelsStore = () =>
       }),
       {
         name: "model.v1",
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         onRehydrateStorage: () => (state) => {
           if (state) state.ready = true
         },
@@ -126,10 +128,7 @@ export function useModelsApi() {
   const variant = useStore(store, (s) => s.variant)
 
   const available = useMemo<ModelRecord[]>(
-    () =>
-      providers.flatMap((p) =>
-        p.provider ? [{ ...p, provider: p.provider }] : [],
-      ),
+    () => providers.flatMap((p) => (p.provider ? [{ ...p, provider: p.provider }] : [])),
     [providers],
   )
 
@@ -146,7 +145,8 @@ export function useModelsApi() {
     const set = new Set<string>()
     for (const m of available) {
       const date = releaseDate(m)
-      if (date && Date.now() - date < cutoff) set.add(modelKey({ providerID: m.provider.id, modelID: m.id }))
+      if (date && Date.now() - date < cutoff)
+        set.add(modelKey({ providerID: m.provider.id, modelID: m.id }))
     }
     return set
   }, [available])
@@ -162,7 +162,9 @@ export function useModelsApi() {
 
   function setVisibility(model: ModelKey, show: boolean) {
     const state = store.getState()
-    const idx = state.user.findIndex((x) => x.modelID === model.modelID && x.providerID === model.providerID)
+    const idx = state.user.findIndex(
+      (x) => x.modelID === model.modelID && x.providerID === model.providerID,
+    )
     if (idx >= 0) {
       const next = [...state.user]
       next[idx] = { ...next[idx], visibility: show ? "show" : "hide" }

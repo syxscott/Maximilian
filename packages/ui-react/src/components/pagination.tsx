@@ -1,5 +1,11 @@
 import * as React from "react"
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreHorizontal } from "lucide-react"
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  MoreHorizontal,
+} from "lucide-react"
 import { cn } from "../lib/utils.js"
 
 export interface PaginationProps extends Omit<React.HTMLAttributes<HTMLElement>, "onChange"> {
@@ -21,7 +27,11 @@ function range(start: number, end: number): number[] {
   return out
 }
 
-function buildPageList(current: number, totalPages: number, siblingCount: number): (number | "ellipsis")[] {
+function buildPageList(
+  current: number,
+  totalPages: number,
+  siblingCount: number,
+): (number | "ellipsis")[] {
   const totalNumbers = siblingCount * 2 + 5 // first, last, current, 2*ellipsis
   if (totalPages <= totalNumbers) return range(1, totalPages)
 
@@ -103,7 +113,11 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(functio
         <PaginationButton aria-label="First page" disabled={safePage === 1} onClick={() => go(1)}>
           <ChevronsLeft className="h-4 w-4" />
         </PaginationButton>
-        <PaginationButton aria-label="Previous page" disabled={safePage === 1} onClick={() => go(safePage - 1)}>
+        <PaginationButton
+          aria-label="Previous page"
+          disabled={safePage === 1}
+          onClick={() => go(safePage - 1)}
+        >
           <ChevronLeft className="h-4 w-4" />
         </PaginationButton>
         {pages.map((p, i) =>

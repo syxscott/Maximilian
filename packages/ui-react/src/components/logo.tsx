@@ -10,7 +10,11 @@ export const Mark = ({ className }: { className?: string }) => {
       xmlns="http://www.w3.org/2000/svg"
     >
       <path data-slot="logo-logo-mark-shadow" d="M12 16H4V8H12V16Z" fill="var(--icon-weak-base)" />
-      <path data-slot="logo-logo-mark-o" d="M12 4H4V16H12V4ZM16 20H0V0H16V20Z" fill="var(--icon-strong-base)" />
+      <path
+        data-slot="logo-logo-mark-o"
+        d="M12 4H4V16H12V4ZM16 20H0V0H16V20Z"
+        fill="var(--icon-strong-base)"
+      />
     </svg>
   )
 }
@@ -31,18 +35,13 @@ export const Splash = forwardRef<SVGSVGElement, SVGProps<SVGSVGElement>>(
         <path d="M60 20H20V80H60V20ZM80 100H0V0H80V100Z" fill="var(--icon-strong-base)" />
       </svg>
     )
-  }
+  },
 )
 Splash.displayName = "Splash"
 
 export const Logo = ({ className }: { className?: string }) => {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 234 42"
-      fill="none"
-      className={className}
-    >
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 42" fill="none" className={className}>
       <g>
         <path d="M18 30H6V18H18V30Z" fill="var(--icon-weak-base)" />
         <path d="M18 12H6V30H18V12ZM24 36H0V6H24V36Z" fill="var(--icon-base)" />
@@ -57,9 +56,15 @@ export const Logo = ({ className }: { className?: string }) => {
         <path d="M168 30H156V18H168V30Z" fill="var(--icon-weak-base)" />
         <path d="M168 12H156V30H168V12ZM174 36H150V6H174V36Z" fill="var(--icon-strong-base)" />
         <path d="M198 30H186V18H198V30Z" fill="var(--icon-weak-base)" />
-        <path d="M198 12H186V30H198V12ZM204 36H180V6H198V0H204V36Z" fill="var(--icon-strong-base)" />
+        <path
+          d="M198 12H186V30H198V12ZM204 36H180V6H198V0H204V36Z"
+          fill="var(--icon-strong-base)"
+        />
         <path d="M234 24V30H216V24H234Z" fill="var(--icon-weak-base)" />
-        <path d="M216 12V18H228V12H216ZM234 24H216V30H234V36H210V6H234V24Z" fill="var(--icon-strong-base)" />
+        <path
+          d="M216 12V18H228V12H216ZM234 24H216V30H234V36H210V6H234V24Z"
+          fill="var(--icon-strong-base)"
+        />
       </g>
     </svg>
   )

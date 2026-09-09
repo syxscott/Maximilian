@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vitest/config"
 
 // This package is a port of OpenCode's React component library. It has no
 // tests of its own yet — the dashboard exercises the components end-to-end via
@@ -8,4 +8,4 @@ export default defineConfig({
   test: {
     passWithNoTests: true,
   },
-});
+})

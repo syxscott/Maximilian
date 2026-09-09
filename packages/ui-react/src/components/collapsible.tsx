@@ -2,8 +2,9 @@ import { forwardRef, type HTMLAttributes } from "react"
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
 import { Icon } from "./icon.js"
 
-export interface CollapsibleProps
-  extends React.ComponentPropsWithoutRef<typeof CollapsiblePrimitive.Root> {
+export interface CollapsibleProps extends React.ComponentPropsWithoutRef<
+  typeof CollapsiblePrimitive.Root
+> {
   className?: string
   variant?: "normal" | "ghost"
 }
@@ -30,11 +31,7 @@ const CollapsibleTrigger = forwardRef<
   React.ElementRef<typeof CollapsiblePrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof CollapsiblePrimitive.Trigger>
 >((props, ref) => (
-  <CollapsiblePrimitive.Trigger
-    ref={ref}
-    data-slot="collapsible-trigger"
-    {...props}
-  />
+  <CollapsiblePrimitive.Trigger ref={ref} data-slot="collapsible-trigger" {...props} />
 ))
 CollapsibleTrigger.displayName = "CollapsibleTrigger"
 
@@ -42,11 +39,7 @@ const CollapsibleContent = forwardRef<
   React.ElementRef<typeof CollapsiblePrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof CollapsiblePrimitive.Content>
 >((props, ref) => (
-  <CollapsiblePrimitive.Content
-    ref={ref}
-    data-slot="collapsible-content"
-    {...props}
-  />
+  <CollapsiblePrimitive.Content ref={ref} data-slot="collapsible-content" {...props} />
 ))
 CollapsibleContent.displayName = "CollapsibleContent"
 

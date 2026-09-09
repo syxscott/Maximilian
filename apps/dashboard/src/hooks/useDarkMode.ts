@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react"
 
 /**
  * Subscribe to the presence of `class="dark"` on `<html>`. The theme-provider
@@ -9,21 +9,19 @@ import { useEffect, useState } from "react";
  */
 export function useDarkMode(): boolean {
   const [isDark, setIsDark] = useState(() =>
-    typeof document !== "undefined"
-      ? document.documentElement.classList.contains("dark")
-      : false,
-  );
+    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false,
+  )
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
+      setIsDark(document.documentElement.classList.contains("dark"))
+    })
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
+    })
+    return () => observer.disconnect()
+  }, [])
 
-  return isDark;
+  return isDark
 }

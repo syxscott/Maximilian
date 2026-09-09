@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
 import { createStore, useStore } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
@@ -133,7 +140,8 @@ const localeMatchers: Array<{ locale: Locale; match: (language: string) => boole
   { locale: "ar", match: (language) => language.startsWith("ar") },
   {
     locale: "no",
-    match: (language) => language.startsWith("no") || language.startsWith("nb") || language.startsWith("nn"),
+    match: (language) =>
+      language.startsWith("no") || language.startsWith("nb") || language.startsWith("nn"),
   },
   { locale: "br", match: (language) => language.startsWith("pt") },
   { locale: "th", match: (language) => language.startsWith("th") },
@@ -191,7 +199,9 @@ export const createLanguageStore = (initialLocale?: Locale) =>
       }),
       {
         name: "language.v1",
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         onRehydrateStorage: () => (state) => {
           if (state) state.ready = true
         },
@@ -223,7 +233,13 @@ interface LanguageContextValue {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null)
 
-export function LanguageProvider({ children, locale: localeProp }: { children: ReactNode; locale?: Locale }) {
+export function LanguageProvider({
+  children,
+  locale: localeProp,
+}: {
+  children: ReactNode
+  locale?: Locale
+}) {
   const initial = localeProp ?? readStoredLocale() ?? detectLocale()
   const [store] = useState(() => createLanguageStore(initial))
   const locale = useStore(store, (s) => s.locale)

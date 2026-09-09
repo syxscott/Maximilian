@@ -2,7 +2,12 @@
 import React, { useMemo, useEffect } from "react"
 import { Box, Text } from "ink"
 import { Locale } from "../../util/locale"
-import { buildFileTree, flattenFileTree, type FileTreeItem, type FileTreeRow } from "./diff-viewer-file-tree-utils"
+import {
+  buildFileTree,
+  flattenFileTree,
+  type FileTreeItem,
+  type FileTreeRow,
+} from "./diff-viewer-file-tree-utils"
 import { Panel } from "./diff-viewer-ui"
 
 const FILE_TREE_STATUS_WIDTH = 2
@@ -35,7 +40,10 @@ export type DiffViewerFileTreeProps = {
 
 export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
   const tree = useMemo(() => buildFileTree(props.files), [props.files])
-  const rows = useMemo(() => flattenFileTree(tree, props.expandedNodes), [tree, props.expandedNodes])
+  const rows = useMemo(
+    () => flattenFileTree(tree, props.expandedNodes),
+    [tree, props.expandedNodes],
+  )
 
   useEffect(() => {
     const node = props.highlightedNode
@@ -76,7 +84,10 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
           const reviewed = file !== undefined && (props.reviewedFileNames?.has(file) ?? false)
           const prefix = fileTreeRowPrefix(rows, index, row, props.expandedNodes)
           const status = fileTreeRowStatus(row, props.files, reviewed)
-          const name = Locale.truncate(row.name, Math.max(1, props.width - FILE_TREE_STATUS_WIDTH - prefix.length))
+          const name = Locale.truncate(
+            row.name,
+            Math.max(1, props.width - FILE_TREE_STATUS_WIDTH - prefix.length),
+          )
           return (
             <Box
               key={row.id}
@@ -104,7 +115,10 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
                   {name}
                 </Text>
               </Box>
-              <Text color={highlighted ? props.theme.background : props.theme.textMuted} wrap="truncate-end">
+              <Text
+                color={highlighted ? props.theme.background : props.theme.textMuted}
+                wrap="truncate-end"
+              >
                 {status}
               </Text>
             </Box>
@@ -127,7 +141,8 @@ function fileTreeRowPrefix(
   }).join("")
   const topRoot = index === 0 && row.depth === 0
   const branch = topRoot ? " " : hasLaterSibling(rows, index, row.depth) ? "├─ " : "└─ "
-  const marker = row.kind === "directory" ? (expandedNodes && !expandedNodes.has(row.id) ? "▸ " : "▾ ") : ""
+  const marker =
+    row.kind === "directory" ? (expandedNodes && !expandedNodes.has(row.id) ? "▸ " : "▾ ") : ""
 
   return `${indentation}${branch}${marker}`
 }
@@ -139,6 +154,7 @@ function hasLaterSibling(rows: readonly FileTreeRow[], index: number, depth: num
 function fileTreeRowStatus(row: FileTreeRow, files: readonly FileTreeItem[], reviewed: boolean) {
   if (row.fileIndex === undefined) return ""
   const status = files[row.fileIndex]?.status
-  const marker = status === "modified" ? "M" : status === "added" ? "A" : status === "deleted" ? "D" : "?"
+  const marker =
+    status === "modified" ? "M" : status === "added" ? "A" : status === "deleted" ? "D" : "?"
   return `${reviewed ? "✓" : " "}${marker}`.padStart(FILE_TREE_STATUS_WIDTH)
 }

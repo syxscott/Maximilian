@@ -133,19 +133,15 @@ describe("ToolExecuteContextBuilder", () => {
   })
 
   it("throws if sessionID is missing", () => {
-    expect(() =>
-      new ToolExecuteContextBuilder()
-        .toolCallID("call-789")
-        .build(),
-    ).toThrow("sessionID is required")
+    expect(() => new ToolExecuteContextBuilder().toolCallID("call-789").build()).toThrow(
+      "sessionID is required",
+    )
   })
 
   it("throws if toolCallID is missing", () => {
-    expect(() =>
-      new ToolExecuteContextBuilder()
-        .sessionID("sess-123")
-        .build(),
-    ).toThrow("toolCallID is required")
+    expect(() => new ToolExecuteContextBuilder().sessionID("sess-123").build()).toThrow(
+      "toolCallID is required",
+    )
   })
 
   it("builds context with cwd extension", () => {
@@ -221,10 +217,7 @@ describe("ToolExecuteContextBuilder", () => {
   })
 
   it("produces an immutable context", () => {
-    const ctx = new ToolExecuteContextBuilder()
-      .sessionID("sess-123")
-      .toolCallID("call-456")
-      .build()
+    const ctx = new ToolExecuteContextBuilder().sessionID("sess-123").toolCallID("call-456").build()
 
     // TypeScript 告诉我们对象是 frozen 的
     expect(Object.isFrozen(ctx)).toBe(true)
@@ -243,10 +236,7 @@ describe("getCwd convenience function", () => {
   })
 
   it("returns fallback when cwd not set", () => {
-    const ctx = new ToolExecuteContextBuilder()
-      .sessionID("sess-123")
-      .toolCallID("call-456")
-      .build()
+    const ctx = new ToolExecuteContextBuilder().sessionID("sess-123").toolCallID("call-456").build()
 
     expect(getCwd(ctx, "/default")).toBe("/default")
   })

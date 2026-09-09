@@ -6,12 +6,12 @@
 
 ## Severity definitions
 
-| Sev | Definition | Examples | Response time |
-|---|---|---|---|
-| **SEV-1** | Production down or data-loss risk | DB unreachable; Redis dead; auth broken | Page immediately, 24/7 |
-| **SEV-2** | Major feature degraded | LLM calls failing for > 30% requests; meta-system loop halted | Page in business hours |
-| **SEV-3** | Minor issue, workaround exists | Dashboard component broken; doc typo | Next business day |
-| **SEV-4** | Cosmetic / non-urgent | i18n string missing | Backlog |
+| Sev       | Definition                        | Examples                                                      | Response time          |
+| --------- | --------------------------------- | ------------------------------------------------------------- | ---------------------- |
+| **SEV-1** | Production down or data-loss risk | DB unreachable; Redis dead; auth broken                       | Page immediately, 24/7 |
+| **SEV-2** | Major feature degraded            | LLM calls failing for > 30% requests; meta-system loop halted | Page in business hours |
+| **SEV-3** | Minor issue, workaround exists    | Dashboard component broken; doc typo                          | Next business day      |
+| **SEV-4** | Cosmetic / non-urgent             | i18n string missing                                           | Backlog                |
 
 ## On-call rotation
 
@@ -21,12 +21,12 @@
 
 ## Alert sources
 
-| Source | Type | Alert manager |
-|---|---|---|
-| Prometheus | Latency / error rate / saturation | Alertmanager → Slack + PagerDuty |
-| Pino logs (level ≥ error) | Application errors | Loki → Slack |
-| Health endpoint `/healthz` | Service liveness | k8s liveness probe |
-| Readiness `/readyz` | Service readiness | k8s readiness probe |
+| Source                     | Type                              | Alert manager                    |
+| -------------------------- | --------------------------------- | -------------------------------- |
+| Prometheus                 | Latency / error rate / saturation | Alertmanager → Slack + PagerDuty |
+| Pino logs (level ≥ error)  | Application errors                | Loki → Slack                     |
+| Health endpoint `/healthz` | Service liveness                  | k8s liveness probe               |
+| Readiness `/readyz`        | Service readiness                 | k8s readiness probe              |
 
 ## Common incidents
 
@@ -36,6 +36,7 @@
 fails; error rate spike on `/v1/workspaces`.
 
 **Diagnosis**:
+
 ```bash
 # Check connection
 psql "$DATABASE_URL" -c "SELECT 1;"
@@ -48,6 +49,7 @@ kubectl logs -n maximilian -l app=postgres --tail=200
 ```
 
 **Mitigation**:
+
 1. If k8s pod crashed → check `kubectl describe pod` for OOM/restart count.
    Restart: `kubectl rollout restart sts/postgres`.
 2. If connection string wrong → `kubectl get secret maximilian-pg -o yaml`
@@ -61,6 +63,7 @@ kubectl logs -n maximilian -l app=postgres --tail=200
 `taskFailedReason=rate_limited` in logs.
 
 **Diagnosis**:
+
 ```bash
 # Check circuit-breaker state
 curl http://api:3000/metrics | grep circuit_breaker_state
@@ -69,6 +72,7 @@ curl http://api:3000/metrics | grep circuit_breaker_state
 ```
 
 **Mitigation**:
+
 1. Circuit-breaker should auto-failover to secondary provider
    (configured in `config/providers.json`).
 2. If no secondary: reduce concurrency (`LLM_CONCURRENCY=2` env var),
@@ -81,6 +85,7 @@ curl http://api:3000/metrics | grep circuit_breaker_state
 dashboard; `/healthz/queue` returns `degraded`.
 
 **Diagnosis**:
+
 ```bash
 # BullMQ dashboard (if enabled)
 open http://admin:3001
@@ -90,6 +95,7 @@ redis-cli -u "$REDIS_URL" ZRANGE bull:workspaces:waiting 0 -1 WITHSCORES
 ```
 
 **Mitigation**:
+
 1. Restart worker: `kubectl rollout restart deploy/maximilian-worker`.
 2. If a single job is stuck: `redis-cli ZREM bull:workspaces:stuck <jobId>`.
 3. If worker keeps OOMing: lower `WORKER_CONCURRENCY` env var.
@@ -100,6 +106,7 @@ redis-cli -u "$REDIS_URL" ZRANGE bull:workspaces:waiting 0 -1 WITHSCORES
 without governance review; TruthAudit drift alarms firing.
 
 **Diagnosis**:
+
 ```bash
 # Check orchestrator logs
 kubectl logs -n maximilian -l app=api --tail=500 | grep orchestrator
@@ -109,6 +116,7 @@ curl http://api:3000/v1/meta-system/truth-report
 ```
 
 **Mitigation**:
+
 1. **Stop the loop**: set `META_AGENT_ENABLED=false` env var, restart API.
 2. Review the most recent `ProposalPipeline` decisions in
    `org_events` table.
@@ -121,6 +129,7 @@ curl http://api:3000/v1/meta-system/truth-report
 OOMKilled; restarts.
 
 **Diagnosis**:
+
 ```bash
 # Heap snapshot (Node.js)
 kubectl exec -it api-pod -- node --inspect=0.0.0.0:9229 dist/index.js
@@ -128,8 +137,9 @@ kubectl exec -it api-pod -- node --inspect=0.0.0.0:9229 dist/index.js
 ```
 
 **Mitigation**:
+
 1. Bump memory limit (temporary): `kubectl set resources deploy/api
-   --limits=memory=2Gi`.
+--limits=memory=2Gi`.
 2. Find the leak: usually a forgotten ring buffer or unclosed handle.
 3. Roll out a fix or add a periodic restart (cron + SIGHUP-friendly).
 
@@ -140,6 +150,7 @@ maximilian --context=<region>` shows not-ready nodes; the regional
 ingress is returning 5xx.
 
 **Diagnosis**:
+
 ```bash
 # Confirm regional failure (vs single-pod)
 kubectl get pods -n maximilian --context=<region> -o wide
@@ -150,20 +161,21 @@ kubectl get pods -n maximilian --context=<peer-region> -o wide
 ```
 
 **Mitigation**:
+
 1. If single-pod failure → use `kubectl rollout restart` per
    [INC-005](#inc-005-pod-oomkilled).
 2. If regional failure (network partition, cloud provider outage):
    a. Update the regional DNS / global load balancer to send traffic
-      to the peer region only.
+   to the peer region only.
    b. If using Aurora Global / Spanner, writes automatically fail
-      over to the peer primary within ~30s.
+   over to the peer primary within ~30s.
    c. BullMQ jobs that were enqueued in the dead region need to be
-      re-enqueued against the peer. Run:
-      ```bash
-      # From your local machine with both contexts available
-      kubectl --context=<peer-region> exec -it deploy/worker -- \
-        node -e "require('./dist/queue/requeue-orphans.js') --from-region=<dead-region>"
-      ```
+   re-enqueued against the peer. Run:
+   ```bash
+   # From your local machine with both contexts available
+   kubectl --context=<peer-region> exec -it deploy/worker -- \
+     node -e "require('./dist/queue/requeue-orphans.js') --from-region=<dead-region>"
+   ```
    d. Page backup + tech lead (this is SEV-1 if impact > 30 min).
 3. Document the failover in the incident log. Use the post-mortem
    template. Note whether the failover met the [RTO/RPO
@@ -176,12 +188,14 @@ kubectl get pods -n maximilian --context=<peer-region> -o wide
 executor to return.
 
 **Diagnosis**:
+
 ```bash
 kubectl logs -n maximilian -l app=worker --tail=200 | grep -i opencode
 kubectl get pods -n maximilian -l app=opencode-serve
 ```
 
 **Mitigation**:
+
 1. If opencode-serve is the bundled sidecar (`apps/worker/cmd/opencode-serve`),
    it's restarted by the worker process supervisor — just wait one
    restart cycle (~30s).
@@ -197,6 +211,7 @@ drops below the SLO-3 threshold (80%); the recalibration dashboard
 shows sustained drift.
 
 **Diagnosis**:
+
 ```bash
 # Inspect recent TruthReports via the admin API
 curl -H "Authorization: Bearer $ADMIN_TOKEN" \
@@ -212,6 +227,7 @@ psql "$DATABASE_URL" -c "
 ```
 
 **Mitigation**:
+
 1. If a single proposal is producing bad verdicts, mark it as
    `retired` so the meta-cycle doesn't use it as a model:
    ```sql
@@ -242,6 +258,7 @@ Secret logged, ex-employee access).
 
 **Mitigation** (steps from [SECRETS.md](../../security/SECRETS.md)
 **"What to do when a secret leaks"**):
+
 1. Revoke the leaked credential in the upstream system (rotate the
    Postgres password, invalidate the API key in the vendor dashboard,
    etc.).
@@ -264,20 +281,21 @@ Secret logged, ex-employee access).
 ## Post-incident
 
 Within 48 hours of any SEV-1 or SEV-2:
+
 1. Open a post-mortem doc using [post-mortem-template.md](post-mortem-template.md).
 2. Schedule a blameless review meeting (60 min).
 3. Track action items to closure in the issue tracker.
 
 ## Useful dashboards
 
-| Name | URL | Use |
-|---|---|---|
-| API Latency | grafana.internal/d/api-latency | p50/p95/p99 per route |
-| Error Rate | grafana.internal/d/error-rate | 4xx/5xx per route |
-| LLM Spend | grafana.internal/d/llm-spend | USD per provider/model |
-| Queue Depth | grafana.internal/d/queue-depth | BullMQ waiting/active |
-| Truth Audit | grafana.internal/d/truth-audit | Calibration drift |
-| DB Pool | grafana.internal/d/db-pool | Connection pool saturation |
+| Name        | URL                            | Use                        |
+| ----------- | ------------------------------ | -------------------------- |
+| API Latency | grafana.internal/d/api-latency | p50/p95/p99 per route      |
+| Error Rate  | grafana.internal/d/error-rate  | 4xx/5xx per route          |
+| LLM Spend   | grafana.internal/d/llm-spend   | USD per provider/model     |
+| Queue Depth | grafana.internal/d/queue-depth | BullMQ waiting/active      |
+| Truth Audit | grafana.internal/d/truth-audit | Calibration drift          |
+| DB Pool     | grafana.internal/d/db-pool     | Connection pool saturation |
 
 ## References
 

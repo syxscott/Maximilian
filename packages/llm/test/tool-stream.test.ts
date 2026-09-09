@@ -66,7 +66,11 @@ describe("progress factories", () => {
   it("creates notification progress (error)", () => {
     const item = progressNotification("Error occurred", "error")
     expect(item.type).toBe("progress")
-    expect(item.content).toEqual({ kind: "notification", message: "Error occurred", level: "error" })
+    expect(item.content).toEqual({
+      kind: "notification",
+      message: "Error occurred",
+      level: "error",
+    })
   })
 
   it("progress accepts custom timestamp", () => {

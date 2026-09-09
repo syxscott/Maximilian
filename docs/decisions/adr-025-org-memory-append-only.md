@@ -31,10 +31,12 @@ Queries: `listAll()`, `timeline(subject)`, `countByType()`. All read-only after 
 ## Consequences
 
 **正面**：
+
 - Append-only → no accidental overwrites
 - File-based → no DB required, easy to inspect with `cat`
 - Replayable: any agent's history is `orgMemory.timeline(subjectId)`
 
 **负面**：
+
 - Performance: `listAll()` reads every file (mitigation: index file in future)
 - Storage grows unbounded (mitigation: archival policy in future)

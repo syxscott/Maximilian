@@ -24,21 +24,27 @@
  *   BASE_URL — API base URL (default: http://localhost:3001)
  */
 
-import http from "k6/http";
-import { check, sleep } from "k6";
-import { Rate, Trend, Counter } from "k6/metrics";
-import { provisionUsers, authHeaders } from "./lib/auth.js";
+import http from "k6/http"
+import { check, sleep } from "k6"
+import { Rate, Trend, Counter } from "k6/metrics"
+import { provisionUsers, authHeaders } from "./lib/auth.js"
 
-const BASE_URL = __ENV.BASE_URL || "http://localhost:3001";
-const USER_POOL_SIZE = 100;
+const BASE_URL = __ENV.BASE_URL || "http://localhost:3001"
+const USER_POOL_SIZE = 100
 
-const errorRate = new Rate("errors");
-const mixedDuration = new Trend("mixed_duration", true);
-const endpointHits = new Counter("endpoint_hits");
+const errorRate = new Rate("errors")
+const mixedDuration = new Trend("mixed_duration", true)
+const endpointHits = new Counter("endpoint_hits")
 
 const REQUESTS = [
   { method: "GET", path: "/api/workspaces?limit=20", weight: 40, name: "list-workspaces" },
-  { method: "GET", path: "/api/workspaces/ws-loadtest-nonexistent", weight: 20, name: "get-workspace", expect404: true },
+  {
+    method: "GET",
+    path: "/api/workspaces/ws-loadtest-nonexistent",
+    weight: 20,
+    name: "get-workspace",
+    expect404: true,
+  },
   { method: "GET", path: "/api/health", weight: 10, name: "health", public: true },
   { method: "GET", path: "/api/providers", weight: 15, name: "list-providers" },
   { method: "GET", path: "/api/executions?limit=10", weight: 10, name: "list-executions" },
@@ -49,17 +55,17 @@ const REQUESTS = [
     weight: 5,
     name: "chat",
   },
-];
+]
 
 // Build weighted request pool
-const pool = [];
-let total = 0;
+const pool = []
+let total = 0
 for (const r of REQUESTS) {
-  total += r.weight;
+  total += r.weight
 }
 for (const r of REQUESTS) {
-  const count = Math.round((r.weight / total) * 100);
-  for (let i = 0; i < count; i++) pool.push(r);
+  const count = Math.round((r.weight / total) * 100)
+  for (let i = 0; i < count; i++) pool.push(r)
 }
 
 export const options = {
@@ -69,47 +75,49 @@ export const options = {
     { duration: "15s", target: 0 },
   ],
   thresholds: {
-    "http_req_duration": ["p(95)<2000"],
+    http_req_duration: ["p(95)<2000"],
     "http_req_duration{endpoint:health}": ["p(95)<100"],
     "http_req_duration{endpoint:list-workspaces}": ["p(95)<500"],
     errors: ["rate<0.05"],
   },
-};
+}
 
 export function setup() {
-  return { users: provisionUsers(BASE_URL, USER_POOL_SIZE) };
+  return { users: provisionUsers(BASE_URL, USER_POOL_SIZE) }
 }
 
 function pickRequest() {
-  return pool[Math.floor(Math.random() * pool.length)];
+  return pool[Math.floor(Math.random() * pool.length)]
 }
 
 export default function (data) {
-  const user = data.users[__VU % data.users.length];
-  const req = pickRequest();
-  endpointHits.add(1, { endpoint: req.name });
+  const user = data.users[__VU % data.users.length]
+  const req = pickRequest()
+  endpointHits.add(1, { endpoint: req.name })
 
   const params = {
-    ...(req.public ? { headers: { "Content-Type": "application/json" } } : authHeaders(user.accessToken)),
+    ...(req.public
+      ? { headers: { "Content-Type": "application/json" } }
+      : authHeaders(user.accessToken)),
     tags: { endpoint: req.name },
-  };
+  }
 
-  let res;
+  let res
   if (req.method === "POST") {
-    res = http.post(`${BASE_URL}${req.path}`, req.body(), params);
+    res = http.post(`${BASE_URL}${req.path}`, req.body(), params)
   } else {
-    res = http.get(`${BASE_URL}${req.path}`, params);
+    res = http.get(`${BASE_URL}${req.path}`, params)
   }
 
   const ok = check(res, {
     "status matches expectation": (r) => {
-      if (req.expect404 && r.status === 404) return true;
-      return r.status >= 200 && r.status < 400;
+      if (req.expect404 && r.status === 404) return true
+      return r.status >= 200 && r.status < 400
     },
-  });
+  })
 
-  errorRate.add(!ok);
-  mixedDuration.add(res.timings.duration);
+  errorRate.add(!ok)
+  mixedDuration.add(res.timings.duration)
 
-  sleep(0.5 + Math.random() * 2);
+  sleep(0.5 + Math.random() * 2)
 }

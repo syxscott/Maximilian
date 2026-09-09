@@ -43,7 +43,10 @@ export const AnimatedCountLabel: React.FC<AnimatedCountLabelProps> = ({
   const otherParts = React.useMemo(() => splitText(other), [other])
   const singular = Math.round(count) === 1
   const active = singular ? oneParts : otherParts
-  const suffix = React.useMemo(() => commonPrefixSuffix(oneParts.after, otherParts.after), [oneParts.after, otherParts.after])
+  const suffix = React.useMemo(
+    () => commonPrefixSuffix(oneParts.after, otherParts.after),
+    [oneParts.after, otherParts.after],
+  )
   const splitSuffix =
     oneParts.before === otherParts.before &&
     (oneParts.after.startsWith(otherParts.after) || otherParts.after.startsWith(oneParts.after))

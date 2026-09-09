@@ -6,18 +6,18 @@ The organization is not static. It evolves through a series of **cycles**, each 
 
 Every change is recorded as one of these `OrgEventType` values:
 
-| Type | Subject | Payload |
-|------|---------|---------|
-| `capability_proposed` | `capabilityId` | `{ proposalId, source }` |
-| `capability_promoted` | `capabilityId` | `{ from, to }` |
-| `capability_deprecated` | `capabilityId` | `{ from, to }` |
-| `capability_retired` | `capabilityId` | `{ from, to }` |
-| `agent_born` | `blueprintId` | `{ role, capability }` |
-| `agent_retired` | `blueprintId` | `{ role, reason }` |
-| `agent_merged` | `role` | `{ target: role }` |
-| `agent_split` | `role` | `{ target: role }` |
-| `team_optimized` | `hintId` | `{ suggestions, estimatedCost }` |
-| `governance_violation` | `"system"` | `{ reason }` |
+| Type                    | Subject        | Payload                          |
+| ----------------------- | -------------- | -------------------------------- |
+| `capability_proposed`   | `capabilityId` | `{ proposalId, source }`         |
+| `capability_promoted`   | `capabilityId` | `{ from, to }`                   |
+| `capability_deprecated` | `capabilityId` | `{ from, to }`                   |
+| `capability_retired`    | `capabilityId` | `{ from, to }`                   |
+| `agent_born`            | `blueprintId`  | `{ role, capability }`           |
+| `agent_retired`         | `blueprintId`  | `{ role, reason }`               |
+| `agent_merged`          | `role`         | `{ target: role }`               |
+| `agent_split`           | `role`         | `{ target: role }`               |
+| `team_optimized`        | `hintId`       | `{ suggestions, estimatedCost }` |
+| `governance_violation`  | `"system"`     | `{ reason }`                     |
 
 ## Evolution Sequence (Example)
 

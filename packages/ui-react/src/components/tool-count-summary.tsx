@@ -42,7 +42,10 @@ export const AnimatedCountList: React.FC<AnimatedCountListProps> = ({
         }
         return (
           <React.Fragment key={item.key}>
-            <span data-slot="tool-count-summary-prefix" data-active={active && hasPrev ? "true" : "false"}>
+            <span
+              data-slot="tool-count-summary-prefix"
+              data-active={active && hasPrev ? "true" : "false"}
+            >
               ,
             </span>
             <span data-slot="tool-count-summary-item" data-active={active ? "true" : "false"}>

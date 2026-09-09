@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { failureInsights, leaderboardInsights } from "../schema.js";
+import { eq } from "drizzle-orm"
+import { randomUUID } from "node:crypto"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { failureInsights, leaderboardInsights } from "../schema.js"
 
 /**
  * PostgreSQL-backed insights store.
@@ -17,8 +17,8 @@ export class PgInsightsStore {
 
   async savePatterns(insights: FailureInsightRow[]): Promise<void> {
     // Replace all: delete existing, then insert new.
-    await this.db.delete(failureInsights);
-    if (insights.length === 0) return;
+    await this.db.delete(failureInsights)
+    if (insights.length === 0) return
     await this.db.insert(failureInsights).values(
       insights.map((i) => ({
         id: i.id ?? `fi-${randomUUID().slice(0, 8)}`,
@@ -31,13 +31,13 @@ export class PgInsightsStore {
         examples: i.examples,
         firstSeen: i.firstSeen,
         lastSeen: i.lastSeen,
-      }))
-    );
+      })),
+    )
   }
 
   async loadPatterns(): Promise<FailureInsightRow[]> {
-    const rows = await this.db.select().from(failureInsights);
-    return rows.map(rowToFailureInsight);
+    const rows = await this.db.select().from(failureInsights)
+    return rows.map(rowToFailureInsight)
   }
 
   // ---- Leaderboard ----------------------------------------------------------
@@ -61,7 +61,7 @@ export class PgInsightsStore {
           worstModels: insight.worstModels,
           updatedAt: new Date(),
         },
-      });
+      })
   }
 
   async loadLeaderboard(): Promise<LeaderboardInsightRow | undefined> {
@@ -69,30 +69,30 @@ export class PgInsightsStore {
       .select()
       .from(leaderboardInsights)
       .where(eq(leaderboardInsights.id, "singleton"))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToLeaderboard(rows[0]);
+      .limit(1)
+    if (rows.length === 0) return undefined
+    return rowToLeaderboard(rows[0])
   }
 }
 
 export interface FailureInsightRow {
-  id?: string;
-  pattern: string;
-  frequency: number;
-  agentRoles: string[];
-  providers: string[];
-  models: string[];
-  avgScore: number;
-  examples: string[];
-  firstSeen: string;
-  lastSeen: string;
+  id?: string
+  pattern: string
+  frequency: number
+  agentRoles: string[]
+  providers: string[]
+  models: string[]
+  avgScore: number
+  examples: string[]
+  firstSeen: string
+  lastSeen: string
 }
 
 export interface LeaderboardInsightRow {
-  generatedAt: string;
-  totalExecutions: number;
-  worstRoles: Array<{ role: string; avgScore: number; sampleSize: number }>;
-  worstModels: Array<{ provider: string; model: string; avgScore: number; sampleSize: number }>;
+  generatedAt: string
+  totalExecutions: number
+  worstRoles: Array<{ role: string; avgScore: number; sampleSize: number }>
+  worstModels: Array<{ provider: string; model: string; avgScore: number; sampleSize: number }>
 }
 
 function rowToFailureInsight(row: typeof failureInsights.$inferSelect): FailureInsightRow {
@@ -107,7 +107,7 @@ function rowToFailureInsight(row: typeof failureInsights.$inferSelect): FailureI
     examples: (row.examples as string[]) ?? [],
     firstSeen: row.firstSeen,
     lastSeen: row.lastSeen,
-  };
+  }
 }
 
 function rowToLeaderboard(row: typeof leaderboardInsights.$inferSelect): LeaderboardInsightRow {
@@ -116,7 +116,7 @@ function rowToLeaderboard(row: typeof leaderboardInsights.$inferSelect): Leaderb
     totalExecutions: row.totalExecutions,
     worstRoles: (row.worstRoles as LeaderboardInsightRow["worstRoles"]) ?? [],
     worstModels: (row.worstModels as LeaderboardInsightRow["worstModels"]) ?? [],
-  };
+  }
 }
 
 // PgInsightsStore: PostgreSQL-backed failure pattern and leaderboard persistence.

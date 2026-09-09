@@ -37,11 +37,7 @@ async function writeSkill(
 ): Promise<void> {
   const skillDir = path.join(testDir, name)
   await fs.mkdir(skillDir, { recursive: true })
-  await fs.writeFile(
-    path.join(skillDir, "SKILL.md"),
-    `---\n${frontmatter}\n---\n\n${body}`,
-    "utf8",
-  )
+  await fs.writeFile(path.join(skillDir, "SKILL.md"), `---\n${frontmatter}\n---\n\n${body}`, "utf8")
 }
 
 describe("resolveClaudeSkillsDir", () => {
@@ -82,10 +78,7 @@ describe("loadClaudeSkills", () => {
   })
 
   it("loads a single skill correctly", async () => {
-    await writeSkill(
-      "web-search",
-      "name: web-search\ndescription: Search the web.",
-    )
+    await writeSkill("web-search", "name: web-search\ndescription: Search the web.")
 
     const skills = await loadClaudeSkills({ skillsDir: testDir })
     expect(skills).toHaveLength(1)
@@ -175,10 +168,7 @@ describe("renderClaudeSkillsPrelude", () => {
   })
 
   it("renders triggers when present", async () => {
-    await writeSkill(
-      "trig",
-      'name: trig\ndescription: With triggers.\ntriggers:\n  - "do:"',
-    )
+    await writeSkill("trig", 'name: trig\ndescription: With triggers.\ntriggers:\n  - "do:"')
 
     const skills = await loadClaudeSkills({ skillsDir: testDir })
     const prelude = renderClaudeSkillsPrelude(skills)

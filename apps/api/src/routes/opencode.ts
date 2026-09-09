@@ -17,19 +17,19 @@
  * feeding `applyEvent()` from the EventBridge (Phase 4b wires this up).
  */
 
-import { createRoute } from "@hono/zod-openapi";
-import type { Context } from "hono";
-import { z } from "zod";
-import { getLogger } from "@max/telemetry";
-import type { Supervisor } from "@max/core-thin-sdk";
-import { ErrorSchema, IdParamsSchema } from "../schemas.js";
+import { createRoute } from "@hono/zod-openapi"
+import type { Context } from "hono"
+import { z } from "zod"
+import { getLogger } from "@max/telemetry"
+import type { Supervisor } from "@max/core-thin-sdk"
+import { ErrorSchema, IdParamsSchema } from "../schemas.js"
 import {
   getOpencodeStateStore,
   type OpencodeSessionState,
   type OpencodeSessionsSnapshot,
-} from "../opencode-state-store.js";
+} from "../opencode-state-store.js"
 
-const log = getLogger("opencode-route");
+const log = getLogger("opencode-route")
 
 // ── OpenAPI route definitions ─────────────────────────────────────────────
 
@@ -42,13 +42,13 @@ export const SessionSummarySchema = z.object({
   lastEventAt: z.string(),
   lastEventType: z.string(),
   lastError: z.string().optional(),
-});
+})
 
 export const SessionListResponseSchema = z.object({
   count: z.number().int().nonnegative(),
   generatedAt: z.string(),
   sessions: z.array(SessionSummarySchema),
-});
+})
 
 export const SessionDetailSchema = SessionSummarySchema.extend({
   recent: z.array(
@@ -60,7 +60,7 @@ export const SessionDetailSchema = SessionSummarySchema.extend({
       data: z.unknown(),
     }),
   ),
-});
+})
 
 export const HealthStatusSchema = z.object({
   supervisor: z.enum(["not_configured", "stopped", "running", "starting", "errored", "fatal"]),
@@ -81,7 +81,7 @@ export const HealthStatusSchema = z.object({
       heartbeatTimeouts: z.number().int().nonnegative(),
     }),
   }),
-});
+})
 
 export const listOpencodeSessionsRoute = createRoute({
   method: "get",
@@ -93,7 +93,7 @@ export const listOpencodeSessionsRoute = createRoute({
       description: "Active opencode sessions",
     },
   },
-});
+})
 
 export const getOpencodeSessionRoute = createRoute({
   method: "get",
@@ -105,9 +105,12 @@ export const getOpencodeSessionRoute = createRoute({
       content: { "application/json": { schema: SessionDetailSchema } },
       description: "Session detail with recent events",
     },
-    404: { content: { "application/json": { schema: ErrorSchema } }, description: "Session not found" },
+    404: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Session not found",
+    },
   },
-});
+})
 
 export const opencodeHealthRoute = createRoute({
   method: "get",
@@ -119,7 +122,7 @@ export const opencodeHealthRoute = createRoute({
       description: "Supervisor + bridge health",
     },
   },
-});
+})
 
 export const opencodeEventsRoute = createRoute({
   method: "get",
@@ -131,25 +134,25 @@ export const opencodeEventsRoute = createRoute({
       description: "SSE stream of session snapshot updates",
     },
   },
-});
+})
 
 // ── wiring ─────────────────────────────────────────────────────────────────
 
 export interface OpencodeRouteDeps {
   /** Optional supervisor — when absent the route reports `not_configured`. */
-  supervisor?: Supervisor;
+  supervisor?: Supervisor
   /** Accessor for the bridge metrics — returns the same shape EventBridge emits. */
   bridgeSnapshot?: () => {
-    state: string;
+    state: string
     metrics: {
-      eventsReceived: number;
-      eventsMapped: number;
-      eventsAppended: number;
-      eventsDropped: number;
-      reconnects: number;
-      heartbeatTimeouts: number;
-    };
-  };
+      eventsReceived: number
+      eventsMapped: number
+      eventsAppended: number
+      eventsDropped: number
+      reconnects: number
+      heartbeatTimeouts: number
+    }
+  }
 }
 
 /**
@@ -166,7 +169,7 @@ function toSummary(s: OpencodeSessionState): z.infer<typeof SessionSummarySchema
     lastEventAt: s.lastEventAt,
     lastEventType: s.lastEventType,
     ...(s.lastError !== undefined ? { lastError: s.lastError } : {}),
-  };
+  }
 }
 
 function toDetail(s: OpencodeSessionState): z.infer<typeof SessionDetailSchema> {
@@ -179,12 +182,12 @@ function toDetail(s: OpencodeSessionState): z.infer<typeof SessionDetailSchema> 
       seq: e.seq,
       data: e.data,
     })),
-  };
+  }
 }
 
 export function opencodeRoutes(deps: OpencodeRouteDeps = {}) {
-  const { supervisor, bridgeSnapshot } = deps;
-  const store = getOpencodeStateStore();
+  const { supervisor, bridgeSnapshot } = deps
+  const store = getOpencodeStateStore()
 
   async function readSupervisorHealth(): Promise<z.infer<typeof HealthStatusSchema>> {
     if (!supervisor) {
@@ -204,17 +207,17 @@ export function opencodeRoutes(deps: OpencodeRouteDeps = {}) {
                 heartbeatTimeouts: 0,
               },
             },
-      };
+      }
     }
 
-    const healthy = await supervisor.isHealthy.catch(() => false);
+    const healthy = await supervisor.isHealthy.catch(() => false)
     const state = supervisor.running
       ? healthy
         ? "running"
         : "errored"
       : supervisor.restartCount > 0
         ? "errored"
-        : "stopped";
+        : "stopped"
 
     return {
       supervisor: state,
@@ -237,33 +240,33 @@ export function opencodeRoutes(deps: OpencodeRouteDeps = {}) {
               heartbeatTimeouts: 0,
             },
           },
-    };
+    }
   }
 
   return {
     listSessions: async (c: Context) => {
-      const snap = store.snapshot();
+      const snap = store.snapshot()
       return c.json({
         count: snap.sessions.length,
         generatedAt: snap.generatedAt,
         sessions: snap.sessions.map(toSummary),
-      });
+      })
     },
 
     getSession: async (c: Context) => {
-      const id = c.req.param("id");
-      if (!id) return c.json({ error: "Missing session id" }, 400);
-      const session = store.getSession(id);
-      if (!session) return c.json({ error: "Session not found" }, 404);
-      return c.json(toDetail(session));
+      const id = c.req.param("id")
+      if (!id) return c.json({ error: "Missing session id" }, 400)
+      const session = store.getSession(id)
+      if (!session) return c.json({ error: "Session not found" }, 404)
+      return c.json(toDetail(session))
     },
 
     health: async (c: Context) => {
       try {
-        return c.json(await readSupervisorHealth());
+        return c.json(await readSupervisorHealth())
       } catch (err) {
-        log.warn({ err }, "opencode health probe failed");
-        return c.json({ error: "health_probe_failed" }, 500);
+        log.warn({ err }, "opencode health probe failed")
+        return c.json({ error: "health_probe_failed" }, 500)
       }
     },
 
@@ -276,56 +279,56 @@ export function opencodeRoutes(deps: OpencodeRouteDeps = {}) {
      *   data: {"ts":...}
      */
     events: async (c: Context) => {
-      const sinceParam = c.req.query("since");
-      const sinceSeq = sinceParam ? Number(sinceParam) : undefined;
+      const sinceParam = c.req.query("since")
+      const sinceSeq = sinceParam ? Number(sinceParam) : undefined
 
-      const encoder = new TextEncoder();
-      let closed = false;
-      let unsubscribe: (() => void) | undefined;
-      let heartbeat: ReturnType<typeof setInterval> | undefined;
+      const encoder = new TextEncoder()
+      let closed = false
+      let unsubscribe: (() => void) | undefined
+      let heartbeat: ReturnType<typeof setInterval> | undefined
 
       const stream = new ReadableStream({
         start(controller) {
           const send = (event: string, data: unknown) => {
-            if (closed) return;
+            if (closed) return
             try {
               controller.enqueue(
                 encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-              );
+              )
             } catch {
-              closed = true;
+              closed = true
             }
-          };
+          }
 
           // Send current snapshot as the first frame so a freshly-mounted
           // client immediately has the list without waiting for the next
           // change. This is the standard replay-friendly SSE pattern used
           // by /api/events/bus and /api/workspaces/:id/stream.
-          send("snapshot", filterSnapshot(store.snapshot(), sinceSeq));
+          send("snapshot", filterSnapshot(store.snapshot(), sinceSeq))
 
           const onChange = (snap: OpencodeSessionsSnapshot) => {
-            send("snapshot", snap);
-          };
-          store.on("change", onChange);
+            send("snapshot", snap)
+          }
+          store.on("change", onChange)
           unsubscribe = () => {
-            store.off("change", onChange);
-          };
+            store.off("change", onChange)
+          }
 
           // 15s heartbeat — proxies drop idle SSE connections at ~60s.
           heartbeat = setInterval(() => {
-            send("heartbeat", { ts: new Date().toISOString() });
-          }, 15_000);
-          const t = heartbeat as unknown as { unref?: () => void };
-          t.unref?.();
+            send("heartbeat", { ts: new Date().toISOString() })
+          }, 15_000)
+          const t = heartbeat as unknown as { unref?: () => void }
+          t.unref?.()
         },
         cancel() {
-          closed = true;
-          if (heartbeat) clearInterval(heartbeat);
-          heartbeat = undefined;
-          unsubscribe?.();
-          unsubscribe = undefined;
+          closed = true
+          if (heartbeat) clearInterval(heartbeat)
+          heartbeat = undefined
+          unsubscribe?.()
+          unsubscribe = undefined
         },
-      });
+      })
 
       return new Response(stream, {
         headers: {
@@ -334,9 +337,9 @@ export function opencodeRoutes(deps: OpencodeRouteDeps = {}) {
           Connection: "keep-alive",
           "X-Accel-Buffering": "no",
         },
-      });
+      })
     },
-  };
+  }
 }
 
 /**
@@ -349,8 +352,8 @@ function filterSnapshot(
   snap: OpencodeSessionsSnapshot,
   sinceSeq: number | undefined,
 ): OpencodeSessionsSnapshot {
-  if (sinceSeq === undefined || !Number.isFinite(sinceSeq)) return snap;
-  const minSeq = Math.max(0, Math.floor(sinceSeq));
+  if (sinceSeq === undefined || !Number.isFinite(sinceSeq)) return snap
+  const minSeq = Math.max(0, Math.floor(sinceSeq))
   const sessions = snap.sessions
     .map((s) => ({
       ...s,
@@ -361,8 +364,8 @@ function filterSnapshot(
       // the cursor OR have a fresh lastEventAt timestamp — without the
       // latter filter, an idle session that produced nothing past the
       // cursor would silently disappear from the stream.
-      if (s.recent.length > 0) return true;
-      return s.messageCount + s.toolCallCount > 0;
-    });
-  return { sessions, generatedAt: snap.generatedAt };
+      if (s.recent.length > 0) return true
+      return s.messageCount + s.toolCallCount > 0
+    })
+  return { sessions, generatedAt: snap.generatedAt }
 }

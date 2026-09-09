@@ -23,8 +23,7 @@ export interface MarkdownViewerProps extends React.HTMLAttributes<HTMLDivElement
 }
 
 const defaultRender: MarkdownRender = ({ markdown }) => {
-  const escape = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   return <pre className="m-0 whitespace-pre-wrap font-sans text-sm">{escape(markdown)}</pre>
 }
 

@@ -7,6 +7,7 @@
 ## Context
 
 要让系统能"从失败中学习"，必须能完整回放一次任务的执行上下文：
+
 - 用的是哪个 Blueprint
 - 哪个 TeamGraph
 - 选了哪个 (provider, model)
@@ -20,25 +21,27 @@
 
 `ExecutionRecord` 必须包含以下字段：
 
-| 字段 | 用途 |
-|---|---|
-| `id` | 主键 |
-| `taskId` / `workspaceId` | 关联到 Runtime |
-| `blueprintId` / `graphId` | 关联到 DAGS |
-| `modelAssignment` | 实际使用的 (provider, model) |
-| `artifacts` | 产出的文件列表 |
-| `review` | 结构化 Review |
-| `userFeedback` | 用户反馈列表 |
-| `startedAt` / `completedAt` / `durationMs` | 时序 |
+| 字段                                       | 用途                         |
+| ------------------------------------------ | ---------------------------- |
+| `id`                                       | 主键                         |
+| `taskId` / `workspaceId`                   | 关联到 Runtime               |
+| `blueprintId` / `graphId`                  | 关联到 DAGS                  |
+| `modelAssignment`                          | 实际使用的 (provider, model) |
+| `artifacts`                                | 产出的文件列表               |
+| `review`                                   | 结构化 Review                |
+| `userFeedback`                             | 用户反馈列表                 |
+| `startedAt` / `completedAt` / `durationMs` | 时序                         |
 
 `ExecutionStore.save()` 强制校验这些字段，缺一不可。
 
 ## Consequences
 
 **正面**：
+
 - FailurePatternAnalyzer / EvolutionPlanner 可消费
 - 可审计、可调试
 
 **负面**：
+
 - 每个 task 都要写一份 JSON
 - 字段多可能膨胀（缓解：字段精简，不存 LLM 原始输出）

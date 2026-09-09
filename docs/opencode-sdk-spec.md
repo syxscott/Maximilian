@@ -2,6 +2,7 @@
 
 > Reverse-engineered from `/home/user/shenyaxuan/Maximilian/opencode/` (commit on
 > disk). Source roots:
+>
 > - HTTP server: `packages/server/src/`
 > - Public HTTP API (instance + global + control): `packages/opencode/src/server/routes/instance/httpapi/`
 > - Protocol / route definitions: `packages/protocol/src/groups/`
@@ -23,11 +24,11 @@ route, header, event, error, and lifecycle step needed to talk to a running
 [`effect/unstable/http`](https://effect.website) (`packages/server/src/routes.ts`).
 The HTTP API is split into three layers:
 
-| Layer | Group | Source | Path prefix |
-|---|---|---|---|
-| **Server API (v2)** | `server.health`, `server.location`, `server.agent`, `server.session`, `server.message`, `server.model`, `server.provider`, `server.integration`, `server.credential`, `server.permission`, `server.fs`, `server.command`, `server.skill`, `server.event`, `server.pty`, `server.question`, `server.reference`, `server.projectCopy` | `packages/server/src/handlers/*` + `packages/protocol/src/groups/*` | `/api/...` (one `/experimental/...`) |
-| **Instance API** | `config`, `experimental`, `file`, `instance`, `mcp`, `project`, `provider`, `pty`, `question`, `session`, `sync`, `tui`, `workspace`, `permission` | `packages/opencode/src/server/routes/instance/httpapi/handlers/*` and `groups/*` | mostly `/session/...`, `/config/...`, `/file/...`, `/mcp/...`, etc. (no `/api` prefix) |
-| **Root API** | `control`, `controlPlane`, `global` | same package | `/global/...`, `/control/...`, etc. |
+| Layer               | Group                                                                                                                                                                                                                                                                                                                               | Source                                                                           | Path prefix                                                                            |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Server API (v2)** | `server.health`, `server.location`, `server.agent`, `server.session`, `server.message`, `server.model`, `server.provider`, `server.integration`, `server.credential`, `server.permission`, `server.fs`, `server.command`, `server.skill`, `server.event`, `server.pty`, `server.question`, `server.reference`, `server.projectCopy` | `packages/server/src/handlers/*` + `packages/protocol/src/groups/*`              | `/api/...` (one `/experimental/...`)                                                   |
+| **Instance API**    | `config`, `experimental`, `file`, `instance`, `mcp`, `project`, `provider`, `pty`, `question`, `session`, `sync`, `tui`, `workspace`, `permission`                                                                                                                                                                                  | `packages/opencode/src/server/routes/instance/httpapi/handlers/*` and `groups/*` | mostly `/session/...`, `/config/...`, `/file/...`, `/mcp/...`, etc. (no `/api` prefix) |
+| **Root API**        | `control`, `controlPlane`, `global`                                                                                                                                                                                                                                                                                                 | same package                                                                     | `/global/...`, `/control/...`, etc.                                                    |
 
 The `OpenCodeHttpApi` in `packages/opencode/src/server/routes/instance/httpapi/api.ts`
 fuses the three layers into one `HttpApi` with metadata
@@ -47,15 +48,16 @@ fuses the three layers into one `HttpApi` with metadata
 
 ### 2.1 CLI command
 
-| | |
-|---|---|
-| Command | `opencode serve` |
-| Source | `packages/opencode/src/cli/cmd/serve.ts` |
-| Description | "starts a headless opencode server" |
-| Yargs flags (see `packages/opencode/src/cli/network.ts`) | `--port <number>` (default `0`, see below), `--hostname <string>` (default `127.0.0.1`), `--mdns <bool>` (default `false`), `--mdns-domain <string>` (default `opencode.local`), `--cors <string[]>` (extra CORS origins) |
-| Env vars | `OPENCODE_SERVER_PASSWORD`, `OPENCODE_SERVER_USERNAME` (see auth); `OPENCODE_CONFIG_CONTENT` (full JSON config as string, used by SDK helper); `OPENCODE_DISABLE_AUTOUPDATE`, `OPENCODE_GIT_BASH_PATH`, etc. (`packages/core/src/flag/flag.ts`) |
+|                                                          |                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                                                  | `opencode serve`                                                                                                                                                                                                                                |
+| Source                                                   | `packages/opencode/src/cli/cmd/serve.ts`                                                                                                                                                                                                        |
+| Description                                              | "starts a headless opencode server"                                                                                                                                                                                                             |
+| Yargs flags (see `packages/opencode/src/cli/network.ts`) | `--port <number>` (default `0`, see below), `--hostname <string>` (default `127.0.0.1`), `--mdns <bool>` (default `false`), `--mdns-domain <string>` (default `opencode.local`), `--cors <string[]>` (extra CORS origins)                       |
+| Env vars                                                 | `OPENCODE_SERVER_PASSWORD`, `OPENCODE_SERVER_USERNAME` (see auth); `OPENCODE_CONFIG_CONTENT` (full JSON config as string, used by SDK helper); `OPENCODE_DISABLE_AUTOUPDATE`, `OPENCODE_GIT_BASH_PATH`, etc. (`packages/core/src/flag/flag.ts`) |
 
 The server warns and continues when `OPENCODE_SERVER_PASSWORD` is unset:
+
 ```ts
 // packages/opencode/src/cli/cmd/serve.ts
 if (!Flag.OPENCODE_SERVER_PASSWORD) {
@@ -73,12 +75,14 @@ if (!Flag.OPENCODE_SERVER_PASSWORD) {
 The resolved port is read from `state.server.address` after
 `Layer.buildWithMemoMap` succeeds. mDNS (`packages/opencode/src/server/mdns.ts`)
 publishes the listener only when:
+
 - `opts.mdns === true` AND
 - `hostname` is not `127.0.0.1` / `localhost` / `::1`.
 
 ### 2.3 Ready signal & log format
 
 After bind success the CLI prints:
+
 ```
 opencode server listening on http://<hostname>:<port>
 ```
@@ -90,6 +94,7 @@ so any external client (or `Process.spawn`) can do the same.
 ### 2.4 Graceful shutdown
 
 `makeStop` in `server.ts` builds a finalizer that:
+
 1. Unpublishes mDNS.
 2. If the caller requested `close: true`, force-closes all HTTP sockets and
    all tracked WebSockets (`WebSocketTracker.closeAll` → 1-second timeout per
@@ -113,12 +118,12 @@ Electron renderer). Endpoints and event payloads are identical.
 
 ### 3.1 `Content-Type`
 
-| Use | Value |
-|---|---|
-| Request bodies | `application/json` (auto-set by `@hey-api/client-fetch`; handlers also accept JSON for `prompt`/`revert.stage`/`pty.create`/etc.) |
-| SSE responses | `text/event-stream` (see §5) |
-| `GET /api/fs/read/*` | `application/octet-stream` (raw bytes, file content) |
-| Other responses | `application/json` |
+| Use                  | Value                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Request bodies       | `application/json` (auto-set by `@hey-api/client-fetch`; handlers also accept JSON for `prompt`/`revert.stage`/`pty.create`/etc.) |
+| SSE responses        | `text/event-stream` (see §5)                                                                                                      |
+| `GET /api/fs/read/*` | `application/octet-stream` (raw bytes, file content)                                                                              |
+| Other responses      | `application/json`                                                                                                                |
 
 ### 3.2 `x-opencode-directory`
 
@@ -155,6 +160,7 @@ for GETs and strips it (`packages/sdk/js/src/v2/client.ts:18-48`).
 ### 3.5 `WWW-Authenticate`
 
 Response header set on 401 responses:
+
 ```
 WWW-Authenticate: Basic realm="Secure Area"
 ```
@@ -163,9 +169,11 @@ WWW-Authenticate: Basic realm="Secure Area"
 
 Custom header required by `POST /api/pty/{ptyID}/connect-token` to gate
 cross-origin ticket issuance against the CORS allowlist:
+
 ```
 x-opencode-ticket: 1
 ```
+
 See `packages/protocol/src/groups/pty.ts` and `packages/server/src/handlers/pty.ts`.
 
 ### 3.7 Response headers added by the event endpoint
@@ -176,6 +184,7 @@ Cache-Control: no-cache, no-transform
 X-Accel-Buffering: no
 X-Content-Type-Options: nosniff
 ```
+
 (`packages/server/src/handlers/event.ts:38-47`)
 
 ---
@@ -199,6 +208,7 @@ basic-auth check is skipped. This lets browsers open WebSockets without setting
 headers.
 
 `packages/server/src/cors.ts` describes the allowed origins (default):
+
 - `http://localhost:*` / `http://127.0.0.1:*` (any port)
 - `oc://renderer` (Electron renderer)
 - `tauri://localhost` / `http://tauri.localhost` / `https://tauri.localhost`
@@ -211,17 +221,18 @@ headers.
 
 ### 5.1 Subscribe
 
-| | |
-|---|---|
-| Method + Path | `GET /api/event` |
-| Handler | `server.event` → `event.subscribe` (`packages/server/src/handlers/event.ts`) |
-| Response content type | `text/event-stream` |
-| Heartbeat | `: heartbeat\n\n` every 15s (`Stream.tick("15 seconds")`) |
-| First event | Always `server.connected` (sent before live tail) |
+|                       |                                                                              |
+| --------------------- | ---------------------------------------------------------------------------- |
+| Method + Path         | `GET /api/event`                                                             |
+| Handler               | `server.event` → `event.subscribe` (`packages/server/src/handlers/event.ts`) |
+| Response content type | `text/event-stream`                                                          |
+| Heartbeat             | `: heartbeat\n\n` every 15s (`Stream.tick("15 seconds")`)                    |
+| First event           | Always `server.connected` (sent before live tail)                            |
 
 ### 5.2 SSE wire format
 
 Each event is emitted as:
+
 ```
 event: message\n
 data: {"id":"evt_…","type":"<type>","data":{...}}\n
@@ -259,136 +270,136 @@ larger and includes v1 session/message events.
 
 #### 5.3.1 Session lifecycle (durable, `session.next.*`)
 
-| `type` | `data` payload |
-|---|---|
-| `session.next.agent.switched` | `{ timestamp, sessionID, messageID, agent }` |
-| `session.next.model.switched` | `{ timestamp, sessionID, messageID, model: { id, providerID, variant? } }` |
-| `session.next.moved` | `{ timestamp, sessionID, location, subdirectory? }` |
-| `session.next.prompted` | `{ timestamp, sessionID, messageID, prompt: { text, files?, agents? }, delivery: "steer"\|"queue" }` |
-| `session.next.prompt.admitted` | same as `prompted` |
-| `session.next.context.updated` | `{ timestamp, sessionID, messageID, text }` |
-| `session.next.synthetic` | `{ timestamp, sessionID, messageID, text }` |
-| `session.next.shell.started` | `{ timestamp, sessionID, messageID, callID, command }` |
-| `session.next.shell.ended` | `{ timestamp, sessionID, callID, output }` |
-| `session.next.step.started` | `{ timestamp, sessionID, assistantMessageID, agent, model, snapshot? }` |
-| `session.next.step.ended` (durable v2) | `{ timestamp, sessionID, assistantMessageID, finish, cost, tokens, snapshot?, files? }` |
-| `session.next.step.failed` | `{ timestamp, sessionID, assistantMessageID, error: { type: "unknown", message } }` |
-| `session.next.text.started` | `{ timestamp, sessionID, assistantMessageID, textID }` |
-| `session.next.text.delta` *(live only)* | `{ timestamp, sessionID, assistantMessageID, textID, delta }` |
-| `session.next.text.ended` | `{ timestamp, sessionID, assistantMessageID, textID, text }` |
-| `session.next.reasoning.started` | `{ timestamp, sessionID, assistantMessageID, reasoningID, providerMetadata? }` |
-| `session.next.reasoning.delta` *(live only)* | `{ timestamp, sessionID, assistantMessageID, reasoningID, delta }` |
-| `session.next.reasoning.ended` | `{ timestamp, sessionID, assistantMessageID, reasoningID, text, providerMetadata? }` |
-| `session.next.tool.input.started` | `{ timestamp, sessionID, assistantMessageID, callID, name }` |
-| `session.next.tool.input.delta` *(live only)* | `{ timestamp, sessionID, assistantMessageID, callID, delta }` |
-| `session.next.tool.input.ended` | `{ timestamp, sessionID, assistantMessageID, callID, text }` |
-| `session.next.tool.called` | `{ timestamp, sessionID, assistantMessageID, callID, tool, input, provider: { executed, metadata? } }` |
-| `session.next.tool.progress` | `{ timestamp, sessionID, assistantMessageID, callID, structured, content: ToolContent[] }` |
-| `session.next.tool.success` | `{ timestamp, sessionID, assistantMessageID, callID, structured, content, outputPaths?, result?, provider }` |
-| `session.next.tool.failed` | `{ timestamp, sessionID, assistantMessageID, callID, error, result?, provider }` |
-| `session.next.retried` | `{ timestamp, sessionID, attempt, error: { message, statusCode?, isRetryable, … } }` |
-| `session.next.compaction.started` | `{ timestamp, sessionID, messageID, reason: "auto"\|"manual" }` |
-| `session.next.compaction.delta` *(live only)* | `{ timestamp, sessionID, messageID, text }` |
-| `session.next.compaction.ended` | `{ timestamp, sessionID, messageID, reason, text, recent }` |
-| `session.next.revert.staged` | `{ timestamp, sessionID, revert: RevertState }` |
-| `session.next.revert.cleared` | `{ timestamp, sessionID }` |
-| `session.next.revert.committed` | `{ timestamp, sessionID, messageID }` |
+| `type`                                        | `data` payload                                                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `session.next.agent.switched`                 | `{ timestamp, sessionID, messageID, agent }`                                                                 |
+| `session.next.model.switched`                 | `{ timestamp, sessionID, messageID, model: { id, providerID, variant? } }`                                   |
+| `session.next.moved`                          | `{ timestamp, sessionID, location, subdirectory? }`                                                          |
+| `session.next.prompted`                       | `{ timestamp, sessionID, messageID, prompt: { text, files?, agents? }, delivery: "steer"\|"queue" }`         |
+| `session.next.prompt.admitted`                | same as `prompted`                                                                                           |
+| `session.next.context.updated`                | `{ timestamp, sessionID, messageID, text }`                                                                  |
+| `session.next.synthetic`                      | `{ timestamp, sessionID, messageID, text }`                                                                  |
+| `session.next.shell.started`                  | `{ timestamp, sessionID, messageID, callID, command }`                                                       |
+| `session.next.shell.ended`                    | `{ timestamp, sessionID, callID, output }`                                                                   |
+| `session.next.step.started`                   | `{ timestamp, sessionID, assistantMessageID, agent, model, snapshot? }`                                      |
+| `session.next.step.ended` (durable v2)        | `{ timestamp, sessionID, assistantMessageID, finish, cost, tokens, snapshot?, files? }`                      |
+| `session.next.step.failed`                    | `{ timestamp, sessionID, assistantMessageID, error: { type: "unknown", message } }`                          |
+| `session.next.text.started`                   | `{ timestamp, sessionID, assistantMessageID, textID }`                                                       |
+| `session.next.text.delta` _(live only)_       | `{ timestamp, sessionID, assistantMessageID, textID, delta }`                                                |
+| `session.next.text.ended`                     | `{ timestamp, sessionID, assistantMessageID, textID, text }`                                                 |
+| `session.next.reasoning.started`              | `{ timestamp, sessionID, assistantMessageID, reasoningID, providerMetadata? }`                               |
+| `session.next.reasoning.delta` _(live only)_  | `{ timestamp, sessionID, assistantMessageID, reasoningID, delta }`                                           |
+| `session.next.reasoning.ended`                | `{ timestamp, sessionID, assistantMessageID, reasoningID, text, providerMetadata? }`                         |
+| `session.next.tool.input.started`             | `{ timestamp, sessionID, assistantMessageID, callID, name }`                                                 |
+| `session.next.tool.input.delta` _(live only)_ | `{ timestamp, sessionID, assistantMessageID, callID, delta }`                                                |
+| `session.next.tool.input.ended`               | `{ timestamp, sessionID, assistantMessageID, callID, text }`                                                 |
+| `session.next.tool.called`                    | `{ timestamp, sessionID, assistantMessageID, callID, tool, input, provider: { executed, metadata? } }`       |
+| `session.next.tool.progress`                  | `{ timestamp, sessionID, assistantMessageID, callID, structured, content: ToolContent[] }`                   |
+| `session.next.tool.success`                   | `{ timestamp, sessionID, assistantMessageID, callID, structured, content, outputPaths?, result?, provider }` |
+| `session.next.tool.failed`                    | `{ timestamp, sessionID, assistantMessageID, callID, error, result?, provider }`                             |
+| `session.next.retried`                        | `{ timestamp, sessionID, attempt, error: { message, statusCode?, isRetryable, … } }`                         |
+| `session.next.compaction.started`             | `{ timestamp, sessionID, messageID, reason: "auto"\|"manual" }`                                              |
+| `session.next.compaction.delta` _(live only)_ | `{ timestamp, sessionID, messageID, text }`                                                                  |
+| `session.next.compaction.ended`               | `{ timestamp, sessionID, messageID, reason, text, recent }`                                                  |
+| `session.next.revert.staged`                  | `{ timestamp, sessionID, revert: RevertState }`                                                              |
+| `session.next.revert.cleared`                 | `{ timestamp, sessionID }`                                                                                   |
+| `session.next.revert.committed`               | `{ timestamp, sessionID, messageID }`                                                                        |
 
 #### 5.3.2 Session v1 events (legacy shapes; still emitted by opencode)
 
-| `type` | `data` |
-|---|---|
-| `session.created` | `{ sessionID, info: SessionInfo }` |
-| `session.updated` | `{ sessionID, info: SessionInfo }` |
-| `session.deleted` | `{ sessionID, info: SessionInfo }` |
-| `session.compacted` | `{ sessionID }` |
-| `session.status` | `{ sessionID, status: { type: "idle" } \| { type: "retry", attempt, message, action?, next } \| { type: "busy" } }` |
-| `session.idle` *(deprecated)* | `{ sessionID }` |
-| `message.updated` | `{ sessionID, info: Message }` |
-| `message.removed` | `{ sessionID, messageID }` |
-| `message.part.updated` | `{ sessionID, part, time }` |
-| `message.part.removed` | `{ sessionID, messageID, partID }` |
-| `message.part.delta` *(live only)* | `{ sessionID, messageID, partID, field, delta }` |
-| `session.diff` | `{ sessionID, diff: FileDiff[] }` |
-| `session.error` | `{ sessionID?, error: AssistantError }` |
-| `command.executed` | `{ name, sessionID, arguments, messageID }` |
+| `type`                             | `data`                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `session.created`                  | `{ sessionID, info: SessionInfo }`                                                                                  |
+| `session.updated`                  | `{ sessionID, info: SessionInfo }`                                                                                  |
+| `session.deleted`                  | `{ sessionID, info: SessionInfo }`                                                                                  |
+| `session.compacted`                | `{ sessionID }`                                                                                                     |
+| `session.status`                   | `{ sessionID, status: { type: "idle" } \| { type: "retry", attempt, message, action?, next } \| { type: "busy" } }` |
+| `session.idle` _(deprecated)_      | `{ sessionID }`                                                                                                     |
+| `message.updated`                  | `{ sessionID, info: Message }`                                                                                      |
+| `message.removed`                  | `{ sessionID, messageID }`                                                                                          |
+| `message.part.updated`             | `{ sessionID, part, time }`                                                                                         |
+| `message.part.removed`             | `{ sessionID, messageID, partID }`                                                                                  |
+| `message.part.delta` _(live only)_ | `{ sessionID, messageID, partID, field, delta }`                                                                    |
+| `session.diff`                     | `{ sessionID, diff: FileDiff[] }`                                                                                   |
+| `session.error`                    | `{ sessionID?, error: AssistantError }`                                                                             |
+| `command.executed`                 | `{ name, sessionID, arguments, messageID }`                                                                         |
 
 #### 5.3.3 Permission / Question
 
-| `type` | `data` |
-|---|---|
-| `permission.asked` *(v1)* | `PermissionRequest` (id, sessionID, permission, patterns, metadata, always, tool?) |
-| `permission.replied` *(v1)* | `{ sessionID, requestID, reply: "once"\|"always"\|"reject" }` |
-| `permission.v2.asked` | `{ id, sessionID, action, resources, save?, metadata?, source?: { type: "tool", messageID, callID } }` |
-| `permission.v2.replied` | `{ sessionID, requestID, reply }` |
-| `question.asked` *(v1)* | `QuestionV1.Request` |
-| `question.replied` *(v1)* | `{ sessionID, requestID, answers: string[][] }` |
-| `question.rejected` *(v1)* | `{ sessionID, requestID }` |
-| `question.v2.asked` | `{ id, sessionID, questions: QuestionV2.Info[], tool? }` |
-| `question.v2.replied` | `{ sessionID, requestID, answers: string[][] }` |
-| `question.v2.rejected` | `{ sessionID, requestID }` |
+| `type`                      | `data`                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `permission.asked` _(v1)_   | `PermissionRequest` (id, sessionID, permission, patterns, metadata, always, tool?)                     |
+| `permission.replied` _(v1)_ | `{ sessionID, requestID, reply: "once"\|"always"\|"reject" }`                                          |
+| `permission.v2.asked`       | `{ id, sessionID, action, resources, save?, metadata?, source?: { type: "tool", messageID, callID } }` |
+| `permission.v2.replied`     | `{ sessionID, requestID, reply }`                                                                      |
+| `question.asked` _(v1)_     | `QuestionV1.Request`                                                                                   |
+| `question.replied` _(v1)_   | `{ sessionID, requestID, answers: string[][] }`                                                        |
+| `question.rejected` _(v1)_  | `{ sessionID, requestID }`                                                                             |
+| `question.v2.asked`         | `{ id, sessionID, questions: QuestionV2.Info[], tool? }`                                               |
+| `question.v2.replied`       | `{ sessionID, requestID, answers: string[][] }`                                                        |
+| `question.v2.rejected`      | `{ sessionID, requestID }`                                                                             |
 
 #### 5.3.4 Workspace / Worktree / VCS
 
-| `type` | `data` |
-|---|---|
-| `workspace.ready` | `{ name }` |
-| `workspace.failed` | `{ message }` |
-| `workspace.status` | `{ workspaceID, status: "connected"\|"connecting"\|"disconnected"\|"error" }` |
-| `worktree.ready` | `{ name, branch? }` |
-| `worktree.failed` | `{ message }` |
-| `vcs.branch.updated` | `{ branch? }` |
-| `project.updated` | `Project.Info` |
-| `project.directories.updated` | `{ projectID }` |
+| `type`                        | `data`                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `workspace.ready`             | `{ name }`                                                                    |
+| `workspace.failed`            | `{ message }`                                                                 |
+| `workspace.status`            | `{ workspaceID, status: "connected"\|"connecting"\|"disconnected"\|"error" }` |
+| `worktree.ready`              | `{ name, branch? }`                                                           |
+| `worktree.failed`             | `{ message }`                                                                 |
+| `vcs.branch.updated`          | `{ branch? }`                                                                 |
+| `project.updated`             | `Project.Info`                                                                |
+| `project.directories.updated` | `{ projectID }`                                                               |
 
 #### 5.3.5 File / FS / Plugin / Reference / Catalog / ModelsDev / Installation / Integration
 
-| `type` | `data` |
-|---|---|
-| `file.edited` | `{ file }` |
-| `file.watcher.updated` | `{ file, event: "add"\|"change"\|"unlink" }` |
-| `plugin.added` | `{ id }` |
-| `reference.updated` | `{}` |
-| `catalog.updated` | `{}` |
-| `models-dev.refreshed` | `{}` |
-| `installation.updated` | `{ version }` |
-| `installation.update-available` | `{ version }` |
-| `integration.updated` | `{}` |
-| `integration.connection.updated` | `{ integrationID }` |
+| `type`                           | `data`                                       |
+| -------------------------------- | -------------------------------------------- |
+| `file.edited`                    | `{ file }`                                   |
+| `file.watcher.updated`           | `{ file, event: "add"\|"change"\|"unlink" }` |
+| `plugin.added`                   | `{ id }`                                     |
+| `reference.updated`              | `{}`                                         |
+| `catalog.updated`                | `{}`                                         |
+| `models-dev.refreshed`           | `{}`                                         |
+| `installation.updated`           | `{ version }`                                |
+| `installation.update-available`  | `{ version }`                                |
+| `integration.updated`            | `{}`                                         |
+| `integration.connection.updated` | `{ integrationID }`                          |
 
 #### 5.3.6 Pty / LSP / MCP / Todo
 
-| `type` | `data` |
-|---|---|
-| `pty.created` | `{ info: Pty.Info }` |
-| `pty.updated` | `{ info: Pty.Info }` |
-| `pty.exited` | `{ id, exitCode }` |
-| `pty.deleted` | `{ id }` |
-| `lsp.updated` | `{}` |
-| `mcp.tools.changed` | `{ server }` |
-| `mcp.browser.open.failed` | `{ mcpName, url }` |
-| `todo.updated` | `{ sessionID, todos: Todo[] }` |
+| `type`                    | `data`                         |
+| ------------------------- | ------------------------------ |
+| `pty.created`             | `{ info: Pty.Info }`           |
+| `pty.updated`             | `{ info: Pty.Info }`           |
+| `pty.exited`              | `{ id, exitCode }`             |
+| `pty.deleted`             | `{ id }`                       |
+| `lsp.updated`             | `{}`                           |
+| `mcp.tools.changed`       | `{ server }`                   |
+| `mcp.browser.open.failed` | `{ mcpName, url }`             |
+| `todo.updated`            | `{ sessionID, todos: Todo[] }` |
 
 #### 5.3.7 TUI / Server
 
-| `type` | `data` |
-|---|---|
-| `tui.prompt.append` | `{ text }` |
-| `tui.command.execute` | `{ command: TuiCommand }` |
-| `tui.toast.show` | `{ title?, message, variant: "info"\|"success"\|"warning"\|"error", duration }` |
-| `tui.session.select` | `{ sessionID }` |
-| `server.connected` | `{}` (synthetic, sent on connect) |
-| `global.disposed` | `{}` |
-| `ide.installed` | `{ ide }` |
+| `type`                | `data`                                                                          |
+| --------------------- | ------------------------------------------------------------------------------- |
+| `tui.prompt.append`   | `{ text }`                                                                      |
+| `tui.command.execute` | `{ command: TuiCommand }`                                                       |
+| `tui.toast.show`      | `{ title?, message, variant: "info"\|"success"\|"warning"\|"error", duration }` |
+| `tui.session.select`  | `{ sessionID }`                                                                 |
+| `server.connected`    | `{}` (synthetic, sent on connect)                                               |
+| `global.disposed`     | `{}`                                                                            |
+| `ide.installed`       | `{ ide }`                                                                       |
 
 ### 5.4 Session event stream
 
-| | |
-|---|---|
-| Method + Path | `GET /api/session/{sessionID}/event` |
-| Query | `?after=<seq>` (NonNegativeInt; exclusive aggregate sequence — replay from there forward) |
-| Response | `text/event-stream` of `SessionDurableEvent` (`packages/schema/src/session-event.ts:514`) — same envelope as the global stream but **only the session-scoped, replayable subset** (no `*.delta` live events) |
-| Initial event | First event after `after` is replayed; new durable events follow. |
+|               |                                                                                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Method + Path | `GET /api/session/{sessionID}/event`                                                                                                                                                                         |
+| Query         | `?after=<seq>` (NonNegativeInt; exclusive aggregate sequence — replay from there forward)                                                                                                                    |
+| Response      | `text/event-stream` of `SessionDurableEvent` (`packages/schema/src/session-event.ts:514`) — same envelope as the global stream but **only the session-scoped, replayable subset** (no `*.delta` live events) |
+| Initial event | First event after `after` is replayed; new durable events follow.                                                                                                                                            |
 
 ---
 
@@ -406,12 +417,13 @@ primary recommendation.
 
 ### 6.1 Health / Location
 
-| Method | Path | Query | Success | Errors | Auth |
-|---|---|---|---|---|---|
-| GET | `/api/health` | – | `{ healthy: true }` | 400, 401 | yes (when password set) |
-| GET | `/api/location` | `?location[directory]=...&location[workspace]=...` | `Location.Info` (see below) | 400, 401 | yes |
+| Method | Path            | Query                                              | Success                     | Errors   | Auth                    |
+| ------ | --------------- | -------------------------------------------------- | --------------------------- | -------- | ----------------------- |
+| GET    | `/api/health`   | –                                                  | `{ healthy: true }`         | 400, 401 | yes (when password set) |
+| GET    | `/api/location` | `?location[directory]=...&location[workspace]=...` | `Location.Info` (see below) | 400, 401 | yes                     |
 
 `Location.Info`:
+
 ```ts
 {
   directory: string
@@ -422,61 +434,64 @@ primary recommendation.
 
 ### 6.2 Agent / Model / Provider / Integration
 
-| Method | Path | Query | Body | Success | Errors |
-|---|---|---|---|---|---|
-| GET | `/api/agent` | `location[directory/workspace]` | – | `{ location, data: AgentV2.Info[] }` | 400, 401 |
-| GET | `/api/model` | `location` | – | `{ location, data: ModelV2.Info[] }` | 400, 401, 503 |
-| GET | `/api/provider` | `location` | – | `{ location, data: ProviderV2.Info[] }` | 400, 401, 503 |
-| GET | `/api/provider/{providerID}` | `location` | – | `{ location, data: ProviderV2.Info }` | 400, 401, 404, 503 |
-| GET | `/api/integration` | `location` | – | `{ location, data: Integration.Info[] }` | 400, 401 |
-| GET | `/api/integration/{integrationID}` | `location` | – | `{ location, data: Integration.Info }` | 400, 401 |
-| POST | `/api/integration/{integrationID}/connect/key` | `location` | `{ key: string, label?: string }` | `204` | 400 |
-| POST | `/api/integration/{integrationID}/connect/oauth` | `location` | `{ methodID, inputs: Record<string,string>, label? }` | `{ location, data: Integration.Attempt }` | 400 |
-| GET | `/api/integration/attempt/{attemptID}` | `location` | – | `{ location, data: Integration.AttemptStatus }` | 400, 401 |
-| POST | `/api/integration/attempt/{attemptID}/complete` | `location` | `{ code?: string }` | `204` | 400 |
-| DELETE | `/api/integration/attempt/{attemptID}` | `location` | – | `204` | 400 |
+| Method | Path                                             | Query                           | Body                                                  | Success                                         | Errors             |
+| ------ | ------------------------------------------------ | ------------------------------- | ----------------------------------------------------- | ----------------------------------------------- | ------------------ |
+| GET    | `/api/agent`                                     | `location[directory/workspace]` | –                                                     | `{ location, data: AgentV2.Info[] }`            | 400, 401           |
+| GET    | `/api/model`                                     | `location`                      | –                                                     | `{ location, data: ModelV2.Info[] }`            | 400, 401, 503      |
+| GET    | `/api/provider`                                  | `location`                      | –                                                     | `{ location, data: ProviderV2.Info[] }`         | 400, 401, 503      |
+| GET    | `/api/provider/{providerID}`                     | `location`                      | –                                                     | `{ location, data: ProviderV2.Info }`           | 400, 401, 404, 503 |
+| GET    | `/api/integration`                               | `location`                      | –                                                     | `{ location, data: Integration.Info[] }`        | 400, 401           |
+| GET    | `/api/integration/{integrationID}`               | `location`                      | –                                                     | `{ location, data: Integration.Info }`          | 400, 401           |
+| POST   | `/api/integration/{integrationID}/connect/key`   | `location`                      | `{ key: string, label?: string }`                     | `204`                                           | 400                |
+| POST   | `/api/integration/{integrationID}/connect/oauth` | `location`                      | `{ methodID, inputs: Record<string,string>, label? }` | `{ location, data: Integration.Attempt }`       | 400                |
+| GET    | `/api/integration/attempt/{attemptID}`           | `location`                      | –                                                     | `{ location, data: Integration.AttemptStatus }` | 400, 401           |
+| POST   | `/api/integration/attempt/{attemptID}/complete`  | `location`                      | `{ code?: string }`                                   | `204`                                           | 400                |
+| DELETE | `/api/integration/attempt/{attemptID}`           | `location`                      | –                                                     | `204`                                           | 400                |
 
 `Integration.Attempt`:
+
 ```ts
 { attemptID, url, instructions, mode: "auto"|"code", time: { created, expires } }
 ```
 
 `Integration.AttemptStatus` (tagged union on `status`):
+
 - `pending { time }` / `complete { time }` / `failed { message, time }` / `expired { time }`
 
 ### 6.3 Credential
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| PATCH | `/api/credential/{credentialID}` | `{ label: string }` | `204` | 400, 401 |
-| DELETE | `/api/credential/{credentialID}` | – | `204` | 400, 401 |
+| Method | Path                             | Body                | Success | Errors   |
+| ------ | -------------------------------- | ------------------- | ------- | -------- |
+| PATCH  | `/api/credential/{credentialID}` | `{ label: string }` | `204`   | 400, 401 |
+| DELETE | `/api/credential/{credentialID}` | –                   | `204`   | 400, 401 |
 
 ### 6.4 Session
 
 All session routes use `:sessionID` (prefixed `ses_`).
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| GET | `/api/session` | query: `workspace, limit, order, search, directory, project, subpath, cursor` | `{ data: SessionV2Info[], cursor: { previous?, next? } }` | 400, 401 |
-| POST | `/api/session` | `{ id?, agent?, model?, location? }` | `{ data: SessionV2Info }` | 400, 401 |
-| GET | `/api/session/active` | – | `{ data: Record<sessionID, { type: "running" }> }` | 400, 401 |
-| GET | `/api/session/{sessionID}` | – | `{ data: SessionV2Info }` | 400, 401, 404 |
-| POST | `/api/session/{sessionID}/agent` | `{ agent: string }` | `204` | 400, 401, 404 |
-| POST | `/api/session/{sessionID}/model` | `{ model: ModelRef }` | `204` | 400, 401, 404 |
-| POST | `/api/session/{sessionID}/prompt` | `{ id?, prompt: PromptInput, delivery?: "steer"\|"queue", resume? }` | `{ data: SessionInput.Admitted }` | 400, 401, 404, 409 |
-| POST | `/api/session/{sessionID}/compact` | – | `204` | 400, 401, 404, 503 |
-| POST | `/api/session/{sessionID}/wait` | – | `204` (long-poll) | 400, 401, 404, 503 |
-| POST | `/api/session/{sessionID}/revert/stage` | `{ messageID, files? }` | `{ data: Revert.State }` | 400, 401, 404, 500 |
-| POST | `/api/session/{sessionID}/revert/clear` | – | `204` | 400, 401, 404, 500 |
-| POST | `/api/session/{sessionID}/revert/commit` | – | `204` | 400, 401, 404 |
-| GET | `/api/session/{sessionID}/context` | – | `{ data: SessionMessage[] }` | 400, 401, 404, 500 |
-| GET | `/api/session/{sessionID}/history` | `?limit, ?after` | `{ data: SessionDurableEvent[], hasMore }` | 400, 401, 404 |
-| GET | `/api/session/{sessionID}/event` | `?after=<seq>` | `text/event-stream` of `SessionDurableEvent` | 400, 401, 404 |
-| POST | `/api/session/{sessionID}/interrupt` | – | `204` | 400, 401, 404 |
-| GET | `/api/session/{sessionID}/message/{messageID}` | – | `{ data: SessionMessage }` | 400, 401, 404 |
-| GET | `/api/session/{sessionID}/message` | `?limit, ?order, ?cursor` | `{ data: SessionMessage[], cursor: { previous?, next? } }` | 400, 401, 404, 500 |
+| Method | Path                                           | Body                                                                          | Success                                                    | Errors             |
+| ------ | ---------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------ |
+| GET    | `/api/session`                                 | query: `workspace, limit, order, search, directory, project, subpath, cursor` | `{ data: SessionV2Info[], cursor: { previous?, next? } }`  | 400, 401           |
+| POST   | `/api/session`                                 | `{ id?, agent?, model?, location? }`                                          | `{ data: SessionV2Info }`                                  | 400, 401           |
+| GET    | `/api/session/active`                          | –                                                                             | `{ data: Record<sessionID, { type: "running" }> }`         | 400, 401           |
+| GET    | `/api/session/{sessionID}`                     | –                                                                             | `{ data: SessionV2Info }`                                  | 400, 401, 404      |
+| POST   | `/api/session/{sessionID}/agent`               | `{ agent: string }`                                                           | `204`                                                      | 400, 401, 404      |
+| POST   | `/api/session/{sessionID}/model`               | `{ model: ModelRef }`                                                         | `204`                                                      | 400, 401, 404      |
+| POST   | `/api/session/{sessionID}/prompt`              | `{ id?, prompt: PromptInput, delivery?: "steer"\|"queue", resume? }`          | `{ data: SessionInput.Admitted }`                          | 400, 401, 404, 409 |
+| POST   | `/api/session/{sessionID}/compact`             | –                                                                             | `204`                                                      | 400, 401, 404, 503 |
+| POST   | `/api/session/{sessionID}/wait`                | –                                                                             | `204` (long-poll)                                          | 400, 401, 404, 503 |
+| POST   | `/api/session/{sessionID}/revert/stage`        | `{ messageID, files? }`                                                       | `{ data: Revert.State }`                                   | 400, 401, 404, 500 |
+| POST   | `/api/session/{sessionID}/revert/clear`        | –                                                                             | `204`                                                      | 400, 401, 404, 500 |
+| POST   | `/api/session/{sessionID}/revert/commit`       | –                                                                             | `204`                                                      | 400, 401, 404      |
+| GET    | `/api/session/{sessionID}/context`             | –                                                                             | `{ data: SessionMessage[] }`                               | 400, 401, 404, 500 |
+| GET    | `/api/session/{sessionID}/history`             | `?limit, ?after`                                                              | `{ data: SessionDurableEvent[], hasMore }`                 | 400, 401, 404      |
+| GET    | `/api/session/{sessionID}/event`               | `?after=<seq>`                                                                | `text/event-stream` of `SessionDurableEvent`               | 400, 401, 404      |
+| POST   | `/api/session/{sessionID}/interrupt`           | –                                                                             | `204`                                                      | 400, 401, 404      |
+| GET    | `/api/session/{sessionID}/message/{messageID}` | –                                                                             | `{ data: SessionMessage }`                                 | 400, 401, 404      |
+| GET    | `/api/session/{sessionID}/message`             | `?limit, ?order, ?cursor`                                                     | `{ data: SessionMessage[], cursor: { previous?, next? } }` | 400, 401, 404, 500 |
 
 `SessionV2Info`:
+
 ```ts
 {
   id: string                     // "ses_<id>"
@@ -495,11 +510,13 @@ All session routes use `:sessionID` (prefixed `ses_`).
 ```
 
 `ModelRef`:
+
 ```ts
 { id: string, providerID: string, variant?: string }
 ```
 
 `PromptInput`:
+
 ```ts
 {
   text: string
@@ -509,6 +526,7 @@ All session routes use `:sessionID` (prefixed `ses_`).
 ```
 
 `SessionInput.Admitted`:
+
 ```ts
 {
   admittedSeq: number
@@ -522,6 +540,7 @@ All session routes use `:sessionID` (prefixed `ses_`).
 ```
 
 `Revert.State`:
+
 ```ts
 {
   messageID: string
@@ -533,6 +552,7 @@ All session routes use `:sessionID` (prefixed `ses_`).
 ```
 
 `SessionMessage` (tagged union on `type`):
+
 - `agent-switched`, `model-switched`, `user`, `synthetic`, `system`, `shell`,
   `assistant`, `compaction`.
 - `assistant.content` is an array of `AssistantText | AssistantReasoning | AssistantTool`.
@@ -543,17 +563,18 @@ All session routes use `:sessionID` (prefixed `ses_`).
 
 `Permission.ID` is prefixed `per_`.
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| GET | `/api/permission/request` | – | `{ location, data: PermissionV2.Request[] }` | 400, 401 |
-| GET | `/api/permission/saved` | query `?projectID` | `{ data: PermissionSaved.Info[] }` | 400, 401 |
-| DELETE | `/api/permission/saved/{id}` | – | `204` | 400, 401 |
-| POST | `/api/session/{sessionID}/permission` | `{ id?, action, resources, save?, metadata?, source?: { type: "tool", messageID, callID }, agent? }` | `{ data: { id, effect: "allow"\|"deny"\|"ask" } }` | 400, 401, 404 |
-| GET | `/api/session/{sessionID}/permission` | – | `{ data: PermissionV2.Request[] }` | 400, 401, 404 |
-| GET | `/api/session/{sessionID}/permission/{requestID}` | – | `{ data: PermissionV2.Request }` | 400, 401, 404 |
-| POST | `/api/session/{sessionID}/permission/{requestID}/reply` | `{ reply: "once"\|"always"\|"reject", message? }` | `204` | 400, 401, 404 |
+| Method | Path                                                    | Body                                                                                                 | Success                                            | Errors        |
+| ------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ------------- |
+| GET    | `/api/permission/request`                               | –                                                                                                    | `{ location, data: PermissionV2.Request[] }`       | 400, 401      |
+| GET    | `/api/permission/saved`                                 | query `?projectID`                                                                                   | `{ data: PermissionSaved.Info[] }`                 | 400, 401      |
+| DELETE | `/api/permission/saved/{id}`                            | –                                                                                                    | `204`                                              | 400, 401      |
+| POST   | `/api/session/{sessionID}/permission`                   | `{ id?, action, resources, save?, metadata?, source?: { type: "tool", messageID, callID }, agent? }` | `{ data: { id, effect: "allow"\|"deny"\|"ask" } }` | 400, 401, 404 |
+| GET    | `/api/session/{sessionID}/permission`                   | –                                                                                                    | `{ data: PermissionV2.Request[] }`                 | 400, 401, 404 |
+| GET    | `/api/session/{sessionID}/permission/{requestID}`       | –                                                                                                    | `{ data: PermissionV2.Request }`                   | 400, 401, 404 |
+| POST   | `/api/session/{sessionID}/permission/{requestID}/reply` | `{ reply: "once"\|"always"\|"reject", message? }`                                                    | `204`                                              | 400, 401, 404 |
 
 `PermissionV2.Request`:
+
 ```ts
 {
   id: string                 // "per_<id>"
@@ -570,14 +591,15 @@ All session routes use `:sessionID` (prefixed `ses_`).
 
 `Question.ID` is prefixed `que_`.
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| GET | `/api/question/request` | – | `{ location, data: QuestionV2.Request[] }` | 400, 401 |
-| GET | `/api/session/{sessionID}/question` | – | `{ data: QuestionV2.Request[] }` | 400, 401, 404 |
-| POST | `/api/session/{sessionID}/question/{requestID}/reply` | `QuestionV2.Reply` | `204` | 400, 401, 404 |
-| POST | `/api/session/{sessionID}/question/{requestID}/reject` | – | `204` | 400, 401, 404 |
+| Method | Path                                                   | Body               | Success                                    | Errors        |
+| ------ | ------------------------------------------------------ | ------------------ | ------------------------------------------ | ------------- |
+| GET    | `/api/question/request`                                | –                  | `{ location, data: QuestionV2.Request[] }` | 400, 401      |
+| GET    | `/api/session/{sessionID}/question`                    | –                  | `{ data: QuestionV2.Request[] }`           | 400, 401, 404 |
+| POST   | `/api/session/{sessionID}/question/{requestID}/reply`  | `QuestionV2.Reply` | `204`                                      | 400, 401, 404 |
+| POST   | `/api/session/{sessionID}/question/{requestID}/reject` | –                  | `204`                                      | 400, 401, 404 |
 
 `QuestionV2.Request`:
+
 ```ts
 {
   id: string
@@ -594,32 +616,35 @@ All session routes use `:sessionID` (prefixed `ses_`).
 ```
 
 `QuestionV2.Reply`:
+
 ```ts
 { answers: string[][] }  // one array per question, each entry is a selected option label
 ```
 
 ### 6.7 File System
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/api/fs/read/*` | Path after `/read/` is the file path (URI-decoded). Returns `application/octet-stream`. |
-| GET | `/api/fs/list` | Query `?path`, `?location[directory/workspace]` |
-| GET | `/api/fs/find` | Query `?query=<str>`, `?type=file\|directory`, `?limit<num>` |
+| Method | Path             | Notes                                                                                   |
+| ------ | ---------------- | --------------------------------------------------------------------------------------- |
+| GET    | `/api/fs/read/*` | Path after `/read/` is the file path (URI-decoded). Returns `application/octet-stream`. |
+| GET    | `/api/fs/list`   | Query `?path`, `?location[directory/workspace]`                                         |
+| GET    | `/api/fs/find`   | Query `?query=<str>`, `?type=file\|directory`, `?limit<num>`                            |
 
 `FileSystem.Entry`:
+
 ```ts
 { path: string, type: "file" | "directory" }
 ```
 
 ### 6.8 Command / Skill / Reference
 
-| Method | Path | Response |
-|---|---|---|
-| GET | `/api/command` | `{ location, data: CommandV2.Info[] }` |
-| GET | `/api/skill` | `{ location, data: SkillV2.Info[] }` |
-| GET | `/api/reference` | `{ location, data: Reference.Info[] }` |
+| Method | Path             | Response                               |
+| ------ | ---------------- | -------------------------------------- |
+| GET    | `/api/command`   | `{ location, data: CommandV2.Info[] }` |
+| GET    | `/api/skill`     | `{ location, data: SkillV2.Info[] }`   |
+| GET    | `/api/reference` | `{ location, data: Reference.Info[] }` |
 
 `SkillV2.Info`:
+
 ```ts
 {
   name: string
@@ -631,6 +656,7 @@ All session routes use `:sessionID` (prefixed `ses_`).
 ```
 
 `Reference.Info`:
+
 ```ts
 {
   name: string
@@ -645,17 +671,18 @@ All session routes use `:sessionID` (prefixed `ses_`).
 
 `Pty.ID` is prefixed `pty_`.
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| GET | `/api/pty` | – | `{ location, data: Pty.Info[] }` | 400, 401 |
-| POST | `/api/pty` | `{ command?, args?, cwd?, title?, env?: Record<string,string> }` | `{ location, data: Pty.Info }` | 400, 401 |
-| GET | `/api/pty/{ptyID}` | – | `{ location, data: Pty.Info }` | 400, 401, 404 |
-| PUT | `/api/pty/{ptyID}` | `{ title?, size?: { rows, cols } }` | `{ location, data: Pty.Info }` | 400, 401, 404 |
-| DELETE | `/api/pty/{ptyID}` | – | `204` | 400, 401, 404 |
-| POST | `/api/pty/{ptyID}/connect-token` | requires header `x-opencode-ticket: 1` and `Origin` matching allowed CORS list | `{ location, data: { ticket, expires_in } }` | 400, 401, 403, 404 |
-| GET | `/api/pty/{ptyID}/connect` | query `?ticket=…`, `?cursor=<n>`, `?location[directory/workspace]` | **WebSocket upgrade** (`x-websocket: true`); on missing pty returns 404, bad ticket returns 403 | 400, 401, 403, 404 |
+| Method | Path                             | Body                                                                           | Success                                                                                         | Errors             |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------ |
+| GET    | `/api/pty`                       | –                                                                              | `{ location, data: Pty.Info[] }`                                                                | 400, 401           |
+| POST   | `/api/pty`                       | `{ command?, args?, cwd?, title?, env?: Record<string,string> }`               | `{ location, data: Pty.Info }`                                                                  | 400, 401           |
+| GET    | `/api/pty/{ptyID}`               | –                                                                              | `{ location, data: Pty.Info }`                                                                  | 400, 401, 404      |
+| PUT    | `/api/pty/{ptyID}`               | `{ title?, size?: { rows, cols } }`                                            | `{ location, data: Pty.Info }`                                                                  | 400, 401, 404      |
+| DELETE | `/api/pty/{ptyID}`               | –                                                                              | `204`                                                                                           | 400, 401, 404      |
+| POST   | `/api/pty/{ptyID}/connect-token` | requires header `x-opencode-ticket: 1` and `Origin` matching allowed CORS list | `{ location, data: { ticket, expires_in } }`                                                    | 400, 401, 403, 404 |
+| GET    | `/api/pty/{ptyID}/connect`       | query `?ticket=…`, `?cursor=<n>`, `?location[directory/workspace]`             | **WebSocket upgrade** (`x-websocket: true`); on missing pty returns 404, bad ticket returns 403 | 400, 401, 403, 404 |
 
 `Pty.Info`:
+
 ```ts
 {
   id, title, command, args, cwd, status: "running"|"exited", pid, exitCode?
@@ -677,11 +704,11 @@ TTL is 60s (`packages/core/src/pty/ticket.ts`).
 
 ### 6.10 Project Copy (experimental)
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| POST | `/experimental/project/{projectID}/copy` | `{ strategy, directory, name? }` | `ProjectCopy.Copy` (`{ directory }`) | 400 |
-| DELETE | `/experimental/project/{projectID}/copy` | `{ directory, force }` | `204` | 400 |
-| POST | `/experimental/project/{projectID}/copy/refresh` | – | `204` | 400 |
+| Method | Path                                             | Body                             | Success                              | Errors |
+| ------ | ------------------------------------------------ | -------------------------------- | ------------------------------------ | ------ |
+| POST   | `/experimental/project/{projectID}/copy`         | `{ strategy, directory, name? }` | `ProjectCopy.Copy` (`{ directory }`) | 400    |
+| DELETE | `/experimental/project/{projectID}/copy`         | `{ directory, force }`           | `204`                                | 400    |
+| POST   | `/experimental/project/{projectID}/copy/refresh` | –                                | `204`                                | 400    |
 
 All take `?location[directory/workspace]`.
 
@@ -712,22 +739,22 @@ namespace maps to the `/api/...` routes above.
 All error responses are JSON objects with a `_tag` discriminator.
 Sources: `packages/protocol/src/errors.ts` + `packages/server/src/middleware/schema-error.ts`.
 
-| Status | `_tag` | Extra fields |
-|---|---|---|
-| 400 | `InvalidRequestError` | `message`, optional `kind`, optional `field` |
-| 400 | `InvalidCursorError` | `message` |
-| 401 | `UnauthorizedError` | `message` |
-| 403 | `ForbiddenError` | `message` (e.g. PTY ticket without CORS) |
-| 404 | `SessionNotFoundError` | `sessionID`, `message` |
-| 404 | `MessageNotFoundError` | `sessionID`, `messageID`, `message` |
-| 404 | `PermissionNotFoundError` | `requestID`, `message` |
-| 404 | `QuestionNotFoundError` | `requestID`, `message` |
-| 404 | `ProviderNotFoundError` | `providerID`, `message` |
-| 404 | `PtyNotFoundError` | `ptyID`, `message` |
-| 404 | `NotFoundError` (legacy, raw handler) | `message` |
-| 409 | `ConflictError` | `message`, optional `resource` |
-| 500 | `UnknownError` | `message`, optional `ref` (`err_<8-hex>`) |
-| 503 | `ServiceUnavailableError` | `message`, optional `service` |
+| Status | `_tag`                                | Extra fields                                 |
+| ------ | ------------------------------------- | -------------------------------------------- |
+| 400    | `InvalidRequestError`                 | `message`, optional `kind`, optional `field` |
+| 400    | `InvalidCursorError`                  | `message`                                    |
+| 401    | `UnauthorizedError`                   | `message`                                    |
+| 403    | `ForbiddenError`                      | `message` (e.g. PTY ticket without CORS)     |
+| 404    | `SessionNotFoundError`                | `sessionID`, `message`                       |
+| 404    | `MessageNotFoundError`                | `sessionID`, `messageID`, `message`          |
+| 404    | `PermissionNotFoundError`             | `requestID`, `message`                       |
+| 404    | `QuestionNotFoundError`               | `requestID`, `message`                       |
+| 404    | `ProviderNotFoundError`               | `providerID`, `message`                      |
+| 404    | `PtyNotFoundError`                    | `ptyID`, `message`                           |
+| 404    | `NotFoundError` (legacy, raw handler) | `message`                                    |
+| 409    | `ConflictError`                       | `message`, optional `resource`               |
+| 500    | `UnknownError`                        | `message`, optional `ref` (`err_<8-hex>`)    |
+| 503    | `ServiceUnavailableError`             | `message`, optional `service`                |
 
 The schema-error middleware truncates reasons to 1024 characters before
 returning.
@@ -758,6 +785,7 @@ For each v2 method the SDK call shape matches exactly the type shown in §6
 (e.g. `client.v2.session.prompt({ sessionID, id?, prompt, delivery?, resume? })`).
 
 Entry point (`packages/sdk/js/src/v2/client.ts:50`):
+
 ```ts
 createOpencodeClient({
   baseUrl?: string,                 // default "http://localhost:4096"
@@ -844,18 +872,22 @@ message.
 
 ```ts
 const base = "http://127.0.0.1:4096"
-const auth = "Basic " + Buffer.from(`opencode:${process.env.OPENCODE_SERVER_PASSWORD}`).toString("base64")
+const auth =
+  "Basic " + Buffer.from(`opencode:${process.env.OPENCODE_SERVER_PASSWORD}`).toString("base64")
 const headers = {
-  "Authorization": auth,
+  Authorization: auth,
   "x-opencode-directory": encodeURIComponent("/path/to/project"),
-  "Content-Type": "application/json"
+  "Content-Type": "application/json",
 }
 
 // Create session
 const created = await fetch(`${base}/api/session`, {
   method: "POST",
   headers,
-  body: JSON.stringify({ agent: "build", model: { id: "claude-3-5-sonnet", providerID: "anthropic" } })
+  body: JSON.stringify({
+    agent: "build",
+    model: { id: "claude-3-5-sonnet", providerID: "anthropic" },
+  }),
 }).then((r) => r.json())
 const sessionID = created.data.id
 
@@ -863,14 +895,16 @@ const sessionID = created.data.id
 await fetch(`${base}/api/session/${sessionID}/prompt`, {
   method: "POST",
   headers,
-  body: JSON.stringify({ prompt: { text: "Refactor foo() to use Result" } })
+  body: JSON.stringify({ prompt: { text: "Refactor foo() to use Result" } }),
 })
 
 // Wait
 await fetch(`${base}/api/session/${sessionID}/wait`, { method: "POST", headers })
 
 // Read context (post-compaction)
-const ctx = await fetch(`${base}/api/session/${sessionID}/context`, { headers }).then((r) => r.json())
+const ctx = await fetch(`${base}/api/session/${sessionID}/context`, { headers }).then((r) =>
+  r.json(),
+)
 console.log(ctx.data)
 ```
 
@@ -878,7 +912,7 @@ console.log(ctx.data)
 
 ```ts
 const sse = await fetch(`${base}/api/event`, {
-  headers: { Authorization: auth, Accept: "text/event-stream" }
+  headers: { Authorization: auth, Accept: "text/event-stream" },
 })
 const reader = sse.body!.getReader()
 const decoder = new TextDecoder()
@@ -889,15 +923,21 @@ for (;;) {
   buf += decoder.decode(value, { stream: true })
   let idx
   while ((idx = buf.indexOf("\n\n")) !== -1) {
-    const frame = buf.slice(0, idx); buf = buf.slice(idx + 2)
-    const data = frame.split("\n").filter((l) => l.startsWith("data: ")).map((l) => l.slice(6)).join("")
-    if (!data || data.startsWith(":")) continue          // heartbeat or comment
-    const evt = JSON.parse(data)                         // { id, type, data, ... }
+    const frame = buf.slice(0, idx)
+    buf = buf.slice(idx + 2)
+    const data = frame
+      .split("\n")
+      .filter((l) => l.startsWith("data: "))
+      .map((l) => l.slice(6))
+      .join("")
+    if (!data || data.startsWith(":")) continue // heartbeat or comment
+    const evt = JSON.parse(data) // { id, type, data, ... }
     if (evt.type === "session.next.text.delta") process.stdout.write(evt.data.delta)
     if (evt.type === "permission.v2.asked") {
       await fetch(`${base}/api/session/${evt.data.sessionID}/permission/${evt.data.id}/reply`, {
-        method: "POST", headers,
-        body: JSON.stringify({ reply: "once" })
+        method: "POST",
+        headers,
+        body: JSON.stringify({ reply: "once" }),
       })
     }
   }
@@ -910,13 +950,13 @@ for (;;) {
 // 1. Mint a ticket (requires CORS-allowed Origin and x-opencode-ticket header).
 const tok = await fetch(`${base}/api/pty/${ptyID}/connect-token`, {
   method: "POST",
-  headers: { ...headers, "x-opencode-ticket": "1", Origin: "http://localhost:5173" }
+  headers: { ...headers, "x-opencode-ticket": "1", Origin: "http://localhost:5173" },
 }).then((r) => r.json())
 const ticket = tok.data.ticket
 
 // 2. Open WS
 const ws = new WebSocket(
-  `ws://127.0.0.1:4096/api/pty/${ptyID}/connect?location[directory]=${encodeURIComponent(dir)}&ticket=${ticket}`
+  `ws://127.0.0.1:4096/api/pty/${ptyID}/connect?location[directory]=${encodeURIComponent(dir)}&ticket=${ticket}`,
 )
 ws.onmessage = (ev) => {
   const data = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data) : ev.data
@@ -927,7 +967,7 @@ ws.onmessage = (ev) => {
     process.stdout.write(String(data))
   }
 }
-ws.onopen = () => ws.send("ls -la\n")                    // terminal input
+ws.onopen = () => ws.send("ls -la\n") // terminal input
 ```
 
 ### 10.4 SDK helper
@@ -938,15 +978,15 @@ import { createOpencode } from "@opencode-ai/sdk"
 const { server, client } = await createOpencode({
   hostname: "127.0.0.1",
   port: 4096,
-  config: { /* full Config object, JSON-serialized into OPENCODE_CONFIG_CONTENT */ },
+  config: {/* full Config object, JSON-serialized into OPENCODE_CONFIG_CONTENT */},
 })
 
 const session = await client.v2.session.create({
-  body: { agent: "build" }
+  body: { agent: "build" },
 })
 await client.v2.session.prompt({
   path: { sessionID: session.data.id },
-  body: { prompt: { text: "Hi" } }
+  body: { prompt: { text: "Hi" } },
 })
 await client.v2.session.wait({ path: { sessionID: session.data.id } })
 
@@ -968,7 +1008,7 @@ Skill, Event, Pty, Question, Reference, ProjectCopy) plus the full
 instance/root surface (config, control, experimental, file, find, formatter,
 global, instance, mcp, part, path, permission(v1), project, provider,
 question(v1), session(v1), sync, tool, tui, vcs, worktree, workspace, pty,
-etc.). `/api/...` tags use `"opencode HttpApi"` *or* the legacy title
+etc.). `/api/...` tags use `"opencode HttpApi"` _or_ the legacy title
 (e.g. `"events"`, `"sessions"`, `"messages"`, `"filesystem"`,
 `"projectCopy"`, `"session questions"`, `"pty"`, `"commands"`,
 `"integrations"`, `"providers"`, `"models"`, `"skills"`, `"permissions"`,
@@ -983,6 +1023,7 @@ $ bun ./script/build.ts         # packages/sdk/js/script/build.ts
 ```
 
 The SDK build also patches:
+
 - Numeric types on `session.history` `limit`/`after` (Hey-Api codegen bug).
 - `SessionNext*1` orphan-component cleanup (only top-level reachable schemas
   are kept).
@@ -1038,44 +1079,44 @@ The SDK build also patches:
 
 ### 12.1 ID prefixes
 
-| Domain | Prefix |
-|---|---|
-| Event | `evt_` |
-| Session | `ses_` |
-| Session message | `msg_` |
-| Permission (v2) | `per_` |
-| Question (v2) | `que_` |
-| Pty | `pty_` |
-| Credential | `cred_` |
-| Permission Saved | `psv_` |
-| Workspace | (raw) |
-| Project | (raw) |
-| Provider | (raw) |
-| Model | (raw) |
-| Agent | (raw) |
-| Plugin | (raw) |
+| Domain           | Prefix  |
+| ---------------- | ------- |
+| Event            | `evt_`  |
+| Session          | `ses_`  |
+| Session message  | `msg_`  |
+| Permission (v2)  | `per_`  |
+| Question (v2)    | `que_`  |
+| Pty              | `pty_`  |
+| Credential       | `cred_` |
+| Permission Saved | `psv_`  |
+| Workspace        | (raw)   |
+| Project          | (raw)   |
+| Provider         | (raw)   |
+| Model            | (raw)   |
+| Agent            | (raw)   |
+| Plugin           | (raw)   |
 
 ### 12.2 Default ports
 
-| Setting | Default |
-|---|---|
-| `opencode serve` port | `4096` (when `--port=0`; falls back to OS-assigned) |
-| SDK `createOpencodeServer` | `4096`, `127.0.0.1` |
-| SDK `createOpencodeClient` baseUrl | `http://localhost:4096` |
-| PTY ticket TTL | 60s |
-| SSE heartbeat | 15s |
-| PTY replay chunk | 64 KB |
-| Graceful shutdown timeout | 1 second |
+| Setting                            | Default                                             |
+| ---------------------------------- | --------------------------------------------------- |
+| `opencode serve` port              | `4096` (when `--port=0`; falls back to OS-assigned) |
+| SDK `createOpencodeServer`         | `4096`, `127.0.0.1`                                 |
+| SDK `createOpencodeClient` baseUrl | `http://localhost:4096`                             |
+| PTY ticket TTL                     | 60s                                                 |
+| SSE heartbeat                      | 15s                                                 |
+| PTY replay chunk                   | 64 KB                                               |
+| Graceful shutdown timeout          | 1 second                                            |
 
 ### 12.3 Endpoint count by surface
 
-| Surface | Routes |
-|---|---|
-| `/api/...` (v2) | 47 endpoints (18 groups) |
-| `/session/...`, `/file/...`, `/mcp/...`, `/tool/...`, `/find/...`, `/project/...`, `/config/...`, etc. (instance) | ~120 endpoints |
-| `/global/...`, `/control/...`, `/controlPlane/...` (root) | ~15 endpoints |
-| `/experimental/...` | ~25 endpoints |
-| **Total in OpenAPI** | ≈210 operations |
+| Surface                                                                                                           | Routes                   |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `/api/...` (v2)                                                                                                   | 47 endpoints (18 groups) |
+| `/session/...`, `/file/...`, `/mcp/...`, `/tool/...`, `/find/...`, `/project/...`, `/config/...`, etc. (instance) | ~120 endpoints           |
+| `/global/...`, `/control/...`, `/controlPlane/...` (root)                                                         | ~15 endpoints            |
+| `/experimental/...`                                                                                               | ~25 endpoints            |
+| **Total in OpenAPI**                                                                                              | ≈210 operations          |
 
 ---
 
@@ -1083,28 +1124,28 @@ The SDK build also patches:
 
 Use these paths to verify or extend the spec.
 
-| Topic | Path |
-|---|---|
-| Server composition | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/routes.ts` |
-| Handlers (server side) | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/handlers/{health,location,agent,session,message,model,provider,integration,credential,permission,fs,command,skill,event,pty,question,reference,project-copy}.ts` |
-| Middleware | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/middleware/{authorization,schema-error,session-location}.ts` |
-| Auth helpers | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/auth.ts`, `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/server/auth.ts` |
-| Cors allowlist | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/cors.ts` |
-| Server entrypoint | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/server/server.ts` |
-| CLI command | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/cli/cmd/serve.ts` |
-| Network options | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/cli/network.ts` |
-| Public OpenAPI factory | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/server/routes/instance/httpapi/public.ts` |
-| V2 protocol (v2 routes) | `/home/user/shenyaxuan/Maximilian/opencode/packages/protocol/src/groups/*.ts` |
-| V2 API composition | `/home/user/shenyaxuan/Maximilian/opencode/packages/protocol/src/api.ts` |
-| Errors | `/home/user/shenyaxuan/Maximilian/opencode/packages/protocol/src/errors.ts` |
-| Schemas | `/home/user/shenyaxuan/Maximilian/opencode/packages/schema/src/*.ts` |
-| Event manifest | `/home/user/shenyaxuan/Maximilian/opencode/packages/schema/src/event-manifest.ts` |
-| SDK v2 client | `/home/user/shenyaxuan/Maximilian/opencode/packages/sdk/js/src/v2/{client,server,data,index}.ts` |
-| SDK v2 generated types | `/home/user/shenyaxuan/Maximilian/opencode/packages/sdk/js/src/v2/gen/{sdk,types}.gen.ts` |
-| SDK v2 build script | `/home/user/shenyaxuan/Maximilian/opencode/packages/sdk/js/script/build.ts` |
-| OpenAPI generation | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/cli/cmd/generate.ts` |
-| Public OpenAPI JSON | `/home/user/shenyaxuan/Maximilian/opencode/packages/sdk/openapi.json` and `/home/user/shenyaxuan/Maximilian/opencode/packages/docs/openapi.json` |
-| PTY wire protocol | `/home/user/shenyaxuan/Maximilian/opencode/packages/core/src/pty/protocol.ts` |
-| PTY ticket store | `/home/user/shenyaxuan/Maximilian/opencode/packages/core/src/pty/ticket.ts` |
-| WebSocket tracker | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/server/routes/instance/httpapi/websocket-tracker.ts` |
-| Env / Flag table | `/home/user/shenyaxuan/Maximilian/opencode/packages/core/src/flag/flag.ts` |
+| Topic                   | Path                                                                                                                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Server composition      | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/routes.ts`                                                                                                                                                       |
+| Handlers (server side)  | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/handlers/{health,location,agent,session,message,model,provider,integration,credential,permission,fs,command,skill,event,pty,question,reference,project-copy}.ts` |
+| Middleware              | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/middleware/{authorization,schema-error,session-location}.ts`                                                                                                     |
+| Auth helpers            | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/auth.ts`, `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/server/auth.ts`                                                                       |
+| Cors allowlist          | `/home/user/shenyaxuan/Maximilian/opencode/packages/server/src/cors.ts`                                                                                                                                                         |
+| Server entrypoint       | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/server/server.ts`                                                                                                                                              |
+| CLI command             | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/cli/cmd/serve.ts`                                                                                                                                              |
+| Network options         | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/cli/network.ts`                                                                                                                                                |
+| Public OpenAPI factory  | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/server/routes/instance/httpapi/public.ts`                                                                                                                      |
+| V2 protocol (v2 routes) | `/home/user/shenyaxuan/Maximilian/opencode/packages/protocol/src/groups/*.ts`                                                                                                                                                   |
+| V2 API composition      | `/home/user/shenyaxuan/Maximilian/opencode/packages/protocol/src/api.ts`                                                                                                                                                        |
+| Errors                  | `/home/user/shenyaxuan/Maximilian/opencode/packages/protocol/src/errors.ts`                                                                                                                                                     |
+| Schemas                 | `/home/user/shenyaxuan/Maximilian/opencode/packages/schema/src/*.ts`                                                                                                                                                            |
+| Event manifest          | `/home/user/shenyaxuan/Maximilian/opencode/packages/schema/src/event-manifest.ts`                                                                                                                                               |
+| SDK v2 client           | `/home/user/shenyaxuan/Maximilian/opencode/packages/sdk/js/src/v2/{client,server,data,index}.ts`                                                                                                                                |
+| SDK v2 generated types  | `/home/user/shenyaxuan/Maximilian/opencode/packages/sdk/js/src/v2/gen/{sdk,types}.gen.ts`                                                                                                                                       |
+| SDK v2 build script     | `/home/user/shenyaxuan/Maximilian/opencode/packages/sdk/js/script/build.ts`                                                                                                                                                     |
+| OpenAPI generation      | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/cli/cmd/generate.ts`                                                                                                                                           |
+| Public OpenAPI JSON     | `/home/user/shenyaxuan/Maximilian/opencode/packages/sdk/openapi.json` and `/home/user/shenyaxuan/Maximilian/opencode/packages/docs/openapi.json`                                                                                |
+| PTY wire protocol       | `/home/user/shenyaxuan/Maximilian/opencode/packages/core/src/pty/protocol.ts`                                                                                                                                                   |
+| PTY ticket store        | `/home/user/shenyaxuan/Maximilian/opencode/packages/core/src/pty/ticket.ts`                                                                                                                                                     |
+| WebSocket tracker       | `/home/user/shenyaxuan/Maximilian/opencode/packages/opencode/src/server/routes/instance/httpapi/websocket-tracker.ts`                                                                                                           |
+| Env / Flag table        | `/home/user/shenyaxuan/Maximilian/opencode/packages/core/src/flag/flag.ts`                                                                                                                                                      |

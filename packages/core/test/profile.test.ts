@@ -7,7 +7,12 @@
  * Profile + ProfileRegistry tests (借鉴 Open Interpreter Profile).
  */
 import { describe, it, expect } from "vitest"
-import { ProfileRegistry, BUILT_IN_PROFILES, type RoleRegistry, type ToolRegistry } from "../src/profile.js"
+import {
+  ProfileRegistry,
+  BUILT_IN_PROFILES,
+  type RoleRegistry,
+  type ToolRegistry,
+} from "../src/profile.js"
 
 /** Minimal mock implementations of the registry interfaces. */
 const mockRoleRegistry: RoleRegistry = {

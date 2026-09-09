@@ -23,17 +23,17 @@
  * No other file in the repo should need to change.
  */
 
-import { createRequire } from "node:module";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { createRequire } from "node:module"
+import { existsSync, readFileSync } from "node:fs"
+import { dirname, resolve } from "node:path"
 
-const require = createRequire(import.meta.url);
+const require = createRequire(import.meta.url)
 
 /**
  * Coarse version bucket. We intentionally collapse patch + minor into the
  * major so the adapter layer doesn't need an O(n) switch on every call.
  */
-export type MajorVersion = number;
+export type MajorVersion = number
 
 /**
  * Read the installed version of an upstream package without importing it.
@@ -48,32 +48,32 @@ export type MajorVersion = number;
  */
 export function detectVersion(pkg: string): MajorVersion | null {
   try {
-    const pkgJsonPath = require.resolve(`${pkg}/package.json`);
-    const raw = readFileSync(pkgJsonPath, "utf8");
-    const parsed = JSON.parse(raw) as { version?: string };
-    if (typeof parsed.version !== "string") return null;
-    const major = Number.parseInt(parsed.version.split(".")[0] ?? "", 10);
-    return Number.isFinite(major) ? major : null;
+    const pkgJsonPath = require.resolve(`${pkg}/package.json`)
+    const raw = readFileSync(pkgJsonPath, "utf8")
+    const parsed = JSON.parse(raw) as { version?: string }
+    if (typeof parsed.version !== "string") return null
+    const major = Number.parseInt(parsed.version.split(".")[0] ?? "", 10)
+    return Number.isFinite(major) ? major : null
   } catch {
     // Fallback: walk up looking for node_modules/<pkg>/package.json.
     try {
-      let dir = dirname(new URL(import.meta.url).pathname);
+      let dir = dirname(new URL(import.meta.url).pathname)
       for (let i = 0; i < 6; i++) {
-        const candidate = resolve(dir, "node_modules", pkg, "package.json");
+        const candidate = resolve(dir, "node_modules", pkg, "package.json")
         if (existsSync(candidate)) {
-          const raw = readFileSync(candidate, "utf8");
-          const parsed = JSON.parse(raw) as { version?: string };
+          const raw = readFileSync(candidate, "utf8")
+          const parsed = JSON.parse(raw) as { version?: string }
           if (typeof parsed.version === "string") {
-            const major = Number.parseInt(parsed.version.split(".")[0] ?? "", 10);
-            return Number.isFinite(major) ? major : null;
+            const major = Number.parseInt(parsed.version.split(".")[0] ?? "", 10)
+            return Number.isFinite(major) ? major : null
           }
         }
-        dir = dirname(dir);
+        dir = dirname(dir)
       }
     } catch {
       /* swallow — return null */
     }
-    return null;
+    return null
   }
 }
 
@@ -83,7 +83,7 @@ export function detectVersion(pkg: string): MajorVersion | null {
  * currently depend on, so new consumers get the tested path.
  */
 export function resolveMajor(pkg: string, fallback: MajorVersion): MajorVersion {
-  return detectVersion(pkg) ?? fallback;
+  return detectVersion(pkg) ?? fallback
 }
 
 /**
@@ -96,9 +96,9 @@ export function resolveMajor(pkg: string, fallback: MajorVersion): MajorVersion 
  *   - No new module to import just to ask "is this on?"
  */
 export function featureFlag(name: string, defaultValue: boolean): boolean {
-  const raw = process.env[`MAXIMILIAN_FEATURE_${name.toUpperCase()}`];
-  if (raw === undefined) return defaultValue;
-  return raw === "1" || raw.toLowerCase() === "true";
+  const raw = process.env[`MAXIMILIAN_FEATURE_${name.toUpperCase()}`]
+  if (raw === undefined) return defaultValue
+  return raw === "1" || raw.toLowerCase() === "true"
 }
 
 /**
@@ -112,6 +112,6 @@ export const KNOWN_MAJORS = {
   drizzle: [0] as const, // 0.x — we track minor in the adapter
   openai: [4] as const,
   anthropic: [0] as const, // 0.x — same
-} as const;
+} as const
 
-export type KnownPackage = keyof typeof KNOWN_MAJORS;
+export type KnownPackage = keyof typeof KNOWN_MAJORS

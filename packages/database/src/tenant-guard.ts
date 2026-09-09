@@ -19,39 +19,42 @@
 
 export interface TenantContext {
   /** The authenticated tenant id (from JWT or session). */
-  tenantId: string;
+  tenantId: string
   /** Source of the context (for logging). */
-  source: "jwt" | "session" | "header" | "system";
+  source: "jwt" | "session" | "header" | "system"
 }
 
-const TENANT_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
-const RESERVED_TENANT_IDS = new Set(["", "anonymous", "null", "undefined", "system"]);
+const TENANT_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/
+const RESERVED_TENANT_IDS = new Set(["", "anonymous", "null", "undefined", "system"])
 
 export class TenantGuardError extends Error {
-  constructor(message: string, public readonly code: string) {
-    super(message);
-    this.name = "TenantGuardError";
+  constructor(
+    message: string,
+    public readonly code: string,
+  ) {
+    super(message)
+    this.name = "TenantGuardError"
   }
 }
 
 /** Validate a tenant id before passing it to a store. */
 export function validateTenantId(tenantId: string | null | undefined): string {
   if (tenantId === null || tenantId === undefined) {
-    throw new TenantGuardError("tenant id is required", "TENANT_REQUIRED");
+    throw new TenantGuardError("tenant id is required", "TENANT_REQUIRED")
   }
   if (typeof tenantId !== "string") {
-    throw new TenantGuardError("tenant id must be a string", "TENANT_TYPE");
+    throw new TenantGuardError("tenant id must be a string", "TENANT_TYPE")
   }
   if (RESERVED_TENANT_IDS.has(tenantId)) {
-    throw new TenantGuardError(`tenant id "${tenantId}" is reserved`, "TENANT_RESERVED");
+    throw new TenantGuardError(`tenant id "${tenantId}" is reserved`, "TENANT_RESERVED")
   }
   if (!TENANT_ID_PATTERN.test(tenantId)) {
     throw new TenantGuardError(
       `tenant id "${tenantId}" must match ${TENANT_ID_PATTERN} (alphanum, dash, underscore, 1-64 chars)`,
       "TENANT_FORMAT",
-    );
+    )
   }
-  return tenantId;
+  return tenantId
 }
 
 /** Build a typed context from a raw value. */
@@ -59,8 +62,8 @@ export function makeTenantContext(
   tenantId: string | null | undefined,
   source: TenantContext["source"] = "jwt",
 ): TenantContext {
-  const id = validateTenantId(tenantId);
-  return Object.freeze({ tenantId: id, source });
+  const id = validateTenantId(tenantId)
+  return Object.freeze({ tenantId: id, source })
 }
 
 /**
@@ -68,8 +71,11 @@ export function makeTenantContext(
  * accept this directly, so the tenant id cannot be mutated between the
  * route handler and the store call.
  */
-export function scoped(tenantId: string | null | undefined, source: TenantContext["source"] = "jwt"): Readonly<TenantContext> {
-  return makeTenantContext(tenantId, source);
+export function scoped(
+  tenantId: string | null | undefined,
+  source: TenantContext["source"] = "jwt",
+): Readonly<TenantContext> {
+  return makeTenantContext(tenantId, source)
 }
 
 /** Assert that two scopes belong to the same tenant. Throws on mismatch. */
@@ -78,7 +84,7 @@ export function assertSameTenant(a: TenantContext, b: TenantContext): void {
     throw new TenantGuardError(
       `cross-tenant access blocked: ${a.tenantId} tried to access ${b.tenantId}`,
       "CROSS_TENANT",
-    );
+    )
   }
 }
 
@@ -94,7 +100,7 @@ export function sanitizeFilter<T extends Record<string, unknown>>(
     throw new TenantGuardError(
       `filter tenantId "${filter.tenantId}" does not match context "${ctx.tenantId}"`,
       "CROSS_TENANT",
-    );
+    )
   }
-  return { ...filter, tenantId: ctx.tenantId };
+  return { ...filter, tenantId: ctx.tenantId }
 }

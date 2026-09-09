@@ -80,11 +80,7 @@ export function TextReveal(props: TextRevealProps) {
 
     if (next === prev) return
 
-    if (
-      typeof next === "string" &&
-      typeof prev === "string" &&
-      next.startsWith(prev)
-    ) {
+    if (typeof next === "string" && typeof prev === "string" && next.startsWith(prev)) {
       setCur(next)
       widen(win())
       return

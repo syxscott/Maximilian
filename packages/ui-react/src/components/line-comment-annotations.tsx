@@ -10,11 +10,7 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "../lib/utils.js"
-import {
-  LineComment,
-  LineCommentEditor,
-  type LineCommentEditorProps,
-} from "./line-comment.js"
+import { LineComment, LineCommentEditor, type LineCommentEditorProps } from "./line-comment.js"
 
 export type LineCommentSelection = { start: number; end: number; side?: "additions" | "deletions" }
 
@@ -64,7 +60,9 @@ type NodeEntry = {
 }
 
 export interface LineCommentAnnotationRenderer {
-  render: <A extends { metadata: LineCommentAnnotationMeta<unknown> }>(annotation: A) => HTMLElement | undefined
+  render: <A extends { metadata: LineCommentAnnotationMeta<unknown> }>(
+    annotation: A,
+  ) => HTMLElement | undefined
   reconcile: <A extends { metadata: LineCommentAnnotationMeta<unknown> }>(annotations: A[]) => void
   cleanup: () => void
 }
@@ -139,55 +137,53 @@ function renderInto<T>(
   renderDraft: (range: LineCommentSelection) => DraftProps,
 ) {
   const root = createPortal(
-    meta.kind === "comment" ? (
-      (() => {
-        const view = renderComment(meta.comment)
-        return view.editor ? (
-          <LineCommentEditor
-            inline
-            id={view.id}
-            value={view.editor.value}
-            selection={view.editor.selection as ReactNode}
-            onInput={view.editor.onInput}
-            onCancel={view.editor.onCancel}
-            onSubmit={view.editor.onSubmit}
-            onPopoverFocusOut={view.editor.onPopoverFocusOut}
-            cancelLabel={view.editor.cancelLabel}
-            submitLabel={view.editor.submitLabel}
-            mention={view.editor.mention}
-          />
-        ) : (
-          <LineComment
-            inline
-            id={view.id}
-            open={view.open}
-            comment={view.comment}
-            selection={view.selection as ReactNode}
-            actions={view.actions}
-            onClick={view.onClick}
-            onMouseEnter={view.onMouseEnter}
-          />
-        )
-      })()
-    ) : (
-      (() => {
-        const view = renderDraft(meta.range)
-        return (
-          <LineCommentEditor
-            inline
-            value={view.value}
-            selection={view.selection as ReactNode}
-            onInput={view.onInput}
-            onCancel={view.onCancel}
-            onSubmit={view.onSubmit}
-            onPopoverFocusOut={view.onPopoverFocusOut}
-            cancelLabel={view.cancelLabel}
-            submitLabel={view.submitLabel}
-            mention={view.mention}
-          />
-        )
-      })()
-    ),
+    meta.kind === "comment"
+      ? (() => {
+          const view = renderComment(meta.comment)
+          return view.editor ? (
+            <LineCommentEditor
+              inline
+              id={view.id}
+              value={view.editor.value}
+              selection={view.editor.selection as ReactNode}
+              onInput={view.editor.onInput}
+              onCancel={view.editor.onCancel}
+              onSubmit={view.editor.onSubmit}
+              onPopoverFocusOut={view.editor.onPopoverFocusOut}
+              cancelLabel={view.editor.cancelLabel}
+              submitLabel={view.editor.submitLabel}
+              mention={view.editor.mention}
+            />
+          ) : (
+            <LineComment
+              inline
+              id={view.id}
+              open={view.open}
+              comment={view.comment}
+              selection={view.selection as ReactNode}
+              actions={view.actions}
+              onClick={view.onClick}
+              onMouseEnter={view.onMouseEnter}
+            />
+          )
+        })()
+      : (() => {
+          const view = renderDraft(meta.range)
+          return (
+            <LineCommentEditor
+              inline
+              value={view.value}
+              selection={view.selection as ReactNode}
+              onInput={view.onInput}
+              onCancel={view.onCancel}
+              onSubmit={view.onSubmit}
+              onPopoverFocusOut={view.onPopoverFocusOut}
+              cancelLabel={view.cancelLabel}
+              submitLabel={view.submitLabel}
+              mention={view.mention}
+            />
+          )
+        })(),
     host,
   )
   return root
@@ -246,7 +242,10 @@ export interface LineCommentControllerProps<T extends LineCommentShape> {
   onSubmit: (input: { comment: string; selection: LineCommentSelection }) => void
   onUpdate?: (input: { id: string; comment: string; selection: LineCommentSelection }) => void
   onDelete?: (comment: T) => void
-  renderCommentActions?: (comment: T, controls: { edit: () => void; remove: () => void }) => ReactNode
+  renderCommentActions?: (
+    comment: T,
+    controls: { edit: () => void; remove: () => void },
+  ) => ReactNode
   editSubmitLabel?: string
   cancelDraftOnCommentToggle?: boolean
   clearSelectionOnSelectionEndNull?: boolean
@@ -311,28 +310,22 @@ export function useLineCommentController<T extends LineCommentShape>(
     [props.cancelDraftOnCommentToggle, cancelDraft],
   )
 
-  const openDraft = useCallback(
-    (range: LineCommentSelection) => {
-      const next = cloneRange(range)
-      setDraft("")
-      setEditingId(null)
-      setOpenedId(null)
-      setSelected(next)
-      setCommenting(next)
-    },
-    [],
-  )
+  const openDraft = useCallback((range: LineCommentSelection) => {
+    const next = cloneRange(range)
+    setDraft("")
+    setEditingId(null)
+    setOpenedId(null)
+    setSelected(next)
+    setCommenting(next)
+  }, [])
 
-  const openEditor = useCallback(
-    (id: string, range: LineCommentSelection, value: string) => {
-      setOpenedId(null)
-      setSelected(cloneRange(range))
-      setCommenting(null)
-      setEditingId(id)
-      setDraft(value)
-    },
-    [],
-  )
+  const openEditor = useCallback((id: string, range: LineCommentSelection, value: string) => {
+    setOpenedId(null)
+    setSelected(cloneRange(range))
+    setCommenting(null)
+    setEditingId(id)
+    setDraft(value)
+  }, [])
 
   const finishSelection = useCallback(
     (range: LineCommentSelection | null) => {
@@ -351,10 +344,10 @@ export function useLineCommentController<T extends LineCommentShape>(
     setCommenting(null)
   }, [])
 
-  const isOpen = useCallback((id: string) => openedId === id || editingId === id, [
-    openedId,
-    editingId,
-  ])
+  const isOpen = useCallback(
+    (id: string) => openedId === id || editingId === id,
+    [openedId, editingId],
+  )
 
   const isEditing = useCallback((id: string) => editingId === id, [editingId])
 
@@ -388,9 +381,7 @@ export interface UseManagedAnnotationRendererOptions<T> {
   renderDraft: (range: LineCommentSelection) => DraftProps
 }
 
-export function useManagedAnnotationRenderer<T>(
-  options: UseManagedAnnotationRendererOptions<T>,
-): {
+export function useManagedAnnotationRenderer<T>(options: UseManagedAnnotationRendererOptions<T>): {
   renderAnnotation: (annotation: LineCommentAnnotation<T>) => HTMLElement | undefined
 } {
   const rendererRef = useRef<LineCommentAnnotationRenderer | null>(null)
@@ -414,6 +405,8 @@ export function useManagedAnnotationRenderer<T>(
 
   return {
     renderAnnotation: (annotation) =>
-      rendererRef.current?.render(annotation as unknown as { metadata: LineCommentAnnotationMeta<unknown> }),
+      rendererRef.current?.render(
+        annotation as unknown as { metadata: LineCommentAnnotationMeta<unknown> },
+      ),
   }
 }

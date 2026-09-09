@@ -85,7 +85,7 @@ export function DialogStash(props: DialogStashProps) {
                 <Text color={isSelected ? "green" : toDelete === value ? "red" : undefined}>
                   {label}
                 </Text>
-                {description && <Text dimColor>  {description}</Text>}
+                {description && <Text dimColor> {description}</Text>}
               </Box>
               {footer && <Text dimColor>{footer}</Text>}
             </Box>
@@ -101,7 +101,12 @@ export function DialogStash(props: DialogStashProps) {
   )
 }
 
-DialogStash.confirmDelete = (item: { value: number }, current?: number, set?: (n?: number) => void, remove?: (n: number) => void) => {
+DialogStash.confirmDelete = (
+  item: { value: number },
+  current?: number,
+  set?: (n?: number) => void,
+  remove?: (n: number) => void,
+) => {
   if (current === item.value) {
     remove?.(item.value)
     set?.(undefined)

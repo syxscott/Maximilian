@@ -27,15 +27,11 @@ function pick(variant: Variant) {
   return
 }
 
-function mix(
-  style: CSSProperties | string | undefined,
-  value?: string
-): CSSProperties | undefined {
+function mix(style: CSSProperties | string | undefined, value?: string): CSSProperties | undefined {
   if (!value) {
     return typeof style === "string" ? undefined : style
   }
-  const base: CSSProperties =
-    typeof style === "string" ? {} : { ...(style ?? {}) }
+  const base: CSSProperties = typeof style === "string" ? {} : { ...(style ?? {}) }
   ;(base as Record<string, string | number>)["--card-accent"] = value
   return base
 }
@@ -60,7 +56,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
         {children}
       </div>
     )
-  }
+  },
 )
 Card.displayName = "Card"
 
@@ -75,55 +71,37 @@ export const CardTitle = forwardRef<HTMLDivElement, CardTitleProps>(
     const placeholder = !name
 
     return (
-      <div
-        ref={ref}
-        data-slot="card-title"
-        className={className}
-        {...rest}
-      >
+      <div ref={ref} data-slot="card-title" className={className} {...rest}>
         {show ? (
-          <span
-            data-slot="card-title-icon"
-            data-placeholder={placeholder || undefined}
-          >
+          <span data-slot="card-title-icon" data-placeholder={placeholder || undefined}>
             <Icon name={name ?? "dash"} size="small" />
           </span>
         ) : null}
         {children}
       </div>
     )
-  }
+  },
 )
 CardTitle.displayName = "CardTitle"
 
 export const CardDescription = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, children, ...rest }, ref) => {
     return (
-      <div
-        ref={ref}
-        data-slot="card-description"
-        className={className}
-        {...rest}
-      >
+      <div ref={ref} data-slot="card-description" className={className} {...rest}>
         {children}
       </div>
     )
-  }
+  },
 )
 CardDescription.displayName = "CardDescription"
 
 export const CardActions = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, children, ...rest }, ref) => {
     return (
-      <div
-        ref={ref}
-        data-slot="card-actions"
-        className={className}
-        {...rest}
-      >
+      <div ref={ref} data-slot="card-actions" className={className} {...rest}>
         {children}
       </div>
     )
-  }
+  },
 )
 CardActions.displayName = "CardActions"

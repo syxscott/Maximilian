@@ -314,25 +314,25 @@ DAGS.compose(userRequest) {
 
 ## Phase 6.5 vs Phase 7 — Truth Audit Comparison
 
-| Module | Phase 6.5 Verdict | Phase 7 Verdict |
-|---|---|---|
-| `DAGS.compose` | TRUE CORE | TRUE CORE |
-| `evolutionAwareFactory` | TRUE CORE | TRUE CORE |
-| `ModelAssigner` / `ModelSelector` | TRUE CORE | TRUE CORE |
-| `MemoryAugmentedAgent` | TRUE CORE | TRUE CORE |
-| `AgentRuntime` | TRUE CORE | TRUE CORE |
-| `EvolutionFacade.recordCompletion` | TRUE CORE | TRUE CORE |
-| `MetaAgent` | SHADOW (decisions not applied) | SHADOW (only `create` gated; merge/split still log-only) |
-| `TeamOptimizer` | SHADOW (hints only output) | **SHADOW → PARTIAL CORE** (hints → blueprint metadata via `applyHint`) |
-| `SimulationEngine` | SHADOW (no consumers) | SHADOW (no consumers — Phase 8 candidate) |
-| `GovernanceEngine` | SHADOW (allowed=false not blocking) | **SHADOW → PARTIAL CORE** (hard-blocks births + promotions + create decisions) |
-| `MetaOrchestrator` | SHADOW (only manual cycle) | **SHADOW → PARTIAL CORE** (auto-triggered on every `done` event) |
-| `LearningAPI` | SHADOW | SHADOW |
-| `AgentBirthEngine` | SHADOW (no saveBlueprint) | **SHADOW → CORE** (real BlueprintStore.save via callback) |
-| `AgentRetirementEngine` | SHADOW (no retireBlueprint) | **SHADOW → CORE** (real BlueprintStore.retire via callback) |
-| `CapabilityDiscoveryEngine` | SHADOW (registry not linked to runtime) | SHADOW → CORE (registry → DAGS via `syncDynamicCapabilities`) |
-| `CapabilityRegistry` | SHADOW (no consumers) | **SHADOW → CORE** (drives DAGS.compose via `replaceDynamic`) |
-| `OrganizationMemory` | SHADOW (audit only) | SHADOW (still audit-only by design) |
+| Module                             | Phase 6.5 Verdict                       | Phase 7 Verdict                                                                |
+| ---------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
+| `DAGS.compose`                     | TRUE CORE                               | TRUE CORE                                                                      |
+| `evolutionAwareFactory`            | TRUE CORE                               | TRUE CORE                                                                      |
+| `ModelAssigner` / `ModelSelector`  | TRUE CORE                               | TRUE CORE                                                                      |
+| `MemoryAugmentedAgent`             | TRUE CORE                               | TRUE CORE                                                                      |
+| `AgentRuntime`                     | TRUE CORE                               | TRUE CORE                                                                      |
+| `EvolutionFacade.recordCompletion` | TRUE CORE                               | TRUE CORE                                                                      |
+| `MetaAgent`                        | SHADOW (decisions not applied)          | SHADOW (only `create` gated; merge/split still log-only)                       |
+| `TeamOptimizer`                    | SHADOW (hints only output)              | **SHADOW → PARTIAL CORE** (hints → blueprint metadata via `applyHint`)         |
+| `SimulationEngine`                 | SHADOW (no consumers)                   | SHADOW (no consumers — Phase 8 candidate)                                      |
+| `GovernanceEngine`                 | SHADOW (allowed=false not blocking)     | **SHADOW → PARTIAL CORE** (hard-blocks births + promotions + create decisions) |
+| `MetaOrchestrator`                 | SHADOW (only manual cycle)              | **SHADOW → PARTIAL CORE** (auto-triggered on every `done` event)               |
+| `LearningAPI`                      | SHADOW                                  | SHADOW                                                                         |
+| `AgentBirthEngine`                 | SHADOW (no saveBlueprint)               | **SHADOW → CORE** (real BlueprintStore.save via callback)                      |
+| `AgentRetirementEngine`            | SHADOW (no retireBlueprint)             | **SHADOW → CORE** (real BlueprintStore.retire via callback)                    |
+| `CapabilityDiscoveryEngine`        | SHADOW (registry not linked to runtime) | SHADOW → CORE (registry → DAGS via `syncDynamicCapabilities`)                  |
+| `CapabilityRegistry`               | SHADOW (no consumers)                   | **SHADOW → CORE** (drives DAGS.compose via `replaceDynamic`)                   |
+| `OrganizationMemory`               | SHADOW (audit only)                     | SHADOW (still audit-only by design)                                            |
 
 **Net change**: 5 modules moved from SHADOW to CORE / PARTIAL CORE. Remaining SHADOW: `MetaAgent` (partial), `SimulationEngine`, `LearningAPI`, `OrganizationMemory` (audit-only by intent).
 
@@ -340,11 +340,11 @@ DAGS.compose(userRequest) {
 
 ## What Phase 7 Actually Changes
 
-| Capability | Before (Phase 6.5) | After (Phase 7) |
-|---|---|---|
-| New capability discovered | Logged, not used | Drives DAGS.compose() |
-| Agent born | Audit file only | Blueprint on disk, used by next compose |
-| Agent retired | Logged only | blueprint.retiredAt set, excluded from compose |
-| Team-optimizer hint | Logged | Marked on blueprint metadata |
-| Governance limit exceeded | Logged | Hard-blocks next mutations |
-| Meta cycle | Manual `POST /api/meta/cycle` | Auto on every workspace done |
+| Capability                | Before (Phase 6.5)            | After (Phase 7)                                |
+| ------------------------- | ----------------------------- | ---------------------------------------------- |
+| New capability discovered | Logged, not used              | Drives DAGS.compose()                          |
+| Agent born                | Audit file only               | Blueprint on disk, used by next compose        |
+| Agent retired             | Logged only                   | blueprint.retiredAt set, excluded from compose |
+| Team-optimizer hint       | Logged                        | Marked on blueprint metadata                   |
+| Governance limit exceeded | Logged                        | Hard-blocks next mutations                     |
+| Meta cycle                | Manual `POST /api/meta/cycle` | Auto on every workspace done                   |

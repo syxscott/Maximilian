@@ -29,7 +29,10 @@ export function Footer() {
   )
 
   const mcpError = useMemo(
-    () => Object.values(sync.data.mcp as Record<string, { status: string }>).some((x) => x.status === "failed"),
+    () =>
+      Object.values(sync.data.mcp as Record<string, { status: string }>).some(
+        (x) => x.status === "failed",
+      ),
     [sync.data.mcp],
   )
 
@@ -37,13 +40,17 @@ export function Footer() {
 
   const permissions = useMemo(() => {
     if (route.data.type !== "session") return []
-    return (sync.data.permission as Record<string, unknown[]>)?.[(route.data as { sessionID: string }).sessionID] ?? []
+    return (
+      (sync.data.permission as Record<string, unknown[]>)?.[
+        (route.data as { sessionID: string }).sessionID
+      ] ?? []
+    )
   }, [sync.data.permission, route.data])
 
   const directory = useMemo(() => {
     // In the original, directory came from a dedicated context. We approximate
     // by reading the project path from sync data.
-    return (sync.data as Record<string, unknown>).path as string | undefined ?? ""
+    return ((sync.data as Record<string, unknown>).path as string | undefined) ?? ""
   }, [sync.data])
 
   const [welcome, setWelcome] = useState(false)
@@ -88,7 +95,8 @@ export function Footer() {
               </Text>
             ) : null}
             <Text>
-              <Text color={lsp.length > 0 ? theme.success : theme.textMuted}>*</Text> {lsp.length} LSP
+              <Text color={lsp.length > 0 ? theme.success : theme.textMuted}>*</Text> {lsp.length}{" "}
+              LSP
             </Text>
             {mcp > 0 ? (
               <Text>

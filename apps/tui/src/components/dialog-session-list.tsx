@@ -69,10 +69,7 @@ export function DialogSessionList(props: DialogSessionListProps) {
   const [search, setSearch] = useState("")
   const [searchResults, setSearchResults] = useState<SessionItem[] | undefined>(undefined)
 
-  const debouncedSet = useMemo(
-    () => debounce((value: string) => setSearch(value), 150),
-    [],
-  )
+  const debouncedSet = useMemo(() => debounce((value: string) => setSearch(value), 150), [])
 
   const sessions = searchResults ?? props.sessions
 
@@ -128,10 +125,21 @@ export function DialogSessionList(props: DialogSessionListProps) {
       .filter((x): x is SelectItem => x !== undefined)
 
     return [
-      ...pinned.map((id) => buildOption(id, "Pinned")).filter((x): x is SelectItem => x !== undefined),
+      ...pinned
+        .map((id) => buildOption(id, "Pinned"))
+        .filter((x): x is SelectItem => x !== undefined),
       ...remaining,
     ]
-  }, [sessions, searchResults, browseOrder, toDelete, props.sessionStatus, props.slots, props.pinned, props.deleteHint])
+  }, [
+    sessions,
+    searchResults,
+    browseOrder,
+    toDelete,
+    props.sessionStatus,
+    props.slots,
+    props.pinned,
+    props.deleteHint,
+  ])
 
   const footerHints = useMemo(() => {
     if (!quickSwitchHint || (props.slots ?? []).length === 0) return []
@@ -152,7 +160,13 @@ export function DialogSessionList(props: DialogSessionListProps) {
       </Box>
       <Box marginY={1}>
         <Text>Search: </Text>
-        <TextInput value={search} onChange={(v) => { setSearchResults(undefined); debouncedSet(v) }} />
+        <TextInput
+          value={search}
+          onChange={(v) => {
+            setSearchResults(undefined)
+            debouncedSet(v)
+          }}
+        />
       </Box>
       <Box>
         <SelectInput

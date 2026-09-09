@@ -94,17 +94,22 @@ export class OpencodeDagExecutor {
    *
    * `signal` is supported via an optional trailing argument.
    */
-  execute(args: {
-    tasks: ReadonlyArray<Task>
-    executor: OpencodeExecutor
-    workspaceId: string
-    signal?: AbortSignal
-  } & ExecuteOpts): AsyncIterableIterator<TaskResult> {
+  execute(
+    args: {
+      tasks: ReadonlyArray<Task>
+      executor: OpencodeExecutor
+      workspaceId: string
+      signal?: AbortSignal
+    } & ExecuteOpts,
+  ): AsyncIterableIterator<TaskResult> {
     const { tasks, executor } = args
     const workspaceId = args.workspaceId
     const signal = args.signal
     const abortOnReturn = args.abortOnReturn ?? true
-    const maxConcurrency = Math.max(1, args.maxConcurrency ?? this.defaultMaxConcurrency ?? tasks.length)
+    const maxConcurrency = Math.max(
+      1,
+      args.maxConcurrency ?? this.defaultMaxConcurrency ?? tasks.length,
+    )
 
     // ── Pre-compute indices ────────────────────────────────────────────────
     const byId = new Map<string, Task>()

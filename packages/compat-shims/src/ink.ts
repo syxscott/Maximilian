@@ -10,11 +10,11 @@
  * Maximilian component actually uses. If we ever need more, add it here
  * rather than re-importing from "ink" directly anywhere else.
  */
-import { createRequire } from "node:module";
+import { createRequire } from "node:module"
 
-import { resolveMajor } from "./version.js";
+import { resolveMajor } from "./version.js"
 
-const cjsRequire = createRequire(import.meta.url);
+const cjsRequire = createRequire(import.meta.url)
 
 // ---- Public surface ----
 
@@ -23,29 +23,29 @@ const cjsRequire = createRequire(import.meta.url);
  * ink 5/6 so existing code drops in unchanged. If ink 6 splits the flags
  * out into a separate `useKey` hook, we extend this here, not in callers.
  */
-export type InkInputHandler = (input: string, key: InkKey) => void;
+export type InkInputHandler = (input: string, key: InkKey) => void
 
 export interface InkKey {
-  ctrl: boolean;
-  shift: boolean;
-  alt: boolean;
-  meta: boolean;
-  escape: boolean;
-  return: boolean;
-  tab: boolean;
-  backspace: boolean;
-  upArrow: boolean;
-  downArrow: boolean;
-  leftArrow: boolean;
-  rightArrow: boolean;
+  ctrl: boolean
+  shift: boolean
+  alt: boolean
+  meta: boolean
+  escape: boolean
+  return: boolean
+  tab: boolean
+  backspace: boolean
+  upArrow: boolean
+  downArrow: boolean
+  leftArrow: boolean
+  rightArrow: boolean
 }
 
 export interface UseInputOptions {
-  isActive?: boolean;
+  isActive?: boolean
 }
 
 export interface InkApp {
-  exit: (error?: Error) => void;
+  exit: (error?: Error) => void
 }
 
 /**
@@ -56,14 +56,14 @@ export interface InkApp {
  * that needs editing.
  */
 export function useInputShim(handler: InkInputHandler, options?: UseInputOptions): void {
-  const ink = loadInk();
-  const inkMajor = resolveMajor("ink", 5);
+  const ink = loadInk()
+  const inkMajor = resolveMajor("ink", 5)
   if (inkMajor >= 6) {
     // Placeholder for ink 6 migration. Today we just call through.
-    ink.useInput(handler as never, options as never);
-    return;
+    ink.useInput(handler as never, options as never)
+    return
   }
-  ink.useInput(handler as never, options as never);
+  ink.useInput(handler as never, options as never)
 }
 
 /**
@@ -72,16 +72,16 @@ export function useInputShim(handler: InkInputHandler, options?: UseInputOptions
  * them here.
  */
 export function useAppShim(): InkApp {
-  const ink = loadInk();
-  const app = ink.useApp() as { exit: (e?: Error) => void };
-  return { exit: app.exit };
+  const ink = loadInk()
+  const app = ink.useApp() as { exit: (e?: Error) => void }
+  return { exit: app.exit }
 }
 
 /**
  * Box props re-export. Today this is a thin pass-through; if ink 6 renames
  * `flexDirection` → `direction` (a rumored change), we map here.
  */
-export type BoxProps = Record<string, unknown>;
+export type BoxProps = Record<string, unknown>
 
 // ---- internal ----
 
@@ -99,5 +99,5 @@ export type BoxProps = Record<string, unknown>;
  * module from packages that depend on ink.
  */
 function loadInk(): typeof import("ink") {
-  return cjsRequire("ink") as typeof import("ink");
+  return cjsRequire("ink") as typeof import("ink")
 }

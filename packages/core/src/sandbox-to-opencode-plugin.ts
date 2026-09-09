@@ -172,9 +172,7 @@ function translateNetwork(network: NetworkPolicy | undefined): OpencodePluginNet
       return { mode: "allow-list", hosts: [...network.hosts] }
     default: {
       const exhaustive: never = network
-      throw new Error(
-        `SandboxToOpencodePlugin: unknown network mode "${String(exhaustive)}"`,
-      )
+      throw new Error(`SandboxToOpencodePlugin: unknown network mode "${String(exhaustive)}"`)
     }
   }
 }
@@ -276,10 +274,7 @@ export class SandboxToOpencodePlugin {
    * `plugin` array is shaped to drop directly into opencode's
    * `Config.plugin` field.
    */
-  generate(opts: {
-    profile: SandboxProfile
-    workspaceId: string
-  }): OpencodePluginManifest {
+  generate(opts: { profile: SandboxProfile; workspaceId: string }): OpencodePluginManifest {
     const { profile, workspaceId } = opts
     if (!profile) {
       throw new Error("SandboxToOpencodePlugin.generate: profile is required")
@@ -326,15 +321,10 @@ export class SandboxToOpencodePlugin {
    * built-in sandbox profiles by name. Equivalent to
    * `generate({ profile: SANDBOX_PROFILES[name], workspaceId })`.
    */
-  generateByName(opts: {
-    name: SandboxProfileName
-    workspaceId: string
-  }): OpencodePluginManifest {
+  generateByName(opts: { name: SandboxProfileName; workspaceId: string }): OpencodePluginManifest {
     const profile = SANDBOX_PROFILES[opts.name]
     if (!profile) {
-      throw new Error(
-        `SandboxToOpencodePlugin.generateByName: unknown profile "${opts.name}"`,
-      )
+      throw new Error(`SandboxToOpencodePlugin.generateByName: unknown profile "${opts.name}"`)
     }
     return this.generate({ profile, workspaceId: opts.workspaceId })
   }

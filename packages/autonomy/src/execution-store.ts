@@ -14,7 +14,7 @@ interface LockEntry {
   promise: Promise<void>
   resolve: () => void
 }
-const feedbackLocks = new Map<string, LockEntry>();
+const feedbackLocks = new Map<string, LockEntry>()
 
 export class ExecutionStore {
   constructor(private rootDir: string) {}
@@ -40,8 +40,12 @@ export class ExecutionStore {
     return existing
   }
 
-  async listAll(tenantIdOrOptions?: string | { tenantId?: string; cursor?: string; take?: number; skip?: number }): Promise<ExecutionRecord[]> {
-    const opts = typeof tenantIdOrOptions === 'string' ? { tenantId: tenantIdOrOptions } : tenantIdOrOptions
+  async listAll(
+    tenantIdOrOptions?:
+      string | { tenantId?: string; cursor?: string; take?: number; skip?: number },
+  ): Promise<ExecutionRecord[]> {
+    const opts =
+      typeof tenantIdOrOptions === "string" ? { tenantId: tenantIdOrOptions } : tenantIdOrOptions
     const { tenantId, take, skip } = opts ?? {}
     let all = await this.readAll()
     // Filter by tenantId

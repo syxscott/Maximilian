@@ -30,7 +30,9 @@ class EchoProvider implements Provider {
   id = "stub"
   name = "stub"
   defaultModel = "stub-1"
-  isConfigured(): boolean { return true }
+  isConfigured(): boolean {
+    return true
+  }
   /** ALWAYS returns the same tool call so the loop keeps going. */
   async chat(_messages: ChatMessage[]): Promise<ChatResponse> {
     return {
@@ -39,14 +41,18 @@ class EchoProvider implements Provider {
       usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 },
     }
   }
-  async *stream() { throw new Error("not used") }
+  async *stream() {
+    throw new Error("not used")
+  }
 }
 
 class StopProvider implements Provider {
   id = "stub"
   name = "stub"
   defaultModel = "stub-1"
-  isConfigured(): boolean { return true }
+  isConfigured(): boolean {
+    return true
+  }
   private callIndex = 0
   async chat(_messages: ChatMessage[]): Promise<ChatResponse> {
     this.callIndex++
@@ -65,10 +71,15 @@ class StopProvider implements Provider {
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
     }
   }
-  async *stream() { throw new Error("not used") }
+  async *stream() {
+    throw new Error("not used")
+  }
 }
 
-function buildProvider(): { provider: ToolEnabledProvider; registry: ReturnType<typeof createToolRegistry> } {
+function buildProvider(): {
+  provider: ToolEnabledProvider
+  registry: ReturnType<typeof createToolRegistry>
+} {
   const registry = createToolRegistry()
   registry.register({
     echo: {
@@ -76,7 +87,13 @@ function buildProvider(): { provider: ToolEnabledProvider; registry: ReturnType<
       description: "echo",
       inputSchema: { type: "object", properties: { x: { type: "number" } } },
       async execute(input: { x: number }) {
-        return { result: input.x, output: { structured: input.x, content: [{ type: "text" as const, text: String(input.x) }] } }
+        return {
+          result: input.x,
+          output: {
+            structured: input.x,
+            content: [{ type: "text" as const, text: String(input.x) }],
+          },
+        }
       },
     } as never,
   })
@@ -86,9 +103,7 @@ function buildProvider(): { provider: ToolEnabledProvider; registry: ReturnType<
 describe("Steering hooks (借鉴 openclaw)", () => {
   it("getSteeringMessages injects messages before each chat", async () => {
     const { provider } = buildProvider()
-    const steering = vi.fn(() => [
-      { role: "user" as const, content: "steering message" },
-    ])
+    const steering = vi.fn(() => [{ role: "user" as const, content: "steering message" }])
     await runToolLoop(provider, [{ role: "user", content: "go" }], {
       maxRounds: 2,
       getSteeringMessages: steering,
@@ -108,15 +123,19 @@ describe("Steering hooks (借鉴 openclaw)", () => {
         description: "echo",
         inputSchema: { type: "object", properties: { x: { type: "number" } } },
         async execute(input: { x: number }) {
-          return { result: input.x, output: { structured: input.x, content: [{ type: "text" as const, text: String(input.x) }] } }
+          return {
+            result: input.x,
+            output: {
+              structured: input.x,
+              content: [{ type: "text" as const, text: String(input.x) }],
+            },
+          }
         },
       } as never,
     })
     const stopProvider = new StopProvider()
     const provider = new ToolEnabledProvider(stopProvider, registry)
-    const followUp = vi.fn(() => [
-      { role: "user" as const, content: "follow-up question" },
-    ])
+    const followUp = vi.fn(() => [{ role: "user" as const, content: "follow-up question" }])
     await runToolLoop(provider, [{ role: "user", content: "go" }], {
       maxRounds: 3,
       getFollowUpMessages: followUp,

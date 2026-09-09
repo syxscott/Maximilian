@@ -50,14 +50,18 @@ describe("TerminationCondition", () => {
 
   it("HandoffTermination matches the source field", () => {
     const cond = HandoffTermination("orchestrator")
-    expect(cond.check(ctx({ lastMessage: { role: "assistant", source: "agent-1" } })).stop).toBe(false)
+    expect(cond.check(ctx({ lastMessage: { role: "assistant", source: "agent-1" } })).stop).toBe(
+      false,
+    )
     const v = cond.check(ctx({ lastMessage: { role: "assistant", source: "orchestrator" } }))
     expect(v.stop).toBe(true)
   })
 
   it("TextMatchTermination matches content with a regex", () => {
     const cond = TextMatchTermination(/DONE/i)
-    expect(cond.check(ctx({ lastMessage: { role: "assistant", content: "still working" } })).stop).toBe(false)
+    expect(
+      cond.check(ctx({ lastMessage: { role: "assistant", content: "still working" } })).stop,
+    ).toBe(false)
     const v = cond.check(ctx({ lastMessage: { role: "assistant", content: "All done." } }))
     expect(v.stop).toBe(true)
   })

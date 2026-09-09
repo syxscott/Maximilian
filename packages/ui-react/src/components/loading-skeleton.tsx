@@ -38,12 +38,7 @@ const SkeletonBar = React.forwardRef<HTMLDivElement, LoadingSkeletonProps>(funct
       data-component="loading-skeleton"
       data-variant={variant}
       data-animate={animate ? true : undefined}
-      className={cn(
-        "bg-muted",
-        shape,
-        animate && "animate-pulse",
-        className,
-      )}
+      className={cn("bg-muted", shape, animate && "animate-pulse", className)}
       style={{
         width: toSize(width),
         height: toSize(height ?? (variant === "text" ? "0.85em" : undefined)),
@@ -56,10 +51,13 @@ const SkeletonBar = React.forwardRef<HTMLDivElement, LoadingSkeletonProps>(funct
 
 export const LoadingSkeleton = Object.assign(SkeletonBar, {
   /** Convenience: render a stack of text-line skeletons. */
-  Text: React.forwardRef<HTMLDivElement, Omit<LoadingSkeletonProps, "variant" | "lines"> & {
-    lines?: number
-    gap?: number
-  }>(function LoadingSkeletonText({ lines = 3, gap = 6, className, ...rest }, ref) {
+  Text: React.forwardRef<
+    HTMLDivElement,
+    Omit<LoadingSkeletonProps, "variant" | "lines"> & {
+      lines?: number
+      gap?: number
+    }
+  >(function LoadingSkeletonText({ lines = 3, gap = 6, className, ...rest }, ref) {
     return (
       <div
         ref={ref}
@@ -70,12 +68,7 @@ export const LoadingSkeleton = Object.assign(SkeletonBar, {
         style={{ gap }}
       >
         {Array.from({ length: lines }, (_, i) => (
-          <SkeletonBar
-            key={i}
-            variant="text"
-            width={i === lines - 1 ? "60%" : "100%"}
-            {...rest}
-          />
+          <SkeletonBar key={i} variant="text" width={i === lines - 1 ? "60%" : "100%"} {...rest} />
         ))}
       </div>
     )

@@ -21,9 +21,9 @@
  * is responsible only for *reading* the trace and shaping it.
  */
 
-import { z } from "zod";
-import { AgentRole } from "@max/core";
-import { OpencodeSdk, type OpencodeHttpClient, type SessionMessage } from "@max/core-thin-sdk";
+import { z } from "zod"
+import { AgentRole } from "@max/core"
+import { OpencodeSdk, type OpencodeHttpClient, type SessionMessage } from "@max/core-thin-sdk"
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -45,8 +45,8 @@ export const ToolCallSchema = z.object({
   error: z.string().optional(),
   /** Wall-clock duration in ms (from tool.started → tool.success/failed). */
   durationMs: z.number().nonnegative().optional(),
-});
-export type ToolCall = z.infer<typeof ToolCallSchema>;
+})
+export type ToolCall = z.infer<typeof ToolCallSchema>
 
 /**
  * One message in the session — either user or assistant. Modeled as a
@@ -70,8 +70,8 @@ export const MessageSchema = z.object({
   errored: z.boolean().default(false),
   /** Server-reported created timestamp (epoch ms). */
   createdAt: z.number().optional(),
-});
-export type Message = z.infer<typeof MessageSchema>;
+})
+export type Message = z.infer<typeof MessageSchema>
 
 export const TokensSchema = z.object({
   input: z.number().int().nonnegative().default(0),
@@ -79,8 +79,8 @@ export const TokensSchema = z.object({
   reasoning: z.number().int().nonnegative().default(0),
   cacheRead: z.number().int().nonnegative().default(0),
   cacheWrite: z.number().int().nonnegative().default(0),
-});
-export type Tokens = z.infer<typeof TokensSchema>;
+})
+export type Tokens = z.infer<typeof TokensSchema>
 
 /**
  * One trace = one opencode session's worth of evidence. ScholarEval uses
@@ -104,8 +104,8 @@ export const TraceSchema = z.object({
   totalCostUSD: z.number().nonnegative().default(0),
   /** ISO timestamp at which this trace was collected. */
   collectedAt: z.string(),
-});
-export type Trace = z.infer<typeof TraceSchema>;
+})
+export type Trace = z.infer<typeof TraceSchema>
 
 // ── SDK contract ────────────────────────────────────────────────────────────
 
@@ -119,16 +119,16 @@ export type Trace = z.infer<typeof TraceSchema>;
  * spinning up an `opencode serve` process.
  */
 export interface TraceCollectorSdk {
-  listMessages(sessionID: string): Promise<SessionMessage[]>;
+  listMessages(sessionID: string): Promise<SessionMessage[]>
 }
 
 // ── Collector ───────────────────────────────────────────────────────────────
 
 export interface OpencodeTraceCollectorOptions {
   /** Optional override for the SDK (used by tests). */
-  sdk?: TraceCollectorSdk;
+  sdk?: TraceCollectorSdk
   /** Inject `agentRole` into every produced trace. Useful for downstream sorting. */
-  agentRole?: AgentRole;
+  agentRole?: AgentRole
   /**
    * M6-fix: optional callback for parts that get dropped during
    * normalization (non-object, missing callID/tool, schema parse
@@ -137,18 +137,18 @@ export interface OpencodeTraceCollectorOptions {
    * (typically wired to a Pino logger or OTel counter) preserves
    * debuggability without changing the returned tool-calls shape.
    */
-  onDroppedPart?: (info: { part: unknown; reason: string }) => void;
+  onDroppedPart?: (info: { part: unknown; reason: string }) => void
 }
 
 export class OpencodeTraceCollector {
-  private readonly sdk: TraceCollectorSdk;
-  private readonly agentRole?: AgentRole;
-  private readonly onDroppedPart?: (info: { part: unknown; reason: string }) => void;
+  private readonly sdk: TraceCollectorSdk
+  private readonly agentRole?: AgentRole
+  private readonly onDroppedPart?: (info: { part: unknown; reason: string }) => void
 
   constructor(opts: OpencodeTraceCollectorOptions = {}) {
-    this.onDroppedPart = opts.onDroppedPart;
+    this.onDroppedPart = opts.onDroppedPart
     if (opts.sdk) {
-      this.sdk = opts.sdk;
+      this.sdk = opts.sdk
     } else {
       // Default wire-up: build a thin SDK bound to the provided client.
       // The caller is expected to pass the client via `wireTo()` once they
@@ -157,11 +157,11 @@ export class OpencodeTraceCollector {
         listMessages: async () => {
           throw new Error(
             "OpencodeTraceCollector: no SDK wired; call `wireTo(client)` or pass `sdk` in the constructor",
-          );
+          )
         },
-      };
+      }
     }
-    this.agentRole = opts.agentRole;
+    this.agentRole = opts.agentRole
   }
 
   /**
@@ -172,9 +172,9 @@ export class OpencodeTraceCollector {
    *   collector.wireTo(httpClient);
    */
   wireTo(client: OpencodeHttpClient): void {
-    (this as unknown as { sdk: TraceCollectorSdk }).sdk = {
+    ;(this as unknown as { sdk: TraceCollectorSdk }).sdk = {
       listMessages: (sessionID) => OpencodeSdk.listMessages(client, sessionID),
-    };
+    }
   }
 
   /**
@@ -184,61 +184,59 @@ export class OpencodeTraceCollector {
    */
   async collectTrace(sessionId: string, workspaceId: string): Promise<Trace> {
     if (!sessionId) {
-      throw new Error("OpencodeTraceCollector.collectTrace: `sessionId` is required");
+      throw new Error("OpencodeTraceCollector.collectTrace: `sessionId` is required")
     }
     if (!workspaceId) {
-      throw new Error("OpencodeTraceCollector.collectTrace: `workspaceId` is required");
+      throw new Error("OpencodeTraceCollector.collectTrace: `workspaceId` is required")
     }
 
-    const raw = await this.sdk.listMessages(sessionId);
+    const raw = await this.sdk.listMessages(sessionId)
 
-    const messages: Message[] = [];
-    const toolCalls = new Map<string, ToolCall>();
-    const tokens: Tokens = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 };
-    let totalCost = 0;
-    let earliest = Number.POSITIVE_INFINITY;
-    let latest = 0;
+    const messages: Message[] = []
+    const toolCalls = new Map<string, ToolCall>()
+    const tokens: Tokens = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 }
+    let totalCost = 0
+    let earliest = Number.POSITIVE_INFINITY
+    let latest = 0
 
     for (const m of raw) {
-      const msg = normalizeMessage(m);
-      messages.push(msg);
+      const msg = normalizeMessage(m)
+      messages.push(msg)
 
       if (msg.role === "assistant") {
-        totalCost += msg.costUSD;
+        totalCost += msg.costUSD
       }
 
       // Aggregate tokens from assistant turns.
       if (m.role === "assistant") {
-        const t = m.tokens;
+        const t = m.tokens
         if (t) {
-          tokens.input += t.input ?? 0;
-          tokens.output += t.output ?? 0;
-          tokens.reasoning += t.reasoning ?? 0;
-          tokens.cacheRead += t.cache?.read ?? 0;
-          tokens.cacheWrite += t.cache?.write ?? 0;
+          tokens.input += t.input ?? 0
+          tokens.output += t.output ?? 0
+          tokens.reasoning += t.reasoning ?? 0
+          tokens.cacheRead += t.cache?.read ?? 0
+          tokens.cacheWrite += t.cache?.write ?? 0
         }
       }
 
       // Pull tool parts (any role can carry them, but in practice they're
       // only on assistant turns in opencode's v2 protocol).
-      const parts = (m as { parts?: unknown }).parts;
+      const parts = (m as { parts?: unknown }).parts
       if (Array.isArray(parts)) {
         for (const part of parts) {
-          const tool = normalizeToolPart(part, this.onDroppedPart);
+          const tool = normalizeToolPart(part, this.onDroppedPart)
           if (tool) {
-            toolCalls.set(tool.callID, tool);
+            toolCalls.set(tool.callID, tool)
           }
         }
       }
 
-      const t = (m as { time?: { created?: number; completed?: number } }).time;
-      if (t?.created !== undefined && t.created < earliest) earliest = t.created;
-      if (t?.completed !== undefined && t.completed > latest) latest = t.completed;
+      const t = (m as { time?: { created?: number; completed?: number } }).time
+      if (t?.created !== undefined && t.created < earliest) earliest = t.created
+      if (t?.completed !== undefined && t.completed > latest) latest = t.completed
     }
 
-    const durationMs = Number.isFinite(earliest) && latest > earliest
-      ? latest - earliest
-      : 0;
+    const durationMs = Number.isFinite(earliest) && latest > earliest ? latest - earliest : 0
 
     return TraceSchema.parse({
       sessionId,
@@ -250,34 +248,34 @@ export class OpencodeTraceCollector {
       tokens,
       totalCostUSD: totalCost,
       collectedAt: new Date().toISOString(),
-    });
+    })
   }
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 function normalizeMessage(m: SessionMessage): Message {
-  const parts = (m as { parts?: unknown[] }).parts ?? [];
-  const textParts: string[] = [];
-  const toolCallIDs: string[] = [];
+  const parts = (m as { parts?: unknown[] }).parts ?? []
+  const textParts: string[] = []
+  const toolCallIDs: string[] = []
   for (const p of parts) {
-    if (!p || typeof p !== "object") continue;
-    const obj = p as { type?: string; text?: string; callID?: string };
+    if (!p || typeof p !== "object") continue
+    const obj = p as { type?: string; text?: string; callID?: string }
     if (obj.type === "text" && typeof obj.text === "string") {
-      textParts.push(obj.text);
+      textParts.push(obj.text)
     } else if (obj.type === "tool" && typeof obj.callID === "string") {
-      toolCallIDs.push(obj.callID);
+      toolCallIDs.push(obj.callID)
     } else if (obj.type === "reasoning" && typeof obj.text === "string") {
-      textParts.push(obj.text);
+      textParts.push(obj.text)
     }
   }
 
   if (m.role === "assistant") {
     const a = m as {
-      model?: { id?: string; providerID?: string };
-      cost?: number;
-      error?: { type?: string; message?: string };
-    };
+      model?: { id?: string; providerID?: string }
+      cost?: number
+      error?: { type?: string; message?: string }
+    }
     return MessageSchema.parse({
       id: m.id,
       role: "assistant",
@@ -288,7 +286,7 @@ function normalizeMessage(m: SessionMessage): Message {
       costUSD: typeof a.cost === "number" ? a.cost : 0,
       errored: Boolean(a.error),
       createdAt: m.time?.created,
-    });
+    })
   }
 
   return MessageSchema.parse({
@@ -297,7 +295,7 @@ function normalizeMessage(m: SessionMessage): Message {
     text: textParts.join("\n"),
     toolCallIDs,
     createdAt: m.time?.created,
-  });
+  })
 }
 
 function normalizeToolPart(
@@ -309,28 +307,28 @@ function normalizeToolPart(
     // can attach an `onDropped` callback to surface these via the
     // observability pipeline so a degraded schema doesn't lose
     // tool-call evidence entirely.
-    onDropped?.({ part, reason: "non_object_part" });
-    return undefined;
+    onDropped?.({ part, reason: "non_object_part" })
+    return undefined
   }
   const p = part as {
-    type?: string;
-    callID?: string;
-    tool?: string;
-    input?: unknown;
-    output?: unknown;
-    error?: string;
-    state?: string;
-    time?: { started?: number; completed?: number };
-  };
-  if (p.type !== "tool") return undefined;
+    type?: string
+    callID?: string
+    tool?: string
+    input?: unknown
+    output?: unknown
+    error?: string
+    state?: string
+    time?: { started?: number; completed?: number }
+  }
+  if (p.type !== "tool") return undefined
   if (typeof p.callID !== "string" || typeof p.tool !== "string") {
-    onDropped?.({ part, reason: "missing_callID_or_tool" });
-    return undefined;
+    onDropped?.({ part, reason: "missing_callID_or_tool" })
+    return undefined
   }
 
-  let durationMs: number | undefined;
+  let durationMs: number | undefined
   if (typeof p.time?.started === "number" && typeof p.time?.completed === "number") {
-    durationMs = Math.max(0, p.time.completed - p.time.started);
+    durationMs = Math.max(0, p.time.completed - p.time.started)
   }
 
   try {
@@ -341,7 +339,7 @@ function normalizeToolPart(
       output: p.output,
       error: p.error,
       durationMs,
-    });
+    })
   } catch (err) {
     // Schema validation failed — record the part as dropped with the
     // parse error message for debugging. Still returns undefined so
@@ -349,7 +347,7 @@ function normalizeToolPart(
     onDropped?.({
       part,
       reason: `schema_parse_failed: ${(err as Error).message}`,
-    });
-    return undefined;
+    })
+    return undefined
   }
 }

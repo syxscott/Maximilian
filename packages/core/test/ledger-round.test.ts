@@ -21,7 +21,9 @@ class SlowProvider implements Provider {
   id = "slow"
   name = "slow"
   defaultModel = "p-1"
-  isConfigured(): boolean { return true }
+  isConfigured(): boolean {
+    return true
+  }
   async chat(_m: ChatMessage[]): Promise<ChatResponse> {
     // Yield to ensure the scheduler can fan out concurrently.
     await new Promise((r) => setTimeout(r, 5))
@@ -31,12 +33,16 @@ class SlowProvider implements Provider {
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
     }
   }
-  async *stream() { throw new Error("not used") }
+  async *stream() {
+    throw new Error("not used")
+  }
 }
 
 class CountingAgent extends Agent {
   override readonly manifest = MANIFEST
-  constructor(provider: Provider) { super(provider) }
+  constructor(provider: Provider) {
+    super(provider)
+  }
   override async execute(task: Task, _ctx: AgentContext): Promise<Result> {
     return {
       id: `r-${task.id}`,
@@ -75,18 +81,20 @@ function makeWorkspace(plan: Plan, id = "ws-1"): Workspace {
 function makeSink() {
   return {
     workspaces: new Map<string, Workspace>(),
-    async saveWorkspace(w: Workspace) { this.workspaces.set(w.id, w) },
-    async loadWorkspace(id: string) { return this.workspaces.get(id) },
+    async saveWorkspace(w: Workspace) {
+      this.workspaces.set(w.id, w)
+    },
+    async loadWorkspace(id: string) {
+      return this.workspaces.get(id)
+    },
   }
 }
 
 describe("Ledger round semantics (P1-C)", () => {
   it("two independent tasks in the same wave share the same round", async () => {
-    const rt = new AgentRuntime(
-      () => new CountingAgent(new SlowProvider()),
-      makeSink(),
-      { maxConcurrency: 5 },
-    )
+    const rt = new AgentRuntime(() => new CountingAgent(new SlowProvider()), makeSink(), {
+      maxConcurrency: 5,
+    })
     const plan = makePlan([
       { id: "a", dependsOn: [], description: "a" },
       { id: "b", dependsOn: [], description: "b" },
@@ -97,18 +105,16 @@ describe("Ledger round semantics (P1-C)", () => {
     const ledger = rt.getLedger(ws.id)
     const observations = ledger?.entries.filter((e) => e.kind === "observation") ?? []
     const actions = ledger?.entries.filter((e) => e.kind === "action") ?? []
-    const actionRounds = actions.map((e) => e.kind === "action" ? e.round : -1)
-    const obsRounds = observations.map((e) => e.kind === "observation" ? e.round : -1)
+    const actionRounds = actions.map((e) => (e.kind === "action" ? e.round : -1))
+    const obsRounds = observations.map((e) => (e.kind === "observation" ? e.round : -1))
     expect(new Set(actionRounds).size).toBe(1)
     expect(new Set(obsRounds).size).toBe(1)
   })
 
   it("a dependent task in a later wave has a higher round number", async () => {
-    const rt = new AgentRuntime(
-      () => new CountingAgent(new SlowProvider()),
-      makeSink(),
-      { maxConcurrency: 5 },
-    )
+    const rt = new AgentRuntime(() => new CountingAgent(new SlowProvider()), makeSink(), {
+      maxConcurrency: 5,
+    })
     const plan = makePlan([
       { id: "a", dependsOn: [], description: "a" },
       { id: "b", dependsOn: ["a"], description: "b" },
@@ -117,8 +123,18 @@ describe("Ledger round semantics (P1-C)", () => {
 
     const ledger = rt.getLedger(ws.id)
     const actions = (ledger?.entries ?? []).filter((e) => e.kind === "action")
-    const aRound = actions.find((e) => e.kind === "action" && e.agent === "general" && (e.input as { description?: string })?.description === "a")?.round
-    const bRound = actions.find((e) => e.kind === "action" && e.agent === "general" && (e.input as { description?: string })?.description === "b")?.round
+    const aRound = actions.find(
+      (e) =>
+        e.kind === "action" &&
+        e.agent === "general" &&
+        (e.input as { description?: string })?.description === "a",
+    )?.round
+    const bRound = actions.find(
+      (e) =>
+        e.kind === "action" &&
+        e.agent === "general" &&
+        (e.input as { description?: string })?.description === "b",
+    )?.round
     expect(aRound).toBeDefined()
     expect(bRound).toBeDefined()
     // Wave 1 = "a" runs, wave 2 = "b" runs after "a" completes.

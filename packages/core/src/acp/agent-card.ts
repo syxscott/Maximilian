@@ -19,74 +19,68 @@
  *     to unit-test, no I/O, no side effects.
  */
 
-import type { AgentLike, AgentRegistry } from "../orchestration/agent-registry.js";
-import type {
-  A2AAgentCard,
-  A2AInputMode,
-  A2AOutputMode,
-  A2ASkill,
-  A2AAuthScheme,
-} from "./index.js";
+import type { AgentLike, AgentRegistry } from "../orchestration/agent-registry.js"
+import type { A2AAgentCard, A2AInputMode, A2AOutputMode, A2ASkill, A2AAuthScheme } from "./index.js"
 
 /** Max description length per awesome-a2a-hub convention. */
-export const A2A_DESCRIPTION_MAX = 200;
+export const A2A_DESCRIPTION_MAX = 200
 /** Max skill description length. */
-export const A2A_SKILL_DESCRIPTION_MAX = 200;
+export const A2A_SKILL_DESCRIPTION_MAX = 200
 /** Max skill id length. */
-export const A2A_SKILL_ID_MAX = 64;
+export const A2A_SKILL_ID_MAX = 64
 /** Tag count per skill. */
-export const A2A_TAG_MIN = 1;
-export const A2A_TAG_MAX = 6;
+export const A2A_TAG_MIN = 1
+export const A2A_TAG_MAX = 6
 
 export interface CardDerivationOptions {
   /** Override the displayed agent name. */
-  name?: string;
+  name?: string
   /** Override the description. */
-  description?: string;
+  description?: string
   /** Override the supported transports (default: ["jsonrpc"]). */
-  supportedTransports?: Array<"jsonrpc" | "grpc" | "http+sse">;
+  supportedTransports?: Array<"jsonrpc" | "grpc" | "http+sse">
   /** Override the auth schemes (default: ["none"]). */
-  authSchemes?: ReadonlyArray<A2AAuthScheme>;
+  authSchemes?: ReadonlyArray<A2AAuthScheme>
   /** Override default input modes (default: ["text","data"]). */
-  defaultInputModes?: ReadonlyArray<A2AInputMode>;
+  defaultInputModes?: ReadonlyArray<A2AInputMode>
   /** Override default output modes (default: ["text","data"]). */
-  defaultOutputModes?: ReadonlyArray<A2AOutputMode>;
+  defaultOutputModes?: ReadonlyArray<A2AOutputMode>
   /** URL for HTTP deployments. */
-  url?: string;
+  url?: string
 }
 
 /** Validate a card against the A2A v0.3.0 length conventions. */
 export function validateAgentCard(card: A2AAgentCard): { ok: boolean; errors: string[] } {
-  const errors: string[] = [];
+  const errors: string[] = []
   if (card.protocolVersion !== "0.3.0") {
-    errors.push(`protocolVersion must be "0.3.0", got "${card.protocolVersion}"`);
+    errors.push(`protocolVersion must be "0.3.0", got "${card.protocolVersion}"`)
   }
   if (card.name.length === 0) {
-    errors.push("name is required");
+    errors.push("name is required")
   }
   if (card.description.length > A2A_DESCRIPTION_MAX) {
-    errors.push(`description exceeds ${A2A_DESCRIPTION_MAX} chars (got ${card.description.length})`);
+    errors.push(`description exceeds ${A2A_DESCRIPTION_MAX} chars (got ${card.description.length})`)
   }
   if (card.skills.length === 0) {
-    errors.push("at least one skill is required");
+    errors.push("at least one skill is required")
   }
   for (const skill of card.skills) {
     if (skill.id.length === 0 || skill.id.length > A2A_SKILL_ID_MAX) {
-      errors.push(`skill.id must be 1-${A2A_SKILL_ID_MAX} chars, got "${skill.id}"`);
+      errors.push(`skill.id must be 1-${A2A_SKILL_ID_MAX} chars, got "${skill.id}"`)
     }
     if (skill.description.length > A2A_SKILL_DESCRIPTION_MAX) {
       errors.push(
         `skill "${skill.id}" description exceeds ${A2A_SKILL_DESCRIPTION_MAX} chars ` +
           `(got ${skill.description.length})`,
-      );
+      )
     }
     if (skill.tags.length < A2A_TAG_MIN || skill.tags.length > A2A_TAG_MAX) {
       errors.push(
         `skill "${skill.id}" tags must be ${A2A_TAG_MIN}-${A2A_TAG_MAX} entries, got ${skill.tags.length}`,
-      );
+      )
     }
   }
-  return { ok: errors.length === 0, errors };
+  return { ok: errors.length === 0, errors }
 }
 
 /**
@@ -96,11 +90,8 @@ export function validateAgentCard(card: A2AAgentCard): { ok: boolean; errors: st
  * falls back to deriving skills from the agent's `type` and `id` so a
  * valid card is always produced.
  */
-export function deriveAgentCard(
-  agent: AgentLike,
-  opts: CardDerivationOptions = {},
-): A2AAgentCard {
-  const skills = extractSkills(agent);
+export function deriveAgentCard(agent: AgentLike, opts: CardDerivationOptions = {}): A2AAgentCard {
+  const skills = extractSkills(agent)
   return {
     protocolVersion: "0.3.0",
     name: opts.name ?? deriveName(agent),
@@ -109,10 +100,7 @@ export function deriveAgentCard(
     supportedInterfaces: [
       {
         protocolVersion: "0.3.0",
-        transport: (opts.supportedTransports?.[0] ?? "jsonrpc") as
-          | "jsonrpc"
-          | "grpc"
-          | "http+sse",
+        transport: (opts.supportedTransports?.[0] ?? "jsonrpc") as "jsonrpc" | "grpc" | "http+sse",
       },
       ...(opts.supportedTransports ?? [])
         .slice(1)
@@ -125,7 +113,7 @@ export function deriveAgentCard(
     defaultOutputModes:
       opts.defaultOutputModes ?? (["text", "data"] as ReadonlyArray<A2AOutputMode>),
     skills,
-  };
+  }
 }
 
 /**
@@ -138,17 +126,17 @@ export function fallbackCardFor(
   agentId: string,
   opts: CardDerivationOptions = {},
 ): A2AAgentCard | null {
-  const agent = registry.get(agentId);
-  if (!agent) return null;
-  return deriveAgentCard(agent, opts);
+  const agent = registry.get(agentId)
+  if (!agent) return null
+  return deriveAgentCard(agent, opts)
 }
 
 /** Build a system-wide agent card index, e.g. for the `/.well-known/agent-card` middleware. */
 export function buildAgentIndex(registry: AgentRegistry): {
-  agents: Array<{ id: string; type: string; status?: string }>;
-  cards: A2AAgentCard[];
+  agents: Array<{ id: string; type: string; status?: string }>
+  cards: A2AAgentCard[]
 } {
-  const agents = registry.list();
+  const agents = registry.list()
   return {
     agents: agents.map((a) => {
       const out: { id: string; type: string; status?: string } = { id: a.id, type: a.type }
@@ -156,42 +144,42 @@ export function buildAgentIndex(registry: AgentRegistry): {
       return out
     }),
     cards: agents.map((a) => deriveAgentCard(a)),
-  };
+  }
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 
 function deriveName(agent: AgentLike): string {
-  const explicit = readString(agent.metadata ?? {}, "name");
-  if (explicit) return explicit;
+  const explicit = readString(agent.metadata ?? {}, "name")
+  if (explicit) return explicit
   // Fall back to a Pascal-Case rendering of the type + id.
-  return `${capitalize(agent.type)}:${agent.id}`;
+  return `${capitalize(agent.type)}:${agent.id}`
 }
 
 function deriveDescription(agent: AgentLike): string {
-  const explicit = readString(agent.metadata ?? {}, "description");
-  if (explicit) return explicit.slice(0, A2A_DESCRIPTION_MAX);
+  const explicit = readString(agent.metadata ?? {}, "description")
+  if (explicit) return explicit.slice(0, A2A_DESCRIPTION_MAX)
   return `A Maximilian agent of type "${agent.type}" with id "${agent.id}".`.slice(
     0,
     A2A_DESCRIPTION_MAX,
-  );
+  )
 }
 
 function extractSkills(agent: AgentLike): ReadonlyArray<A2ASkill> {
-  const declared = agent.metadata?.capabilities;
+  const declared = agent.metadata?.capabilities
   if (Array.isArray(declared) && declared.length > 0) {
-    const out: A2ASkill[] = [];
+    const out: A2ASkill[] = []
     for (let i = 0; i < declared.length; i++) {
-      const entry = declared[i];
-      if (!entry || typeof entry !== "object") continue;
-      const rec = entry as Record<string, unknown>;
-      const id = readString(rec, "id") ?? `${agent.type}-skill-${i}`;
-      const name = readString(rec, "name") ?? id;
+      const entry = declared[i]
+      if (!entry || typeof entry !== "object") continue
+      const rec = entry as Record<string, unknown>
+      const id = readString(rec, "id") ?? `${agent.type}-skill-${i}`
+      const name = readString(rec, "name") ?? id
       const description = (readString(rec, "description") ?? `${name} capability`).slice(
         0,
         A2A_SKILL_DESCRIPTION_MAX,
-      );
-      const tags = normalizeTags(rec.tags, name);
+      )
+      const tags = normalizeTags(rec.tags, name)
       const skill: A2ASkill = { id: id.slice(0, A2A_SKILL_ID_MAX), name, description, tags }
       const examples = readStringArray(rec.examples)
       if (examples !== undefined) skill.examples = examples
@@ -201,7 +189,7 @@ function extractSkills(agent: AgentLike): ReadonlyArray<A2ASkill> {
       if (outputModes !== undefined) skill.outputModes = outputModes
       out.push(skill)
     }
-    if (out.length > 0) return out;
+    if (out.length > 0) return out
   }
   // Fallback: at least one skill derived from the agent type.
   return [
@@ -214,56 +202,53 @@ function extractSkills(agent: AgentLike): ReadonlyArray<A2ASkill> {
       ),
       tags: [agent.type, "agent"],
     },
-  ];
+  ]
 }
 
 function normalizeTags(raw: unknown, fallbackName: string): ReadonlyArray<string> {
   if (Array.isArray(raw) && raw.length > 0) {
-    const tags: string[] = [];
+    const tags: string[] = []
     for (const item of raw) {
-      if (typeof item !== "string") continue;
-      const trimmed = item.trim();
-      if (!trimmed) continue;
-      tags.push(trimmed);
-      if (tags.length >= A2A_TAG_MAX) break;
+      if (typeof item !== "string") continue
+      const trimmed = item.trim()
+      if (!trimmed) continue
+      tags.push(trimmed)
+      if (tags.length >= A2A_TAG_MAX) break
     }
-    if (tags.length >= A2A_TAG_MIN) return tags;
+    if (tags.length >= A2A_TAG_MIN) return tags
   }
-  return [fallbackName, "agent"].slice(0, A2A_TAG_MAX);
+  return [fallbackName, "agent"].slice(0, A2A_TAG_MAX)
 }
 
 function readString(rec: Record<string, unknown>, key: string): string | undefined {
-  const v = rec[key];
-  return typeof v === "string" && v.length > 0 ? v : undefined;
+  const v = rec[key]
+  return typeof v === "string" && v.length > 0 ? v : undefined
 }
 
 function readStringArray(raw: unknown): ReadonlyArray<string> | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const out: string[] = [];
+  if (!Array.isArray(raw)) return undefined
+  const out: string[] = []
   for (const item of raw) {
-    if (typeof item !== "string") continue;
-    const trimmed = item.trim();
-    if (!trimmed) continue;
-    out.push(trimmed);
+    if (typeof item !== "string") continue
+    const trimmed = item.trim()
+    if (!trimmed) continue
+    out.push(trimmed)
   }
-  return out.length > 0 ? out : undefined;
+  return out.length > 0 ? out : undefined
 }
 
-function readModeArray(
-  raw: unknown,
-  _agent?: AgentLike,
-): ReadonlyArray<A2AInputMode> | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const out: A2AInputMode[] = [];
+function readModeArray(raw: unknown, _agent?: AgentLike): ReadonlyArray<A2AInputMode> | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: A2AInputMode[] = []
   for (const item of raw) {
     if (item === "text" || item === "data" || item === "file") {
-      out.push(item);
+      out.push(item)
     }
   }
-  return out.length > 0 ? out : undefined;
+  return out.length > 0 ? out : undefined
 }
 
 function capitalize(s: string): string {
-  if (s.length === 0) return s;
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  if (s.length === 0) return s
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }

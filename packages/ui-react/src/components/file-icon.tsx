@@ -484,7 +484,8 @@ const ICON_MAPS: IconMaps = {
 
 const toOpenVariant = (icon: FileIconName): FileIconName => {
   if (!icon.startsWith("Folder")) return icon
-  if (icon.endsWith("_light")) return (icon as string).replace("_light", "Open_light") as FileIconName
+  if (icon.endsWith("_light"))
+    return (icon as string).replace("_light", "Open_light") as FileIconName
   if (!icon.endsWith("Open")) return (icon + "Open") as FileIconName
   return icon
 }

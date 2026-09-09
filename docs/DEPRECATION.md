@@ -26,6 +26,7 @@ Maximilian follows [Semantic Versioning 2.0.0](https://semver.org/):
 
 Until `1.0.0` is released, **minor versions may include breaking changes**.
 We will still:
+
 1. Mark removed APIs with `@deprecated` at least one minor version ahead.
 2. Log a runtime warning on first use of any deprecated API.
 3. Document the change in CHANGELOG with a `⚠️ BREAKING` marker.
@@ -46,6 +47,7 @@ A typical deprecation follows this timeline:
 ```
 
 **Minimum support window:**
+
 - **Internal / beta APIs**: 1 minor version of warning before removal.
 - **Public / GA APIs**: 2 minor versions + 6 months.
 - **Anything called out as "experimental"**: 1 minor version is enough.
@@ -97,27 +99,28 @@ deprecation policy applies.
 When you import from Maximilian, you can tell at a glance whether a symbol
 is stable by checking its JSDoc:
 
-| Marker | Meaning | Removal policy |
-|---|---|---|
-| (none) | **Stable** — covered by SemVer | 2 minor + 6 months notice |
-| `@experimental` | Draft, may change | None — any release |
-| `@deprecated` since X, removal Y | Scheduled for removal | Removed at Y |
+| Marker                           | Meaning                        | Removal policy            |
+| -------------------------------- | ------------------------------ | ------------------------- |
+| (none)                           | **Stable** — covered by SemVer | 2 minor + 6 months notice |
+| `@experimental`                  | Draft, may change              | None — any release        |
+| `@deprecated` since X, removal Y | Scheduled for removal          | Removed at Y              |
 
 ## Stability tier per package
 
 Some packages are stable-by-default; others are explicitly experimental:
 
-| Package | Stability |
-|---|---|
-| `@max/core`, `@max/agents`, `@max/commander`, `@max/providers` | Stable |
-| `@max/dags`, `@max/database`, `@max/queue`, `@max/telemetry` | Stable |
-| `@max/evolution`, `@max/meta-system` | Stable but **governance-impacting** — read [docs/architecture/evolution-vs-meta-system.md](architecture/evolution-vs-meta-system.md) before relying on them |
-| `@max/autonomy` | `@experimental` |
-| `@max/sdk` | Stable |
+| Package                                                        | Stability                                                                                                                                                   |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@max/core`, `@max/agents`, `@max/commander`, `@max/providers` | Stable                                                                                                                                                      |
+| `@max/dags`, `@max/database`, `@max/queue`, `@max/telemetry`   | Stable                                                                                                                                                      |
+| `@max/evolution`, `@max/meta-system`                           | Stable but **governance-impacting** — read [docs/architecture/evolution-vs-meta-system.md](architecture/evolution-vs-meta-system.md) before relying on them |
+| `@max/autonomy`                                                | `@experimental`                                                                                                                                             |
+| `@max/sdk`                                                     | Stable                                                                                                                                                      |
 
 ## Questions
 
 Open an issue or discussion if:
+
 - You're depending on an API we marked deprecated and the removal
   timeline is too aggressive.
 - You want us to mark something experimental that we shipped as stable.

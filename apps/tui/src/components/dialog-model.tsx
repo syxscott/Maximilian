@@ -87,7 +87,7 @@ export function DialogModel(props: DialogModelProps) {
   const items: SelectItem[] = useMemo(() => {
     const needle = query.trim()
     const showSections = props.connected && !props.providerID && needle.length === 0
-    const favorites = props.connected ? props.favorites ?? [] : []
+    const favorites = props.connected ? (props.favorites ?? []) : []
     const recents = props.recents ?? []
 
     const favoriteOptions: SelectItem[] = showSections
@@ -142,9 +142,7 @@ export function DialogModel(props: DialogModelProps) {
       .flatMap((provider) => {
         return Object.entries(provider.models)
           .filter(([_, info]) => info.status !== "deprecated")
-          .filter(([_, info]) =>
-            props.providerID ? info.providerID === props.providerID : true,
-          )
+          .filter(([_, info]) => (props.providerID ? info.providerID === props.providerID : true))
           .map(([modelID, info]) => {
             const id = info.id ?? modelID
             const isFavorite = favorites.some(
@@ -183,12 +181,17 @@ export function DialogModel(props: DialogModelProps) {
             void _showSections
             void _isFavorite
             void _isRecent
-            return { ...rest, _releaseDate } as SelectItem & { _releaseDate?: string; footer?: string }
+            return { ...rest, _releaseDate } as SelectItem & {
+              _releaseDate?: string
+              footer?: string
+            }
           })
       })
 
     const sortedProvider = sortModelOptions(
-      providerOptions as Array<SelectItem & { footer?: string; title: string; _releaseDate?: string }>,
+      providerOptions as Array<
+        SelectItem & { footer?: string; title: string; _releaseDate?: string }
+      >,
       props.providerID !== undefined,
     ).map((opt) => {
       const { _releaseDate, ...rest } = opt as SelectItem & { _releaseDate?: string }
@@ -246,9 +249,8 @@ export function DialogModel(props: DialogModelProps) {
           itemComponent={({ isSelected, label, value }) => (
             <Box flexDirection="row">
               <Text color={isSelected ? "green" : undefined}>{label}</Text>
-              {props.current?.providerID === value.providerID && props.current?.modelID === value.modelID && (
-                <Text dimColor> (current)</Text>
-              )}
+              {props.current?.providerID === value.providerID &&
+                props.current?.modelID === value.modelID && <Text dimColor> (current)</Text>}
             </Box>
           )}
         />

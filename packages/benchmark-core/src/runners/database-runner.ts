@@ -6,12 +6,12 @@
  * and destroyed after the query runs. No mocks, no shortcuts.
  */
 
-import Database from "better-sqlite3";
+import Database from "better-sqlite3"
 
 export interface SqlExecutionResult {
-  rows: Record<string, unknown>[];
-  columns: string[];
-  error?: string;
+  rows: Record<string, unknown>[]
+  columns: string[]
+  error?: string
 }
 
 export class DatabaseRunner {
@@ -23,46 +23,46 @@ export class DatabaseRunner {
    * @returns The query result rows, column names, or an error message.
    */
   executeSql(sql: string, context: Record<string, unknown>): SqlExecutionResult {
-    const ddl = context.ddl;
+    const ddl = context.ddl
     if (typeof ddl !== "string" || ddl.length === 0) {
-      return { rows: [], columns: [], error: "context.ddl is missing or empty" };
+      return { rows: [], columns: [], error: "context.ddl is missing or empty" }
     }
 
-    const db = new Database(":memory:");
+    const db = new Database(":memory:")
     try {
       // 1. Initialize sandbox with task DDL.
-      db.exec(ddl);
+      db.exec(ddl)
 
       // Set a busy timeout so pathological queries don't block forever.
       // better-sqlite3 is synchronous, so we use PRAGMA to bound the
       // worst case. 5 seconds is generous for a sandbox query.
-      db.pragma("busy_timeout = 5000");
+      db.pragma("busy_timeout = 5000")
 
       // 2. Execute agent-generated SQL.
-      const stmt = db.prepare(sql);
-      const rawRows = stmt.all();
+      const stmt = db.prepare(sql)
+      const rawRows = stmt.all()
 
       // 3. Extract column names from the statement info.
-      const columns = stmt.columns().map((c) => c.name);
+      const columns = stmt.columns().map((c) => c.name)
 
       // 4. Normalize rows to Record<string, unknown>.
       const rows = rawRows.map((row) => {
         if (typeof row === "object" && row !== null && !Array.isArray(row)) {
-          return row as Record<string, unknown>;
+          return row as Record<string, unknown>
         }
         // If better-sqlite3 returns a primitive (e.g. SELECT 1), wrap it.
-        return { value: row } as Record<string, unknown>;
-      });
+        return { value: row } as Record<string, unknown>
+      })
 
-      return { rows, columns };
+      return { rows, columns }
     } catch (err) {
       return {
         rows: [],
         columns: [],
         error: err instanceof Error ? err.message : String(err),
-      };
+      }
     } finally {
-      db.close();
+      db.close()
     }
   }
 
@@ -70,7 +70,7 @@ export class DatabaseRunner {
    * Execute the gold-standard query and return its result for comparison.
    */
   executeGold(goldQuery: string, context: Record<string, unknown>): SqlExecutionResult {
-    return this.executeSql(goldQuery, context);
+    return this.executeSql(goldQuery, context)
   }
 
   /**
@@ -79,46 +79,52 @@ export class DatabaseRunner {
    */
   compareResults(
     agentResult: SqlExecutionResult,
-    goldResult: Record<string, unknown>[]
+    goldResult: Record<string, unknown>[],
   ): { quality: number; reason: string } {
     if (agentResult.error) {
-      return { quality: 0, reason: `SQL error: ${agentResult.error}` };
+      return { quality: 0, reason: `SQL error: ${agentResult.error}` }
     }
 
     if (agentResult.rows.length === 0 && goldResult.length === 0) {
-      return { quality: 1, reason: "both empty — match" };
+      return { quality: 1, reason: "both empty — match" }
     }
 
     if (agentResult.rows.length === 0) {
-      return { quality: 0, reason: "agent returned 0 rows, expected " + goldResult.length };
+      return { quality: 0, reason: "agent returned 0 rows, expected " + goldResult.length }
     }
 
     if (agentResult.rows.length !== goldResult.length) {
       // Partial credit if column count matches.
-      const agentCols = Object.keys(agentResult.rows[0]!).length;
-      const goldCols = Object.keys(goldResult[0]!).length;
+      const agentCols = Object.keys(agentResult.rows[0]!).length
+      const goldCols = Object.keys(goldResult[0]!).length
       if (agentCols === goldCols) {
-        return { quality: 0.5, reason: `row count mismatch (${agentResult.rows.length} vs ${goldResult.length}), columns match` };
+        return {
+          quality: 0.5,
+          reason: `row count mismatch (${agentResult.rows.length} vs ${goldResult.length}), columns match`,
+        }
       }
-      return { quality: 0, reason: `row count mismatch (${agentResult.rows.length} vs ${goldResult.length})` };
+      return {
+        quality: 0,
+        reason: `row count mismatch (${agentResult.rows.length} vs ${goldResult.length})`,
+      }
     }
 
     // Deep comparison of rows (order-sensitive).
-    const agentJson = JSON.stringify(normalizeRows(agentResult.rows));
-    const goldJson = JSON.stringify(normalizeRows(goldResult));
+    const agentJson = JSON.stringify(normalizeRows(agentResult.rows))
+    const goldJson = JSON.stringify(normalizeRows(goldResult))
 
     if (agentJson === goldJson) {
-      return { quality: 1, reason: "exact match" };
+      return { quality: 1, reason: "exact match" }
     }
 
     // Partial credit: same row count, check column overlap.
-    const agentCols = Object.keys(agentResult.rows[0]!).sort();
-    const goldCols = Object.keys(goldResult[0]!).sort();
+    const agentCols = Object.keys(agentResult.rows[0]!).sort()
+    const goldCols = Object.keys(goldResult[0]!).sort()
     if (JSON.stringify(agentCols) === JSON.stringify(goldCols)) {
-      return { quality: 0.5, reason: "columns match but row data differs" };
+      return { quality: 0.5, reason: "columns match but row data differs" }
     }
 
-    return { quality: 0, reason: "result mismatch" };
+    return { quality: 0, reason: "result mismatch" }
   }
 }
 
@@ -129,16 +135,20 @@ export class DatabaseRunner {
  */
 function normalizeRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return rows.map((row) => {
-    const sorted: Record<string, unknown> = {};
+    const sorted: Record<string, unknown> = {}
     for (const key of Object.keys(row).sort()) {
-      const val = row[key];
+      const val = row[key]
       if (typeof val === "string" && val.includes(",")) {
         // Sort comma-separated values for GROUP_CONCAT equivalence.
-        sorted[key] = val.split(",").map((s) => s.trim()).sort().join(",");
+        sorted[key] = val
+          .split(",")
+          .map((s) => s.trim())
+          .sort()
+          .join(",")
       } else {
-        sorted[key] = val;
+        sorted[key] = val
       }
     }
-    return sorted;
-  });
+    return sorted
+  })
 }

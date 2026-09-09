@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { OpencodeExecutor } from "../src/opencode-executor.js"
 import type { Task } from "../src/types.js"
 
-const mkTask = (id: string, description: string): Task => ({
-  id,
-  description,
-  agentRole: "general",
-  dependsOn: [],
-  status: "pending",
-} as Task)
+const mkTask = (id: string, description: string): Task =>
+  ({
+    id,
+    description,
+    agentRole: "general",
+    dependsOn: [],
+    status: "pending",
+  }) as Task
 
 function makeOk<T>(body: T, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -195,7 +196,8 @@ describe("OpencodeExecutor (Phase 2)", () => {
     await ex.executeTask(mkTask("t", "x"), "ws-1")
     await ex.shutdown()
     const deleteCalls = fetchMock.mock.calls.filter(
-      (c) => String(c[0]).endsWith("/api/session/ses_z") && (c[1] as RequestInit)?.method === "DELETE",
+      (c) =>
+        String(c[0]).endsWith("/api/session/ses_z") && (c[1] as RequestInit)?.method === "DELETE",
     )
     expect(deleteCalls.length).toBe(1)
   })

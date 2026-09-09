@@ -20,6 +20,6 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `packages/autonomy/src/evolution-planner.ts` | 190 |
+| 文件                                         | 行数 |
+| -------------------------------------------- | ---- |
+| `packages/autonomy/src/evolution-planner.ts` | 190  |

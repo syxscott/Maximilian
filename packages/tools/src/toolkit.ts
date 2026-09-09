@@ -64,7 +64,10 @@ export interface ToolRegistry {
    *  - minus RoleSpec.deniedTools
    *  - minus any tool with risk > 'medium' unless role is explicitly allowed
    */
-  getToolsForRole(roleId: string, roleSpec: { allowedTools?: string[]; deniedTools?: string[] }): Tool[]
+  getToolsForRole(
+    roleId: string,
+    roleSpec: { allowedTools?: string[]; deniedTools?: string[] },
+  ): Tool[]
   /**
    * Recursively scan `rootDir` for `manifest.json` files and register
    * each discovered toolkit. manifest.json must export a Toolkit-compatible
@@ -121,7 +124,9 @@ export class DefaultToolRegistry implements ToolRegistry {
     for (const tool of toolkit.tools) {
       if (!tool.name) throw new Error(`Toolkit "${toolkit.id}" has a tool with missing name`)
       if (typeof tool.execute !== "function") {
-        throw new Error(`Tool "${tool.name}" in toolkit "${toolkit.id}" is missing required execute function`)
+        throw new Error(
+          `Tool "${tool.name}" in toolkit "${toolkit.id}" is missing required execute function`,
+        )
       }
       const registered = { ...tool, toolkitId: toolkit.id }
       this.tools.set(tool.name, registered)
@@ -189,13 +194,11 @@ export class DefaultToolRegistry implements ToolRegistry {
         const stripped = raw.replace(/(?<!https?:)\/\/[^\n]*/g, "").replace(/,\s*([}\]])/g, "$1")
         const parsed = JSON.parse(stripped) as Toolkit
         if (!parsed.id) {
-           
           console.warn(`[DefaultToolRegistry] manifest at ${manifestPath} missing "id", skipping`)
           continue
         }
         this.registerToolkit(parsed)
       } catch (err) {
-         
         console.error(`[DefaultToolRegistry] failed to load manifest ${manifestPath}:`, err)
       }
     }

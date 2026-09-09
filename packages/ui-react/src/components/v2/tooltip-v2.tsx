@@ -21,9 +21,9 @@ export interface TooltipV2Props {
   disableHoverableContent?: boolean
 }
 
-export const TooltipProvider: React.FC<React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>> = (
-  props,
-) => <TooltipPrimitive.Provider delayDuration={0} {...props} />
+export const TooltipProvider: React.FC<
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>
+> = (props) => <TooltipPrimitive.Provider delayDuration={0} {...props} />
 
 export const TooltipV2: React.FC<TooltipV2Props> = ({
   value,

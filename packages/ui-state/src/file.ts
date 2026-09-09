@@ -53,11 +53,7 @@ export type FileStoreActions = {
   // View cache actions
   setScrollTop: (key: string, file: string, top: number) => void
   setScrollLeft: (key: string, file: string, left: number) => void
-  setSelectedLines: (
-    key: string,
-    file: string,
-    range: SelectedLineRange | null,
-  ) => void
+  setSelectedLines: (key: string, file: string, range: SelectedLineRange | null) => void
   resetViewKey: (key: string) => void
 }
 
@@ -212,19 +208,11 @@ export function getFileContent(
   }
 }
 
-export function scrollTop(
-  state: FileStoreState,
-  key: string,
-  file: string,
-): number | undefined {
+export function scrollTop(state: FileStoreState, key: string, file: string): number | undefined {
   return state.view[key]?.[file]?.scrollTop
 }
 
-export function scrollLeft(
-  state: FileStoreState,
-  key: string,
-  file: string,
-): number | undefined {
+export function scrollLeft(state: FileStoreState, key: string, file: string): number | undefined {
   return state.view[key]?.[file]?.scrollLeft
 }
 

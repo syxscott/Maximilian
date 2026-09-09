@@ -95,9 +95,7 @@ export const FieldV2Root = React.forwardRef<HTMLDivElement, FieldV2Props>(
       const root = rootRef.current
       if (!root) return
       const control = root.querySelector(CONTROL_SELECTOR) as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | null
+        HTMLInputElement | HTMLTextAreaElement | null
       if (!control) return
       const shell = control.closest(
         "[data-component='text-input-v2'], [data-component='textarea-v2'], [data-component='inline-input-v2']",
@@ -208,12 +206,7 @@ export const FieldPrefix: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   }, [field])
 
   return (
-    <div
-      id={field.prefixId}
-      data-slot="field-v2-prefix"
-      className={cn(className)}
-      {...rest}
-    >
+    <div id={field.prefixId} data-slot="field-v2-prefix" className={cn(className)} {...rest}>
       {children}
     </div>
   )
@@ -232,12 +225,7 @@ export const FieldSuffix: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   }, [field])
 
   return (
-    <div
-      id={field.suffixId}
-      data-slot="field-v2-suffix"
-      className={cn(className)}
-      {...rest}
-    >
+    <div id={field.suffixId} data-slot="field-v2-suffix" className={cn(className)} {...rest}>
       {children}
     </div>
   )

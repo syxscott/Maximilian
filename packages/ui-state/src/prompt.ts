@@ -73,9 +73,7 @@ export type PromptStoreState = {
   }
 }
 
-export const DEFAULT_PROMPT: Prompt = [
-  { type: "text", content: "", start: 0, end: 0 },
-]
+export const DEFAULT_PROMPT: Prompt = [{ type: "text", content: "", start: 0, end: 0 }]
 
 export type PromptStoreActions = {
   setPrompt: (prompt: Prompt, cursorPosition?: number) => void
@@ -137,8 +135,7 @@ export const usePromptStore = create<PromptStore>()((set) => ({
     set((state) => ({
       context: {
         items: state.context.items.filter(
-          (item) =>
-            !(item.type === "file" && item.path === path && item.commentID === commentID),
+          (item) => !(item.type === "file" && item.path === path && item.commentID === commentID),
         ),
       },
     })),

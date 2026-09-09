@@ -9,36 +9,29 @@
  * Captures: capabilities, blueprints, team graphs, leaderboards.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto"
 import {
   OrganizationSnapshotSchema,
   type OrganizationSnapshot,
   type CapabilityRecord,
-} from "./types.js";
-import type { AgentBlueprint, TeamGraph } from "@max/dags";
-import type { OpencodeExecutor, ExecuteResult } from "@max/core";
+} from "./types.js"
+import type { AgentBlueprint, TeamGraph } from "@max/dags"
+import type { OpencodeExecutor, ExecuteResult } from "@max/core"
 
 export interface CaptureInput {
-  capabilities: CapabilityRecord[];
-  blueprints: AgentBlueprint[];
-  graphs: TeamGraph[];
-  leaderboards?: Record<string, unknown>;
+  capabilities: CapabilityRecord[]
+  blueprints: AgentBlueprint[]
+  graphs: TeamGraph[]
+  leaderboards?: Record<string, unknown>
 }
 
 export interface TwinProposal {
   /** What kind of change to apply to the twin. */
-  kind:
-    | "birth"
-    | "retire"
-    | "promote"
-    | "demote"
-    | "merge"
-    | "split"
-    | "rebalance_team";
+  kind: "birth" | "retire" | "promote" | "demote" | "merge" | "split" | "rebalance_team"
   /** Subject of the change (capability id or blueprint id or role). */
-  subject: string;
+  subject: string
   /** Optional target (e.g. merge target role, split target role). */
-  target?: string;
+  target?: string
 }
 
 export class DigitalTwin {
@@ -51,9 +44,9 @@ export class DigitalTwin {
       blueprints: input.blueprints as unknown as Record<string, unknown>[],
       graphs: input.graphs as unknown as Record<string, unknown>[],
       leaderboards: input.leaderboards ?? {},
-    };
+    }
     // Deep clone to prevent shared references between snapshot and live state.
-    return OrganizationSnapshotSchema.parse(structuredClone(raw));
+    return OrganizationSnapshotSchema.parse(structuredClone(raw))
   }
 
   /**
@@ -67,7 +60,7 @@ export class DigitalTwin {
       blueprints: snap.blueprints.map((b) => ({ ...b })),
       graphs: snap.graphs.map((g) => ({ ...g })),
       leaderboards: { ...snap.leaderboards },
-    };
+    }
 
     switch (proposal.kind) {
       case "birth": {
@@ -83,78 +76,81 @@ export class DigitalTwin {
           avgDurationMs: 0,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        });
+        })
         cloned.blueprints.push({
           id: `bp-${proposal.subject}-twin`,
           role: `${proposal.subject}_agent`,
-        } as unknown as typeof cloned.blueprints[number]);
-        break;
+        } as unknown as (typeof cloned.blueprints)[number])
+        break
       }
       case "retire": {
         for (const c of cloned.capabilities) {
-          if ((c.id === proposal.subject || c.id + "_agent" === proposal.subject) && c.status !== "retired") {
-            c.status = "retired";
-            c.retiredAt = new Date().toISOString();
-            c.updatedAt = c.retiredAt;
+          if (
+            (c.id === proposal.subject || c.id + "_agent" === proposal.subject) &&
+            c.status !== "retired"
+          ) {
+            c.status = "retired"
+            c.retiredAt = new Date().toISOString()
+            c.updatedAt = c.retiredAt
           }
         }
         for (const b of cloned.blueprints) {
-          const bb = b as unknown as { id?: string; role?: string; retiredAt?: string };
+          const bb = b as unknown as { id?: string; role?: string; retiredAt?: string }
           if (bb.id === proposal.subject || bb.role === proposal.subject) {
-            bb.retiredAt = new Date().toISOString();
+            bb.retiredAt = new Date().toISOString()
           }
         }
-        break;
+        break
       }
       case "promote": {
         for (const c of cloned.capabilities) {
           if (c.id === proposal.subject && c.status !== "retired") {
-            c.status = "active";
-            c.promotedAt = new Date().toISOString();
-            c.updatedAt = c.promotedAt;
+            c.status = "active"
+            c.promotedAt = new Date().toISOString()
+            c.updatedAt = c.promotedAt
           }
         }
-        break;
+        break
       }
       case "demote": {
         for (const c of cloned.capabilities) {
           if (c.id === proposal.subject && c.status !== "retired") {
-            c.status = "deprecated";
-            c.updatedAt = new Date().toISOString();
+            c.status = "deprecated"
+            c.updatedAt = new Date().toISOString()
           }
         }
-        break;
+        break
       }
       case "merge": {
         // Subject role gets retired; target role keeps going.
         for (const b of cloned.blueprints) {
-          const bb = b as unknown as { id?: string; role?: string; retiredAt?: string };
+          const bb = b as unknown as { id?: string; role?: string; retiredAt?: string }
           if (bb.role === proposal.subject) {
-            bb.retiredAt = new Date().toISOString();
+            bb.retiredAt = new Date().toISOString()
           }
         }
-        break;
+        break
       }
       case "split": {
         // Source role retires; a new role appears (proposal.target).
         for (const b of cloned.blueprints) {
-          const bb = b as unknown as { id?: string; role?: string; retiredAt?: string };
+          const bb = b as unknown as { id?: string; role?: string; retiredAt?: string }
           if (bb.role === proposal.subject) {
-            bb.retiredAt = new Date().toISOString();
+            bb.retiredAt = new Date().toISOString()
           }
         }
         cloned.blueprints.push({
           id: `bp-${proposal.target}-twin`,
           role: proposal.target ?? `${proposal.subject}_planner`,
-        } as unknown as typeof cloned.blueprints[number]);
-        break;
+        } as unknown as (typeof cloned.blueprints)[number])
+        break
       }
       case "rebalance_team": {
         // No structural change; tracked via hint metadata in real flow.
-        break;
+        break
       }
     }
-    return cloned;
+    return cloned
   }
 }
 
@@ -164,42 +160,45 @@ export class DigitalTwin {
  */
 export function snapshotToSimulationInput(
   snap: OrganizationSnapshot,
-  orgName: string
+  orgName: string,
 ): {
-  orgName: string;
-  graph: TeamGraph;
-  profiles: Record<string, { costPerCall: number; latencyMs: number; qualityScore: number }>;
+  orgName: string
+  graph: TeamGraph
+  profiles: Record<string, { costPerCall: number; latencyMs: number; qualityScore: number }>
 } {
-  const nodes = snap.blueprints.map((b, i) => {
-    const bb = b as unknown as {
-      id?: string;
-      role?: string;
-      displayName?: string;
-      retiredAt?: string;
-    };
-    return {
-      kind: "agent" as const,
-      id: bb.id ?? `n-${i}`,
-      blueprintId: bb.id ?? `bp-${i}`,
-      role: bb.role ?? "unknown",
-      displayName: bb.displayName ?? bb.role ?? "unknown",
-      dependsOn: [] as string[],
-      ...(bb.retiredAt ? { retiredAt: bb.retiredAt } : {}),
-    };
-  }).filter((n) => {
-    const orig = snap.blueprints.find(
-      (b) => (b as unknown as { id?: string }).id === n.blueprintId
-    );
-    return !(orig as unknown as { retiredAt?: string } | undefined)?.retiredAt;
-  });
+  const nodes = snap.blueprints
+    .map((b, i) => {
+      const bb = b as unknown as {
+        id?: string
+        role?: string
+        displayName?: string
+        retiredAt?: string
+      }
+      return {
+        kind: "agent" as const,
+        id: bb.id ?? `n-${i}`,
+        blueprintId: bb.id ?? `bp-${i}`,
+        role: bb.role ?? "unknown",
+        displayName: bb.displayName ?? bb.role ?? "unknown",
+        dependsOn: [] as string[],
+        ...(bb.retiredAt ? { retiredAt: bb.retiredAt } : {}),
+      }
+    })
+    .filter((n) => {
+      const orig = snap.blueprints.find(
+        (b) => (b as unknown as { id?: string }).id === n.blueprintId,
+      )
+      return !(orig as unknown as { retiredAt?: string } | undefined)?.retiredAt
+    })
 
-  const profiles: Record<string, { costPerCall: number; latencyMs: number; qualityScore: number }> = {};
+  const profiles: Record<string, { costPerCall: number; latencyMs: number; qualityScore: number }> =
+    {}
   for (const node of nodes) {
     profiles[node.role] = profiles[node.role] ?? {
       costPerCall: 1,
       latencyMs: 1000,
       qualityScore: 7,
-    };
+    }
   }
 
   return {
@@ -215,7 +214,7 @@ export function snapshotToSimulationInput(
       status: "draft",
     },
     profiles,
-  };
+  }
 }
 
 // ============================================================================
@@ -250,15 +249,15 @@ export interface OpencodeExecutorLike {
   executeTask(
     task: { id: string; description: string; agentRole: string },
     workspaceId: string,
-  ): Promise<ExecuteResult>;
+  ): Promise<ExecuteResult>
 }
 
 /** Step granularity used when reporting a simulated session. */
 export interface SimulatedStep {
-  index: number;
-  description: string;
-  output: string;
-  tokens: number;
+  index: number
+  description: string
+  output: string
+  tokens: number
 }
 
 /**
@@ -269,46 +268,46 @@ export interface SimulatedStep {
  * table — callers map this to their cost model).
  */
 export interface SimulationOutcome {
-  teamId: string;
-  scenario: string;
-  success: boolean;
-  failure?: { reason: string; atStep: number };
-  estimatedTokenCost: number;
-  steps: number;
-  artifacts: string[];
-  startedAt: string;
-  completedAt: string;
+  teamId: string
+  scenario: string
+  success: boolean
+  failure?: { reason: string; atStep: number }
+  estimatedTokenCost: number
+  steps: number
+  artifacts: string[]
+  startedAt: string
+  completedAt: string
   /** Whether the executor was the default mock (vs. a real OpencodeExecutor). */
-  mocked: boolean;
+  mocked: boolean
 }
 
 export interface OpencodeDigitalTwinOptions {
   /** Inject a real OpencodeExecutor (or any OpencodeExecutorLike) to run actual sessions. */
-  executor?: OpencodeExecutorLike;
+  executor?: OpencodeExecutorLike
   /**
    * Override the per-step token cost estimate. Defaults to a flat
    * 200 tokens per step, which roughly matches short opencode responses.
    */
-  tokensPerStep?: number;
+  tokensPerStep?: number
   /**
    * Failure probability per step. Defaults to 0.0 (always succeed) so
    * the simulator is a useful optimistic predictor; tests / pessimistic
    * scenarios can raise this.
    */
-  failureProbability?: number;
+  failureProbability?: number
   /**
    * Source of randomness. Injectable so tests get deterministic runs.
    * Returns a float in [0, 1).
    */
-  rng?: () => number;
+  rng?: () => number
   /** Override the current time (for deterministic tests). */
-  now?: () => Date;
+  now?: () => Date
   /** ID generator; defaults to `randomUUID()`. */
-  idGenerator?: () => string;
+  idGenerator?: () => string
 }
 
-const DEFAULT_TOKENS_PER_STEP = 200;
-const DEFAULT_FAILURE_PROBABILITY = 0;
+const DEFAULT_TOKENS_PER_STEP = 200
+const DEFAULT_FAILURE_PROBABILITY = 0
 
 /**
  * Simple mocked executor. Produces a deterministic-looking ExecuteResult
@@ -324,7 +323,7 @@ const DEFAULT_FAILURE_PROBABILITY = 0;
 function createDefaultMockExecutor(): OpencodeExecutorLike {
   return {
     async executeTask(task) {
-      const sessionId = `mock-${randomUUID().slice(0, 8)}`;
+      const sessionId = `mock-${randomUUID().slice(0, 8)}`
       const result: ExecuteResult = {
         result: {
           id: `r-${task.id}`,
@@ -338,10 +337,10 @@ function createDefaultMockExecutor(): OpencodeExecutorLike {
         },
         sessionId,
         durationMs: 0,
-      };
-      return result;
+      }
+      return result
     },
-  };
+  }
 }
 
 /**
@@ -355,27 +354,27 @@ function createDefaultMockExecutor(): OpencodeExecutorLike {
  * the default mock (for offline prediction).
  */
 export class OpencodeDigitalTwin {
-  private readonly executor: OpencodeExecutorLike;
-  private readonly executorIsMock: boolean;
-  private readonly tokensPerStep: number;
-  private readonly failureProbability: number;
-  private readonly rng: () => number;
-  private readonly now: () => Date;
-  private readonly idGenerator: () => string;
+  private readonly executor: OpencodeExecutorLike
+  private readonly executorIsMock: boolean
+  private readonly tokensPerStep: number
+  private readonly failureProbability: number
+  private readonly rng: () => number
+  private readonly now: () => Date
+  private readonly idGenerator: () => string
 
   constructor(opts: OpencodeDigitalTwinOptions = {}) {
     if (opts.executor) {
-      this.executor = opts.executor;
-      this.executorIsMock = false;
+      this.executor = opts.executor
+      this.executorIsMock = false
     } else {
-      this.executor = createDefaultMockExecutor();
-      this.executorIsMock = true;
+      this.executor = createDefaultMockExecutor()
+      this.executorIsMock = true
     }
-    this.tokensPerStep = Math.max(0, opts.tokensPerStep ?? DEFAULT_TOKENS_PER_STEP);
-    this.failureProbability = clamp01(opts.failureProbability ?? DEFAULT_FAILURE_PROBABILITY);
-    this.rng = opts.rng ?? Math.random;
-    this.now = opts.now ?? (() => new Date());
-    this.idGenerator = opts.idGenerator ?? (() => randomUUID());
+    this.tokensPerStep = Math.max(0, opts.tokensPerStep ?? DEFAULT_TOKENS_PER_STEP)
+    this.failureProbability = clamp01(opts.failureProbability ?? DEFAULT_FAILURE_PROBABILITY)
+    this.rng = opts.rng ?? Math.random
+    this.now = opts.now ?? (() => new Date())
+    this.idGenerator = opts.idGenerator ?? (() => randomUUID())
   }
 
   /**
@@ -386,25 +385,25 @@ export class OpencodeDigitalTwin {
    * based on `failureProbability`.
    */
   async simulate(input: {
-    teamId: string;
-    scenario: string;
-    maxSteps: number;
+    teamId: string
+    scenario: string
+    maxSteps: number
   }): Promise<SimulationOutcome> {
-    const teamId = requireString(input.teamId, "teamId");
-    const scenario = requireString(input.scenario, "scenario");
-    const maxSteps = sanitizeMaxSteps(input.maxSteps);
+    const teamId = requireString(input.teamId, "teamId")
+    const scenario = requireString(input.scenario, "scenario")
+    const maxSteps = sanitizeMaxSteps(input.maxSteps)
 
-    const startedAt = this.now().toISOString();
-    const stepDescs: string[] = [];
-    let tokens = 0;
-    let failureAt: number | undefined;
-    let failureReason: string | undefined;
-    const artifacts: string[] = [];
+    const startedAt = this.now().toISOString()
+    const stepDescs: string[] = []
+    let tokens = 0
+    let failureAt: number | undefined
+    let failureReason: string | undefined
+    const artifacts: string[] = []
 
     // Step 0: kick off a real (or mocked) session so we get a session id
     // and downstream consumers can correlate the simulation with the
     // opencode server. Failures here short-circuit the simulation.
-    let executorSessionId: string | undefined;
+    let executorSessionId: string | undefined
     try {
       const exec = await this.executor.executeTask(
         {
@@ -413,32 +412,32 @@ export class OpencodeDigitalTwin {
           agentRole: teamId,
         },
         teamId,
-      );
-      executorSessionId = exec.sessionId;
-      artifacts.push(`session:${exec.sessionId}`);
+      )
+      executorSessionId = exec.sessionId
+      artifacts.push(`session:${exec.sessionId}`)
     } catch (err) {
-      failureAt = 0;
-      failureReason = err instanceof Error ? err.message : String(err);
+      failureAt = 0
+      failureReason = err instanceof Error ? err.message : String(err)
     }
 
     // Steps 1..maxSteps: model each step as a token-emitting, possibly-
     // failing operation. The mock executor is a black box; the
     // simulation walks discrete steps on top of it.
-    const upperBound = failureAt !== undefined ? failureAt : maxSteps;
+    const upperBound = failureAt !== undefined ? failureAt : maxSteps
     for (let i = 1; i <= upperBound; i++) {
-      const stepTokens = this.tokensPerStep;
-      tokens += stepTokens;
-      stepDescs.push(`step ${i} for ${teamId}`);
+      const stepTokens = this.tokensPerStep
+      tokens += stepTokens
+      stepDescs.push(`step ${i} for ${teamId}`)
 
       if (this.failureProbability > 0 && this.rng() < this.failureProbability) {
-        failureAt = i;
-        failureReason = `random failure at step ${i} (p=${this.failureProbability})`;
-        break;
+        failureAt = i
+        failureReason = `random failure at step ${i} (p=${this.failureProbability})`
+        break
       }
     }
 
-    const completedAt = this.now().toISOString();
-    const success = failureAt === undefined;
+    const completedAt = this.now().toISOString()
+    const success = failureAt === undefined
 
     return {
       teamId,
@@ -455,7 +454,7 @@ export class OpencodeDigitalTwin {
       startedAt,
       completedAt,
       mocked: this.executorIsMock,
-    };
+    }
   }
 
   /**
@@ -463,26 +462,26 @@ export class OpencodeDigitalTwin {
    * for "what if we add this agent?" dashboards.
    */
   async simulateWithTrace(input: {
-    teamId: string;
-    scenario: string;
-    maxSteps: number;
+    teamId: string
+    scenario: string
+    maxSteps: number
   }): Promise<{ outcome: SimulationOutcome; trace: SimulatedStep[] }> {
-    const outcome = await this.simulate(input);
+    const outcome = await this.simulate(input)
     // Reconstruct a synthetic trace from the outcome. The full step
     // trace isn't preserved by `simulate` (it only stores counts); this
     // is a best-effort replay for callers that want per-step detail.
-    const trace: SimulatedStep[] = [];
-    const perStep = this.tokensPerStep;
-    const steps = outcome.steps;
+    const trace: SimulatedStep[] = []
+    const perStep = this.tokensPerStep
+    const steps = outcome.steps
     for (let i = 0; i < steps; i++) {
       trace.push({
         index: i,
         description: `step ${i + 1} for ${input.teamId}`,
         output: outcome.success ? "ok" : `failed at step ${outcome.failure?.atStep ?? "?"}`,
         tokens: perStep,
-      });
+      })
     }
-    return { outcome, trace };
+    return { outcome, trace }
   }
 }
 
@@ -490,23 +489,23 @@ export class OpencodeDigitalTwin {
 
 function requireString(value: string, name: string): string {
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`OpencodeDigitalTwin: \`${name}\` is required and must be a non-empty string`);
+    throw new Error(`OpencodeDigitalTwin: \`${name}\` is required and must be a non-empty string`)
   }
-  return value;
+  return value
 }
 
 function sanitizeMaxSteps(value: number): number {
-  if (!Number.isFinite(value)) return 1;
-  const i = Math.trunc(value);
-  if (i < 1) return 1;
+  if (!Number.isFinite(value)) return 1
+  const i = Math.trunc(value)
+  if (i < 1) return 1
   // Cap to a sane upper bound so a misconfigured caller can't trigger
   // unbounded loops in the simulator.
-  return Math.min(i, 1000);
+  return Math.min(i, 1000)
 }
 
 function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value < 0) return 0;
-  if (value > 1) return 1;
-  return value;
+  if (!Number.isFinite(value)) return 0
+  if (value < 0) return 0
+  if (value > 1) return 1
+  return value
 }

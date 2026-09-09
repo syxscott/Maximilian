@@ -10,8 +10,7 @@ import {
 } from "../src/compaction.js"
 import type { Message } from "@max/llm"
 
-const mk = (role: Message["role"], content: string): Message =>
-  ({ role, content } as Message)
+const mk = (role: Message["role"], content: string): Message => ({ role, content }) as Message
 
 const cfg: CompactionConfig = {
   contextWindow: 100_000,
@@ -85,14 +84,16 @@ describe("Context Compaction (借鉴 opencode)", () => {
 
   it("non-string tool content is JSON-stringified then truncated", () => {
     const out = compactMessages(
-      [mk("user", "q"), mk("tool", { big: "x".repeat(TOOL_OUTPUT_MAX_CHARS + 50) } as any), mk("assistant", "a")],
+      [
+        mk("user", "q"),
+        mk("tool", { big: "x".repeat(TOOL_OUTPUT_MAX_CHARS + 50) } as any),
+        mk("assistant", "a"),
+      ],
       cfg,
       () => 50,
     )
     const toolMsg = out.find((m) => m.role === "tool")!
-    expect((toolMsg.content as string).length).toBeLessThanOrEqual(
-      TOOL_OUTPUT_MAX_CHARS + 100,
-    )
+    expect((toolMsg.content as string).length).toBeLessThanOrEqual(TOOL_OUTPUT_MAX_CHARS + 100)
   })
 
   it("preserves at least DEFAULT_TAIL_TURNS even when over budget", () => {

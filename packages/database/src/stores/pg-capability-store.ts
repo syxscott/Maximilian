@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { capabilities } from "../schema.js";
+import { eq } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { capabilities } from "../schema.js"
 
 /**
  * PostgreSQL-backed capability registry.
@@ -12,13 +12,9 @@ export class PgCapabilityStore {
   constructor(private db: PostgresJsDatabase) {}
 
   async get(id: string): Promise<CapabilityRow | undefined> {
-    const rows = await this.db
-      .select()
-      .from(capabilities)
-      .where(eq(capabilities.id, id))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToCapability(rows[0]);
+    const rows = await this.db.select().from(capabilities).where(eq(capabilities.id, id)).limit(1)
+    if (rows.length === 0) return undefined
+    return rowToCapability(rows[0])
   }
 
   async save(record: CapabilityRow): Promise<void> {
@@ -54,41 +50,38 @@ export class PgCapabilityStore {
           avgDurationMs: record.avgDurationMs,
           updatedAt: record.updatedAt,
         },
-      });
+      })
   }
 
   async listAll(): Promise<CapabilityRow[]> {
-    const rows = await this.db.select().from(capabilities);
-    return rows.map(rowToCapability);
+    const rows = await this.db.select().from(capabilities)
+    return rows.map(rowToCapability)
   }
 
   async listByStatus(status: string): Promise<CapabilityRow[]> {
-    const rows = await this.db
-      .select()
-      .from(capabilities)
-      .where(eq(capabilities.status, status));
-    return rows.map(rowToCapability);
+    const rows = await this.db.select().from(capabilities).where(eq(capabilities.status, status))
+    return rows.map(rowToCapability)
   }
 
   async remove(id: string): Promise<void> {
-    await this.db.delete(capabilities).where(eq(capabilities.id, id));
+    await this.db.delete(capabilities).where(eq(capabilities.id, id))
   }
 }
 
 export interface CapabilityRow {
-  id: string;
-  displayName: string;
-  description: string;
-  status: string;               // proposed | experimental | active | deprecated | retired
-  proposalId?: string;
-  promotedAt?: string;
-  retiredAt?: string;
-  usageCount: number;
-  totalExecutions: number;
-  avgScore: number;
-  avgDurationMs: number;
-  createdAt: string;
-  updatedAt: string;
+  id: string
+  displayName: string
+  description: string
+  status: string // proposed | experimental | active | deprecated | retired
+  proposalId?: string
+  promotedAt?: string
+  retiredAt?: string
+  usageCount: number
+  totalExecutions: number
+  avgScore: number
+  avgDurationMs: number
+  createdAt: string
+  updatedAt: string
 }
 
 function rowToCapability(row: typeof capabilities.$inferSelect): CapabilityRow {
@@ -106,7 +99,7 @@ function rowToCapability(row: typeof capabilities.$inferSelect): CapabilityRow {
     avgDurationMs: row.avgDurationMs,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-  };
+  }
 }
 
 // PgCapabilityStore: PostgreSQL-backed capability lifecycle persistence.

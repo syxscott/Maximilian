@@ -8,7 +8,7 @@
  * Capabilities are pure data — no behavior, no side effects.
  */
 
-import type { Capability } from "./types.js";
+import type { Capability } from "./types.js"
 
 export const CAPABILITY_LIBRARY: Capability[] = [
   {
@@ -36,8 +36,21 @@ User request: {{userRequest}}`,
     description: "Generate client-side code (HTML / CSS / JS / TS / React).",
     category: "frontend",
     keywords: [
-      "前端", "网页", "UI", "HTML", "CSS", "JS", "JavaScript", "React", "Vue", "Angular",
-      "frontend", "web app", "界面", "客户端", "browser",
+      "前端",
+      "网页",
+      "UI",
+      "HTML",
+      "CSS",
+      "JS",
+      "JavaScript",
+      "React",
+      "Vue",
+      "Angular",
+      "frontend",
+      "web app",
+      "界面",
+      "客户端",
+      "browser",
     ],
     defaultGoal: "Generate working client-side code that satisfies the product scope.",
     promptTemplate: `You are a Frontend Engineer. Build the user-facing part of: {{userRequest}}.
@@ -48,7 +61,12 @@ Rules:
 3. If a backend API exists in prior context, consume its contract exactly.
 4. No external CDNs unless explicitly required.`,
     defaultTools: [],
-    defaultConstraints: { outputFormat: "code", mustIncludeCodeBlocks: true, maxTokens: 4096, temperature: 0.4 },
+    defaultConstraints: {
+      outputFormat: "code",
+      mustIncludeCodeBlocks: true,
+      maxTokens: 4096,
+      temperature: 0.4,
+    },
     dependsOn: ["product_design", "backend"],
     tags: ["frontend", "ui"],
   },
@@ -58,8 +76,21 @@ Rules:
     description: "Generate server-side code (Node.js / Python / Go / Java).",
     category: "backend",
     keywords: [
-      "后端", "API", "服务端", "Node.js", "Express", "Python", "Flask", "Django", "Go", "Java",
-      "backend", "server", "service", "REST", "GraphQL",
+      "后端",
+      "API",
+      "服务端",
+      "Node.js",
+      "Express",
+      "Python",
+      "Flask",
+      "Django",
+      "Go",
+      "Java",
+      "backend",
+      "server",
+      "service",
+      "REST",
+      "GraphQL",
     ],
     defaultGoal: "Generate a working server-side service with a clear API contract.",
     promptTemplate: `You are a Backend Engineer. Implement the server for: {{userRequest}}.
@@ -70,7 +101,12 @@ Rules:
 3. If a database layer exists, integrate with it.
 4. Handle errors explicitly.`,
     defaultTools: [],
-    defaultConstraints: { outputFormat: "code", mustIncludeCodeBlocks: true, maxTokens: 4096, temperature: 0.3 },
+    defaultConstraints: {
+      outputFormat: "code",
+      mustIncludeCodeBlocks: true,
+      maxTokens: 4096,
+      temperature: 0.3,
+    },
     dependsOn: ["product_design"],
     tags: ["backend", "api"],
   },
@@ -80,8 +116,19 @@ Rules:
     description: "Design schemas, write migrations, optimize queries.",
     category: "data",
     keywords: [
-      "数据库", "DB", "SQL", "PostgreSQL", "MySQL", "MongoDB", "Redis", "schema",
-      "database", "storage", "表", "数据模型", "migration",
+      "数据库",
+      "DB",
+      "SQL",
+      "PostgreSQL",
+      "MySQL",
+      "MongoDB",
+      "Redis",
+      "schema",
+      "database",
+      "storage",
+      "表",
+      "数据模型",
+      "migration",
     ],
     defaultGoal: "Design and implement the data layer for the system.",
     promptTemplate: `You are a Database Engineer. Design the data layer for: {{userRequest}}.
@@ -102,8 +149,20 @@ Output:
     description: "Deployment, CI/CD, containerization, infrastructure.",
     category: "devops",
     keywords: [
-      "部署", "CI", "CD", "Docker", "K8s", "Kubernetes", "AWS", "GCP", "Azure",
-      "deploy", "pipeline", "infrastructure", "运维", "容器",
+      "部署",
+      "CI",
+      "CD",
+      "Docker",
+      "K8s",
+      "Kubernetes",
+      "AWS",
+      "GCP",
+      "Azure",
+      "deploy",
+      "pipeline",
+      "infrastructure",
+      "运维",
+      "容器",
     ],
     defaultGoal: "Produce deployment artifacts (Dockerfile, CI config, infra scripts).",
     promptTemplate: `You are a DevOps Engineer. Provide deployment artifacts for: {{userRequest}}.
@@ -124,8 +183,18 @@ Output:
     description: "Write and run unit / integration / e2e tests.",
     category: "testing",
     keywords: [
-      "测试", "QA", "单元测试", "集成测试", "E2E",
-      "test", "testing", "QA", "unit test", "integration test", "jest", "pytest",
+      "测试",
+      "QA",
+      "单元测试",
+      "集成测试",
+      "E2E",
+      "test",
+      "testing",
+      "QA",
+      "unit test",
+      "integration test",
+      "jest",
+      "pytest",
     ],
     defaultGoal: "Write a comprehensive test suite for the implemented system.",
     promptTemplate: `You are a QA Engineer. Produce a test suite for: {{userRequest}}.
@@ -146,8 +215,18 @@ Output:
     description: "Analyze academic papers / research output / literature.",
     category: "research",
     keywords: [
-      "论文", "研究", "文献", "paper", "research", "literature", "analysis", "arxiv",
-      "scholar", "academic", "summarize", "综述",
+      "论文",
+      "研究",
+      "文献",
+      "paper",
+      "research",
+      "literature",
+      "analysis",
+      "arxiv",
+      "scholar",
+      "academic",
+      "summarize",
+      "综述",
     ],
     defaultGoal: "Analyze research material and produce a structured summary.",
     promptTemplate: `You are a Research Analyst. Analyze: {{userRequest}}.
@@ -169,8 +248,16 @@ Output:
     description: "Build dashboards, charts, and visual reports.",
     category: "data",
     keywords: [
-      "图表", "可视化", "dashboard", "chart", "graph", "visualization", "matplotlib", "d3",
-      "plotly", "仪表盘",
+      "图表",
+      "可视化",
+      "dashboard",
+      "chart",
+      "graph",
+      "visualization",
+      "matplotlib",
+      "d3",
+      "plotly",
+      "仪表盘",
     ],
     defaultGoal: "Produce visual artifacts that communicate the data clearly.",
     promptTemplate: `You are a Data Visualization Engineer. Create visual output for: {{userRequest}}.
@@ -239,22 +326,22 @@ Output (JSON only):
     dependsOn: [],
     tags: ["fallback"],
   },
-];
+]
 
 export class CapabilityLibrary {
-  private byId = new Map<string, Capability>();
-  private keywords: Array<{ keyword: string; capabilityId: string }> = [];
+  private byId = new Map<string, Capability>()
+  private keywords: Array<{ keyword: string; capabilityId: string }> = []
   /** IDs registered via replaceDynamic() — these are the ones we replace on next call. */
-  private dynamicIds = new Set<string>();
+  private dynamicIds = new Set<string>()
 
   constructor(entries: Capability[] = CAPABILITY_LIBRARY) {
-    for (const e of entries) this.register(e);
+    for (const e of entries) this.register(e)
   }
 
   register(c: Capability): void {
-    this.byId.set(c.id, c);
+    this.byId.set(c.id, c)
     for (const k of c.keywords) {
-      this.keywords.push({ keyword: k.toLowerCase(), capabilityId: c.id });
+      this.keywords.push({ keyword: k.toLowerCase(), capabilityId: c.id })
     }
   }
 
@@ -267,31 +354,29 @@ export class CapabilityLibrary {
   replaceDynamic(caps: Capability[]): void {
     // Remove previously-installed dynamic entries.
     for (const id of this.dynamicIds) {
-      this.byId.delete(id);
+      this.byId.delete(id)
     }
-    this.keywords = this.keywords.filter(
-      (k) => !this.dynamicIds.has(k.capabilityId)
-    );
-    this.dynamicIds.clear();
+    this.keywords = this.keywords.filter((k) => !this.dynamicIds.has(k.capabilityId))
+    this.dynamicIds.clear()
 
     // Install new dynamic entries.
     for (const c of caps) {
-      this.register(c);
-      this.dynamicIds.add(c.id);
+      this.register(c)
+      this.dynamicIds.add(c.id)
     }
   }
 
   get(id: string): Capability | undefined {
-    return this.byId.get(id);
+    return this.byId.get(id)
   }
 
   list(): Capability[] {
-    return Array.from(this.byId.values());
+    return Array.from(this.byId.values())
   }
 
   /** IDs currently registered as dynamic (registry-injected). */
   listDynamic(): string[] {
-    return Array.from(this.dynamicIds);
+    return Array.from(this.dynamicIds)
   }
 
   /**
@@ -299,17 +384,17 @@ export class CapabilityLibrary {
    * match count (desc). Always includes "general" as a baseline.
    */
   detectByKeywords(text: string): string[] {
-    const lower = text.toLowerCase();
-    const counts = new Map<string, number>();
+    const lower = text.toLowerCase()
+    const counts = new Map<string, number>()
     for (const { keyword, capabilityId } of this.keywords) {
       if (lower.includes(keyword)) {
-        counts.set(capabilityId, (counts.get(capabilityId) ?? 0) + 1);
+        counts.set(capabilityId, (counts.get(capabilityId) ?? 0) + 1)
       }
     }
     const sorted = Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
-      .map(([id]) => id);
-    if (!sorted.includes("general")) sorted.push("general");
-    return sorted;
+      .map(([id]) => id)
+    if (!sorted.includes("general")) sorted.push("general")
+    return sorted
   }
 }

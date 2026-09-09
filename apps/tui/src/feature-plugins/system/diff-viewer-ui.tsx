@@ -16,18 +16,32 @@ function usePanelGroup() {
   return useContext(PanelGroupContext)
 }
 
-export function PanelGroup(props: { axis: Axis; children: React.ReactNode; [key: string]: unknown }) {
+export function PanelGroup(props: {
+  axis: Axis
+  children: React.ReactNode
+  [key: string]: unknown
+}) {
   const { axis, children, ...boxProps } = props
   return (
     <PanelGroupContext.Provider value={{ axis }}>
-      <Box minWidth={0} minHeight={0} padding={0} flexDirection={axis === "x" ? "row" : "column"} {...(boxProps as any)}>
+      <Box
+        minWidth={0}
+        minHeight={0}
+        padding={0}
+        flexDirection={axis === "x" ? "row" : "column"}
+        {...(boxProps as any)}
+      >
         {children}
       </Box>
     </PanelGroupContext.Provider>
   )
 }
 
-export function Panel(props: { border?: PanelBorder; children?: React.ReactNode; [key: string]: unknown }) {
+export function Panel(props: {
+  border?: PanelBorder
+  children?: React.ReactNode
+  [key: string]: unknown
+}) {
   const group = usePanelGroup()
   const { theme } = useTheme()
   const { border: borderProp, children, ...boxProps } = props
@@ -54,11 +68,17 @@ export function Panel(props: { border?: PanelBorder; children?: React.ReactNode;
 }
 
 function panelBorderSides(axis: Axis, border: Exclude<PanelBorder, "none">) {
-  if (axis === "x") return border === "both" ? ["top", "bottom"] : [border === "start" ? "top" : "bottom"]
+  if (axis === "x")
+    return border === "both" ? ["top", "bottom"] : [border === "start" ? "top" : "bottom"]
   return border === "both" ? ["left", "right"] : [border === "start" ? "left" : "right"]
 }
 
-export function Separator(props: { axis?: Axis; color?: string; start?: SeparatorEdge; end?: SeparatorEdge }) {
+export function Separator(props: {
+  axis?: Axis
+  color?: string
+  start?: SeparatorEdge
+  end?: SeparatorEdge
+}) {
   const group = usePanelGroup()
   const { theme } = useTheme()
   const color = props.color ?? theme.border

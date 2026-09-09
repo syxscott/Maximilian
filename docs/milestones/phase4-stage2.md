@@ -16,10 +16,10 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `src/blueprint-store.ts` | 110 |
-| `src/blueprint-generator.ts` | 130 |
+| 文件                         | 行数 |
+| ---------------------------- | ---- |
+| `src/blueprint-store.ts`     | 110  |
+| `src/blueprint-generator.ts` | 130  |
 
 ## 遗留问题
 

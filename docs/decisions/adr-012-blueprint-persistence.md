@@ -24,10 +24,12 @@ DAGS 生成的 Blueprint 描述了"系统应该有什么样的 Agent"。如果�
 ## Consequences
 
 **正面**：
+
 - 全部数据可审计
 - Evolution 链路可追溯
 - 故障后可重建
 
 **负面**：
+
 - 每次生成 Blueprint 都有磁盘 IO
 - 大型团队下文件数量可能膨胀（不在本阶段范围）

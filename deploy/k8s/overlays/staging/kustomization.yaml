@@ -63,5 +63,5 @@ configMapGenerator:
     literals:
       - LOG_LEVEL=debug
       - NODE_ENV=staging
-      - TRUTH_AUDIT_MIN_SAMPLE_SIZE=2   # lower the bar in staging so we see drift sooner
+      - TRUTH_AUDIT_MIN_SAMPLE_SIZE=2 # lower the bar in staging so we see drift sooner
       - SLO_ALERT_SLACK_WEBHOOK=https://hooks.slack.com/services/REPLACE_ME_STAGING

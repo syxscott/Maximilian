@@ -42,7 +42,9 @@ const tui: TuiPlugin = async (api) => {
         const connected = useMemo(
           () =>
             api.state.provider.some(
-              (item) => item.id !== "opencode" || Object.values(item.models).some((model) => model.cost?.input !== 0),
+              (item) =>
+                item.id !== "opencode" ||
+                Object.values(item.models).some((model) => model.cost?.input !== 0),
             ),
           [],
         )

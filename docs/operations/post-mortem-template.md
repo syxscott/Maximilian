@@ -30,14 +30,14 @@
 
 ## Timeline (UTC)
 
-| Time | Event |
-|---|---|
+| Time  | Event                                    |
+| ----- | ---------------------------------------- |
 | HH:MM | First anomaly in metrics (retrospective) |
-| HH:MM | Alert fired |
-| HH:MM | On-call paged |
-| HH:MM | Investigation began |
-| HH:MM | Mitigation applied |
-| HH:MM | Service fully restored |
+| HH:MM | Alert fired                              |
+| HH:MM | On-call paged                            |
+| HH:MM | Investigation began                      |
+| HH:MM | Mitigation applied                       |
+| HH:MM | Service fully restored                   |
 
 ## Root cause
 
@@ -66,11 +66,11 @@
 
 ## Action items
 
-| Action | Owner | Priority | Due |
-|---|---|---|---|
-| Add missing metric / alert | @name | P0 | YYYY-MM-DD |
-| Improve runbook section X | @name | P1 | YYYY-MM-DD |
-| Refactor fragile component Y | @name | P2 | YYYY-MM-DD |
+| Action                       | Owner | Priority | Due        |
+| ---------------------------- | ----- | -------- | ---------- |
+| Add missing metric / alert   | @name | P0       | YYYY-MM-DD |
+| Improve runbook section X    | @name | P1       | YYYY-MM-DD |
+| Refactor fragile component Y | @name | P2       | YYYY-MM-DD |
 
 ## Lessons learned
 

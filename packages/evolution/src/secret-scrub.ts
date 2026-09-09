@@ -35,7 +35,10 @@ const SECRET_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
   // PEM private-key header.
   { name: "pem-private-key", re: /-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g },
   // Generic "key=...", "token=...", "secret=..." patterns (24+ char value).
-  { name: "generic-key-pair", re: /\b(?:api[_-]?key|token|secret|passwd|password)\s*[=:]\s*['"]?[A-Za-z0-9_\-]{16,}['"]?/gi },
+  {
+    name: "generic-key-pair",
+    re: /\b(?:api[_-]?key|token|secret|passwd|password)\s*[=:]\s*['"]?[A-Za-z0-9_\-]{16,}['"]?/gi,
+  },
   // JWT (header.payload.signature, 3 base64url chunks).
   { name: "jwt", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g },
   // Bearer token in Authorization header value.
@@ -48,42 +51,42 @@ const SECRET_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
   { name: "credit-card", re: /\b(?:\d[ -]?){13,19}\b/g },
   // 64-char hex (often a hash but also an API secret).
   { name: "hex-blob-64", re: /\b[a-f0-9]{64}\b/gi },
-];
+]
 
 export interface SecretMatch {
-  name: string;
-  match: string;
-  index: number;
+  name: string
+  match: string
+  index: number
 }
 
 export function containsSecret(text: string): boolean {
   for (const { re } of SECRET_PATTERNS) {
-    re.lastIndex = 0;
-    if (re.test(text)) return true;
+    re.lastIndex = 0
+    if (re.test(text)) return true
   }
-  return false;
+  return false
 }
 
 export function findSecrets(text: string): SecretMatch[] {
-  const out: SecretMatch[] = [];
+  const out: SecretMatch[] = []
   for (const { name, re } of SECRET_PATTERNS) {
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
+    re.lastIndex = 0
+    let m: RegExpExecArray | null
     while ((m = re.exec(text)) !== null) {
-      out.push({ name, match: m[0], index: m.index });
+      out.push({ name, match: m[0], index: m.index })
       // Defensive: zero-length match infinite loop guard.
-      if (m.index === re.lastIndex) re.lastIndex += 1;
+      if (m.index === re.lastIndex) re.lastIndex += 1
     }
   }
-  return out;
+  return out
 }
 
 /** Replace all detected secrets with a stable, non-reversible marker. */
 export function scrubSecrets(text: string, marker = "[SECRET_REMOVED]"): string {
-  let out = text;
+  let out = text
   for (const { re } of SECRET_PATTERNS) {
-    re.lastIndex = 0;
-    out = out.replace(re, marker);
+    re.lastIndex = 0
+    out = out.replace(re, marker)
   }
-  return out;
+  return out
 }

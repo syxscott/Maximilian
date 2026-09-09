@@ -64,7 +64,8 @@ export const newLayoutDesignsDefault = process.env.NODE_ENV !== "production"
 
 const monoFallback =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
-const sansFallback = 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+const sansFallback =
+  'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 const terminalFallback =
   '"JetBrainsMono Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
 
@@ -201,10 +202,18 @@ export const createSettingsStore = () =>
         ready: false,
         settings: defaultSettings,
         setAutoSave: (value) =>
-          set((state) => ({ settings: { ...state.settings, general: { ...state.settings.general, autoSave: value } } })),
+          set((state) => ({
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, autoSave: value },
+            },
+          })),
         setReleaseNotes: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, releaseNotes: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, releaseNotes: value },
+            },
           })),
         setFollowup: (value) =>
           set((state) => ({
@@ -215,51 +224,87 @@ export const createSettingsStore = () =>
           })),
         setShowFileTree: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, showFileTree: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, showFileTree: value },
+            },
           })),
         setShowNavigation: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, showNavigation: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, showNavigation: value },
+            },
           })),
         setShowSearch: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, showSearch: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, showSearch: value },
+            },
           })),
         setShowStatus: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, showStatus: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, showStatus: value },
+            },
           })),
         setShowTerminal: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, showTerminal: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, showTerminal: value },
+            },
           })),
         setShowReasoningSummaries: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, showReasoningSummaries: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, showReasoningSummaries: value },
+            },
           })),
         setShellToolPartsExpanded: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, shellToolPartsExpanded: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, shellToolPartsExpanded: value },
+            },
           })),
         setEditToolPartsExpanded: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, editToolPartsExpanded: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, editToolPartsExpanded: value },
+            },
           })),
         setShowSessionProgressBar: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, showSessionProgressBar: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, showSessionProgressBar: value },
+            },
           })),
         setShowCustomAgents: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, showCustomAgents: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, showCustomAgents: value },
+            },
           })),
         setNewLayoutDesigns: (value) =>
           set((state) => ({
-            settings: { ...state.settings, general: { ...state.settings.general, newLayoutDesigns: value } },
+            settings: {
+              ...state.settings,
+              general: { ...state.settings.general, newLayoutDesigns: value },
+            },
           })),
         setFontSize: (value) =>
           set((state) => ({
-            settings: { ...state.settings, appearance: { ...state.settings.appearance, fontSize: value } },
+            settings: {
+              ...state.settings,
+              appearance: { ...state.settings.appearance, fontSize: value },
+            },
           })),
         setFont: (value) =>
           set((state) => ({
@@ -283,7 +328,12 @@ export const createSettingsStore = () =>
             },
           })),
         setKeybind: (action, keybind) =>
-          set((state) => ({ settings: { ...state.settings, keybinds: { ...state.settings.keybinds, [action]: keybind } } })),
+          set((state) => ({
+            settings: {
+              ...state.settings,
+              keybinds: { ...state.settings.keybinds, [action]: keybind },
+            },
+          })),
         resetKeybind: (action) =>
           set((state) => {
             if (!Object.prototype.hasOwnProperty.call(state.settings.keybinds, action)) return state
@@ -294,37 +344,63 @@ export const createSettingsStore = () =>
         resetAllKeybinds: () => set((state) => ({ settings: { ...state.settings, keybinds: {} } })),
         setAutoApprove: (value) =>
           set((state) => ({
-            settings: { ...state.settings, permissions: { ...state.settings.permissions, autoApprove: value } },
+            settings: {
+              ...state.settings,
+              permissions: { ...state.settings.permissions, autoApprove: value },
+            },
           })),
         setAgentNotification: (value) =>
           set((state) => ({
-            settings: { ...state.settings, notifications: { ...state.settings.notifications, agent: value } },
+            settings: {
+              ...state.settings,
+              notifications: { ...state.settings.notifications, agent: value },
+            },
           })),
         setPermissionsNotification: (value) =>
           set((state) => ({
-            settings: { ...state.settings, notifications: { ...state.settings.notifications, permissions: value } },
+            settings: {
+              ...state.settings,
+              notifications: { ...state.settings.notifications, permissions: value },
+            },
           })),
         setErrorsNotification: (value) =>
           set((state) => ({
-            settings: { ...state.settings, notifications: { ...state.settings.notifications, errors: value } },
+            settings: {
+              ...state.settings,
+              notifications: { ...state.settings.notifications, errors: value },
+            },
           })),
         setAgentSoundEnabled: (value) =>
           set((state) => ({
-            settings: { ...state.settings, sounds: { ...state.settings.sounds, agentEnabled: value } },
+            settings: {
+              ...state.settings,
+              sounds: { ...state.settings.sounds, agentEnabled: value },
+            },
           })),
         setAgentSound: (value) =>
-          set((state) => ({ settings: { ...state.settings, sounds: { ...state.settings.sounds, agent: value } } })),
+          set((state) => ({
+            settings: { ...state.settings, sounds: { ...state.settings.sounds, agent: value } },
+          })),
         setPermissionsSoundEnabled: (value) =>
           set((state) => ({
-            settings: { ...state.settings, sounds: { ...state.settings.sounds, permissionsEnabled: value } },
+            settings: {
+              ...state.settings,
+              sounds: { ...state.settings.sounds, permissionsEnabled: value },
+            },
           })),
         setPermissionsSound: (value) =>
           set((state) => ({
-            settings: { ...state.settings, sounds: { ...state.settings.sounds, permissions: value } },
+            settings: {
+              ...state.settings,
+              sounds: { ...state.settings.sounds, permissions: value },
+            },
           })),
         setErrorsSoundEnabled: (value) =>
           set((state) => ({
-            settings: { ...state.settings, sounds: { ...state.settings.sounds, errorsEnabled: value } },
+            settings: {
+              ...state.settings,
+              sounds: { ...state.settings.sounds, errorsEnabled: value },
+            },
           })),
         setErrorsSound: (value) =>
           set((state) => ({
@@ -333,7 +409,9 @@ export const createSettingsStore = () =>
       }),
       {
         name: "settings.v3",
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         onRehydrateStorage: () => (state) => {
           if (state) state.ready = true
         },
@@ -408,7 +486,7 @@ export function buildSettingsFacade(store: SettingsStore) {
       setReleaseNotes: (v: boolean) => store.getState().setReleaseNotes(v),
       get followup() {
         const v = s().general.followup
-        return v === "queue" ? "steer" : v ?? defaultSettings.general.followup
+        return v === "queue" ? "steer" : (v ?? defaultSettings.general.followup)
       },
       setFollowup: (v: "queue" | "steer") => store.getState().setFollowup(v),
       get showFileTree() {
@@ -458,16 +536,25 @@ export function buildSettingsFacade(store: SettingsStore) {
     },
     visibility: {
       get fileTree() {
-        return !store.getState().settings.general.newLayoutDesigns || (s().general.showFileTree ?? false)
+        return (
+          !store.getState().settings.general.newLayoutDesigns || (s().general.showFileTree ?? false)
+        )
       },
       get search() {
-        return !store.getState().settings.general.newLayoutDesigns || (s().general.showSearch ?? false)
+        return (
+          !store.getState().settings.general.newLayoutDesigns || (s().general.showSearch ?? false)
+        )
       },
       get status() {
-        return !store.getState().settings.general.newLayoutDesigns || (s().general.showStatus ?? false)
+        return (
+          !store.getState().settings.general.newLayoutDesigns || (s().general.showStatus ?? false)
+        )
       },
       get customAgents() {
-        return !store.getState().settings.general.newLayoutDesigns || (s().general.showCustomAgents ?? false)
+        return (
+          !store.getState().settings.general.newLayoutDesigns ||
+          (s().general.showCustomAgents ?? false)
+        )
       },
     },
     appearance: {

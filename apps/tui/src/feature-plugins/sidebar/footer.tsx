@@ -14,7 +14,9 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
   const has = useMemo(
     () =>
       props.api.state.provider.some(
-        (item) => item.id !== "opencode" || Object.values(item.models).some((model) => model.cost?.input !== 0),
+        (item) =>
+          item.id !== "opencode" ||
+          Object.values(item.models).some((model) => model.cost?.input !== 0),
       ),
     [],
   )
@@ -24,7 +26,10 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
     const session = props.api.state.session.get(props.sessionID)
     const dir = session?.directory || props.api.state.path.directory || paths.cwd
     const out = abbreviateHome(dir, paths.home)
-    const branch = session?.directory === props.api.state.path.directory ? props.api.state.vcs?.branch : undefined
+    const branch =
+      session?.directory === props.api.state.path.directory
+        ? props.api.state.vcs?.branch
+        : undefined
     const text = branch ? out + ":" + branch : out
     const list = text.split("/")
     return {
@@ -45,17 +50,22 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
           flexDirection="row"
           gap={1}
         >
-          <Text color={theme.text}>{'⬖'}</Text>
+          <Text color={theme.text}>{"⬖"}</Text>
           <Box flexGrow={1} flexDirection="column" gap={1}>
             <Box flexDirection="row" justifyContent="space-between">
               <Text color={theme.text} bold>
                 Getting started
               </Text>
-              <Text color={theme.textMuted} onClick={() => props.api.kv.set("dismissed_getting_started", true)}>
+              <Text
+                color={theme.textMuted}
+                onClick={() => props.api.kv.set("dismissed_getting_started", true)}
+              >
                 ✕
               </Text>
             </Box>
-            <Text color={theme.textMuted}>OpenCode includes free models so you can start immediately.</Text>
+            <Text color={theme.textMuted}>
+              OpenCode includes free models so you can start immediately.
+            </Text>
             <Text color={theme.textMuted}>
               Connect from 75+ providers to use other models, including Claude, GPT, Gemini etc
             </Text>
@@ -71,7 +81,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
         <Text color={theme.text}>{path.name}</Text>
       </Text>
       <Text color={theme.textMuted}>
-        <Text color={theme.success}>{'•'}</Text> <Text bold>Open</Text>
+        <Text color={theme.success}>{"•"}</Text> <Text bold>Open</Text>
         <Text color={theme.text} bold>
           Code
         </Text>{" "}

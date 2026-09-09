@@ -43,10 +43,12 @@ The package depends on `@max/dags` (for `AgentBlueprint`/`TeamGraph`) and `@max/
 ## Consequences
 
 **正面**：
+
 - Clean separation: meta-system vs agent system
 - Easy to enable/disable at runtime via `META_AGENT_ENABLED`
 - Tests run in isolation (71 unit tests in 45ms)
 
 **负面**：
+
 - New package to maintain
 - Cross-package types (`TeamGraph`, `ExecutionRecord`) create coupling, but they are stable contracts (ADR-013, ADR-015)

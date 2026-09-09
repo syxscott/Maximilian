@@ -9,18 +9,14 @@
  * Suitable for single-process CLI mode and unit tests.
  */
 
-import { randomUUID } from "node:crypto";
-import type {
-  BaseCheckpointSaver,
-  Checkpoint,
-  CheckpointTuple,
-} from "./saver.js";
-import type { ConfigurableDict } from "../types.js";
+import { randomUUID } from "node:crypto"
+import type { BaseCheckpointSaver, Checkpoint, CheckpointTuple } from "./saver.js"
+import type { ConfigurableDict } from "../types.js"
 
 interface StoredTuple {
-  checkpoint: Checkpoint;
-  metadata?: Record<string, unknown>;
-  pendingWrites: Array<[string, unknown, unknown]>;
+  checkpoint: Checkpoint
+  metadata?: Record<string, unknown>
+  pendingWrites: Array<[string, unknown, unknown]>
 }
 
 /**
@@ -30,62 +26,66 @@ interface StoredTuple {
  */
 export class MemoryCheckpointSaver implements BaseCheckpointSaver {
   // Map<threadId, Map<checkpointId, StoredTuple>>
-  private store = new Map<string, Map<string, StoredTuple>>();
+  private store = new Map<string, Map<string, StoredTuple>>()
   // Map<threadId, Map<checkpointId, parentId>>
-  private parentIndex = new Map<string, Map<string, string | null>>();
+  private parentIndex = new Map<string, Map<string, string | null>>()
   // Simple mutex for thread safety
-  private locks = new Map<string, Promise<void>>();
+  private locks = new Map<string, Promise<void>>()
 
   private withLock<T>(threadId: string, fn: () => Promise<T>): Promise<T> {
     // Acquire a per-thread lock by chaining onto the existing promise for this thread.
     // Each caller creates a resolved promise that chains after the previous one,
     // so operations on the same thread are serialized.
-    const prev = this.locks.get(threadId) ?? Promise.resolve();
+    const prev = this.locks.get(threadId) ?? Promise.resolve()
     let releaseFn: () => void = () => {}
-    const lock = new Promise<void>((resolve) => { releaseFn = resolve })
+    const lock = new Promise<void>((resolve) => {
+      releaseFn = resolve
+    })
     this.locks.set(threadId, lock)
 
-    const chain = prev.then(() => fn()).finally(() => {
-      this.locks.delete(threadId)
-      releaseFn()
-    })
+    const chain = prev
+      .then(() => fn())
+      .finally(() => {
+        this.locks.delete(threadId)
+        releaseFn()
+      })
     return chain as Promise<T>
   }
 
   private threadId(config: ConfigurableDict): string {
-    const id = config["thread_id"];
-    if (typeof id !== "string") throw new Error("config must contain thread_id");
-    return id;
+    const id = config["thread_id"]
+    if (typeof id !== "string") throw new Error("config must contain thread_id")
+    return id
   }
 
   async get(config: ConfigurableDict): Promise<CheckpointTuple | undefined> {
-    const tid = this.threadId(config);
-    const checkpoints = this.store.get(tid);
-    if (!checkpoints) return undefined;
+    const tid = this.threadId(config)
+    const checkpoints = this.store.get(tid)
+    if (!checkpoints) return undefined
 
-    const cpId = config["checkpoint_id"] as string | undefined;
+    const cpId = config["checkpoint_id"] as string | undefined
     if (!cpId) {
       // No checkpoint_id → find latest and call get again with that id
-      const ids = Array.from(checkpoints.keys()).sort().reverse();
-      if (ids.length === 0) return undefined;
-      return this.get({ ...config, checkpoint_id: ids[0]! });
+      const ids = Array.from(checkpoints.keys()).sort().reverse()
+      if (ids.length === 0) return undefined
+      return this.get({ ...config, checkpoint_id: ids[0]! })
     }
 
     return this.withLock(tid, async () => {
       // Re-check after acquiring lock (state may have changed)
-      const stored = (this.store.get(tid)?.get(cpId));
-      if (!stored) return undefined;
+      const stored = this.store.get(tid)?.get(cpId)
+      if (!stored) return undefined
       const parentConfig = stored.checkpoint.parentId
         ? { thread_id: tid, checkpoint_id: stored.checkpoint.parentId }
-        : null;
+        : null
       return {
         config: { ...config, checkpoint_id: cpId },
         checkpoint: stored.checkpoint,
         metadata: stored.metadata,
         parentConfig,
         pendingWrites: stored.pendingWrites,
-      };
-    });
+      }
+    })
   }
 
   async put(
@@ -94,12 +94,12 @@ export class MemoryCheckpointSaver implements BaseCheckpointSaver {
     metadata?: Record<string, unknown>,
   ): Promise<void> {
     return this.withLock(this.threadId(config), async () => {
-      const tid = this.threadId(config);
+      const tid = this.threadId(config)
       if (!this.store.has(tid)) {
-        this.store.set(tid, new Map());
+        this.store.set(tid, new Map())
       }
       if (!this.parentIndex.has(tid)) {
-        this.parentIndex.set(tid, new Map());
+        this.parentIndex.set(tid, new Map())
       }
       // Deep clone the entire channelValues to prevent mutations from corrupting historical checkpoints.
       let clonedCheckpoint: Checkpoint
@@ -116,37 +116,36 @@ export class MemoryCheckpointSaver implements BaseCheckpointSaver {
         checkpoint: clonedCheckpoint,
         metadata,
         pendingWrites: [],
-      });
-      this.parentIndex.get(tid)!.set(checkpoint.id, checkpoint.parentId);
-    });
+      })
+      this.parentIndex.get(tid)!.set(checkpoint.id, checkpoint.parentId)
+    })
   }
 
   async list(config: ConfigurableDict, limit?: number): Promise<CheckpointTuple[]> {
     return this.withLock(this.threadId(config), async () => {
-      const tid = this.threadId(config);
-      const checkpoints = this.store.get(tid);
-      if (!checkpoints) return [];
+      const tid = this.threadId(config)
+      const checkpoints = this.store.get(tid)
+      if (!checkpoints) return []
 
       // Sort newest first
-      const sorted = Array.from(checkpoints.entries())
-        .sort(([a], [b]) => b.localeCompare(a));
+      const sorted = Array.from(checkpoints.entries()).sort(([a], [b]) => b.localeCompare(a))
 
-      const result: CheckpointTuple[] = [];
+      const result: CheckpointTuple[] = []
       for (const [cpId, stored] of sorted) {
         const parentConfig = stored.checkpoint.parentId
           ? { thread_id: tid, checkpoint_id: stored.checkpoint.parentId }
-          : null;
+          : null
         result.push({
           config: { thread_id: tid, checkpoint_id: cpId },
           checkpoint: stored.checkpoint,
           metadata: stored.metadata,
           parentConfig,
           pendingWrites: stored.pendingWrites,
-        });
-        if (limit !== undefined && result.length >= limit) break;
+        })
+        if (limit !== undefined && result.length >= limit) break
       }
-      return result;
-    });
+      return result
+    })
   }
 
   async putWrites(
@@ -155,84 +154,86 @@ export class MemoryCheckpointSaver implements BaseCheckpointSaver {
     _force?: boolean,
   ): Promise<void> {
     return this.withLock(this.threadId(config), async () => {
-      const tid = this.threadId(config);
-      const checkpoints = this.store.get(tid);
-      if (!checkpoints) return;
+      const tid = this.threadId(config)
+      const checkpoints = this.store.get(tid)
+      if (!checkpoints) return
 
-      const cpId = config["checkpoint_id"] as string | undefined;
-      if (!cpId) return;
+      const cpId = config["checkpoint_id"] as string | undefined
+      if (!cpId) return
 
-      const stored = checkpoints.get(cpId);
-      if (!stored) return;
+      const stored = checkpoints.get(cpId)
+      if (!stored) return
 
-      stored.pendingWrites.push(...writes.map(([ch, val]) => [ch, val, "write"] as [string, unknown, unknown]));
-    });
+      stored.pendingWrites.push(
+        ...writes.map(([ch, val]) => [ch, val, "write"] as [string, unknown, unknown]),
+      )
+    })
   }
 
   async copyThread(srcConfig: ConfigurableDict, dstConfig: ConfigurableDict): Promise<void> {
-    const srcId = this.threadId(srcConfig);
-    const dstId = this.threadId(dstConfig);
-    if (srcId === dstId) throw new Error("source and destination thread ids must differ");
+    const srcId = this.threadId(srcConfig)
+    const dstId = this.threadId(dstConfig)
+    if (srcId === dstId) throw new Error("source and destination thread ids must differ")
 
     return this.withLock(dstId, async () => {
-      const srcCheckpoints = this.store.get(srcId);
-      if (!srcCheckpoints) return;
+      const srcCheckpoints = this.store.get(srcId)
+      if (!srcCheckpoints) return
 
       if (!this.store.has(dstId)) {
-        this.store.set(dstId, new Map());
-        this.parentIndex.set(dstId, new Map());
+        this.store.set(dstId, new Map())
+        this.parentIndex.set(dstId, new Map())
       }
-      const dstCheckpoints = this.store.get(dstId)!;
-      const dstParents = this.parentIndex.get(dstId)!;
+      const dstCheckpoints = this.store.get(dstId)!
+      const dstParents = this.parentIndex.get(dstId)!
 
       // Generate a mapping from old id → new id (old id is the sort key, so we replicate the chain)
-      const oldIds = Array.from(srcCheckpoints.keys()).sort();
-      const newIds = oldIds.map(() => randomUUID().slice(0, 8));
+      const oldIds = Array.from(srcCheckpoints.keys()).sort()
+      const newIds = oldIds.map(() => randomUUID().slice(0, 8))
 
       for (let i = 0; i < oldIds.length; i++) {
-        const oldCp = srcCheckpoints.get(oldIds[i]!)!;
-        const newParentId = i === 0 ? null : newIds[i - 1];
+        const oldCp = srcCheckpoints.get(oldIds[i]!)!
+        const newParentId = i === 0 ? null : newIds[i - 1]
         const newCheckpoint: Checkpoint = {
           ...oldCp.checkpoint,
           id: newIds[i]!,
           parentId: newParentId,
-        };
-        dstCheckpoints.set(newIds[i]!, { ...oldCp, checkpoint: newCheckpoint });
-        dstParents.set(newIds[i]!, newParentId);
+        }
+        dstCheckpoints.set(newIds[i]!, { ...oldCp, checkpoint: newCheckpoint })
+        dstParents.set(newIds[i]!, newParentId)
       }
-    });
+    })
   }
 
   async prune(config: ConfigurableDict, beforeId?: string): Promise<void> {
     return this.withLock(this.threadId(config), async () => {
-      const tid = this.threadId(config);
-      const checkpoints = this.store.get(tid);
-      const parents = this.parentIndex.get(tid);
-      if (!checkpoints || !parents) return;
+      const tid = this.threadId(config)
+      const checkpoints = this.store.get(tid)
+      const parents = this.parentIndex.get(tid)
+      if (!checkpoints || !parents) return
 
       if (!beforeId) {
         // Prune all but the latest
-        const ids = Array.from(checkpoints.keys()).sort().reverse();
-        const toKeep = new Set(ids.slice(0, 1));
+        const ids = Array.from(checkpoints.keys()).sort().reverse()
+        const toKeep = new Set(ids.slice(0, 1))
         for (const id of ids.slice(1)) {
-          checkpoints.delete(id);
-          parents.delete(id);
+          checkpoints.delete(id)
+          parents.delete(id)
         }
-        return;
+        return
       }
 
       // Keep only checkpoints before beforeId (older by sort order)
       // Lexicographic: id < beforeId means id is older
-      const toDelete: string[] = [];
+      const toDelete: string[] = []
       for (const id of checkpoints.keys()) {
         if (id.localeCompare(beforeId) <= 0) {
-          toDelete.push(id);
+          toDelete.push(id)
         }
       }
       for (const id of toDelete) {
-        checkpoints.delete(id);
-        parents.delete(id);
+        checkpoints.delete(id)
+        parents.delete(id)
       }
-    });
+    })
   }
 }
