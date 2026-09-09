@@ -230,7 +230,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               </div>
             ) : (
               filtered.map((group) => (
-                <div key={group.id} role="group" aria-label={typeof group.heading === "string" ? group.heading : group.id}>
+                <div
+                  key={group.id}
+                  role="group"
+                  aria-label={typeof group.heading === "string" ? group.heading : group.id}
+                >
                   {group.heading ? (
                     <div className="px-2 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       {group.heading}
@@ -284,12 +288,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </div>
           <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
             <span>
-              <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono">↑↓</kbd> navigate
+              <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono">↑↓</kbd>{" "}
+              navigate
               <span className="mx-1">·</span>
-              <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono">↵</kbd> select
+              <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono">
+                ↵
+              </kbd>{" "}
+              select
             </span>
             <span>
-              <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono">esc</kbd> close
+              <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono">esc</kbd>{" "}
+              close
             </span>
           </div>
         </div>

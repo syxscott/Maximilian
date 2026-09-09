@@ -17,7 +17,10 @@ export const AttentionSoundName = Schema.Literals([
 export type AttentionSoundName = Schema.Schema.Type<typeof AttentionSoundName>
 
 export const PluginOptions = Schema.Record(Schema.String, Schema.Unknown)
-export const PluginSpec = Schema.Union([Schema.String, Schema.mutable(Schema.Tuple([Schema.String, PluginOptions]))])
+export const PluginSpec = Schema.Union([
+  Schema.String,
+  Schema.mutable(Schema.Tuple([Schema.String, PluginOptions])),
+])
 
 export const LeaderTimeoutDefault = 2000
 export const LeaderTimeout = Schema.Int.check(Schema.isGreaterThan(0)).annotate({
@@ -29,7 +32,8 @@ export const ScrollAcceleration = Schema.Struct({
   enabled: Schema.Boolean.annotate({ description: "Enable scroll acceleration" }),
 }).annotate({ description: "Scroll acceleration settings" })
 export const DiffStyle = Schema.Literals(["auto", "stacked"]).annotate({
-  description: "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
+  description:
+    "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
 })
 
 export const AttentionSounds = Schema.Record(AttentionSoundName, Schema.optionalKey(Schema.String))
@@ -38,7 +42,9 @@ export const Attention = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),
   notifications: Schema.optional(Schema.Boolean),
   sound: Schema.optional(Schema.Boolean),
-  volume: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1))),
+  volume: Schema.optional(
+    Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
+  ),
   sound_pack: Schema.optional(Schema.String),
   sounds: Schema.optional(AttentionSounds),
 }).annotate({ description: "Attention notification and sound settings" })
@@ -47,7 +53,8 @@ const PromptSize = Schema.Int.check(Schema.isGreaterThan(0))
 export const Prompt = Schema.Struct({
   max_height: Schema.optional(PromptSize).annotate({ description: "Prompt textarea max height" }),
   max_width: Schema.optional(Schema.Union([PromptSize, Schema.Literal("auto")])).annotate({
-    description: "Home prompt max width: a positive integer for a fixed cap, or 'auto' to scale with terminal width",
+    description:
+      "Home prompt max width: a positive integer for a fixed cap, or 'auto' to scale with terminal width",
   }),
 }).annotate({ description: "Prompt size settings" })
 
@@ -63,7 +70,9 @@ export const Info = Schema.Struct({
   scroll_speed: Schema.optional(ScrollSpeed).annotate({ description: "TUI scroll speed" }),
   scroll_acceleration: Schema.optional(ScrollAcceleration),
   diff_style: Schema.optional(DiffStyle),
-  mouse: Schema.optional(Schema.Boolean).annotate({ description: "Enable or disable mouse capture (default: true)" }),
+  mouse: Schema.optional(Schema.Boolean).annotate({
+    description: "Enable or disable mouse capture (default: true)",
+  }),
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
@@ -92,7 +101,10 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     keybinds.terminal_suspend = "none"
     if (keybinds.input_undo === undefined) {
       const inputUndo = TuiKeybind.defaultValue("input_undo")
-      keybinds.input_undo = ["ctrl+z", ...(typeof inputUndo === "string" ? inputUndo.split(",") : [])]
+      keybinds.input_undo = [
+        "ctrl+z",
+        ...(typeof inputUndo === "string" ? inputUndo.split(",") : []),
+      ]
         .filter((value, index, values) => values.indexOf(value) === index)
         .join(",")
     }

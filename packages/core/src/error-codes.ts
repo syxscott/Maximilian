@@ -17,14 +17,7 @@
  */
 
 export type ErrorDomain =
-  | "auth"
-  | "workspaces"
-  | "agents"
-  | "llm"
-  | "meta-system"
-  | "queue"
-  | "config"
-  | "internal"
+  "auth" | "workspaces" | "agents" | "llm" | "meta-system" | "queue" | "config" | "internal"
 
 export interface ErrorCode {
   code: string
@@ -97,7 +90,8 @@ export const ERROR_CATALOG = {
     domain: "workspaces",
     httpStatus: 422,
     title: "Invalid plan",
-    description: "The plan produced by Commander was not executable (missing dependencies, infinite loop)",
+    description:
+      "The plan produced by Commander was not executable (missing dependencies, infinite loop)",
     remediation: "Inspect the plan in the workspace detail view",
     retryable: false,
   },

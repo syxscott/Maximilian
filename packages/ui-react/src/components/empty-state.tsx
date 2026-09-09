@@ -23,8 +23,7 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(func
         "flex flex-col items-center justify-center text-center",
         variant === "default" && "gap-3 py-12",
         variant === "compact" && "gap-2 py-6",
-        variant === "card" &&
-          "gap-3 rounded-md border border-dashed border-border bg-muted/30 p-8",
+        variant === "card" && "gap-3 rounded-md border border-dashed border-border bg-muted/30 p-8",
         className,
       )}
       {...rest}

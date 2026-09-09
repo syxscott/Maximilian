@@ -14,14 +14,14 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `docs/architecture/phase5-autonomy.md` | ~140 |
-| `docs/architecture/phase5-data-flow.md` | ~80 |
-| `docs/architecture/phase5-storage.md` | ~50 |
-| `docs/architecture/phase5-algorithms.md` | ~120 |
-| `docs/reports/phase5-risk-analysis.md` | ~150 |
-| `docs/decisions/adr-015-execution-replayable.md` | ~30 |
-| `docs/decisions/adr-016-structured-review.md` | ~30 |
-| `docs/decisions/adr-017-ab-promotion.md` | ~35 |
-| `docs/decisions/adr-018-dags-mode.md` | ~30 |
+| 文件                                             | 行数 |
+| ------------------------------------------------ | ---- |
+| `docs/architecture/phase5-autonomy.md`           | ~140 |
+| `docs/architecture/phase5-data-flow.md`          | ~80  |
+| `docs/architecture/phase5-storage.md`            | ~50  |
+| `docs/architecture/phase5-algorithms.md`         | ~120 |
+| `docs/reports/phase5-risk-analysis.md`           | ~150 |
+| `docs/decisions/adr-015-execution-replayable.md` | ~30  |
+| `docs/decisions/adr-016-structured-review.md`    | ~30  |
+| `docs/decisions/adr-017-ab-promotion.md`         | ~35  |
+| `docs/decisions/adr-018-dags-mode.md`            | ~30  |

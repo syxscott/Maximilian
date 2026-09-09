@@ -1,4 +1,15 @@
-import { pgTable, text, timestamp, jsonb, integer, numeric, boolean, uniqueIndex, real, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  timestamp,
+  jsonb,
+  integer,
+  numeric,
+  boolean,
+  uniqueIndex,
+  real,
+  index,
+} from "drizzle-orm/pg-core"
 
 // ── Tenants ─────────────────────────────────────────────────────────────────
 
@@ -9,7 +20,7 @@ export const tenants = pgTable("tenants", {
   plan: text("plan").default("free").notNull(), // free | pro | enterprise
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+})
 
 // ── Workspaces ──────────────────────────────────────────────────────────────
 
@@ -18,20 +29,22 @@ export const workspaces = pgTable("workspaces", {
   tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   userRequest: text("user_request").notNull(),
   status: text("status").notNull(), // planning | executing | reviewing | completed | failed
-  plan: jsonb("plan"),              // Plan object or null
+  plan: jsonb("plan"), // Plan object or null
   results: jsonb("results").default([]).notNull(),
-  review: jsonb("review"),          // ReviewResult or null
+  review: jsonb("review"), // ReviewResult or null
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+})
 
 // ── Workspace Artifacts ─────────────────────────────────────────────────────
 
 export const workspaceArtifacts = pgTable(
   "workspace_artifacts",
   {
-    workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     filename: text("filename").notNull(),
     content: text("content").notNull(),
   },
@@ -41,7 +54,7 @@ export const workspaceArtifacts = pgTable(
       table.filename,
     ),
   }),
-);
+)
 
 // ── Metrics ─────────────────────────────────────────────────────────────────
 
@@ -66,7 +79,7 @@ export const metrics = pgTable("metrics", {
   retryCount: integer("retry_count").default(0).notNull(),
   error: text("error"),
   timestamp: text("timestamp").notNull(), // ISO string
-});
+})
 
 // ── Executions ──────────────────────────────────────────────────────────────
 
@@ -93,11 +106,17 @@ export const executions = pgTable(
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (table) => ({
-    executionsWorkspaceHotIdx: index("idx_executions_workspace_hot").on(table.workspaceId, table.archivedAt),
+    executionsWorkspaceHotIdx: index("idx_executions_workspace_hot").on(
+      table.workspaceId,
+      table.archivedAt,
+    ),
     executionsRoleHotIdx: index("idx_executions_role_hot").on(table.agentRole, table.archivedAt),
-    executionsBlueprintHotIdx: index("idx_executions_blueprint_hot").on(table.blueprintId, table.archivedAt),
+    executionsBlueprintHotIdx: index("idx_executions_blueprint_hot").on(
+      table.blueprintId,
+      table.archivedAt,
+    ),
   }),
-);
+)
 
 export const executionsArchive = pgTable(
   "executions_archive",
@@ -123,11 +142,20 @@ export const executionsArchive = pgTable(
     archiveBucket: text("archive_bucket").notNull(),
   },
   (table) => ({
-    executionsArchiveWorkspaceIdx: index("idx_executions_archive_workspace").on(table.workspaceId, table.archiveBucket),
-    executionsArchiveRoleIdx: index("idx_executions_archive_role").on(table.agentRole, table.archiveBucket),
-    executionsArchiveBlueprintIdx: index("idx_executions_archive_blueprint").on(table.blueprintId, table.archiveBucket),
+    executionsArchiveWorkspaceIdx: index("idx_executions_archive_workspace").on(
+      table.workspaceId,
+      table.archiveBucket,
+    ),
+    executionsArchiveRoleIdx: index("idx_executions_archive_role").on(
+      table.agentRole,
+      table.archiveBucket,
+    ),
+    executionsArchiveBlueprintIdx: index("idx_executions_archive_blueprint").on(
+      table.blueprintId,
+      table.archiveBucket,
+    ),
   }),
-);
+)
 
 // ── Organization Events ─────────────────────────────────────────────────────
 
@@ -146,7 +174,7 @@ export const orgEvents = pgTable(
     orgEventsSubjectHotIdx: index("idx_org_events_subject_hot").on(table.subject, table.archivedAt),
     orgEventsTypeHotIdx: index("idx_org_events_type_hot").on(table.type, table.archivedAt),
   }),
-);
+)
 
 export const orgEventsArchive = pgTable(
   "org_events_archive",
@@ -161,10 +189,16 @@ export const orgEventsArchive = pgTable(
     archiveBucket: text("archive_bucket").notNull(),
   },
   (table) => ({
-    orgEventsArchiveSubjectIdx: index("idx_org_events_archive_subject").on(table.subject, table.archiveBucket),
-    orgEventsArchiveTypeIdx: index("idx_org_events_archive_type").on(table.type, table.archiveBucket),
+    orgEventsArchiveSubjectIdx: index("idx_org_events_archive_subject").on(
+      table.subject,
+      table.archiveBucket,
+    ),
+    orgEventsArchiveTypeIdx: index("idx_org_events_archive_type").on(
+      table.type,
+      table.archiveBucket,
+    ),
   }),
-);
+)
 
 // ── Users ───────────────────────────────────────────────────────────────────
 
@@ -176,24 +210,26 @@ export const users = pgTable("users", {
   role: text("role").default("viewer").notNull(), // admin | operator | viewer
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+})
 
 // ── Refresh Tokens ──────────────────────────────────────────────────────────
 
 export const refreshTokens = pgTable("refresh_tokens", {
   id: text("id").primaryKey(),
   jti: text("jti").unique().notNull(),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   revoked: boolean("revoked").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+})
 
 // ── Agent Profiles (Phase 2 — Evolution) ────────────────────────────────────
 
 export const agentProfiles = pgTable("agent_profiles", {
-  id: text("id").primaryKey(),          // equals role
+  id: text("id").primaryKey(), // equals role
   role: text("role").notNull().unique(),
   createdAt: text("created_at").notNull(),
   totalTasks: integer("total_tasks").default(0).notNull(),
@@ -208,19 +244,19 @@ export const agentProfiles = pgTable("agent_profiles", {
   versions: jsonb("versions").default(["v1"]).notNull(),
   manifest: jsonb("manifest"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+})
 
 // ── Agent Versions (Phase 6 — Evolution) ─────────────────────────────────────
 
 export const agentVersions = pgTable("agent_versions", {
-  id: text("id").primaryKey(),                   // e.g. "v1"
+  id: text("id").primaryKey(), // e.g. "v1"
   agentRole: text("agent_role").notNull(),
   manifest: jsonb("manifest").notNull(),
   createdAt: text("created_at").notNull(),
   retiredAt: text("retired_at"),
   reason: text("reason").default("initial").notNull(),
   stats: jsonb("stats").default({}).notNull(),
-});
+})
 
 // ── Evolution Decisions (Phase 6 — Evolution) ────────────────────────────────
 
@@ -229,12 +265,12 @@ export const evolutionDecisions = pgTable("evolution_decisions", {
   agentRole: text("agent_role").notNull(),
   fromVersion: text("from_version").notNull(),
   toVersion: text("to_version").notNull(),
-  outcome: text("outcome").notNull(),              // promoted | discarded
+  outcome: text("outcome").notNull(), // promoted | discarded
   oldAvgScore: real("old_avg_score").notNull(),
   newAvgScore: real("new_avg_score").notNull(),
   triggeredAt: text("triggered_at").notNull(),
   reason: text("reason").notNull(),
-});
+})
 
 // ── Truth Measurements (Phase 8.7 — TruthAudit persistence) ─────────────────
 
@@ -246,7 +282,7 @@ export const truthMeasurements = pgTable("truth_measurements", {
   actual: jsonb("actual").notNull(),
   sampleSize: integer("sample_size").notNull(),
   recordedAt: text("recorded_at").notNull(),
-});
+})
 
 export const truthVerifications = pgTable("truth_verifications", {
   id: text("id").primaryKey(),
@@ -257,7 +293,7 @@ export const truthVerifications = pgTable("truth_verifications", {
   meanActual: jsonb("mean_actual").notNull(),
   calibrationError: real("calibration_error").notNull(),
   generatedAt: text("generated_at").notNull(),
-});
+})
 
 // ── Failure Insights (Phase 5 — Autonomy) ────────────────────────────────────
 
@@ -272,7 +308,7 @@ export const failureInsights = pgTable("failure_insights", {
   examples: jsonb("examples").default([]).notNull(),
   firstSeen: text("first_seen").notNull(),
   lastSeen: text("last_seen").notNull(),
-});
+})
 
 // ── Leaderboard Insights (Phase 5 — Autonomy) ───────────────────────────────
 
@@ -283,7 +319,7 @@ export const leaderboardInsights = pgTable("leaderboard_insights", {
   worstRoles: jsonb("worst_roles").default([]).notNull(),
   worstModels: jsonb("worst_models").default([]).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+})
 
 // ── Blueprints (DAGS) ───────────────────────────────────────────────────────
 
@@ -304,7 +340,7 @@ export const blueprints = pgTable("blueprints", {
   retiredAt: text("retired_at"),
   stats: jsonb("stats").default({}).notNull(),
   metadata: jsonb("metadata").default({}).notNull(),
-});
+})
 
 // ── Team Graphs (DAGS) ──────────────────────────────────────────────────────
 
@@ -317,7 +353,7 @@ export const teamGraphs = pgTable("team_graphs", {
   layers: jsonb("layers").default([]).notNull(),
   createdAt: text("created_at").notNull(),
   status: text("status").default("draft").notNull(),
-});
+})
 
 // ── Capabilities (Phase 6.2 — Meta-System) ──────────────────────────────────
 
@@ -325,7 +361,7 @@ export const capabilities = pgTable("capabilities", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull(),
   description: text("description").default("").notNull(),
-  status: text("status").notNull(),                // proposed | experimental | active | deprecated | retired
+  status: text("status").notNull(), // proposed | experimental | active | deprecated | retired
   proposalId: text("proposal_id"),
   promotedAt: text("promoted_at"),
   retiredAt: text("retired_at"),
@@ -335,7 +371,7 @@ export const capabilities = pgTable("capabilities", {
   avgDurationMs: real("avg_duration_ms").default(0).notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-});
+})
 
 // ── Governance Config (Phase 6.9 — Meta-System) ─────────────────────────────
 
@@ -349,7 +385,7 @@ export const governanceConfig = pgTable("governance_config", {
   hitlRiskThreshold: real("hitl_risk_threshold").default(0.4).notNull(),
   hitlAlwaysForActions: jsonb("hitl_always_for_actions").default(["retire"]).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+})
 
 // ── Pending Proposals (Phase 11 — HITL) ─────────────────────────────────────
 
@@ -364,7 +400,7 @@ export const pendingProposals = pgTable("pending_proposals", {
   resolvedAt: text("resolved_at"),
   resolvedBy: text("resolved_by"),
   resolutionReason: text("resolution_reason"),
-});
+})
 
 // ── Telemetry Execution Traces (Phase 10) ───────────────────────────────────
 
@@ -375,11 +411,11 @@ export const telemetryExecutionTraces = pgTable("telemetry_execution_traces", {
   userPrompt: text("user_prompt").notNull(),
   assignedTeamGraph: jsonb("assigned_team_graph").notNull(),
   steps: jsonb("steps").default([]).notNull(),
-  status: text("status").notNull(),                // running | completed | failed
+  status: text("status").notNull(), // running | completed | failed
   startedAt: text("started_at").notNull(),
   completedAt: text("completed_at"),
   error: text("error"),
-});
+})
 
 // ── Telemetry Evolution Traces (Phase 10) ───────────────────────────────────
 
@@ -394,7 +430,7 @@ export const telemetryEvolutionTraces = pgTable("telemetry_evolution_traces", {
   rolloutStatus: text("rollout_status").notNull(),
   approved: boolean("approved").notNull(),
   recordedAt: text("recorded_at").notNull(),
-});
+})
 
 // ── Dynamic Provider Configuration (runtime model/default switching) ─────────
 
@@ -405,4 +441,4 @@ export const providerConfigs = pgTable("provider_configs", {
   /** Marked true on exactly one row at a time — the system-wide default. */
   defaultProvider: boolean("default_provider").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+})

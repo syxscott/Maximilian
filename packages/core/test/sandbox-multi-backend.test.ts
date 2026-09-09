@@ -47,7 +47,9 @@ describe("SandboxServiceBase.create() factory", () => {
   })
 
   it("unknown backend defaults to LocalSandboxService", () => {
-    const svc = SandboxServiceBase.create({ backend: "local" as import("../src/sandbox.js").SandboxBackend })
+    const svc = SandboxServiceBase.create({
+      backend: "local" as import("../src/sandbox.js").SandboxBackend,
+    })
     expect(svc).toBeInstanceOf(LocalSandboxService)
   })
 })

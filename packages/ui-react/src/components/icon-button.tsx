@@ -20,12 +20,9 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         className={className}
         {...rest}
       >
-        <Icon
-          name={icon}
-          size={iconSize ?? (size === "large" ? "normal" : "small")}
-        />
+        <Icon name={icon} size={iconSize ?? (size === "large" ? "normal" : "small")} />
       </button>
     )
-  }
+  },
 )
 IconButton.displayName = "IconButton"

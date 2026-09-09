@@ -24,14 +24,7 @@ export type ProjectAvatarVariant = "orange" | "pink" | "cyan" | "purple" | "gree
 // Constants
 // ----------------------------------------------------------------------------
 
-export const AVATAR_COLOR_KEYS = [
-  "pink",
-  "mint",
-  "orange",
-  "purple",
-  "cyan",
-  "lime",
-] as const
+export const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 
 export const DEFAULT_SIDEBAR_WIDTH = 344
 export const DEFAULT_FILE_TREE_WIDTH = 200
@@ -79,7 +72,13 @@ export type LayoutRoute =
   | { type: "home" }
   | { type: "draft"; draftID: string; server?: ServerConnectionKey }
   | { type: "dir-new-sesssion"; dir: string; dirBase64: string; server?: ServerConnectionKey }
-  | { type: "session"; dir: string; dirBase64: string; sessionId: string; server?: ServerConnectionKey }
+  | {
+      type: "session"
+      dir: string
+      dirBase64: string
+      sessionId: string
+      server?: ServerConnectionKey
+    }
 
 export type SessionScroll = Record<string, { top?: number; left?: number }>
 
@@ -210,10 +209,7 @@ export type LayoutStoreActions = {
   ) => void
   mergeSessionView: (sessionKey: string, patch: Partial<SessionView>) => void
   dropSessionView: (sessionKey: string) => void
-  setSessionScroll: (
-    sessionKey: string,
-    scrollPatch: SessionScroll,
-  ) => void
+  setSessionScroll: (sessionKey: string, scrollPatch: SessionScroll) => void
 
   // Session tabs (per-sessionKey)
   ensureSessionTabs: (sessionKey: string) => SessionTabs
@@ -307,10 +303,7 @@ const initialState: LayoutState = {
 // Helpers
 // ----------------------------------------------------------------------------
 
-export function nextSessionTabsForOpen(
-  current: SessionTabs | undefined,
-  tab: string,
-): SessionTabs {
+export function nextSessionTabsForOpen(current: SessionTabs | undefined, tab: string): SessionTabs {
   const all = current?.all ?? []
   if (tab === "review") return { all: all.filter((x) => x !== "review"), active: tab }
   if (tab === "context") {
@@ -329,10 +322,7 @@ export function isSameStringArray(a: string[] | undefined, b: string[]): boolean
   return true
 }
 
-export function resolveRoot(
-  directory: string,
-  rootMap: Map<string, string>,
-): string {
+export function resolveRoot(directory: string, rootMap: Map<string, string>): string {
   if (rootMap.size === 0) return directory
   const visited = new Set<string>()
   const chain = [directory]
@@ -385,12 +375,10 @@ export const useLayoutStore = create<LayoutStore>()((set, get) => ({
   ...initialState,
 
   // ---------- Sidebar ----------
-  setSidebarOpened: (opened) =>
-    set((state) => ({ sidebar: { ...state.sidebar, opened } })),
+  setSidebarOpened: (opened) => set((state) => ({ sidebar: { ...state.sidebar, opened } })),
   toggleSidebar: () =>
     set((state) => ({ sidebar: { ...state.sidebar, opened: !state.sidebar.opened } })),
-  setSidebarWidth: (width) =>
-    set((state) => ({ sidebar: { ...state.sidebar, width } })),
+  setSidebarWidth: (width) => set((state) => ({ sidebar: { ...state.sidebar, width } })),
   setSidebarWorkspaces: (directory, value) =>
     set((state) => ({
       sidebar: {
@@ -411,8 +399,7 @@ export const useLayoutStore = create<LayoutStore>()((set, get) => ({
     }),
 
   // ---------- Terminal pane ----------
-  setTerminalHeight: (height) =>
-    set((state) => ({ terminal: { ...state.terminal, height } })),
+  setTerminalHeight: (height) => set((state) => ({ terminal: { ...state.terminal, height } })),
   setTerminalOpened: (opened) =>
     set((state) => {
       if (state.terminal.opened === opened) return state
@@ -424,8 +411,7 @@ export const useLayoutStore = create<LayoutStore>()((set, get) => ({
     })),
 
   // ---------- Review ----------
-  setReviewDiffStyle: (diffStyle) =>
-    set((state) => ({ review: { ...state.review, diffStyle } })),
+  setReviewDiffStyle: (diffStyle) => set((state) => ({ review: { ...state.review, diffStyle } })),
   setReviewPanelOpened: (panelOpened) =>
     set((state) => {
       if (state.review.panelOpened === panelOpened) return state
@@ -437,20 +423,16 @@ export const useLayoutStore = create<LayoutStore>()((set, get) => ({
     })),
 
   // ---------- File tree ----------
-  setFileTreeTab: (tab) =>
-    set((state) => ({ fileTree: { ...state.fileTree, tab } })),
-  setFileTreeOpened: (opened) =>
-    set((state) => ({ fileTree: { ...state.fileTree, opened } })),
+  setFileTreeTab: (tab) => set((state) => ({ fileTree: { ...state.fileTree, tab } })),
+  setFileTreeOpened: (opened) => set((state) => ({ fileTree: { ...state.fileTree, opened } })),
   toggleFileTree: () =>
     set((state) => ({
       fileTree: { ...state.fileTree, opened: !state.fileTree.opened },
     })),
-  setFileTreeWidth: (width) =>
-    set((state) => ({ fileTree: { ...state.fileTree, width } })),
+  setFileTreeWidth: (width) => set((state) => ({ fileTree: { ...state.fileTree, width } })),
 
   // ---------- Session pane ----------
-  setSessionWidth: (width) =>
-    set((state) => ({ session: { ...state.session, width } })),
+  setSessionWidth: (width) => set((state) => ({ session: { ...state.session, width } })),
 
   // ---------- Mobile sidebar ----------
   setMobileSidebarOpened: (opened) =>
@@ -464,8 +446,7 @@ export const useLayoutStore = create<LayoutStore>()((set, get) => ({
     })),
 
   // ---------- Handoff ----------
-  setHandoffTabs: (handoff) =>
-    set((state) => ({ handoff: { ...state.handoff, tabs: handoff } })),
+  setHandoffTabs: (handoff) => set((state) => ({ handoff: { ...state.handoff, tabs: handoff } })),
 
   // ---------- Session view ----------
   ensureSessionView: (sessionKey) => {
@@ -660,8 +641,7 @@ export const useLayoutStore = create<LayoutStore>()((set, get) => ({
         used: { ...state.usage.used, [sessionKey]: Date.now() },
       },
     })),
-  markPruned: () =>
-    set((state) => ({ usage: { ...state.usage, pruned: true } })),
+  markPruned: () => set((state) => ({ usage: { ...state.usage, pruned: true } })),
   prune: (keep) =>
     set((state) => {
       // The OpenCode prune algorithm picks least-recently-used sessions to
@@ -715,10 +695,7 @@ export const useSidebar = () => useLayoutStore((s) => s.sidebar)
 export const useSidebarOpened = () => useLayoutStore((s) => s.sidebar.opened)
 export const useSidebarWidth = () => useLayoutStore((s) => s.sidebar.width)
 export const useSidebarWorkspaces = (directory: string) =>
-  useLayoutStore(
-    (s) =>
-      s.sidebar.workspaces[directory] ?? s.sidebar.workspacesDefault ?? false,
-  )
+  useLayoutStore((s) => s.sidebar.workspaces[directory] ?? s.sidebar.workspacesDefault ?? false)
 
 export const useTerminalPane = () => useLayoutStore((s) => s.terminal)
 export const useTerminalOpened = () => useLayoutStore((s) => s.terminal.opened)
@@ -726,8 +703,7 @@ export const useTerminalHeight = () => useLayoutStore((s) => s.terminal.height)
 
 export const useReview = () => useLayoutStore((s) => s.review)
 export const useReviewDiffStyle = () => useLayoutStore((s) => s.review.diffStyle)
-export const useReviewPanelOpened = () =>
-  useLayoutStore((s) => s.review.panelOpened)
+export const useReviewPanelOpened = () => useLayoutStore((s) => s.review.panelOpened)
 
 export const useFileTree = () => useLayoutStore((s) => s.fileTree)
 export const useFileTreeTab = () => useLayoutStore((s) => s.fileTree.tab)
@@ -736,8 +712,7 @@ export const useFileTreeWidth = () => useLayoutStore((s) => s.fileTree.width)
 
 export const useSessionPane = () => useLayoutStore((s) => s.session)
 export const useMobileSidebar = () => useLayoutStore((s) => s.mobileSidebar)
-export const useMobileSidebarOpened = () =>
-  useLayoutStore((s) => s.mobileSidebar.opened)
+export const useMobileSidebarOpened = () => useLayoutStore((s) => s.mobileSidebar.opened)
 
 export const useSessionTabsFor = (sessionKey: string) =>
   useLayoutStore((s) => s.sessionTabs[sessionKey])

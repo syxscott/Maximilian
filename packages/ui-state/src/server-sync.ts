@@ -133,10 +133,7 @@ export const useServerSyncStore = create<ServerSyncStore>()((set) => ({
 
   replaceProjects: (projects) =>
     set((state) => {
-      const next =
-        typeof projects === "function"
-          ? projects(state.global.project)
-          : projects
+      const next = typeof projects === "function" ? projects(state.global.project) : projects
       return { global: { ...state.global, project: next } }
     }),
 
@@ -182,8 +179,7 @@ export const useServerSyncStore = create<ServerSyncStore>()((set) => ({
       return { children: next }
     }),
 
-  markBooting: (key) =>
-    set((state) => ({ booting: { ...state.booting, [key]: true } })),
+  markBooting: (key) => set((state) => ({ booting: { ...state.booting, [key]: true } })),
 
   clearBooting: (key) =>
     set((state) => {
@@ -298,7 +294,10 @@ export function makeQueryOptionsApi(
       queryKey: [scope, directory, "path"],
       queryFn: () => (directory === null ? serverSDK() : sdkFor(directory)),
     }),
-    agents: (directory) => ({ queryKey: [scope, directory, "agents"], queryFn: () => sdkFor(directory) }),
+    agents: (directory) => ({
+      queryKey: [scope, directory, "agents"],
+      queryFn: () => sdkFor(directory),
+    }),
     mcp: (directory) => ({ queryKey: [scope, directory, "mcp"], queryFn: () => sdkFor(directory) }),
     lsp: (directory) => ({ queryKey: [scope, directory, "lsp"], queryFn: () => sdkFor(directory) }),
     sessions: (directory) => ({ queryKey: [scope, directory, "loadSessions"] as const }),

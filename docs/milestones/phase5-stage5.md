@@ -20,6 +20,6 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `packages/autonomy/src/candidate-generator.ts` | 130 |
+| 文件                                           | 行数 |
+| ---------------------------------------------- | ---- |
+| `packages/autonomy/src/candidate-generator.ts` | 130  |

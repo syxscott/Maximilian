@@ -5,4 +5,4 @@
  * OpenCode's `routes/home/index.tsx` so consumers can `import { Home } from
  * "./routes/home"` without an inner file.
  */
-export { Home } from "./home";
+export { Home } from "./home"

@@ -11,7 +11,10 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
   const [open, setOpen] = useState(true)
   const theme = props.api.theme.current
   const list = useMemo(() => props.api.state.session.todo(props.session_id), [props.session_id])
-  const show = useMemo(() => list.length > 0 && list.some((item) => item.status !== "completed"), [list])
+  const show = useMemo(
+    () => list.length > 0 && list.some((item) => item.status !== "completed"),
+    [list],
+  )
 
   if (!show) return null
 
@@ -24,7 +27,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
         </Text>
       </Box>
       {(list.length <= 2 || open) &&
-        list.map((item, index) => <TodoItem key={index} status={item.status} content={item.content} />)}
+        list.map((item, index) => (
+          <TodoItem key={index} status={item.status} content={item.content} />
+        ))}
     </Box>
   )
 }

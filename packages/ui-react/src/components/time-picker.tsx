@@ -11,8 +11,10 @@ export interface TimeValue {
 
 export type TimeFormat = "12" | "24"
 
-export interface TimePickerProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "value" | "onChange" | "defaultValue"> {
+export interface TimePickerProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "value" | "onChange" | "defaultValue"
+> {
   value?: TimeValue
   defaultValue?: TimeValue
   onChange?: (value: TimeValue) => void
@@ -30,7 +32,11 @@ function pad(n: number, width = 2): string {
   return String(n).padStart(width, "0")
 }
 
-function formatTime(value: TimeValue | undefined, format: TimeFormat, showSeconds: boolean): string {
+function formatTime(
+  value: TimeValue | undefined,
+  format: TimeFormat,
+  showSeconds: boolean,
+): string {
   if (!value) return ""
   let h = value.hours
   const suffix = format === "12" ? (h >= 12 ? " PM" : " AM") : ""

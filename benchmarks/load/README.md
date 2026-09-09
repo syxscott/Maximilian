@@ -14,13 +14,13 @@ establish a baseline.
 
 ## Scripts
 
-| Script | VUs | Target SLA | What it measures |
-|--------|-----|-----------|------------------|
-| `k6-auth.js` | 30 | p95 register/login < 1.5s, p95 refresh < 800ms | bcrypt throughput, refresh-token rotation, replay rejection |
-| `k6-read.js` | 50 | p95 reads < 1s, p95 health < 100ms | list/get endpoints under load |
-| `k6-chat.js` | 50 | p95 < 2s | chat enqueue latency |
-| `k6-mixed.js` | 50 | p95 < 2s, error rate < 5% | weighted realistic workload |
-| `load-test.mjs` | any | p95 reads < 1s | Node.js fallback when k6 isn't installed |
+| Script          | VUs | Target SLA                                     | What it measures                                            |
+| --------------- | --- | ---------------------------------------------- | ----------------------------------------------------------- |
+| `k6-auth.js`    | 30  | p95 register/login < 1.5s, p95 refresh < 800ms | bcrypt throughput, refresh-token rotation, replay rejection |
+| `k6-read.js`    | 50  | p95 reads < 1s, p95 health < 100ms             | list/get endpoints under load                               |
+| `k6-chat.js`    | 50  | p95 < 2s                                       | chat enqueue latency                                        |
+| `k6-mixed.js`   | 50  | p95 < 2s, error rate < 5%                      | weighted realistic workload                                 |
+| `load-test.mjs` | any | p95 reads < 1s                                 | Node.js fallback when k6 isn't installed                    |
 
 `k6-auth.js` includes a regression check for the refresh-token
 TOCTOU fix in `apps/api/src/routes/auth.ts`: after a successful
@@ -67,7 +67,7 @@ Common failure modes:
 
 ## Environment variables
 
-| Variable | Default | Notes |
-|----------|---------|-------|
-| `BASE_URL` | `http://localhost:3001` | API root |
-| `LOAD_TEST_TOKEN` | (none) | JWT to use with `load-test.mjs --auth` |
+| Variable          | Default                 | Notes                                  |
+| ----------------- | ----------------------- | -------------------------------------- |
+| `BASE_URL`        | `http://localhost:3001` | API root                               |
+| `LOAD_TEST_TOKEN` | (none)                  | JWT to use with `load-test.mjs --auth` |

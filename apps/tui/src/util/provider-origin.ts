@@ -3,5 +3,7 @@ const contains = (consoleManagedProviders: string[] | ReadonlySet<string>, provi
     ? consoleManagedProviders.includes(providerID)
     : consoleManagedProviders.has(providerID)
 
-export const isConsoleManagedProvider = (consoleManagedProviders: string[] | ReadonlySet<string>, providerID: string) =>
-  contains(consoleManagedProviders, providerID)
+export const isConsoleManagedProvider = (
+  consoleManagedProviders: string[] | ReadonlySet<string>,
+  providerID: string,
+) => contains(consoleManagedProviders, providerID)

@@ -10,29 +10,24 @@
  * per `packages/protocol/src/errors.ts`).
  */
 export class OpencodeError extends Error {
-  readonly statusCode: number;
-  readonly path: string;
-  readonly body?: unknown;
+  readonly statusCode: number
+  readonly path: string
+  readonly body?: unknown
 
-  constructor(opts: {
-    statusCode: number;
-    message: string;
-    path: string;
-    body?: unknown;
-  }) {
-    super(opts.message);
-    this.name = "OpencodeError";
-    this.statusCode = opts.statusCode;
-    this.path = opts.path;
-    this.body = opts.body;
+  constructor(opts: { statusCode: number; message: string; path: string; body?: unknown }) {
+    super(opts.message)
+    this.name = "OpencodeError"
+    this.statusCode = opts.statusCode
+    this.path = opts.path
+    this.body = opts.body
   }
 }
 
 /** HTTP 401. Mirrors `UnauthorizedError` in packages/protocol/src/errors.ts. */
 export class UnauthorizedError extends OpencodeError {
   constructor(opts: { message: string; path: string; body?: unknown }) {
-    super({ statusCode: 401, message: opts.message, path: opts.path, body: opts.body });
-    this.name = "UnauthorizedError";
+    super({ statusCode: 401, message: opts.message, path: opts.path, body: opts.body })
+    this.name = "UnauthorizedError"
   }
 }
 
@@ -44,8 +39,8 @@ export class UnauthorizedError extends OpencodeError {
  */
 export class NotFoundError extends OpencodeError {
   constructor(opts: { message: string; path: string; body?: unknown }) {
-    super({ statusCode: 404, message: opts.message, path: opts.path, body: opts.body });
-    this.name = "NotFoundError";
+    super({ statusCode: 404, message: opts.message, path: opts.path, body: opts.body })
+    this.name = "NotFoundError"
   }
 }
 
@@ -57,16 +52,16 @@ export class InvalidRequestError extends OpencodeError {
       message: opts.message,
       path: opts.path,
       body: opts.body,
-    });
-    this.name = "InvalidRequestError";
+    })
+    this.name = "InvalidRequestError"
   }
 }
 
 /** HTTP 503. Raised by `/compact`, `/wait`, etc. when an op is unavailable. */
 export class ServiceUnavailableError extends OpencodeError {
   constructor(opts: { message: string; path: string; body?: unknown }) {
-    super({ statusCode: 503, message: opts.message, path: opts.path, body: opts.body });
-    this.name = "ServiceUnavailableError";
+    super({ statusCode: 503, message: opts.message, path: opts.path, body: opts.body })
+    this.name = "ServiceUnavailableError"
   }
 }
 
@@ -77,32 +72,30 @@ export class ServiceUnavailableError extends OpencodeError {
  *   - a JSON string (we attempt to parse it before falling back),
  *   - or a non-JSON string / undefined (we synthesize a message).
  */
-export function errorFromResponse(
-  status: number,
-  path: string,
-  body: unknown,
-): OpencodeError {
+export function errorFromResponse(status: number, path: string, body: unknown): OpencodeError {
   // 借鉴 opencode: prefer the structured message from the JSON body if present
-  let parsed: unknown = body;
+  let parsed: unknown = body
   if (typeof body === "string") {
-    const trimmed = body.trim();
+    const trimmed = body.trim()
     if (trimmed && (trimmed.startsWith("{") || trimmed.startsWith("["))) {
       try {
-        parsed = JSON.parse(trimmed);
+        parsed = JSON.parse(trimmed)
       } catch {
-        parsed = undefined;
+        parsed = undefined
       }
     }
   }
 
   const message =
-    typeof parsed === "object" && parsed !== null && "message" in parsed &&
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "message" in parsed &&
     typeof (parsed as { message: unknown }).message === "string"
-      ? ((parsed as { message: string }).message)
-      : `opencode HTTP ${status} on ${path}`;
+      ? (parsed as { message: string }).message
+      : `opencode HTTP ${status} on ${path}`
 
-  if (status === 401) return new UnauthorizedError({ message, path, body });
-  if (status === 404) return new NotFoundError({ message, path, body });
-  if (status === 503) return new ServiceUnavailableError({ message, path, body });
-  return new InvalidRequestError({ message, path, statusCode: status, body });
+  if (status === 401) return new UnauthorizedError({ message, path, body })
+  if (status === 404) return new NotFoundError({ message, path, body })
+  if (status === 503) return new ServiceUnavailableError({ message, path, body })
+  return new InvalidRequestError({ message, path, statusCode: status, body })
 }

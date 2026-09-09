@@ -23,11 +23,13 @@ function View(props: { api: TuiPluginApi }) {
       {(list.length <= 2 || open) && (
         <>
           {list.length === 0 && (
-            <Text color={theme.textMuted}>{off ? "LSPs are disabled" : "LSPs will activate as files are read"}</Text>
+            <Text color={theme.textMuted}>
+              {off ? "LSPs are disabled" : "LSPs will activate as files are read"}
+            </Text>
           )}
           {list.map((item) => (
             <Box key={item.id} flexDirection="row" gap={1}>
-              <Text color={item.status === "connected" ? theme.success : theme.error}>{'•'}</Text>
+              <Text color={item.status === "connected" ? theme.success : theme.error}>{"•"}</Text>
               <Text color={theme.textMuted}>
                 {item.id} {item.root}
               </Text>

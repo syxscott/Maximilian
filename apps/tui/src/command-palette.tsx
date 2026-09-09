@@ -72,80 +72,82 @@ export type CommandPaletteRef = {
   filter?: string
 }
 
-export const CommandPaletteDialog = forwardRef<CommandPaletteRef | undefined, object>(function CommandPaletteDialog(_props, ref) {
-  useLocale()
-  const [open, setOpen] = useState(false)
-  const [commands, setCommandsState] = useState<CommandDescriptor[]>([])
-  const filterRef = useRef<string | undefined>(undefined)
-  // Capture the current setState in a ref so the registry's `set` always
-  // sees the LATEST reference, even across Strict-Mode double-invocation.
-  const setCommandsRef = useRef(setCommandsState)
-  setCommandsRef.current = setCommandsState
-  // Same idea for `commands` so `registry.list()` returns fresh data.
-  const commandsRef = useRef(commands)
-  commandsRef.current = commands
+export const CommandPaletteDialog = forwardRef<CommandPaletteRef | undefined, object>(
+  function CommandPaletteDialog(_props, ref) {
+    useLocale()
+    const [open, setOpen] = useState(false)
+    const [commands, setCommandsState] = useState<CommandDescriptor[]>([])
+    const filterRef = useRef<string | undefined>(undefined)
+    // Capture the current setState in a ref so the registry's `set` always
+    // sees the LATEST reference, even across Strict-Mode double-invocation.
+    const setCommandsRef = useRef(setCommandsState)
+    setCommandsRef.current = setCommandsState
+    // Same idea for `commands` so `registry.list()` returns fresh data.
+    const commandsRef = useRef(commands)
+    commandsRef.current = commands
 
-  useEffect(() => {
-    // Bind once on mount; unbind on unmount to a no-op so a stale caller
-    // doesn't accidentally re-populate state on an unmounted component.
-    const previous = registryState
-    registryState = {
-      list: () => commandsRef.current,
-      set: (commands) => setCommandsRef.current(commands),
-      append: (more) => setCommandsRef.current((prev) => [...prev, ...more]),
+    useEffect(() => {
+      // Bind once on mount; unbind on unmount to a no-op so a stale caller
+      // doesn't accidentally re-populate state on an unmounted component.
+      const previous = registryState
+      registryState = {
+        list: () => commandsRef.current,
+        set: (commands) => setCommandsRef.current(commands),
+        append: (more) => setCommandsRef.current((prev) => [...prev, ...more]),
+      }
+      return () => {
+        registryState = previous
+      }
+    }, [])
+
+    const visibleCommands = useMemo(() => commands.filter((c) => !c.hidden), [commands])
+    const options = useMemo(
+      () =>
+        visibleCommands.map((command) => ({
+          label: command.title,
+          value: command.name,
+        })),
+      [visibleCommands],
+    )
+
+    useImperativeHandle(ref, () => ({
+      open: () => {
+        filterRef.current = undefined
+        setOpen(true)
+      },
+      close: () => setOpen(false),
+      get filter() {
+        return filterRef.current
+      },
+    }))
+
+    if (!open) return null
+    if (options.length === 0) {
+      return (
+        <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
+          <Text>{t("tui.noCommandsRegistered")}</Text>
+        </Box>
+      )
     }
-    return () => {
-      registryState = previous
-    }
-  }, [])
-
-  const visibleCommands = useMemo(() => commands.filter((c) => !c.hidden), [commands])
-  const options = useMemo(
-    () =>
-      visibleCommands.map((command) => ({
-        label: command.title,
-        value: command.name,
-      })),
-    [visibleCommands],
-  )
-
-  useImperativeHandle(ref, () => ({
-    open: () => {
-      filterRef.current = undefined
-      setOpen(true)
-    },
-    close: () => setOpen(false),
-    get filter() {
-      return filterRef.current
-    },
-  }))
-
-  if (!open) return null
-  if (options.length === 0) {
     return (
       <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
-        <Text>{t("tui.noCommandsRegistered")}</Text>
+        <Box marginBottom={1}>
+          <Text bold>{t("tui.commands")}</Text>
+        </Box>
+        <SelectInput
+          items={options}
+          onSelect={(item) => {
+            const cmd = visibleCommands.find((c) => c.name === item.value)
+            setOpen(false)
+            cmd?.onSelect()
+          }}
+        />
+        <Box marginTop={1}>
+          {visibleCommands.find((c) => c.suggested) ? (
+            <Text dimColor>suggested commands are highlighted first</Text>
+          ) : null}
+        </Box>
       </Box>
     )
-  }
-  return (
-    <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
-      <Box marginBottom={1}>
-        <Text bold>{t("tui.commands")}</Text>
-      </Box>
-      <SelectInput
-        items={options}
-        onSelect={(item) => {
-          const cmd = visibleCommands.find((c) => c.name === item.value)
-          setOpen(false)
-          cmd?.onSelect()
-        }}
-      />
-      <Box marginTop={1}>
-        {visibleCommands.find((c) => c.suggested) ? (
-          <Text dimColor>suggested commands are highlighted first</Text>
-        ) : null}
-      </Box>
-    </Box>
-  )
-})
+  },
+)

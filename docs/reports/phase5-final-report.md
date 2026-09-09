@@ -132,32 +132,33 @@ sequenceDiagram
 
 ## 4. 8 子阶段交付清单
 
-| 阶段 | 模块 | 入口 / API | 关键阈值 |
-|---|---|---|---|
-| 5.1 | ExecutionStore | `GET /api/executions[/:id]` | — |
-| 5.2 | ReviewIntelligence | 嵌入 observe() | score 0-10 |
-| 5.3 | FailurePatternAnalyzer | `GET /api/learning/failure-patterns` | lookback=50 |
-| 5.4 | EvolutionPlanner | 嵌入 observe() | score<6 或 accept<0.5 |
-| 5.5 | CandidateGenerator | 嵌入 observe() | nextVersion("v1")→"v2" |
-| 5.6 | PromotionEngine | 嵌入 observe() | sample≥20, score≥10%, accept≥15% |
-| 5.7 | LearningAPI | `GET /api/learning/*` | 只读 |
-| 5.8 | AutonomyOrchestrator + DAGS_MODE | `POST /api/chat`（DAGS_MODE=true） | — |
+| 阶段 | 模块                             | 入口 / API                           | 关键阈值                         |
+| ---- | -------------------------------- | ------------------------------------ | -------------------------------- |
+| 5.1  | ExecutionStore                   | `GET /api/executions[/:id]`          | —                                |
+| 5.2  | ReviewIntelligence               | 嵌入 observe()                       | score 0-10                       |
+| 5.3  | FailurePatternAnalyzer           | `GET /api/learning/failure-patterns` | lookback=50                      |
+| 5.4  | EvolutionPlanner                 | 嵌入 observe()                       | score<6 或 accept<0.5            |
+| 5.5  | CandidateGenerator               | 嵌入 observe()                       | nextVersion("v1")→"v2"           |
+| 5.6  | PromotionEngine                  | 嵌入 observe()                       | sample≥20, score≥10%, accept≥15% |
+| 5.7  | LearningAPI                      | `GET /api/learning/*`                | 只读                             |
+| 5.8  | AutonomyOrchestrator + DAGS_MODE | `POST /api/chat`（DAGS_MODE=true）   | —                                |
 
 ---
 
 ## 5. 测试覆盖
 
-| 类型 | 数量 | 通过 | 位置 |
-|---|---|---|---|
-| 单元 | **37** | 37/37 | `packages/autonomy/test/autonomy-unit.test.ts` |
-| 集成 | **4** | 4/4 | `apps/api/test/autonomy-integration.test.ts` |
-| E2E | **3** | 3/3 | `apps/api/test/e2e-dags-mode.test.ts` |
-| Smoke（既有）| 4 | 4/4 | `apps/api/test/smoke.test.ts` |
-| Evolution（Phase 3）| 20 | 20/20 | `packages/evolution/test/evolution.test.ts` |
-| DAGS（Phase 4）| 24 | 24/24 | `packages/dags/test/dags.test.ts` |
-| **总计** | **92** | **92/92** | 全 monorepo |
+| 类型                 | 数量   | 通过      | 位置                                           |
+| -------------------- | ------ | --------- | ---------------------------------------------- |
+| 单元                 | **37** | 37/37     | `packages/autonomy/test/autonomy-unit.test.ts` |
+| 集成                 | **4**  | 4/4       | `apps/api/test/autonomy-integration.test.ts`   |
+| E2E                  | **3**  | 3/3       | `apps/api/test/e2e-dags-mode.test.ts`          |
+| Smoke（既有）        | 4      | 4/4       | `apps/api/test/smoke.test.ts`                  |
+| Evolution（Phase 3） | 20     | 20/20     | `packages/evolution/test/evolution.test.ts`    |
+| DAGS（Phase 4）      | 24     | 24/24     | `packages/dags/test/dags.test.ts`              |
+| **总计**             | **92** | **92/92** | 全 monorepo                                    |
 
 **Phase 5 单元测试分布**：
+
 - 5.1 ExecutionStore: 4
 - 5.2 ReviewIntelligence: 4
 - 5.3 FailurePatternAnalyzer: 3
@@ -171,16 +172,16 @@ sequenceDiagram
 
 ## 6. 零回归验证
 
-| Package | Phase 4 之前测试 | Phase 5 影响 | 状态 |
-|---|---|---|---|
-| `@max/core` | — | 无 | ✅ |
-| `@max/agents` | — | 无 | ✅ |
-| `@max/workspace` | — | 无 | ✅ |
-| `@max/commander` | — | 无 | ✅ |
-| `@max/evolution` | 20 | 无 | ✅ |
-| `@max/dags` | 24 | 无 | ✅ |
-| `@max/autonomy` | — | 新增 37 | ✅ |
-| `@max/api` | 4 smoke | 新增 4 集成 + 3 E2E | ✅ |
+| Package          | Phase 4 之前测试 | Phase 5 影响        | 状态 |
+| ---------------- | ---------------- | ------------------- | ---- |
+| `@max/core`      | —                | 无                  | ✅   |
+| `@max/agents`    | —                | 无                  | ✅   |
+| `@max/workspace` | —                | 无                  | ✅   |
+| `@max/commander` | —                | 无                  | ✅   |
+| `@max/evolution` | 20               | 无                  | ✅   |
+| `@max/dags`      | 24               | 无                  | ✅   |
+| `@max/autonomy`  | —                | 新增 37             | ✅   |
+| `@max/api`       | 4 smoke          | 新增 4 集成 + 3 E2E | ✅   |
 
 `DAGS_MODE=false` 时 `/api/chat` 路径与 Phase 2 MVP 完全相同。
 
@@ -190,12 +191,12 @@ sequenceDiagram
 
 ## 7. ADR 摘要（Phase 5 新增）
 
-| 编号 | 主题 | 摘要 |
-|---|---|---|
+| 编号                                                    | 主题                   | 摘要                                                                      |
+| ------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------- |
 | [ADR-015](../decisions/adr-015-execution-replayable.md) | ExecutionRecord 可重放 | 必须包含 task / blueprint / graph / model / artifacts / review / feedback |
-| [ADR-016](../decisions/adr-016-structured-review.md) | Review 结构化 | strengths / weaknesses / failurePatterns / improvementSuggestions |
-| [ADR-017](../decisions/adr-017-ab-promotion.md) | A/B 晋升规则 | minSample=20, minScoreGain=10%, minAcceptanceGain=15% |
-| [ADR-018](../decisions/adr-018-dags-mode.md) | DAGS_MODE 开关 | true=走 DAGS + autonomy 闭环；false=保留 Commander |
+| [ADR-016](../decisions/adr-016-structured-review.md)    | Review 结构化          | strengths / weaknesses / failurePatterns / improvementSuggestions         |
+| [ADR-017](../decisions/adr-017-ab-promotion.md)         | A/B 晋升规则           | minSample=20, minScoreGain=10%, minAcceptanceGain=15%                     |
+| [ADR-018](../decisions/adr-018-dags-mode.md)            | DAGS_MODE 开关         | true=走 DAGS + autonomy 闭环；false=保留 Commander                        |
 
 ---
 

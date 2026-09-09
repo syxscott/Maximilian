@@ -28,9 +28,7 @@ describe("LSPClient (借鉴 opencode)", () => {
     ;(client as any).proc = makeFakeProc()
     const promise = (client as any).sendRequest("foo", {})
     expect((client as any).pending.size).toBe(1)
-    ;(client as any).onData(
-      frame('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}'),
-    )
+    ;(client as any).onData(frame('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}'))
     expect((client as any).pending.size).toBe(0)
     return promise.then((r: unknown) => expect(r).toEqual({ ok: true }))
   })
@@ -53,9 +51,7 @@ describe("LSPClient (借鉴 opencode)", () => {
     const client = new LSPClient({ command: ["x"], languageId: "ts" })
     ;(client as any).proc = makeFakeProc()
     const promise = (client as any).sendRequest("foo", {})
-    ;(client as any).onData(
-      frame('{"jsonrpc":"2.0","id":1,"error":{"code":1,"message":"nope"}}'),
-    )
+    ;(client as any).onData(frame('{"jsonrpc":"2.0","id":1,"error":{"code":1,"message":"nope"}}'))
     return expect(promise).rejects.toThrow("nope")
   })
 
@@ -112,7 +108,12 @@ describe("LSPClient (借鉴 opencode)", () => {
     const client = new LSPClient({ command: ["x"], languageId: "ts" })
     let written = ""
     ;(client as any).proc = {
-      stdin: { write: (s: string) => { written += s; return true } },
+      stdin: {
+        write: (s: string) => {
+          written += s
+          return true
+        },
+      },
       stdout: { setEncoding: () => {}, on: () => undefined },
       stderr: { on: () => undefined },
       kill: () => {},

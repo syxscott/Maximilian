@@ -14,20 +14,11 @@
  * when the context is not "ready". The `ready` field on the value is
  * always honoured when present and `gate` is unset/true.
  */
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react"
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 
 export type CreateSimpleContextOptions<T, Props extends Record<string, unknown>> = {
   name: string
-  init:
-    | ((props: Props) => T)
-    | ((props: Props) => T)
+  init: ((props: Props) => T) | ((props: Props) => T)
   gate?: boolean
 }
 

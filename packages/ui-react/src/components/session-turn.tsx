@@ -3,7 +3,14 @@
 import * as React from "react"
 import * as Accordion from "@radix-ui/react-accordion"
 import { cn } from "../lib/utils.js"
-import { AssistantParts, Message, MessageDivider, PART_MAPPING, type UserActions, type Part } from "./message-part.js"
+import {
+  AssistantParts,
+  Message,
+  MessageDivider,
+  PART_MAPPING,
+  type UserActions,
+  type Part,
+} from "./message-part.js"
 
 interface SessionStatus {
   type: string
@@ -40,13 +47,19 @@ const useData = (): DataCtxValue => {
   return ctx ?? { store: {} }
 }
 
-const FileContext = React.createContext<React.ComponentType<{ mode?: string; [key: string]: unknown }> | null>(null)
+const FileContext = React.createContext<React.ComponentType<{
+  mode?: string
+  [key: string]: unknown
+}> | null>(null)
 const useFileComponent = (): React.ComponentType<{ mode?: string; [key: string]: unknown }> => {
-  return React.useContext(FileContext) ?? (() => (
-    <div className="rounded border border-border-weak-base bg-background-base p-4 text-12-regular text-text-weak">
-      File viewer unavailable
-    </div>
-  ))
+  return (
+    React.useContext(FileContext) ??
+    (() => (
+      <div className="rounded border border-border-weak-base bg-background-base p-4 text-12-regular text-text-weak">
+        File viewer unavailable
+      </div>
+    ))
+  )
 }
 
 interface I18nContextValue {
@@ -66,7 +79,10 @@ const SessionRetry: React.FC<{ status: SessionStatus; show: boolean }> = ({ stat
   if (!show) return null
   if (status.type !== "retry") return null
   return (
-    <div data-component="session-retry" className="rounded border border-border-warning-base bg-background-base p-3 text-13-regular text-text-base">
+    <div
+      data-component="session-retry"
+      className="rounded border border-border-warning-base bg-background-base p-3 text-13-regular text-text-base"
+    >
       Retrying (attempt {status.attempt ?? 1})...
     </div>
   )
@@ -82,7 +98,12 @@ const TextShimmer: React.FC<{ text: string }> = ({ text }) => (
   </span>
 )
 
-const TextReveal: React.FC<{ text?: string; className?: string; travel?: number; duration?: number }> = ({ text, className }) => {
+const TextReveal: React.FC<{
+  text?: string
+  className?: string
+  travel?: number
+  duration?: number
+}> = ({ text, className }) => {
   return (
     <span data-component="text-reveal" className={className}>
       {text}
@@ -90,8 +111,19 @@ const TextReveal: React.FC<{ text?: string; className?: string; travel?: number;
   )
 }
 
-const Card: React.FC<{ variant?: string; className?: string; children: React.ReactNode }> = ({ variant, className, children }) => (
-  <div data-component="card" data-variant={variant} className={cn("rounded border border-border-error-base bg-background-base p-3 text-13-regular text-text-base", className)}>
+const Card: React.FC<{ variant?: string; className?: string; children: React.ReactNode }> = ({
+  variant,
+  className,
+  children,
+}) => (
+  <div
+    data-component="card"
+    data-variant={variant}
+    className={cn(
+      "rounded border border-border-error-base bg-background-base p-3 text-13-regular text-text-base",
+      className,
+    )}
+  >
     {children}
   </div>
 )
@@ -162,9 +194,11 @@ function partState(part: Part, showReasoningSummaries: boolean) {
     }
     return "visible" as const
   }
-  if (part.type === "text") return (part as { text?: string }).text?.trim() ? ("visible" as const) : undefined
+  if (part.type === "text")
+    return (part as { text?: string }).text?.trim() ? ("visible" as const) : undefined
   if (part.type === "reasoning") {
-    if (showReasoningSummaries && (part as { text?: string }).text?.trim()) return "visible" as const
+    if (showReasoningSummaries && (part as { text?: string }).text?.trim())
+      return "visible" as const
     return undefined
   }
   if (PART_MAPPING[part.type]) return "visible" as const
@@ -172,7 +206,11 @@ function partState(part: Part, showReasoningSummaries: boolean) {
 }
 
 function clean(value: string) {
-  return value.replace(/`([^`]+)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_~]+/g, "").trim()
+  return value
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_~]+/g, "")
+    .trim()
 }
 
 function heading(text: string): string | undefined {
@@ -314,7 +352,11 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
   const compaction = parts.find((part) => part.type === "compaction")
 
   const diffs = React.useMemo(() => {
-    const files = (message?.summary?.diffs ?? []) as Array<{ file?: string; additions: number; deletions: number }>
+    const files = (message?.summary?.diffs ?? []) as Array<{
+      file?: string
+      additions: number
+      deletions: number
+    }>
     if (!files.length) return []
     const seen = new Set<string>()
     const result: typeof files = []
@@ -348,7 +390,10 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
     return allMessages.find((m) => m.id === pending.parentID && m.role === "user")
   }, [allMessages, pending])
 
-  const active = typeof activeProp === "boolean" ? activeProp : !!(message && pendingUser && pendingUser.id === message.id)
+  const active =
+    typeof activeProp === "boolean"
+      ? activeProp
+      : !!(message && pendingUser && pendingUser.id === message.id)
 
   const assistantMessages = React.useMemo(() => {
     if (!message) return []
@@ -364,7 +409,9 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
 
   const interrupted = assistantMessages.some((m) => m.error?.name === "MessageAbortedError")
   const divider = compaction ? "Compaction" : interrupted ? i18n.t("ui.message.interrupted") : ""
-  const error = assistantMessages.find((m) => m.error && m.error.name !== "MessageAbortedError")?.error
+  const error = assistantMessages.find(
+    (m) => m.error && m.error.name !== "MessageAbortedError",
+  )?.error
 
   const showAssistantCopyPartID = React.useMemo(() => {
     for (let i = assistantMessages.length - 1; i >= 0; i--) {
@@ -388,7 +435,11 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
     return unwrap(String(msg))
   }, [error])
 
-  const status: SessionStatus = statusProp ?? (typeof activeProp === "boolean" && !activeProp ? { type: "idle" } : data.store.session_status?.[sessionID] ?? { type: "idle" })
+  const status: SessionStatus =
+    statusProp ??
+    (typeof activeProp === "boolean" && !activeProp
+      ? { type: "idle" }
+      : (data.store.session_status?.[sessionID] ?? { type: "idle" }))
   const working = status.type !== "idle" && active
 
   const turnDurationMs = React.useMemo(() => {
@@ -439,14 +490,24 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
     overflowAnchor: "dynamic",
   })
 
-  const renderDiff = (diff: { file?: string; additions: number; deletions: number }, index: number) => {
+  const renderDiff = (
+    diff: { file?: string; additions: number; deletions: number },
+    index: number,
+  ) => {
     if (!diff.file) return null
     const isOpen = state.expanded.includes(diff.file)
     return (
-      <Accordion.Item key={diff.file} value={diff.file} className="border-b border-border-weak-base">
+      <Accordion.Item
+        key={diff.file}
+        value={diff.file}
+        className="border-b border-border-weak-base"
+      >
         <Accordion.Header>
           <Accordion.Trigger className="flex w-full items-center justify-between gap-2 px-4 py-2">
-            <div data-slot="session-turn-diff-trigger" className="flex w-full items-center justify-between">
+            <div
+              data-slot="session-turn-diff-trigger"
+              className="flex w-full items-center justify-between"
+            >
               <span data-slot="session-turn-diff-path" className="truncate">
                 {diff.file.includes("/") && (
                   <span data-slot="session-turn-diff-directory">{getDirectory(diff.file)}/</span>
@@ -464,7 +525,10 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
         <Accordion.Content>
           {isOpen && (
             <div data-slot="session-turn-diff-view" data-scrollable className="p-2">
-              {React.createElement(fileComponent, { mode: "diff", fileDiff: { file: diff.file, additions: diff.additions, deletions: diff.deletions } })}
+              {React.createElement(fileComponent, {
+                mode: "diff",
+                fileDiff: { file: diff.file, additions: diff.additions, deletions: diff.deletions },
+              })}
             </div>
           )}
         </Accordion.Content>
@@ -500,7 +564,7 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
                 <div data-slot="session-turn-assistant-content" aria-hidden={working}>
                   <AssistantParts
                     messages={assistantMessages as never}
-                    showAssistantCopyPartID={working ? null : showAssistantCopyPartID ?? null}
+                    showAssistantCopyPartID={working ? null : (showAssistantCopyPartID ?? null)}
                     turnDurationMs={turnDurationMs}
                     working={working}
                     showReasoningSummaries={showReasoningSummaries}
@@ -519,8 +583,15 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
               )}
               <SessionRetry status={status} show={active} />
               {diffs.length > 0 && !working && (
-                <div data-slot="session-turn-diffs" data-component="session-turn-diffs-group" data-show-all={state.showAll || undefined}>
-                  <div data-slot="session-turn-diffs-header" className="flex items-center justify-between gap-2">
+                <div
+                  data-slot="session-turn-diffs"
+                  data-component="session-turn-diffs-group"
+                  data-show-all={state.showAll || undefined}
+                >
+                  <div
+                    data-slot="session-turn-diffs-header"
+                    className="flex items-center justify-between gap-2"
+                  >
                     <span data-slot="session-turn-diffs-label">
                       {diffs.length} changed {diffs.length === 1 ? "file" : "files"}
                     </span>
@@ -539,7 +610,12 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
                     <Accordion.Root
                       type="multiple"
                       value={state.expanded}
-                      onValueChange={(value) => setState((s) => ({ ...s, expanded: Array.isArray(value) ? value : value ? [value] : [] }))}
+                      onValueChange={(value) =>
+                        setState((s) => ({
+                          ...s,
+                          expanded: Array.isArray(value) ? value : value ? [value] : [],
+                        }))
+                      }
                       style={{ ["--sticky-accordion-offset" as string]: "44px" }}
                     >
                       {visible.map(renderDiff)}
@@ -571,13 +647,19 @@ export const SessionTurn: React.FC<SessionTurnProps> = ({
 }
 
 export interface SessionTurnContextValue extends DataCtxValue {
-  i18n?: { t: (key: string, params?: Record<string, string | number | boolean>) => string; locale?: () => string }
+  i18n?: {
+    t: (key: string, params?: Record<string, string | number | boolean>) => string
+    locale?: () => string
+  }
   fileComponent?: React.ComponentType<{ mode?: string; [key: string]: unknown }>
 }
 
 export const SessionTurnProvider: React.FC<{
   data?: DataCtxValue
-  i18n?: { t: (key: string, params?: Record<string, string | number | boolean>) => string; locale?: () => string }
+  i18n?: {
+    t: (key: string, params?: Record<string, string | number | boolean>) => string
+    locale?: () => string
+  }
   fileComponent?: React.ComponentType<{ mode?: string; [key: string]: unknown }>
   children: React.ReactNode
 }> = ({ data, i18n, fileComponent, children }) => {

@@ -1,18 +1,18 @@
 # RFCs (Requests for Comments)
 
 Non-trivial changes to Maximilian go through this RFC process before
-implementation. The goal is to align on design *before* code is written,
+implementation. The goal is to align on design _before_ code is written,
 saving review time and avoiding wasted work.
 
 ## When to write an RFC
 
-| Definitely | Maybe | No (just PR) |
-|---|---|---|
-| New public API surface | Significant internal refactor | Bug fix |
-| Breaking change to a stable API | Cross-cutting concern | Single-file change |
-| New external dependency | Deprecating an existing API | Doc-only update |
-| Architecture change | Adding a new env var that customers use | Test-only change |
-| Anything affecting governance / HITL | Performance optimization | |
+| Definitely                           | Maybe                                   | No (just PR)       |
+| ------------------------------------ | --------------------------------------- | ------------------ |
+| New public API surface               | Significant internal refactor           | Bug fix            |
+| Breaking change to a stable API      | Cross-cutting concern                   | Single-file change |
+| New external dependency              | Deprecating an existing API             | Doc-only update    |
+| Architecture change                  | Adding a new env var that customers use | Test-only change   |
+| Anything affecting governance / HITL | Performance optimization                |                    |
 
 When in doubt: write the RFC. They take ~30 min and save hours later.
 
@@ -45,17 +45,17 @@ In the RFC front-matter:
 
 ## Active RFCs
 
-| # | Title | Status | Owner |
-|---|---|---|---|
-| 0001 | Truth Audit persistence model | accepted | @syxscott |
+| #    | Title                             | Status   | Owner     |
+| ---- | --------------------------------- | -------- | --------- |
+| 0001 | Truth Audit persistence model     | accepted | @syxscott |
 | 0002 | Webhook / SSE event subscriptions | accepted | @syxscott |
-| 0003 | Feature Flag SDK for customers | accepted | @syxscott |
+| 0003 | Feature Flag SDK for customers    | accepted | @syxscott |
 
 ## Archived RFCs
 
-| # | Title | Outcome | Closed |
-|---|---|---|---|
-| (none yet) | | | |
+| #          | Title | Outcome | Closed |
+| ---------- | ----- | ------- | ------ |
+| (none yet) |       |         |        |
 
 ## See also
 

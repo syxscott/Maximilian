@@ -50,11 +50,9 @@ export const useTabsStore = create<TabsStore>()((set) => ({
   store: [],
   recent: {},
 
-  setStore: (updater) =>
-    set((state) => ({ store: updater(state.store) })),
+  setStore: (updater) => set((state) => ({ store: updater(state.store) })),
 
-  setRecentKey: (key) =>
-    set((state) => ({ recent: { ...state.recent, key } })),
+  setRecentKey: (key) => set((state) => ({ recent: { ...state.recent, key } })),
 
   reset: (tabs, recent) =>
     set({
@@ -68,8 +66,7 @@ export const useTabsStore = create<TabsStore>()((set) => ({
 // without depending on SolidJS routing internals.
 // ----------------------------------------------------------------------------
 
-export const draftHref = (draftID: string) =>
-  `/new-session?draftId=${encodeURIComponent(draftID)}`
+export const draftHref = (draftID: string) => `/new-session?draftId=${encodeURIComponent(draftID)}`
 
 export const tabHref = (tab: Tab): string =>
   tab.type === "draft" ? draftHref(tab.draftID) : `/${tab.dirBase64}/session/${tab.sessionId}`
@@ -98,7 +95,10 @@ export function filterByServers(tabs: Tab[], servers: Set<ServerConnectionKey>):
 }
 
 /** Remove all tabs for the given server and return the keys that were removed. */
-export function removeServerTabs(tabs: Tab[], key: ServerConnectionKey): {
+export function removeServerTabs(
+  tabs: Tab[],
+  key: ServerConnectionKey,
+): {
   next: Tab[]
   removedKeys: string[]
   draftIDs: string[]
@@ -116,9 +116,7 @@ export function removeServerTabs(tabs: Tab[], key: ServerConnectionKey): {
 
 /** Promote a draft into a session tab — replacing any existing draft entry. */
 export function promoteDraftTab(tabs: Tab[], draftID: string, next: SessionTab): Tab[] {
-  return tabs.map((tab) =>
-    tab.type === "draft" && tab.draftID === draftID ? next : tab,
-  )
+  return tabs.map((tab) => (tab.type === "draft" && tab.draftID === draftID ? next : tab))
 }
 
 /** Append a session tab if it doesn't already exist. */
@@ -145,7 +143,10 @@ export function updateDraftTab(
 }
 
 /** Remove a tab by index. */
-export function removeTabAt(tabs: Tab[], index: number): {
+export function removeTabAt(
+  tabs: Tab[],
+  index: number,
+): {
   next: Tab[]
   removed: Tab | undefined
   fallback: Tab | undefined

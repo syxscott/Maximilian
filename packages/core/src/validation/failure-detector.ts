@@ -30,20 +30,56 @@ export interface FailureDetectionResult {
 
 // Keywords borrowed from Kosmos failure_detector.py.
 const STRONG_CLAIM_WORDS = [
-  "always", "never", "definitively", "proves", "proves that", "guarantees",
-  "certain", "certainly", "absolutely", "without doubt", "undeniably",
-  "all", "every", "none", "must",
+  "always",
+  "never",
+  "definitively",
+  "proves",
+  "proves that",
+  "guarantees",
+  "certain",
+  "certainly",
+  "absolutely",
+  "without doubt",
+  "undeniably",
+  "all",
+  "every",
+  "none",
+  "must",
 ]
 
 const HEDGED_CLAIM_WORDS = [
-  "may", "might", "could", "suggests", "appears", "seems", "possibly",
-  "likely", "probably", "tends to", "in some cases", "often",
+  "may",
+  "might",
+  "could",
+  "suggests",
+  "appears",
+  "seems",
+  "possibly",
+  "likely",
+  "probably",
+  "tends to",
+  "in some cases",
+  "often",
 ]
 
 const STATISTICAL_SUPPORT_WORDS = [
-  "p <", "p<", "p =", "p=", "ci", "confidence interval",
-  "n =", "n=", "sample size", "effect size", "std", "standard deviation",
-  "ANOVA", "t-test", "chi-square", "regression", "p-value",
+  "p <",
+  "p<",
+  "p =",
+  "p=",
+  "ci",
+  "confidence interval",
+  "n =",
+  "n=",
+  "sample size",
+  "effect size",
+  "std",
+  "standard deviation",
+  "ANOVA",
+  "t-test",
+  "chi-square",
+  "regression",
+  "p-value",
 ]
 
 const STANDARD_METRIC_PATTERNS = [
@@ -69,7 +105,10 @@ export interface FailureDetectorOptions {
   customDetectors?: Partial<Record<FailureMode, (text: string) => FailureSignal | null>>
 }
 
-export function detectFailures(text: string, options?: FailureDetectorOptions): FailureDetectionResult {
+export function detectFailures(
+  text: string,
+  options?: FailureDetectorOptions,
+): FailureDetectionResult {
   const threshold = options?.threshold ?? 0.5
   const detector: Record<FailureMode, (t: string) => FailureSignal | null> = {
     over_interpretation: options?.customDetectors?.over_interpretation ?? detectOverInterpretation,
@@ -138,7 +177,14 @@ function detectRabbitHole(text: string): FailureSignal | null {
   if (!text) return null
   const lower = text.toLowerCase()
   // Signals of drift: many hedges + tangents + many new topics without synthesis.
-  const tangentWords = ["anyway", "by the way", "moving on", "off-topic", "incidentally", "side note"]
+  const tangentWords = [
+    "anyway",
+    "by the way",
+    "moving on",
+    "off-topic",
+    "incidentally",
+    "side note",
+  ]
   let tangentHits = 0
   for (const w of tangentWords) if (lower.includes(w)) tangentHits++
   const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0)
@@ -149,7 +195,8 @@ function detectRabbitHole(text: string): FailureSignal | null {
   return {
     mode: "rabbit_hole",
     confidence,
-    evidence: tangentHits > 0 ? [`tangent markers: ${tangentHits}`] : [`long sentences: ${longSentences}`],
+    evidence:
+      tangentHits > 0 ? [`tangent markers: ${tangentHits}`] : [`long sentences: ${longSentences}`],
   }
 }
 

@@ -4,32 +4,32 @@
  * and delegation wiring.
  */
 
-import { describe, it, expect } from "vitest";
-import { DeepSeekProvider } from "../src/deepseek.js";
+import { describe, it, expect } from "vitest"
+import { DeepSeekProvider } from "../src/deepseek.js"
 
 describe("DeepSeekProvider", () => {
   it("uses DeepSeek base URL by default", () => {
-    const provider = new DeepSeekProvider({ apiKey: "sk-test" });
-    expect(provider.id).toBe("deepseek");
-    expect(provider.name).toBe("DeepSeek");
-    expect(provider.defaultModel).toBe("deepseek-chat");
-  });
+    const provider = new DeepSeekProvider({ apiKey: "sk-test" })
+    expect(provider.id).toBe("deepseek")
+    expect(provider.name).toBe("DeepSeek")
+    expect(provider.defaultModel).toBe("deepseek-chat")
+  })
 
   it("honors a custom defaultModel", () => {
     const provider = new DeepSeekProvider({
       apiKey: "sk-test",
       defaultModel: "deepseek-reasoner",
-    });
-    expect(provider.defaultModel).toBe("deepseek-reasoner");
-  });
+    })
+    expect(provider.defaultModel).toBe("deepseek-reasoner")
+  })
 
   it("isConfigured reflects apiKey presence", () => {
-    expect(new DeepSeekProvider({ apiKey: "sk-test" }).isConfigured()).toBe(true);
-  });
+    expect(new DeepSeekProvider({ apiKey: "sk-test" }).isConfigured()).toBe(true)
+  })
 
   it("throws when apiKey missing", () => {
-    expect(() => new DeepSeekProvider({ apiKey: "" })).toThrow(/apiKey is required/);
-  });
+    expect(() => new DeepSeekProvider({ apiKey: "" })).toThrow(/apiKey is required/)
+  })
 
   it("accepts custom baseURL without throwing", () => {
     // Custom baseURL is passed straight through to OpenAIProvider — we
@@ -40,7 +40,7 @@ describe("DeepSeekProvider", () => {
         new DeepSeekProvider({
           apiKey: "sk-test",
           baseURL: "https://proxy.example.com/v1",
-        })
-    ).not.toThrow();
-  });
-});
+        }),
+    ).not.toThrow()
+  })
+})

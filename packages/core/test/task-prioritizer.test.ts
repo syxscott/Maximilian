@@ -126,7 +126,17 @@ describe("TaskPrioritizer", () => {
 
       const prioritizer = new TaskPrioritizer({ llm: provider })
       await prioritizer.reRank([makeTask("task-1")], {
-        recentResults: [{ id: "r-1", taskId: "prev", agentRole: "frontend", agentId: "a1", output: "done", metadata: {}, createdAt: "" } as Parameters<typeof prioritizer.reRank>[1]["recentResults"][0]],
+        recentResults: [
+          {
+            id: "r-1",
+            taskId: "prev",
+            agentRole: "frontend",
+            agentId: "a1",
+            output: "done",
+            metadata: {},
+            createdAt: "",
+          } as Parameters<typeof prioritizer.reRank>[1]["recentResults"][0],
+        ],
         goal: "Complex goal",
       })
 

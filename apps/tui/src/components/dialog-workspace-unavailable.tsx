@@ -65,7 +65,9 @@ export function DialogWorkspaceUnavailable(props: DialogWorkspaceUnavailableProp
             paddingRight={2}
             backgroundColor={item === active ? theme.primary : undefined}
           >
-            <Text color={item === active ? theme.selectedListItemText : theme.textMuted}>{item}</Text>
+            <Text color={item === active ? theme.selectedListItemText : theme.textMuted}>
+              {item}
+            </Text>
           </Box>
         ))}
       </Box>

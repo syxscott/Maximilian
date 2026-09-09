@@ -85,7 +85,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               variant={tone === "danger" ? "primary" : "primary"}
               onClick={handleConfirm}
               disabled={disabled || pending}
-              className={cn(tone === "danger" && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
+              className={cn(
+                tone === "danger" &&
+                  "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+              )}
             >
               {pending ? "Working..." : confirmLabel}
             </Button>

@@ -1,13 +1,13 @@
-import { useState, useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useTimeline } from "@/lib/api/hooks";
-import { buildTimelineTree, type TimelineEntry } from "../api";
-import { useLocale, t, formatDateTime } from "@max/i18n";
+import { useState, useMemo } from "react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { useTimeline } from "@/lib/api/hooks"
+import { buildTimelineTree, type TimelineEntry } from "../api"
+import { useLocale, t, formatDateTime } from "@max/i18n"
 
-const MAX_DEPTH = 20;
+const MAX_DEPTH = 20
 
 const ACTION_COLORS: Record<string, string> = {
   birth: "bg-green-900/50 text-green-300 border-green-700",
@@ -17,7 +17,7 @@ const ACTION_COLORS: Record<string, string> = {
   merge: "bg-purple-900/50 text-purple-300 border-purple-700",
   split: "bg-amber-900/50 text-amber-300 border-amber-700",
   rebalance_team: "bg-emerald-900/50 text-emerald-300 border-emerald-700",
-};
+}
 
 const ACTION_BORDER_COLORS: Record<string, string> = {
   birth: "border-l-green-600",
@@ -27,18 +27,18 @@ const ACTION_BORDER_COLORS: Record<string, string> = {
   merge: "border-l-purple-600",
   split: "border-l-amber-600",
   rebalance_team: "border-l-emerald-600",
-};
+}
 
 export function EvolutionTree() {
-  useLocale();
-  const { data, isLoading, error } = useTimeline();
+  useLocale()
+  const { data, isLoading, error } = useTimeline()
   // Backend returns a flat list of events; buildTimelineTree groups them by
   // subject (and honors parentId when present) so the UI can render a
   // parent → children tree (e.g. birth → promote → retire).
   const timeline = useMemo<TimelineEntry[]>(
     () => buildTimelineTree(data?.timeline ?? []),
     [data?.timeline],
-  );
+  )
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -47,9 +47,13 @@ export function EvolutionTree() {
       </h2>
 
       {isLoading ? (
-        <div className="text-center py-16 text-muted-foreground text-sm">{t("evolution.loading")}</div>
+        <div className="text-center py-16 text-muted-foreground text-sm">
+          {t("evolution.loading")}
+        </div>
       ) : error ? (
-        <div className="text-center py-16 text-sm text-destructive">{t("evolution.failedToLoad")}</div>
+        <div className="text-center py-16 text-sm text-destructive">
+          {t("evolution.failedToLoad")}
+        </div>
       ) : timeline.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground text-sm">
           <p className="text-base font-medium mb-1 text-foreground">{t("evolution.empty.title")}</p>
@@ -63,36 +67,35 @@ export function EvolutionTree() {
         ))}
       </div>
     </div>
-  );
+  )
 }
 
 function TimelineNode({ entry, depth }: { entry: TimelineEntry; depth: number }) {
-  const [expanded, setExpanded] = useState(depth < 2);
-  const children = entry.children ?? [];
-  const hasChildren = children.length > 0;
+  const [expanded, setExpanded] = useState(depth < 2)
+  const children = entry.children ?? []
+  const hasChildren = children.length > 0
   // Backend may omit utility; treat missing as neutral (0).
-  const utility = entry.utility ?? 0;
+  const utility = entry.utility ?? 0
 
-  const borderColorClass = entry.approved ? "border-l-green-600" : "border-l-red-600";
-  const actionColorClass = ACTION_COLORS[entry.action] ?? "bg-gray-800 text-gray-300";
-  const utilityColorClass = utility > 0
-    ? "text-green-400"
-    : utility < 0
-      ? "text-red-400"
-      : "text-muted-foreground";
+  const borderColorClass = entry.approved ? "border-l-green-600" : "border-l-red-600"
+  const actionColorClass = ACTION_COLORS[entry.action] ?? "bg-gray-800 text-gray-300"
+  const utilityColorClass =
+    utility > 0 ? "text-green-400" : utility < 0 ? "text-red-400" : "text-muted-foreground"
 
   if (depth >= MAX_DEPTH) {
     return (
       <div style={{ marginLeft: depth * 24 }} className="text-muted-foreground text-sm pl-4 py-1">
         {t("evolution.nested", { count: children.length })}
       </div>
-    );
+    )
   }
 
   return (
     <div style={{ marginLeft: depth * 24 }}>
       <div className={`pl-4 border-l-2 ${borderColorClass}`}>
-        <Card className={`bg-muted/30 ${ACTION_BORDER_COLORS[entry.action] ?? "border-border/50"} border-l-0`}>
+        <Card
+          className={`bg-muted/30 ${ACTION_BORDER_COLORS[entry.action] ?? "border-border/50"} border-l-0`}
+        >
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -121,7 +124,8 @@ function TimelineNode({ entry, depth }: { entry: TimelineEntry; depth: number })
 
             <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <span>
-                {t("evolution.utility")}: <span className={utilityColorClass}>{utility.toFixed(2)}</span>
+                {t("evolution.utility")}:{" "}
+                <span className={utilityColorClass}>{utility.toFixed(2)}</span>
               </span>
               <span>{formatDateTime(entry.recordedAt)}</span>
               <span className="font-mono">{entry.proposalId.slice(0, 12)}</span>
@@ -147,5 +151,5 @@ function TimelineNode({ entry, depth }: { entry: TimelineEntry; depth: number })
         )}
       </div>
     </div>
-  );
+  )
 }

@@ -1,8 +1,21 @@
 // Message and content part types — plain TypeScript
 // Derived from OpenCode packages/llm/src/schema/messages.ts
 
-import type { ContentBlockID, JsonSchema, MessageRole, ProviderMetadata, ToolCallID } from "./types.js"
-import type { CacheHint, CachePolicy, GenerationOptions, HttpOptions, ModelDef, ProviderOptions } from "./options.js"
+import type {
+  ContentBlockID,
+  JsonSchema,
+  MessageRole,
+  ProviderMetadata,
+  ToolCallID,
+} from "./types.js"
+import type {
+  CacheHint,
+  CachePolicy,
+  GenerationOptions,
+  HttpOptions,
+  ModelDef,
+  ProviderOptions,
+} from "./options.js"
 
 // ── Content Parts ──
 
@@ -97,9 +110,13 @@ export function isToolResultValue(value: unknown): value is ToolResultValue {
   )
 }
 
-export function makeToolResultValue(value: unknown, type: ToolResultValue["type"] = "json"): ToolResultValue {
+export function makeToolResultValue(
+  value: unknown,
+  type: ToolResultValue["type"] = "json",
+): ToolResultValue {
   if (isToolResultValue(value)) return value
-  if (type === "content") return { type, value: Array.isArray(value) ? (value as ToolContent[]) : [] }
+  if (type === "content")
+    return { type, value: Array.isArray(value) ? (value as ToolContent[]) : [] }
   return { type, value }
 }
 
@@ -110,7 +127,10 @@ export interface ToolOutput {
   readonly content: ReadonlyArray<ToolContent>
 }
 
-export function makeToolOutput(structured: unknown, content: ReadonlyArray<ToolContent> = []): ToolOutput {
+export function makeToolOutput(
+  structured: unknown,
+  content: ReadonlyArray<ToolContent> = [],
+): ToolOutput {
   return { structured, content }
 }
 
@@ -179,7 +199,9 @@ export function makeToolResultPart(
   }
 }
 
-export function toContentParts(input: string | ContentPart | ReadonlyArray<ContentPart>): ContentPart[] {
+export function toContentParts(
+  input: string | ContentPart | ReadonlyArray<ContentPart>,
+): ContentPart[] {
   if (typeof input === "string") return [makeTextPart(input)]
   if (Array.isArray(input)) return (input as readonly ContentPart[]).slice() as ContentPart[]
   return [input as ContentPart]
@@ -197,7 +219,9 @@ export function userMessage(content: string | ContentPart | ReadonlyArray<Conten
   return makeMessage("user", content)
 }
 
-export function assistantMessage(content: string | ContentPart | ReadonlyArray<ContentPart>): Message {
+export function assistantMessage(
+  content: string | ContentPart | ReadonlyArray<ContentPart>,
+): Message {
   return makeMessage("assistant", content)
 }
 
@@ -207,8 +231,11 @@ export function systemMessage(content: string | SystemPart | ReadonlyArray<Syste
   return makeMessage("system", [content] as unknown as ContentPart[])
 }
 
-export function toolResultMessage(result: ToolResultPart | Parameters<typeof makeToolResultPart>[0]): Message {
-  const part = "type" in result && result.type === "tool-result" ? result : makeToolResultPart(result)
+export function toolResultMessage(
+  result: ToolResultPart | Parameters<typeof makeToolResultPart>[0],
+): Message {
+  const part =
+    "type" in result && result.type === "tool-result" ? result : makeToolResultPart(result)
   return makeMessage("tool", [part])
 }
 

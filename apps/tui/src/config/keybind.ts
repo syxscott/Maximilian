@@ -41,7 +41,10 @@ type Definition = {
 
 export const LeaderDefault = "ctrl+x"
 
-const keybind = (value: Definition["default"], description: string): Definition => ({ default: value, description })
+const keybind = (value: Definition["default"], description: string): Definition => ({
+  default: value,
+  description,
+})
 
 export const Definitions = {
   leader: keybind(LeaderDefault, "Leader key for keybind combinations"),
@@ -190,9 +193,18 @@ export const Definitions = {
   input_word_forward: keybind("alt+f,alt+right,ctrl+right", "Move word forward in input"),
   input_word_backward: keybind("alt+b,alt+left,ctrl+left", "Move word backward in input"),
   input_select_word_forward: keybind("alt+shift+f,alt+shift+right", "Select word forward in input"),
-  input_select_word_backward: keybind("alt+shift+b,alt+shift+left", "Select word backward in input"),
-  input_delete_word_forward: keybind("alt+d,alt+delete,ctrl+delete", "Delete word forward in input"),
-  input_delete_word_backward: keybind("ctrl+w,ctrl+backspace,alt+backspace", "Delete word backward in input"),
+  input_select_word_backward: keybind(
+    "alt+shift+b,alt+shift+left",
+    "Select word backward in input",
+  ),
+  input_delete_word_forward: keybind(
+    "alt+d,alt+delete,ctrl+delete",
+    "Delete word forward in input",
+  ),
+  input_delete_word_backward: keybind(
+    "ctrl+w,ctrl+backspace,alt+backspace",
+    "Delete word backward in input",
+  ),
   input_select_all: keybind("super+a", "Select all in input"),
   history_previous: keybind("up", "Previous history item"),
   history_next: keybind("down", "Next history item"),
@@ -443,7 +455,8 @@ export function defaultValue(name: KeybindName) {
 
 export function parse(keybinds: KeybindOverrides): Keybinds {
   const invalid = unknownKeys(keybinds)
-  if (invalid.length) throw new Error(`Unrecognized keybind${invalid.length === 1 ? "" : "s"}: ${invalid.join(", ")}`)
+  if (invalid.length)
+    throw new Error(`Unrecognized keybind${invalid.length === 1 ? "" : "s"}: ${invalid.join(", ")}`)
   return Object.fromEntries(
     Object.entries(Definitions).map(([name, item]) => [
       name,

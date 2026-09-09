@@ -31,10 +31,7 @@ export type DialogRetryActionProps = {
 
 type Selection = "dismiss" | "action"
 
-function runAction(
-  props: DialogRetryActionProps,
-  dialog: ReturnType<typeof useDialog>,
-) {
+function runAction(props: DialogRetryActionProps, dialog: ReturnType<typeof useDialog>) {
   if (props.link) {
     void openUrl(props.link).catch(() => {})
   }
@@ -42,10 +39,7 @@ function runAction(
   dialog.clear()
 }
 
-function dismiss(
-  props: DialogRetryActionProps,
-  dialog: ReturnType<typeof useDialog>,
-) {
+function dismiss(props: DialogRetryActionProps, dialog: ReturnType<typeof useDialog>) {
   props.onClose?.(true)
   dialog.clear()
 }
@@ -81,7 +75,13 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
         <Text color={theme.textMuted}>{props.message}</Text>
       </Box>
       {props.link ? (
-        <Box width="100%" flexDirection="row" justifyContent="center" paddingBottom={1} marginTop={1}>
+        <Box
+          width="100%"
+          flexDirection="row"
+          justifyContent="center"
+          paddingBottom={1}
+          marginTop={1}
+        >
           <Text color={theme.primary} wrap="truncate-end">
             {props.link}
           </Text>
@@ -95,10 +95,7 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
           paddingRight={2}
           backgroundColor={isDismiss ? theme.primary : undefined}
         >
-          <Text
-            bold={isDismiss}
-            color={isDismiss ? fg : theme.textMuted}
-          >
+          <Text bold={isDismiss} color={isDismiss ? fg : theme.textMuted}>
             don&apos;t show again
           </Text>
         </Box>
@@ -107,10 +104,7 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
           paddingRight={2}
           backgroundColor={!isDismiss ? theme.primary : undefined}
         >
-          <Text
-            bold={!isDismiss}
-            color={!isDismiss ? fg : theme.text}
-          >
+          <Text bold={!isDismiss} color={!isDismiss ? fg : theme.text}>
             {props.label}
           </Text>
         </Box>
@@ -125,10 +119,7 @@ DialogRetryAction.show = (
 ): Promise<boolean> => {
   return new Promise<boolean>((resolve) => {
     dialog.replace(
-      <DialogRetryAction
-        {...props}
-        onClose={(dontShow) => resolve(dontShow ?? false)}
-      />,
+      <DialogRetryAction {...props} onClose={(dontShow) => resolve(dontShow ?? false)} />,
       { onClose: () => resolve(false) },
     )
   })

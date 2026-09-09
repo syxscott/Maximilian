@@ -48,8 +48,12 @@ function makeSink() {
   const workspaces = new Map<string, Workspace>()
   return {
     workspaces,
-    async saveWorkspace(w: Workspace) { workspaces.set(w.id, w) },
-    async loadWorkspace(id: string) { return workspaces.get(id) },
+    async saveWorkspace(w: Workspace) {
+      workspaces.set(w.id, w)
+    },
+    async loadWorkspace(id: string) {
+      return workspaces.get(id)
+    },
   }
 }
 
@@ -113,7 +117,13 @@ describe("Task condition check (借鉴 autogen DiGraph)", () => {
     const agent = new ScriptedAgent(["schema defined and ready", "migration done"])
     const rt = new AgentRuntime(() => agent, makeSink(), { maxConcurrency: 1 })
     const ws = makeWorkspace("ws-3", "test", [
-      { id: "task-1", agentRole: "general", description: "setup", status: "pending", dependsOn: [] },
+      {
+        id: "task-1",
+        agentRole: "general",
+        description: "setup",
+        status: "pending",
+        dependsOn: [],
+      },
       {
         id: "task-2",
         agentRole: "general",
@@ -133,7 +143,13 @@ describe("Task condition check (借鉴 autogen DiGraph)", () => {
     const agent = new ScriptedAgent(["SCHEMA DEFINED OK", "done"])
     const rt = new AgentRuntime(() => agent, makeSink(), { maxConcurrency: 1 })
     const ws = makeWorkspace("ws-4", "test", [
-      { id: "task-1", agentRole: "general", description: "setup", status: "pending", dependsOn: [] },
+      {
+        id: "task-1",
+        agentRole: "general",
+        description: "setup",
+        status: "pending",
+        dependsOn: [],
+      },
       {
         id: "task-2",
         agentRole: "general",

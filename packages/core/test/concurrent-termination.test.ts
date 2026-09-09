@@ -69,11 +69,7 @@ function makeRuntime(termination: ReturnType<typeof MaxMessageTermination>) {
       return this.workspaces.get(id)
     },
   }
-  return new AgentRuntime(
-    () => new StubAgent(),
-    sink,
-    { termination, maxConcurrency: 2 },
-  )
+  return new AgentRuntime(() => new StubAgent(), sink, { termination, maxConcurrency: 2 })
 }
 
 describe("Per-workspace termination counters", () => {

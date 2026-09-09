@@ -1825,12 +1825,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
  * Build a stable lookup map: id → preset.
  */
 export const PROVIDER_PRESETS_BY_ID: ReadonlyMap<string, ProviderPreset> = new Map(
-  PROVIDER_PRESETS.map((p) => [p.id, p])
+  PROVIDER_PRESETS.map((p) => [p.id, p]),
 )
 
 /**
  * Visible presets (excluding hidden OAuth / cloud placeholders).
  */
-export const VISIBLE_PROVIDER_PRESETS: ProviderPreset[] = PROVIDER_PRESETS.filter(
-  (p) => !p.hidden
-)
+export const VISIBLE_PROVIDER_PRESETS: ProviderPreset[] = PROVIDER_PRESETS.filter((p) => !p.hidden)

@@ -18,7 +18,12 @@ export type DialogMcpProps = {
 
 function Status(props: { enabled: boolean; loading: boolean }) {
   if (props.loading) return <Text dimColor>... Loading</Text>
-  if (props.enabled) return <Text color="green" bold>{"✓"} Enabled</Text>
+  if (props.enabled)
+    return (
+      <Text color="green" bold>
+        {"✓"} Enabled
+      </Text>
+    )
   return <Text dimColor>{"○"} Disabled</Text>
 }
 
@@ -39,9 +44,7 @@ export function DialogMcp(props: DialogMcpProps) {
           label: name,
           value: name,
           description: status.status === "failed" ? "failed" : status.status,
-          footer: (
-            <Status enabled={!!props.isEnabled?.(name)} loading={loading === name} />
-          ),
+          footer: <Status enabled={!!props.isEnabled?.(name)} loading={loading === name} />,
         }
       })
   }, [mcps, loading, props.isEnabled])
@@ -90,10 +93,12 @@ export function DialogMcp(props: DialogMcpProps) {
             <Box flexDirection="row" justifyContent="space-between">
               <Box flexDirection="row">
                 <Text color={isSelected ? "green" : undefined}>{label}</Text>
-                {description && <Text dimColor>  {description}</Text>}
+                {description && <Text dimColor> {description}</Text>}
               </Box>
               <Box>{footer as React.ReactNode}</Box>
-              <Text dimColor>{actions[0]?.title} [{value}]</Text>
+              <Text dimColor>
+                {actions[0]?.title} [{value}]
+              </Text>
             </Box>
           )}
         />

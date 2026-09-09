@@ -1,4 +1,4 @@
-import { defineConfig } from "drizzle-kit";
+import { defineConfig } from "drizzle-kit"
 
 /**
  * Drizzle Kit configuration for the Maximilian database.
@@ -20,4 +20,4 @@ export default defineConfig({
   },
   verbose: true,
   strict: true,
-});
+})

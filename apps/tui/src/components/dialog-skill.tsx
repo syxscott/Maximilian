@@ -80,9 +80,7 @@ export function DialogSkill(props: DialogSkillProps) {
             itemComponent={({ isSelected, label, description }) => (
               <Box flexDirection="row">
                 <Text color={isSelected ? "green" : undefined}>{label}</Text>
-                {description && (
-                  <Text dimColor>  {description}</Text>
-                )}
+                {description && <Text dimColor> {description}</Text>}
               </Box>
             )}
           />

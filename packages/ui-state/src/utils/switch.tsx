@@ -45,10 +45,7 @@ export function Switch(props: SwitchProps): ReactNode {
       return
     }
     const body = child.props.children
-    matched =
-      typeof body === "function"
-        ? (body as (value: unknown) => ReactNode)(when)
-        : body
+    matched = typeof body === "function" ? (body as (value: unknown) => ReactNode)(when) : body
   })
   return matched
 }

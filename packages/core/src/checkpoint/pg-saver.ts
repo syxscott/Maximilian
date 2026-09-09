@@ -30,12 +30,8 @@
  *   const saver = new PgCheckpointSaver(db as PostgresJsDatabase);
  */
 
-import type {
-  BaseCheckpointSaver,
-  Checkpoint,
-  CheckpointTuple,
-} from "./saver.js";
-import type { ConfigurableDict, ChannelValues } from "../types.js";
+import type { BaseCheckpointSaver, Checkpoint, CheckpointTuple } from "./saver.js"
+import type { ConfigurableDict, ChannelValues } from "../types.js"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,20 +40,20 @@ import type { ConfigurableDict, ChannelValues } from "../types.js";
  * We define it locally to avoid coupling to the postgres package.
  * @see https://github.com/porsager/postgres
  */
-type RowList<T> = T[] & Iterable<T>;
+type RowList<T> = T[] & Iterable<T>
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface CheckpointRowData {
-  thread_id: string;
-  id: string;
-  parent_id: string | null;
-  channel_values: unknown;
-  channel_versions: unknown;
-  updated_channels: unknown;
-  metadata: unknown;
-  pending_writes: unknown;
-  created_at: string;
+  thread_id: string
+  id: string
+  parent_id: string | null
+  channel_values: unknown
+  channel_versions: unknown
+  updated_channels: unknown
+  metadata: unknown
+  pending_writes: unknown
+  created_at: string
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -67,7 +63,7 @@ interface CheckpointRowData {
  * Only handles the minimal cases needed for our SQL construction.
  */
 function jsonStr(val: unknown): string {
-  return JSON.stringify(val).replace(/'/g, "''");
+  return JSON.stringify(val).replace(/'/g, "''")
 }
 
 // ── PgCheckpointSaver ─────────────────────────────────────────────────────────
@@ -85,21 +81,21 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
   // 修复 Bug 5 — postgres-js execute() 返回 RowList<T>（数组-like），而非 { rows: RowList<T> }
   constructor(
     private db: {
-      execute<T>(sql: string, params?: unknown[]): Promise<RowList<T>>;
+      execute<T>(sql: string, params?: unknown[]): Promise<RowList<T>>
     },
   ) {}
 
   private threadId(config: ConfigurableDict): string {
-    const id = config["thread_id"];
-    if (typeof id !== "string") throw new Error("config must contain thread_id");
-    return id.replace(/'/g, "''");
+    const id = config["thread_id"]
+    if (typeof id !== "string") throw new Error("config must contain thread_id")
+    return id.replace(/'/g, "''")
   }
 
   async get(config: ConfigurableDict): Promise<CheckpointTuple | undefined> {
-    const tid = this.threadId(config);
-    const cpId = config["checkpoint_id"] as string | undefined;
+    const tid = this.threadId(config)
+    const cpId = config["checkpoint_id"] as string | undefined
 
-    let rows: RowList<CheckpointRowData>;
+    let rows: RowList<CheckpointRowData>
     if (cpId) {
       // 参数化查询防止 SQL 注入
       rows = await this.db.execute<CheckpointRowData>(
@@ -109,7 +105,7 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
          WHERE thread_id = $1 AND id = $2
          LIMIT 1`,
         [tid, cpId],
-      );
+      )
     } else {
       // Find latest root checkpoint (no parent)
       rows = await this.db.execute<CheckpointRowData>(
@@ -120,12 +116,12 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
          ORDER BY created_at DESC
          LIMIT 1`,
         [tid],
-      );
+      )
     }
 
-    const row = rows[0];
-    if (!row) return undefined;
-    return this.rowToTuple(row, tid);
+    const row = rows[0]
+    if (!row) return undefined
+    return this.rowToTuple(row, tid)
   }
 
   async put(
@@ -133,8 +129,8 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata?: Record<string, unknown>,
   ): Promise<void> {
-    const tid = this.threadId(config);
-    const mergedMetadata = { ...checkpoint.metadata, ...metadata };
+    const tid = this.threadId(config)
+    const mergedMetadata = { ...checkpoint.metadata, ...metadata }
 
     await this.db.execute(
       `INSERT INTO workspace_checkpoints
@@ -157,12 +153,12 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
         jsonStr(mergedMetadata),
         new Date().toISOString(),
       ],
-    );
+    )
   }
 
   async list(config: ConfigurableDict, limit?: number): Promise<CheckpointTuple[]> {
-    const tid = this.threadId(config);
-    const limitVal = Number.isSafeInteger(limit) && (limit ?? 0) > 0 ? limit! : 1000;
+    const tid = this.threadId(config)
+    const limitVal = Number.isSafeInteger(limit) && (limit ?? 0) > 0 ? limit! : 1000
     const rows = await this.db.execute<CheckpointRowData>(
       `SELECT thread_id, id, parent_id, channel_values, channel_versions,
               updated_channels, metadata, pending_writes, created_at
@@ -171,8 +167,8 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
        ORDER BY created_at DESC
        LIMIT $2`,
       [tid, limitVal],
-    );
-    return rows.map((r: CheckpointRowData) => this.rowToTuple(r, tid));
+    )
+    return rows.map((r: CheckpointRowData) => this.rowToTuple(r, tid))
   }
 
   // 修复 Bug 2 — SQL 注入：使用参数化查询替代字符串插值
@@ -181,22 +177,22 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
     writes: Array<[string, unknown]>,
     _force?: boolean,
   ): Promise<void> {
-    const tid = this.threadId(config);
-    const cpId = (config["checkpoint_id"] as string | undefined)?.replace(/'/g, "''");
-    if (!cpId) return;
-    const writesJson = JSON.stringify(writes.map(([ch, val]) => [ch, val, "write"]));
+    const tid = this.threadId(config)
+    const cpId = (config["checkpoint_id"] as string | undefined)?.replace(/'/g, "''")
+    if (!cpId) return
+    const writesJson = JSON.stringify(writes.map(([ch, val]) => [ch, val, "write"]))
     await this.db.execute(
       `UPDATE workspace_checkpoints
        SET pending_writes = pending_writes || $1::jsonb
        WHERE thread_id = $2 AND id = $3`,
       [writesJson, tid, cpId],
-    );
+    )
   }
 
   async copyThread(srcConfig: ConfigurableDict, dstConfig: ConfigurableDict): Promise<void> {
-    const srcId = this.threadId(srcConfig);
-    const dstId = this.threadId(dstConfig);
-    if (srcId === dstId) throw new Error("source and destination thread ids must differ");
+    const srcId = this.threadId(srcConfig)
+    const dstId = this.threadId(dstConfig)
+    if (srcId === dstId) throw new Error("source and destination thread ids must differ")
 
     const rows = await this.db.execute<CheckpointRowData>(
       `SELECT id, parent_id, channel_values, channel_versions,
@@ -205,20 +201,18 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
        WHERE thread_id = $1
        ORDER BY created_at ASC`,
       [srcId],
-    );
+    )
 
-    if (rows.length === 0) return;
+    if (rows.length === 0) return
 
     // Build new ids and resolve parent chain
-    const oldIds = rows.map((r: CheckpointRowData) => r.id);
-    const newIds = oldIds.map(
-      () => `cp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-    );
+    const oldIds = rows.map((r: CheckpointRowData) => r.id)
+    const newIds = oldIds.map(() => `cp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`)
 
     for (let i = 0; i < rows.length; i++) {
-      const old = rows[i] as CheckpointRowData;
-      const newId = newIds[i]!;
-      const newParentId = i === 0 ? null : newIds[i - 1]!;
+      const old = rows[i] as CheckpointRowData
+      const newId = newIds[i]!
+      const newParentId = i === 0 ? null : newIds[i - 1]!
       await this.db.execute(
         `INSERT INTO workspace_checkpoints
            (thread_id, id, parent_id, channel_values, channel_versions,
@@ -236,18 +230,18 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
           jsonStr(old.pending_writes),
           old.created_at as string,
         ],
-      );
+      )
     }
   }
 
   async prune(config: ConfigurableDict, beforeId?: string): Promise<void> {
-    const tid = this.threadId(config);
+    const tid = this.threadId(config)
     if (beforeId) {
       await this.db.execute(
         `DELETE FROM workspace_checkpoints
          WHERE thread_id = $1 AND id < $2`,
         [tid, beforeId],
-      );
+      )
     } else {
       await this.db.execute(
         `DELETE FROM workspace_checkpoints
@@ -256,14 +250,12 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
                       WHERE thread_id = $1
                       ORDER BY created_at DESC LIMIT 1)`,
         [tid],
-      );
+      )
     }
   }
 
   private rowToTuple(row: CheckpointRowData, tid: string): CheckpointTuple {
-    const parentConfig = row.parent_id
-      ? { thread_id: tid, checkpoint_id: row.parent_id }
-      : null;
+    const parentConfig = row.parent_id ? { thread_id: tid, checkpoint_id: row.parent_id } : null
     return {
       config: { thread_id: tid, checkpoint_id: row.id },
       checkpoint: {
@@ -277,6 +269,6 @@ export class PgCheckpointSaver implements BaseCheckpointSaver {
       metadata: row.metadata as Record<string, unknown>,
       parentConfig,
       pendingWrites: row.pending_writes as Array<[string, unknown, unknown]>,
-    };
+    }
   }
 }

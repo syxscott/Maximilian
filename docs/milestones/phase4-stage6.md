@@ -16,18 +16,18 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `src/dags.ts` | 130 |
-| `src/index.ts` | 12 |
+| 文件           | 行数 |
+| -------------- | ---- |
+| `src/dags.ts`  | 130  |
+| `src/index.ts` | 12   |
 
 ## 验证矩阵
 
-| 请求 | 能力 | 团队大小 |
-|---|---|---|
-| Todo app | frontend, backend, product_design, review, general | 5 |
-| Database platform | database, devops, product_design, review, general | 5 |
-| Research paper | research_analysis, review, general | 3 |
+| 请求              | 能力                                               | 团队大小 |
+| ----------------- | -------------------------------------------------- | -------- |
+| Todo app          | frontend, backend, product_design, review, general | 5        |
+| Database platform | database, devops, product_design, review, general  | 5        |
+| Research paper    | research_analysis, review, general                 | 3        |
 
 不同请求生成不同团队，证明系统动态性。
 

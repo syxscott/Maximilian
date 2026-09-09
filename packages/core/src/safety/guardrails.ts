@@ -19,7 +19,14 @@
  * from disk; the in-memory `triggerEmergencyStop()` updates both.
  */
 
-import { constants as fsConstants, existsSync, statSync, readFileSync, writeFileSync, unlinkSync } from "node:fs"
+import {
+  constants as fsConstants,
+  existsSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+} from "node:fs"
 import { resolve, isAbsolute, sep } from "node:path"
 import { randomUUID } from "node:crypto"
 
@@ -33,13 +40,13 @@ const INCIDENT_DEDUP_WINDOW_MS = 1_000
 
 /** Default dangerous patterns — borrowed from Kosmos code_validator. */
 const DEFAULT_DANGEROUS_PATTERNS: RegExp[] = [
-  /\brm\s+-rf?\s+\//,           // rm -rf /
-  /\bcurl\s+.*\|\s*(bash|sh)/,  // curl | bash
-  /\bwget\s+.*\|\s*(bash|sh)/,  // wget | bash
-  /\beval\s*\(/,                // eval()
-  /\bnew\s+Function\s*\(/,      // new Function()
+  /\brm\s+-rf?\s+\//, // rm -rf /
+  /\bcurl\s+.*\|\s*(bash|sh)/, // curl | bash
+  /\bwget\s+.*\|\s*(bash|sh)/, // wget | bash
+  /\beval\s*\(/, // eval()
+  /\bnew\s+Function\s*\(/, // new Function()
   /\bchild_process\.exec\s*\(/, // raw child_process
-  /\.\.\/\.\.\//,               // path traversal attempt
+  /\.\.\/\.\.\//, // path traversal attempt
 ]
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -116,11 +123,15 @@ export class SafetyGuardrails {
     const rawLimits = { ...DEFAULT_LIMITS, ...(options?.limits ?? {}) }
     this.limits = {
       maxCpuCores:
-        rawLimits.maxCpuCores !== undefined && Number.isFinite(rawLimits.maxCpuCores) && rawLimits.maxCpuCores > 0
+        rawLimits.maxCpuCores !== undefined &&
+        Number.isFinite(rawLimits.maxCpuCores) &&
+        rawLimits.maxCpuCores > 0
           ? rawLimits.maxCpuCores
           : undefined,
       maxMemoryMb:
-        rawLimits.maxMemoryMb !== undefined && Number.isFinite(rawLimits.maxMemoryMb) && rawLimits.maxMemoryMb > 0
+        rawLimits.maxMemoryMb !== undefined &&
+        Number.isFinite(rawLimits.maxMemoryMb) &&
+        rawLimits.maxMemoryMb > 0
           ? rawLimits.maxMemoryMb
           : 2048,
       maxExecutionTimeSeconds:
@@ -135,15 +146,10 @@ export class SafetyGuardrails {
     }
 
     // ── Compile regex patterns and reset lastIndex to prevent sticky/global state leakage ──
-    const rawPatterns = [
-      ...DEFAULT_DANGEROUS_PATTERNS,
-      ...(options?.extraDangerousPatterns ?? []),
-    ]
+    const rawPatterns = [...DEFAULT_DANGEROUS_PATTERNS, ...(options?.extraDangerousPatterns ?? [])]
     this.dangerousPatterns = rawPatterns.map((p) => {
       // Strip sticky/global flags that cause state leakage across calls.
-      const safeFlags = (p.flags || "")
-        .replace("y", "")
-        .replace("g", "")
+      const safeFlags = (p.flags || "").replace("y", "").replace("g", "")
       return new RegExp(p.source, safeFlags)
     })
 
@@ -159,10 +165,7 @@ export class SafetyGuardrails {
 
     // ── Validate incident log cap ────────────────────────────────────────────
     const cap = options?.incidentLogCap
-    this.incidentLogCap =
-      Number.isSafeInteger(cap) && cap !== undefined && cap >= 0
-        ? cap
-        : 200
+    this.incidentLogCap = Number.isSafeInteger(cap) && cap !== undefined && cap >= 0 ? cap : 200
 
     // ── Check for existing stop flag (only regular files, with size bound) ──
     this.stopped = false
@@ -266,11 +269,16 @@ export class SafetyGuardrails {
       pattern.lastIndex = 0
       const match = code.match(pattern)
       if (match) {
-        const incident = this._makeIncident("dangerous_pattern", "high", "dangerous code pattern detected", {
-          pattern: pattern.source,
-          // Redact matched text: capture only length to avoid leaking secrets/tokens/URLs.
-          matchedLength: match[0]?.length ?? 0,
-        })
+        const incident = this._makeIncident(
+          "dangerous_pattern",
+          "high",
+          "dangerous code pattern detected",
+          {
+            pattern: pattern.source,
+            // Redact matched text: capture only length to avoid leaking secrets/tokens/URLs.
+            matchedLength: match[0]?.length ?? 0,
+          },
+        )
         this._logIncident(incident)
         return incident
       }
@@ -297,7 +305,9 @@ export class SafetyGuardrails {
     try {
       normalized = resolve(path)
     } catch {
-      const incident = this._makeIncident("forbidden_path", "high", "failed to resolve path", { path })
+      const incident = this._makeIncident("forbidden_path", "high", "failed to resolve path", {
+        path,
+      })
       this._logIncident(incident)
       return incident
     }
@@ -318,13 +328,9 @@ export class SafetyGuardrails {
   /**
    * Check whether a resource operation is allowed under current limits.
    */
-  checkResource(
-    op: unknown,
-  ): SafetyIncident | null {
+  checkResource(op: unknown): SafetyIncident | null {
     const allowed =
-      op === "allowNetworkAccess" ||
-      op === "allowFileWrite" ||
-      op === "allowSubprocess"
+      op === "allowNetworkAccess" || op === "allowFileWrite" || op === "allowSubprocess"
     if (!allowed) {
       const incident = this._makeIncident(
         "resource_limit",
@@ -336,9 +342,14 @@ export class SafetyGuardrails {
       return incident
     }
     if (!this.limits[op as keyof ResourceLimits]) {
-      const incident = this._makeIncident("resource_limit", "medium", `operation ${String(op)} blocked by policy`, {
-        op,
-      })
+      const incident = this._makeIncident(
+        "resource_limit",
+        "medium",
+        `operation ${String(op)} blocked by policy`,
+        {
+          op,
+        },
+      )
       this._logIncident(incident)
       return incident
     }
@@ -400,16 +411,18 @@ export class SafetyGuardrails {
   monitor(): SafetyIncident[] {
     const violations: SafetyIncident[] = []
 
-    if (
-      this.limits.maxMemoryMb !== undefined &&
-      this.limits.maxMemoryMb > 0
-    ) {
+    if (this.limits.maxMemoryMb !== undefined && this.limits.maxMemoryMb > 0) {
       const memUsageMb = process.memoryUsage().heapUsed / 1_048_576
       if (memUsageMb > this.limits.maxMemoryMb) {
-        const inc = this._makeIncident("resource_limit", "high", `heap memory ${memUsageMb.toFixed(0)} MB exceeds limit ${this.limits.maxMemoryMb} MB`, {
-          actualMb: Math.round(memUsageMb),
-          limitMb: this.limits.maxMemoryMb,
-        })
+        const inc = this._makeIncident(
+          "resource_limit",
+          "high",
+          `heap memory ${memUsageMb.toFixed(0)} MB exceeds limit ${this.limits.maxMemoryMb} MB`,
+          {
+            actualMb: Math.round(memUsageMb),
+            limitMb: this.limits.maxMemoryMb,
+          },
+        )
         this._logIncident(inc)
         violations.push(inc)
       }

@@ -41,11 +41,7 @@ export type TerminalStoreActions = {
   /** Move a PTY within the list (drag-reorder). */
   movePty: (workspaceKey: string, id: string, to: number) => void
   /** Replace an existing PTY (used after a clone returns a new server ID). */
-  replacePty: (
-    workspaceKey: string,
-    previousId: string,
-    next: LocalPTY,
-  ) => void
+  replacePty: (workspaceKey: string, previousId: string, next: LocalPTY) => void
   /** Wipe all terminals for a workspace. */
   clearWorkspace: (workspaceKey: string) => void
   /** Wipe every workspace's terminals (used when scope changes). */

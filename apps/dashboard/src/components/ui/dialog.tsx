@@ -1,19 +1,19 @@
-import * as React from "react";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { cn } from "@/lib/utils";
+import * as React from "react"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { cn } from "@/lib/utils"
 
-const Dialog = DialogPrimitive.Root;
+const Dialog = DialogPrimitive.Root
 
-const DialogTrigger = DialogPrimitive.Trigger;
+const DialogTrigger = DialogPrimitive.Trigger
 
-const DialogPortal = DialogPrimitive.Portal;
+const DialogPortal = DialogPrimitive.Portal
 
-const DialogClose = DialogPrimitive.Close;
+const DialogClose = DialogPrimitive.Close
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay> & {
-    zIndex?: "base" | "nested" | "alert" | "top";
+    zIndex?: "base" | "nested" | "alert" | "top"
   }
 >(({ className, zIndex = "base", ...props }, ref) => {
   const zIndexMap = {
@@ -21,7 +21,7 @@ const DialogOverlay = React.forwardRef<
     nested: "z-50",
     alert: "z-[60]",
     top: "z-[110]",
-  };
+  }
 
   return (
     <DialogPrimitive.Overlay
@@ -33,27 +33,20 @@ const DialogOverlay = React.forwardRef<
       )}
       {...props}
     />
-  );
-});
-DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
+  )
+})
+DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
-    zIndex?: "base" | "nested" | "alert" | "top";
-    variant?: "default" | "fullscreen";
-    overlayClassName?: string;
+    zIndex?: "base" | "nested" | "alert" | "top"
+    variant?: "default" | "fullscreen"
+    overlayClassName?: string
   }
 >(
   (
-    {
-      className,
-      children,
-      zIndex = "base",
-      variant = "default",
-      overlayClassName,
-      ...props
-    },
+    { className, children, zIndex = "base", variant = "default", overlayClassName, ...props },
     ref,
   ) => {
     const zIndexMap = {
@@ -61,14 +54,14 @@ const DialogContent = React.forwardRef<
       nested: "z-50",
       alert: "z-[60]",
       top: "z-[110]",
-    };
+    }
 
     const variantClass = {
       default:
         "fixed left-1/2 top-1/2 flex flex-col w-full max-w-lg max-h-[90vh] translate-x-[-50%] translate-y-[-50%] border border-border-default bg-background text-foreground shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
       fullscreen:
         "fixed inset-0 flex flex-col w-screen h-screen translate-x-0 translate-y-0 bg-background text-foreground p-0 sm:rounded-none shadow-none",
-    }[variant];
+    }[variant]
 
     return (
       <DialogPortal>
@@ -78,22 +71,19 @@ const DialogContent = React.forwardRef<
           className={cn(variantClass, zIndexMap[zIndex], className)}
           onInteractOutside={(e) => {
             // 防止点击遮罩层关闭对话框
-            e.preventDefault();
+            e.preventDefault()
           }}
           {...props}
         >
           {children}
         </DialogPrimitive.Content>
       </DialogPortal>
-    );
+    )
   },
-);
-DialogContent.displayName = DialogPrimitive.Content.displayName;
+)
+DialogContent.displayName = DialogPrimitive.Content.displayName
 
-const DialogHeader = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
+const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
       "flex flex-col space-y-1.5 text-center sm:text-left px-6 py-5 border-b border-border-default bg-muted/20 flex-shrink-0",
@@ -101,13 +91,10 @@ const DialogHeader = ({
     )}
     {...props}
   />
-);
-DialogHeader.displayName = "DialogHeader";
+)
+DialogHeader.displayName = "DialogHeader"
 
-const DialogFooter = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
+const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
       "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:items-center px-6 py-5 border-t border-border-default bg-muted/20 flex-shrink-0",
@@ -115,8 +102,8 @@ const DialogFooter = ({
     )}
     {...props}
   />
-);
-DialogFooter.displayName = "DialogFooter";
+)
+DialogFooter.displayName = "DialogFooter"
 
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
@@ -124,14 +111,11 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn(
-      "text-lg font-semibold leading-tight tracking-tight",
-      className,
-    )}
+    className={cn("text-lg font-semibold leading-tight tracking-tight", className)}
     {...props}
   />
-));
-DialogTitle.displayName = DialogPrimitive.Title.displayName;
+))
+DialogTitle.displayName = DialogPrimitive.Title.displayName
 
 const DialogDescription = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Description>,
@@ -142,8 +126,8 @@ const DialogDescription = React.forwardRef<
     className={cn("text-sm text-muted-foreground", className)}
     {...props}
   />
-));
-DialogDescription.displayName = DialogPrimitive.Description.displayName;
+))
+DialogDescription.displayName = DialogPrimitive.Description.displayName
 
 export {
   Dialog,
@@ -154,4 +138,4 @@ export {
   DialogTitle,
   DialogDescription,
   DialogClose,
-};
+}

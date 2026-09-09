@@ -25,10 +25,10 @@
   --color-input: var(--shadcn-input);
   --color-ring: var(--shadcn-ring);
 
-  --color-blue-400: #409CFF;
-  --color-blue-500: #0A84FF;
-  --color-blue-600: #0060DF;
-  --color-blue-700: #004BA8;
+  --color-blue-400: #409cff;
+  --color-blue-500: #0a84ff;
+  --color-blue-600: #0060df;
+  --color-blue-700: #004ba8;
   --color-gray-50: #fafafa;
   --color-gray-100: #f4f4f5;
   --color-gray-200: #e4e4e7;
@@ -36,10 +36,10 @@
   --color-gray-400: #a1a1aa;
   --color-gray-500: #71717a;
   --color-gray-600: #636366;
-  --color-gray-700: #48484A;
-  --color-gray-800: #3A3A3C;
-  --color-gray-900: #2C2C2E;
-  --color-gray-950: #1C1C1E;
+  --color-gray-700: #48484a;
+  --color-gray-800: #3a3a3c;
+  --color-gray-900: #2c2c2e;
+  --color-gray-950: #1c1c1e;
   --color-green-100: #d1fae5;
   --color-green-500: #10b981;
   --color-red-100: #fee2e2;
@@ -61,24 +61,48 @@
   --animate-accordion-up: accordion-up 0.2s ease-out;
 
   @keyframes fadeIn {
-    0% { opacity: 0; }
-    100% { opacity: 1; }
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
   }
   @keyframes slideUp {
-    0% { transform: translateY(20px); opacity: 0; }
-    100% { transform: translateY(0); opacity: 1; }
+    0% {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    100% {
+      transform: translateY(0);
+      opacity: 1;
+    }
   }
   @keyframes slideDown {
-    0% { transform: translateY(-100%); opacity: 0; }
-    100% { transform: translateY(0); opacity: 1; }
+    0% {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    100% {
+      transform: translateY(0);
+      opacity: 1;
+    }
   }
   @keyframes accordion-down {
-    from { height: 0; }
-    to { height: var(--radix-accordion-content-height); }
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
   }
   @keyframes accordion-up {
-    from { height: var(--radix-accordion-content-height); }
-    to { height: 0; }
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
   }
 }
 
@@ -89,19 +113,19 @@
   --shadcn-card-foreground: #e8e8ec;
   --shadcn-popover: #1a1a1f;
   --shadcn-popover-foreground: #e8e8ec;
-  --shadcn-primary: #0A84FF;
+  --shadcn-primary: #0a84ff;
   --shadcn-primary-foreground: #ffffff;
-  --shadcn-secondary: #2C2C2E;
+  --shadcn-secondary: #2c2c2e;
   --shadcn-secondary-foreground: #a1a1aa;
-  --shadcn-muted: #1C1C1E;
+  --shadcn-muted: #1c1c1e;
   --shadcn-muted-foreground: #71717a;
-  --shadcn-accent: #0A84FF;
+  --shadcn-accent: #0a84ff;
   --shadcn-accent-foreground: #ffffff;
   --shadcn-destructive: #ef4444;
   --shadcn-destructive-foreground: #ffffff;
-  --shadcn-border: #2C2C2E;
-  --shadcn-input: #2C2C2E;
-  --shadcn-ring: #0A84FF;
+  --shadcn-border: #2c2c2e;
+  --shadcn-input: #2c2c2e;
+  --shadcn-ring: #0a84ff;
 }
 
 /* ─── CCSwitch custom border utilities ──────────────────────────── */

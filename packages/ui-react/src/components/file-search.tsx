@@ -63,7 +63,10 @@ export function FileSearchBar({
         onInput={(e) => onInput(e.currentTarget.value)}
         onKeyDown={onKeyDown}
       />
-      <div className="shrink-0 text-12-regular text-text-weak tabular-nums text-right" style={{ width: "10ch" }}>
+      <div
+        className="shrink-0 text-12-regular text-text-weak tabular-nums text-right"
+        style={{ width: "10ch" }}
+      >
         {count ? `${index + 1}/${count}` : "0/0"}
       </div>
       <div className="flex items-center">

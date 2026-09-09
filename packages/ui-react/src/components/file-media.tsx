@@ -51,7 +51,10 @@ function hasMediaValue(value: unknown): boolean {
   return true
 }
 
-function dataUrlFromMediaValue(value: unknown, kind: "image" | "audio" | "svg"): string | undefined {
+function dataUrlFromMediaValue(
+  value: unknown,
+  kind: "image" | "audio" | "svg",
+): string | undefined {
   if (value == null) return undefined
   if (typeof value === "string") {
     if (value.startsWith("data:")) return value
@@ -105,8 +108,7 @@ export const FileMedia: React.FC<FileMediaProps> = ({ media, fallback }) => {
   }
 
   const [loaded, setLoaded] = React.useState<
-    | { key: string; src?: string; mime?: string; error?: true }
-    | undefined
+    { key: string; src?: string; mime?: string; error?: true } | undefined
   >(undefined)
   const [loading, setLoading] = React.useState(false)
 
@@ -204,8 +206,7 @@ export const FileMedia: React.FC<FileMediaProps> = ({ media, fallback }) => {
     cfg()?.onError?.({ kind: "svg" })
   }, [svgInvalid?.[0], svgInvalid?.[1]])
 
-  const kindLabel = (value: "image" | "audio") =>
-    value === "image" ? "Image" : "Audio"
+  const kindLabel = (value: "image" | "audio") => (value === "image" ? "Image" : "Audio")
 
   const renderImageOrAudio = () => {
     if (!src) {
@@ -258,7 +259,12 @@ export const FileMedia: React.FC<FileMediaProps> = ({ media, fallback }) => {
 
     return (
       <div className="flex justify-center bg-background-stronger px-6 py-4">
-        <audio className="w-full max-w-xl" controls preload="metadata" onLoadedMetadata={() => cfg()?.onLoad?.()}>
+        <audio
+          className="w-full max-w-xl"
+          controls
+          preload="metadata"
+          onLoadedMetadata={() => cfg()?.onLoad?.()}
+        >
           <source src={src} type={audioMime} />
         </audio>
       </div>
@@ -293,9 +299,7 @@ export const FileMedia: React.FC<FileMediaProps> = ({ media, fallback }) => {
           {cfg()?.path?.split("/").pop() ?? "Binary file"}
         </div>
         <div className="text-14-regular text-text-weak">
-          {cfg()?.path
-            ? `Binary content for ${cfg()?.path}`
-            : "Binary file preview unavailable"}
+          {cfg()?.path ? `Binary content for ${cfg()?.path}` : "Binary file preview unavailable"}
         </div>
       </div>
     )

@@ -37,7 +37,10 @@ export type TriggerTitle = {
   action?: React.ReactNode
 }
 
-export interface BasicToolProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "children" | "title"> {
+export interface BasicToolProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "children" | "title"
+> {
   icon: IconName
   trigger: TriggerTitle | React.ReactNode
   children?: React.ReactNode
@@ -174,10 +177,7 @@ export const BasicTool: React.FC<BasicToolProps> = ({
           {isTriggerTitle(trigger) ? (
             <div data-slot="basic-tool-tool-info-structured">
               <div data-slot="basic-tool-tool-info-main">
-                <span
-                  data-slot="basic-tool-tool-title"
-                  className={cn(trigger.titleClass)}
-                >
+                <span data-slot="basic-tool-tool-title" className={cn(trigger.titleClass)}>
                   <span data-slot="text-shimmer-char">
                     <span data-slot="text-shimmer-char-base" aria-hidden="true">
                       {trigger.title}
@@ -279,11 +279,7 @@ export const BasicTool: React.FC<BasicToolProps> = ({
       ) : (
         !animated &&
         hasChildren &&
-        !hideDetails && (
-          <Collapsible.Content>
-            {(!defer || ready) && children}
-          </Collapsible.Content>
-        )
+        !hideDetails && <Collapsible.Content>{(!defer || ready) && children}</Collapsible.Content>
       )}
     </Collapsible.Root>
   )

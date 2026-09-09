@@ -8,7 +8,10 @@ export interface FilteredListProps<T> {
   current?: T
   groupBy?: (x: T) => string
   sortBy?: (a: T, b: T) => number
-  sortGroupsBy?: (a: { category: string; items: T[] }, b: { category: string; items: T[] }) => number
+  sortGroupsBy?: (
+    a: { category: string; items: T[] },
+    b: { category: string; items: T[] },
+  ) => number
   skipFilter?: (item: T) => boolean
   onSelect?: (value: T | undefined, index: number) => void
   noInitialSelection?: boolean
@@ -42,7 +45,9 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
         Array.isArray(filterable) &&
         filterable.every((e) => typeof e === "string")
           ? (fuzzysort.go(needle, filterable as string[]).map((x) => x.target) as unknown as T[])
-          : fuzzysort.go(needle, filterable as object[], { keys: props.filterKeys! }).map((x) => x.obj as T)
+          : fuzzysort
+              .go(needle, filterable as object[], { keys: props.filterKeys! })
+              .map((x) => x.obj as T)
       working = skipped.length ? [...filtered, ...skipped] : filtered
     }
 
@@ -64,7 +69,15 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
     }
 
     return groups
-  }, [resolvedItems, filter, props.filterKeys, props.skipFilter, props.groupBy, props.sortBy, props.sortGroupsBy])
+  }, [
+    resolvedItems,
+    filter,
+    props.filterKeys,
+    props.skipFilter,
+    props.groupBy,
+    props.sortBy,
+    props.sortGroupsBy,
+  ])
 
   const flat = useMemo<T[]>(() => {
     return filteredAndGrouped.flatMap((g) => g.items)

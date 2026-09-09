@@ -516,14 +516,14 @@ describe("Runtime ModelRouter integration", () => {
 
   it("M4 regression: recordOutcome tracks attempts and flips status to alpha on failure", () => {
     const router = new ModelRouter([
-        {
-          provider: "anthropic",
-          model: "claude-3-haiku-20240307",
-          costTier: "low",
-          speedTier: "fast",
-          strengths: { code: 5, reasoning: 5, creative: 5, general: 7, data: 5 },
-        },
-      ])
+      {
+        provider: "anthropic",
+        model: "claude-3-haiku-20240307",
+        costTier: "low",
+        speedTier: "fast",
+        strengths: { code: 5, reasoning: 5, creative: 5, general: 7, data: 5 },
+      },
+    ])
     // Record 10 failures in a row — should flip to "alpha" status.
     for (let i = 0; i < 10; i++) {
       router.recordOutcome("anthropic/claude-3-haiku-20240307", false)

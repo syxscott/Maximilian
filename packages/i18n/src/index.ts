@@ -16,42 +16,42 @@
  *   - TUI: read MAXIMILIAN_LOCALE env var, or pass an explicit
  *     loadFrom / saveTo to initLocale() for file-based persistence.
  */
-import { useEffect, useReducer } from "react";
-import dictEn from "./locales/en-US.json" with { type: "json" };
-import dictZh from "./locales/zh-CN.json" with { type: "json" };
+import { useEffect, useReducer } from "react"
+import dictEn from "./locales/en-US.json" with { type: "json" }
+import dictZh from "./locales/zh-CN.json" with { type: "json" }
 
 /** BCP-47 locale tag. We accept any string so adding a new language only
  *  requires `registerLocale("ja-JP", jaJson)` from a bootstrap module. */
-export type Locale = string;
+export type Locale = string
 
-export const DEFAULT_LOCALE = "zh-CN";
+export const DEFAULT_LOCALE = "zh-CN"
 
-const STORAGE_KEY = "maximilian.locale";
+const STORAGE_KEY = "maximilian.locale"
 
-type Dict = Record<string, string>;
+type Dict = Record<string, string>
 const dictionaries = new Map<Locale, Dict>([
   ["zh-CN", dictZh as Dict],
   ["en-US", dictEn as Dict],
-]);
+])
 
 const displayNames = new Map<Locale, string>([
   ["zh-CN", "中文 (简体)"],
   ["en-US", "English"],
-]);
+])
 
-let currentLocale: Locale = DEFAULT_LOCALE;
-const listeners = new Set<() => void>();
+let currentLocale: Locale = DEFAULT_LOCALE
+const listeners = new Set<() => void>()
 // Optional persisters installed by initLocale() for non-browser runtimes.
 // `save` is called whenever the locale changes (via setLocale) so file-based
 // persistence stays in sync without callers having to wire it themselves.
 // `remove` is called by resetLocaleToSystem so the TUI's "Follow system"
 // button can also clear the on-disk locale file.
-let savePersister: ((locale: Locale) => void) | undefined;
-let removePersister: (() => void) | undefined;
+let savePersister: ((locale: Locale) => void) | undefined
+let removePersister: (() => void) | undefined
 
 /** Read the active locale. Pure read; no subscription. */
 export function getLocale(): Locale {
-  return currentLocale;
+  return currentLocale
 }
 
 /**
@@ -61,71 +61,79 @@ export function getLocale(): Locale {
  * the locale selectable.
  */
 export function registerLocale(locale: Locale, dict: Dict, displayName?: string): void {
-  dictionaries.set(locale, dict);
-  if (displayName) displayNames.set(locale, displayName);
+  dictionaries.set(locale, dict)
+  if (displayName) displayNames.set(locale, displayName)
 }
 
 /** List every locale currently registered, in registration order. */
 export function listLocales(): Locale[] {
-  return Array.from(dictionaries.keys());
+  return Array.from(dictionaries.keys())
 }
 
 /** Display name for a locale, in its own language. Used in the language picker. */
 export function localeDisplayName(locale: Locale): string {
-  return displayNames.get(locale) ?? locale;
+  return displayNames.get(locale) ?? locale
 }
 
 /** Set the active locale and notify subscribers. Persists to localStorage,
  *  and to the optional persisters installed by initLocale() (TUI file). */
 export function setLocale(locale: Locale): void {
   if (!dictionaries.has(locale)) {
-    console.warn(`[i18n] unknown locale "${locale}", ignoring`);
-    return;
+    console.warn(`[i18n] unknown locale "${locale}", ignoring`)
+    return
   }
-  currentLocale = locale;
+  currentLocale = locale
   try {
     if (typeof localStorage !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, locale);
+      localStorage.setItem(STORAGE_KEY, locale)
     }
   } catch {
     // localStorage can throw in private mode or sandboxed iframes — safe to ignore.
   }
   if (savePersister) {
-    try { savePersister(locale); } catch { /* ignore */ }
+    try {
+      savePersister(locale)
+    } catch {
+      /* ignore */
+    }
   }
-  for (const listener of listeners) listener();
+  for (const listener of listeners) listener()
 }
 
 /** Clear any persisted locale and re-resolve from the environment.
  *  Used by the dashboard "Follow system" reset button. */
 export function resetLocaleToSystem(): void {
   try {
-    if (typeof localStorage !== "undefined") localStorage.removeItem(STORAGE_KEY);
+    if (typeof localStorage !== "undefined") localStorage.removeItem(STORAGE_KEY)
   } catch {
     // ignore
   }
   if (removePersister) {
-    try { removePersister(); } catch { /* ignore */ }
+    try {
+      removePersister()
+    } catch {
+      /* ignore */
+    }
   }
   // Re-run detection. The caller (TUI) may have a more specific source;
   // we re-invoke the same fallback chain here.
   if (typeof navigator !== "undefined" && navigator.language) {
-    const next = navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
-    if (dictionaries.has(next)) currentLocale = next;
+    const next = navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US"
+    if (dictionaries.has(next)) currentLocale = next
   } else if (typeof process !== "undefined" && process.env?.LANG) {
-    const lang = process.env.LANG.toLowerCase();
-    const tag = lang.split(".")[0]?.replace(/_/g, "-") ?? "";
+    const lang = process.env.LANG.toLowerCase()
+    const tag = lang.split(".")[0]?.replace(/_/g, "-") ?? ""
     if (dictionaries.has(tag)) {
-      currentLocale = tag;
+      currentLocale = tag
     } else if (lang.startsWith("zh")) {
-      currentLocale = "zh-CN";
+      currentLocale = "zh-CN"
     } else {
-      currentLocale = "en-US";
+      currentLocale = "en-US"
     }
   } else {
-    currentLocale = DEFAULT_LOCALE;
+    currentLocale = DEFAULT_LOCALE
   }
-  for (const listener of listeners) listener();
+  for (const listener of listeners) listener()
 }
 
 /**
@@ -140,25 +148,25 @@ export function resetLocaleToSystem(): void {
  * Returns the resolved locale so the caller can log it.
  */
 export function initLocale(opts?: {
-  loadFrom?: () => string | undefined;
-  saveTo?: (locale: Locale) => void;
-  removeOnReset?: () => void;
+  loadFrom?: () => string | undefined
+  saveTo?: (locale: Locale) => void
+  removeOnReset?: () => void
 }): Locale {
-  const loadFrom = opts?.loadFrom;
-  const saveTo = opts?.saveTo;
-  const removeOnReset = opts?.removeOnReset;
+  const loadFrom = opts?.loadFrom
+  const saveTo = opts?.saveTo
+  const removeOnReset = opts?.removeOnReset
 
   // Install file-based persisters so setLocale() and resetLocaleToSystem()
   // keep the on-disk state in sync without callers re-wiring each time.
-  savePersister = saveTo;
-  removePersister = removeOnReset;
+  savePersister = saveTo
+  removePersister = removeOnReset
 
   if (loadFrom) {
     try {
-      const v = loadFrom();
+      const v = loadFrom()
       if (v && dictionaries.has(v)) {
-        currentLocale = v;
-        return currentLocale;
+        currentLocale = v
+        return currentLocale
       }
     } catch {
       // ignore
@@ -166,10 +174,10 @@ export function initLocale(opts?: {
   }
   if (typeof localStorage !== "undefined") {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(STORAGE_KEY)
       if (stored && dictionaries.has(stored)) {
-        currentLocale = stored;
-        return currentLocale;
+        currentLocale = stored
+        return currentLocale
       }
     } catch {
       // ignore
@@ -177,27 +185,31 @@ export function initLocale(opts?: {
   }
   // Detect from environment.
   if (typeof navigator !== "undefined" && navigator.language) {
-    const detected = navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
-    if (dictionaries.has(detected)) currentLocale = detected;
+    const detected = navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US"
+    if (dictionaries.has(detected)) currentLocale = detected
   } else if (typeof process !== "undefined" && process.env?.LANG) {
-    const lang = process.env.LANG.toLowerCase();
-    const tag = lang.split(".")[0]?.replace(/_/g, "-") ?? "";
+    const lang = process.env.LANG.toLowerCase()
+    const tag = lang.split(".")[0]?.replace(/_/g, "-") ?? ""
     if (dictionaries.has(tag)) {
-      currentLocale = tag;
+      currentLocale = tag
     } else if (lang.startsWith("zh")) {
-      currentLocale = "zh-CN";
+      currentLocale = "zh-CN"
     } else {
-      currentLocale = "en-US";
+      currentLocale = "en-US"
     }
   } else {
-    currentLocale = DEFAULT_LOCALE;
+    currentLocale = DEFAULT_LOCALE
   }
   // Persist the resolved locale for the TUI case where localStorage isn't
   // available, so subsequent boots pick up the user's choice without an env var.
   if (saveTo) {
-    try { saveTo(currentLocale); } catch { /* ignore */ }
+    try {
+      saveTo(currentLocale)
+    } catch {
+      /* ignore */
+    }
   }
-  return currentLocale;
+  return currentLocale
 }
 
 /**
@@ -213,34 +225,38 @@ export function initLocale(opts?: {
  * `ts()`. Missing keys log a single console.warn per key (not per call)
  * so dev noise stays low when iterating on dictionaries.
  */
-const warnedKeys = new Set<string>();
-export function t(key: string, paramsOrFallback?: string | Record<string, string | number>, fallback?: string): string {
-  const dict = dictionaries.get(currentLocale);
-  let raw = dict?.[key];
-  let usedFallback: string | undefined;
+const warnedKeys = new Set<string>()
+export function t(
+  key: string,
+  paramsOrFallback?: string | Record<string, string | number>,
+  fallback?: string,
+): string {
+  const dict = dictionaries.get(currentLocale)
+  let raw = dict?.[key]
+  let usedFallback: string | undefined
   if (raw === undefined) {
     if (typeof paramsOrFallback === "string") {
-      raw = paramsOrFallback;
-      usedFallback = paramsOrFallback;
+      raw = paramsOrFallback
+      usedFallback = paramsOrFallback
     } else if (fallback !== undefined) {
-      raw = fallback;
-      usedFallback = fallback;
+      raw = fallback
+      usedFallback = fallback
     } else {
       if (!warnedKeys.has(key)) {
         // eslint-disable-next-line no-console
-        console.warn(`[i18n] missing key "${key}" for locale "${currentLocale}"`);
-        warnedKeys.add(key);
+        console.warn(`[i18n] missing key "${key}" for locale "${currentLocale}"`)
+        warnedKeys.add(key)
       }
-      raw = key;
+      raw = key
     }
   }
   if (raw && typeof paramsOrFallback === "object" && paramsOrFallback !== null) {
     for (const [name, value] of Object.entries(paramsOrFallback)) {
-      raw = raw.replace(new RegExp(`\\{${name}\\}`, "g"), String(value));
+      raw = raw.replace(new RegExp(`\\{${name}\\}`, "g"), String(value))
     }
   }
-  void usedFallback;
-  return raw;
+  void usedFallback
+  return raw
 }
 
 /**
@@ -259,21 +275,21 @@ export function tn(
   params: Record<string, string | number> & { count: number },
   options?: { offset?: number; ordinal?: boolean },
 ): string {
-  const dict = dictionaries.get(currentLocale);
+  const dict = dictionaries.get(currentLocale)
   const pr = new Intl.PluralRules(currentLocale, {
     type: options?.ordinal ? "ordinal" : "cardinal",
-  });
-  const cat = pr.select((params.count ?? 0) - (options?.offset ?? 0));
+  })
+  const cat = pr.select((params.count ?? 0) - (options?.offset ?? 0))
   // Try the plural-rules-selected form first; fall back to "other", then
   // to the un-suffixed key as a last resort.
   for (const form of [cat, "other", cat === "other" ? "one" : "other"]) {
-    const composed = `${key}.${form}`;
+    const composed = `${key}.${form}`
     if (dict && composed in dict) {
-      return t(composed, params);
+      return t(composed, params)
     }
   }
   // No plural form at all — fall back to plain t().
-  return t(key, params);
+  return t(key, params)
 }
 
 /**
@@ -290,24 +306,24 @@ export function ts(
   params: Record<string, string | number> & { [k: string]: string | number },
   options: { fallback: string },
 ): string {
-  const dict = dictionaries.get(currentLocale);
+  const dict = dictionaries.get(currentLocale)
   for (const [k, v] of Object.entries(params)) {
-    const composed = `${key}.${v}`;
+    const composed = `${key}.${v}`
     if (dict && composed in dict) {
-      return t(composed, params);
+      return t(composed, params)
     }
     // Hint that we tried this branch — keeps the `k` variable live.
-    void k;
+    void k
   }
-  return t(`${key}.${options.fallback}`, params, t(key, params));
+  return t(`${key}.${options.fallback}`, params, t(key, params))
 }
 
 /** Subscribe to locale changes. Returns an unsubscribe function. */
 export function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
+  listeners.add(listener)
   return () => {
-    listeners.delete(listener);
-  };
+    listeners.delete(listener)
+  }
 }
 
 /**
@@ -315,9 +331,9 @@ export function subscribe(listener: () => void): () => void {
  * Returns the active locale and a stable setter.
  */
 export function useLocale(): { locale: Locale; setLocale: (l: Locale) => void; reset: () => void } {
-  const [, forceUpdate] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => subscribe(forceUpdate), []);
-  return { locale: currentLocale, setLocale, reset: resetLocaleToSystem };
+  const [, forceUpdate] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => subscribe(forceUpdate), [])
+  return { locale: currentLocale, setLocale, reset: resetLocaleToSystem }
 }
 
 /**
@@ -325,19 +341,19 @@ export function useLocale(): { locale: Locale; setLocale: (l: Locale) => void; r
  * @internal
  */
 export function __resetI18n(): void {
-  currentLocale = DEFAULT_LOCALE;
-  listeners.clear();
-  warnedKeys.clear();
-  dictionaries.clear();
-  displayNames.clear();
-  dictionaries.set("zh-CN", dictZh as Dict);
-  dictionaries.set("en-US", dictEn as Dict);
-  displayNames.set("zh-CN", "中文 (简体)");
-  displayNames.set("en-US", "English");
-  savePersister = undefined;
-  removePersister = undefined;
+  currentLocale = DEFAULT_LOCALE
+  listeners.clear()
+  warnedKeys.clear()
+  dictionaries.clear()
+  displayNames.clear()
+  dictionaries.set("zh-CN", dictZh as Dict)
+  dictionaries.set("en-US", dictEn as Dict)
+  displayNames.set("zh-CN", "中文 (简体)")
+  displayNames.set("en-US", "English")
+  savePersister = undefined
+  removePersister = undefined
   try {
-    if (typeof localStorage !== "undefined") localStorage.removeItem(STORAGE_KEY);
+    if (typeof localStorage !== "undefined") localStorage.removeItem(STORAGE_KEY)
   } catch {
     // ignore
   }
@@ -357,4 +373,4 @@ export {
   formatRelative,
   formatDuration,
   formatList,
-} from "./format.js";
+} from "./format.js"

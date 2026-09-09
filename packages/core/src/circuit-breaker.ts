@@ -21,77 +21,77 @@
  * key can render the state.
  */
 
-export type CircuitState = "closed" | "open" | "half-open";
+export type CircuitState = "closed" | "open" | "half-open"
 
 export interface CircuitBreakerOptions {
   /** Failures required to open. Default: 5. */
-  failureThreshold?: number;
+  failureThreshold?: number
   /** Ms before half-open probe. Default: 30_000. */
-  coolDownMs?: number;
+  coolDownMs?: number
   /** Window (ms) over which failures decay. Default: 60_000. */
-  windowMs?: number;
+  windowMs?: number
   /** Label for stats. Default: "default". */
-  label?: string;
+  label?: string
 }
 
 export interface CircuitBreakerStats {
-  label: string;
-  state: CircuitState;
-  totalCalls: number;
-  totalSuccesses: number;
-  totalFailures: number;
-  totalShortCircuited: number;
-  lastFailureAt?: number;
-  lastSuccessAt?: number;
-  openedAt?: number;
-  failureRate: number;
+  label: string
+  state: CircuitState
+  totalCalls: number
+  totalSuccesses: number
+  totalFailures: number
+  totalShortCircuited: number
+  lastFailureAt?: number
+  lastSuccessAt?: number
+  openedAt?: number
+  failureRate: number
 }
 
 export class CircuitOpenError extends Error {
-  readonly label: string;
-  readonly openedAt: number;
-  readonly coolDownMs: number;
+  readonly label: string
+  readonly openedAt: number
+  readonly coolDownMs: number
   /** Mirror agentos' LLMProviderCircuitOpenError: carries httpStatus 503. */
-  readonly httpStatus = 503;
+  readonly httpStatus = 503
   constructor(label: string, openedAt: number, coolDownMs: number) {
-    super(`Circuit "${label}" is open (opened at ${openedAt}, retry after ${coolDownMs}ms)`);
-    this.name = "CircuitOpenError";
-    this.label = label;
-    this.openedAt = openedAt;
-    this.coolDownMs = coolDownMs;
+    super(`Circuit "${label}" is open (opened at ${openedAt}, retry after ${coolDownMs}ms)`)
+    this.name = "CircuitOpenError"
+    this.label = label
+    this.openedAt = openedAt
+    this.coolDownMs = coolDownMs
   }
 }
 
 interface FailureRecord {
-  at: number;
+  at: number
 }
 
 export class CircuitBreaker {
-  private state: CircuitState = "closed";
-  private failures: FailureRecord[] = [];
-  private totalCalls = 0;
-  private totalSuccesses = 0;
-  private totalFailures = 0;
-  private totalShortCircuited = 0;
-  private lastFailureAt?: number;
-  private lastSuccessAt?: number;
-  private openedAt?: number;
+  private state: CircuitState = "closed"
+  private failures: FailureRecord[] = []
+  private totalCalls = 0
+  private totalSuccesses = 0
+  private totalFailures = 0
+  private totalShortCircuited = 0
+  private lastFailureAt?: number
+  private lastSuccessAt?: number
+  private openedAt?: number
 
-  private readonly failureThreshold: number;
-  private readonly coolDownMs: number;
-  private readonly windowMs: number;
-  readonly label: string;
+  private readonly failureThreshold: number
+  private readonly coolDownMs: number
+  private readonly windowMs: number
+  readonly label: string
 
   constructor(opts: CircuitBreakerOptions = {}) {
-    this.failureThreshold = opts.failureThreshold ?? 5;
-    this.coolDownMs = opts.coolDownMs ?? 30_000;
-    this.windowMs = opts.windowMs ?? 60_000;
-    this.label = opts.label ?? "default";
+    this.failureThreshold = opts.failureThreshold ?? 5
+    this.coolDownMs = opts.coolDownMs ?? 30_000
+    this.windowMs = opts.windowMs ?? 60_000
+    this.label = opts.label ?? "default"
   }
 
   getState(): CircuitState {
-    this.maybeHalfOpen();
-    return this.state;
+    this.maybeHalfOpen()
+    return this.state
   }
 
   /**
@@ -99,53 +99,53 @@ export class CircuitBreaker {
    * `CircuitOpenError` immediately without calling `fn`.
    */
   async execute<T>(fn: () => Promise<T> | T): Promise<T> {
-    this.maybeHalfOpen();
+    this.maybeHalfOpen()
 
     if (this.state === "open") {
-      this.totalShortCircuited += 1;
-      throw new CircuitOpenError(this.label, this.openedAt ?? Date.now(), this.coolDownMs);
+      this.totalShortCircuited += 1
+      throw new CircuitOpenError(this.label, this.openedAt ?? Date.now(), this.coolDownMs)
     }
 
-    this.totalCalls += 1;
+    this.totalCalls += 1
     try {
-      const result = await fn();
-      this.recordSuccess();
-      return result;
+      const result = await fn()
+      this.recordSuccess()
+      return result
     } catch (err) {
-      this.recordFailure();
-      throw err;
+      this.recordFailure()
+      throw err
     }
   }
 
   recordSuccess(): void {
-    this.totalSuccesses += 1;
-    this.lastSuccessAt = Date.now();
+    this.totalSuccesses += 1
+    this.lastSuccessAt = Date.now()
     // A success in half-open closes the circuit; in closed it just
     // refreshes the failure window.
     if (this.state === "half-open") {
-      this.state = "closed";
-      this.openedAt = undefined;
-      this.failures = [];
+      this.state = "closed"
+      this.openedAt = undefined
+      this.failures = []
     } else {
-      this.pruneFailures();
+      this.pruneFailures()
     }
   }
 
   recordFailure(): void {
     // Prune old failures before adding new one to respect windowMs
-    this.pruneFailures();
-    this.totalFailures += 1;
-    const at = Date.now();
-    this.lastFailureAt = at;
-    this.failures.push({ at });
+    this.pruneFailures()
+    this.totalFailures += 1
+    const at = Date.now()
+    this.lastFailureAt = at
+    this.failures.push({ at })
 
     if (this.state === "half-open") {
       // Probe failed — go straight back to open with a fresh cool-down.
-      this.state = "open";
-      this.openedAt = at;
+      this.state = "open"
+      this.openedAt = at
     } else if (this.failures.length >= this.failureThreshold) {
-      this.state = "open";
-      this.openedAt = at;
+      this.state = "open"
+      this.openedAt = at
     }
   }
 
@@ -154,30 +154,30 @@ export class CircuitBreaker {
    * operator intervention).
    */
   force(state: CircuitState): void {
-    this.state = state;
+    this.state = state
     if (state === "closed") {
-      this.openedAt = undefined;
-      this.failures = [];
+      this.openedAt = undefined
+      this.failures = []
     } else if (state === "open") {
-      this.openedAt = Date.now();
+      this.openedAt = Date.now()
     }
   }
 
   reset(): void {
-    this.state = "closed";
-    this.failures = [];
-    this.totalCalls = 0;
-    this.totalSuccesses = 0;
-    this.totalFailures = 0;
-    this.totalShortCircuited = 0;
-    this.lastFailureAt = undefined;
-    this.lastSuccessAt = undefined;
-    this.openedAt = undefined;
+    this.state = "closed"
+    this.failures = []
+    this.totalCalls = 0
+    this.totalSuccesses = 0
+    this.totalFailures = 0
+    this.totalShortCircuited = 0
+    this.lastFailureAt = undefined
+    this.lastSuccessAt = undefined
+    this.openedAt = undefined
   }
 
   getStats(): CircuitBreakerStats {
-    this.pruneFailures();
-    const denom = this.totalSuccesses + this.totalFailures;
+    this.pruneFailures()
+    const denom = this.totalSuccesses + this.totalFailures
     return {
       label: this.label,
       state: this.getState(),
@@ -189,21 +189,21 @@ export class CircuitBreaker {
       ...(this.lastSuccessAt !== undefined ? { lastSuccessAt: this.lastSuccessAt } : {}),
       ...(this.openedAt !== undefined ? { openedAt: this.openedAt } : {}),
       failureRate: denom > 0 ? this.totalFailures / denom : 0,
-    };
+    }
   }
 
   private maybeHalfOpen(): void {
     if (this.state === "open" && this.openedAt !== undefined) {
       if (Date.now() - this.openedAt >= this.coolDownMs) {
-        this.state = "half-open";
+        this.state = "half-open"
       }
     }
   }
 
   private pruneFailures(): void {
-    const cutoff = Date.now() - this.windowMs;
+    const cutoff = Date.now() - this.windowMs
     while (this.failures.length > 0 && this.failures[0]!.at < cutoff) {
-      this.failures.shift();
+      this.failures.shift()
     }
   }
 }

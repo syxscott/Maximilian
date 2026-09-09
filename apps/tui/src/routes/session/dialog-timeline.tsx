@@ -36,11 +36,18 @@ export function DialogTimeline(props: {
   }, [dialog])
 
   const options = useMemo((): Option<string>[] => {
-    const messages = (sync.data.message as Record<string, Array<{ id: string; role: string; time: { created: number }; [k: string]: unknown }>>)?.[props.sessionID] ?? []
+    const messages =
+      (
+        sync.data.message as Record<
+          string,
+          Array<{ id: string; role: string; time: { created: number }; [k: string]: unknown }>
+        >
+      )?.[props.sessionID] ?? []
     const result: Option<string>[] = []
     for (const message of messages) {
       if (message.role !== "user") continue
-      const parts = ((sync.data.part as Record<string, TextPart[]>)?.[message.id] ?? []) as TextPart[]
+      const parts = ((sync.data.part as Record<string, TextPart[]>)?.[message.id] ??
+        []) as TextPart[]
       const part = parts.find((x) => x.type === "text" && !x.synthetic && !x.ignored)
       if (!part) continue
       result.push({
@@ -63,7 +70,11 @@ export function DialogTimeline(props: {
       if (opt) {
         props.onMove(opt.value)
         dialog.replace(
-          <DialogMessage messageID={opt.value} sessionID={props.sessionID} setPrompt={props.setPrompt} />,
+          <DialogMessage
+            messageID={opt.value}
+            sessionID={props.sessionID}
+            setPrompt={props.setPrompt}
+          />,
         )
       }
     }

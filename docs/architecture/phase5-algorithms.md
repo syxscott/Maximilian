@@ -73,6 +73,7 @@ DECIDE(role, candidate, executions, lookback = 30):
 ```
 
 默认阈值（可在配置中覆盖）：
+
 - `MIN_SAMPLE = 20`
 - `SCORE_GAIN = 0.10` (10%)
 - `ACCEPT_GAIN = 0.15` (15%)

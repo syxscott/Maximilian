@@ -260,7 +260,10 @@ export function createApiClient<Methods extends MethodMap = MethodMap>(
       return createEventStream(client, path, options)
     },
     method(verb, path) {
-      const fn = ((opts?: RequestOptions) => client.request(verb, path, opts)) as ApiMethod<unknown[], unknown>
+      const fn = ((opts?: RequestOptions) => client.request(verb, path, opts)) as ApiMethod<
+        unknown[],
+        unknown
+      >
       fn.__args = []
       return fn as never
     },
@@ -330,7 +333,10 @@ export function createEventStream<T = unknown>(
       if (options.validate) {
         const fn = options.validate
         try {
-          parsed = typeof fn === "function" ? (fn as (v: unknown) => T)(parsed) : (fn as { parse: (v: unknown) => T }).parse(parsed)
+          parsed =
+            typeof fn === "function"
+              ? (fn as (v: unknown) => T)(parsed)
+              : (fn as { parse: (v: unknown) => T }).parse(parsed)
         } catch (err) {
           options.onError?.(err)
           continue

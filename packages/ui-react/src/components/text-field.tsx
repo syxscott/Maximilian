@@ -1,4 +1,10 @@
-import { forwardRef, useState, useCallback, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react"
+import {
+  forwardRef,
+  useState,
+  useCallback,
+  type InputHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from "react"
 import { useI18n } from "../context/i18n.js"
 import { IconButton } from "./icon-button.js"
 import { Tooltip, TooltipTrigger, TooltipContent } from "./tooltip.js"
@@ -86,8 +92,12 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
               name={name}
               defaultValue={defaultValue as string}
               value={value as string}
-              onChange={onChange as unknown as TextareaHTMLAttributes<HTMLTextAreaElement>["onChange"]}
-              onKeyDown={onKeyDown as unknown as TextareaHTMLAttributes<HTMLTextAreaElement>["onKeyDown"]}
+              onChange={
+                onChange as unknown as TextareaHTMLAttributes<HTMLTextAreaElement>["onChange"]
+              }
+              onKeyDown={
+                onKeyDown as unknown as TextareaHTMLAttributes<HTMLTextAreaElement>["onKeyDown"]
+              }
               required={required}
               disabled={disabled}
               readOnly={readOnly}
@@ -128,12 +138,8 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
             </Tooltip>
           )}
         </div>
-        {description && (
-          <div data-slot="input-description">{description}</div>
-        )}
-        {error && (
-          <div data-slot="input-error">{error}</div>
-        )}
+        {description && <div data-slot="input-description">{description}</div>}
+        {error && <div data-slot="input-error">{error}</div>}
       </div>
     )
   },

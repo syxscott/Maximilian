@@ -31,6 +31,7 @@ catch regression in test coverage. Results are pushed to the
 ## Scope
 
 Currently mutates:
+
 - `packages/meta-system/src/truth-audit.ts` — most critical, the TruthAudit math
 - `packages/meta-system/src/orchestrator.ts` — decision orchestration
 - `packages/meta-system/src/proposal-pipeline.ts` — simulation
@@ -40,11 +41,11 @@ Currently mutates:
 
 Defined in `stryker.config.json`:
 
-| Tier | Mutation score | Effect |
-|---|---|---|
-| **High** | ≥ 80% | green CI |
-| **Low** | 70–79% | yellow CI (warning) |
-| **Break** | < 70% | red CI (failure) |
+| Tier      | Mutation score | Effect              |
+| --------- | -------------- | ------------------- |
+| **High**  | ≥ 80%          | green CI            |
+| **Low**   | 70–79%         | yellow CI (warning) |
+| **Break** | < 70%          | red CI (failure)    |
 
 These are deliberately below 100% — mutations in unreachable code or
 defensive programming shouldn't block merges.

@@ -60,11 +60,7 @@ export interface DefaultErrorFallbackProps extends ErrorFallbackProps {
   className?: string
 }
 
-export function DefaultErrorFallback({
-  error,
-  resetError,
-  className,
-}: DefaultErrorFallbackProps) {
+export function DefaultErrorFallback({ error, resetError, className }: DefaultErrorFallbackProps) {
   return (
     <div
       role="alert"

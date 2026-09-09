@@ -109,11 +109,11 @@ MetaOrchestrator.cycle(input)
 
 ## Layering
 
-| Layer | Package | Phase |
-|-------|---------|-------|
-| API | `@max/api` | 1, 5, 6 |
-| Meta-system | `@max/meta-system` | 6 |
-| Agent runtime | `@max/dags`, `@max/autonomy` | 2, 5 |
-| Core | `@max/core`, `@max/workspace` | 1 |
+| Layer         | Package                       | Phase   |
+| ------------- | ----------------------------- | ------- |
+| API           | `@max/api`                    | 1, 5, 6 |
+| Meta-system   | `@max/meta-system`            | 6       |
+| Agent runtime | `@max/dags`, `@max/autonomy`  | 2, 5    |
+| Core          | `@max/core`, `@max/workspace` | 1       |
 
 The meta-system is a **higher-level consumer** of the agent runtime. It does not modify the runtime itself — it only emits decisions and events.

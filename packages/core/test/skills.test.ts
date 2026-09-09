@@ -139,8 +139,12 @@ triggers: ["search:", "find:"]
         "utf8",
       )
       const skill = await loadSkillFile(file)
-      expect(matchSkillsByTrigger([skill], "search: cats").map((s) => s.frontmatter.name)).toEqual(["web-search"])
-      expect(matchSkillsByTrigger([skill], "Search: cats").map((s) => s.frontmatter.name)).toEqual(["web-search"])
+      expect(matchSkillsByTrigger([skill], "search: cats").map((s) => s.frontmatter.name)).toEqual([
+        "web-search",
+      ])
+      expect(matchSkillsByTrigger([skill], "Search: cats").map((s) => s.frontmatter.name)).toEqual([
+        "web-search",
+      ])
       expect(matchSkillsByTrigger([skill], "hello")).toEqual([])
     } finally {
       await fs.rm(tmp, { recursive: true, force: true })
@@ -153,11 +157,7 @@ describe("renderSkillSummary", () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "max-sum-"))
     try {
       const file = path.join(tmp, "SKILL.md")
-      await fs.writeFile(
-        file,
-        "---\nname: foo\ndescription: a useful skill\n---\n",
-        "utf8",
-      )
+      await fs.writeFile(file, "---\nname: foo\ndescription: a useful skill\n---\n", "utf8")
       const skill = await loadSkillFile(file)
       expect(renderSkillSummary(skill)).toBe("- **foo**: a useful skill")
     } finally {
@@ -244,46 +244,65 @@ describe("matchSkillsForModel — model-driven matching", () => {
   }
 
   it("matchSkillsByTrigger returns every triggered skill (raw)", async () => {
-    await writeSkill("search", `---
+    await writeSkill(
+      "search",
+      `---
 name: search
 triggers: ["search:"]
 disable-model-invocation: true
----`)
-    await writeSkill("plain", `---
+---`,
+    )
+    await writeSkill(
+      "plain",
+      `---
 name: plain
 triggers: ["plain:"]
----`)
+---`,
+    )
     const skills = await loadSkillDir(tmp)
     const matches = matchSkillsByTrigger(skills, "plain: hi").map((s) => s.frontmatter.name)
     expect(matches).toEqual(["plain"])
   })
 
   it("matchSkillsForModel filters out skills with disableModelInvocation", async () => {
-    await writeSkill("slash", `---
+    await writeSkill(
+      "slash",
+      `---
 name: slash
 triggers: ["/think"]
 disable-model-invocation: true
----`)
-    await writeSkill("auto", `---
+---`,
+    )
+    await writeSkill(
+      "auto",
+      `---
 name: auto
 triggers: ["/think"]
----`)
+---`,
+    )
     const skills = await loadSkillDir(tmp)
-    const raw = matchSkillsByTrigger(skills, "/think deeply").map((s) => s.frontmatter.name).sort()
+    const raw = matchSkillsByTrigger(skills, "/think deeply")
+      .map((s) => s.frontmatter.name)
+      .sort()
     expect(raw).toEqual(["auto", "slash"])
     const filtered = matchSkillsForModel(skills, "/think deeply").map((s) => s.frontmatter.name)
     expect(filtered).toEqual(["auto"])
   })
 
   it("matchSkillsForModel returns [] when only disabled skills match", async () => {
-    await writeSkill("user-only", `---
+    await writeSkill(
+      "user-only",
+      `---
 name: user-only
 triggers: ["/commit"]
 disable-model-invocation: true
----`)
+---`,
+    )
     const skills = await loadSkillDir(tmp)
     expect(matchSkillsForModel(skills, "/commit -m 'x'")).toEqual([])
     // raw matcher still finds it (slash-command path uses the unfiltered version)
-    expect(matchSkillsByTrigger(skills, "/commit -m 'x'").map((s) => s.frontmatter.name)).toEqual(["user-only"])
+    expect(matchSkillsByTrigger(skills, "/commit -m 'x'").map((s) => s.frontmatter.name)).toEqual([
+      "user-only",
+    ])
   })
 })

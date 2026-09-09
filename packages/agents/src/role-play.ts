@@ -118,12 +118,18 @@ export class RolePlaying {
 
     const cleanup = () => clearTimeout(timeoutHandle)
     const runA = async (prompt: string) => {
-      try { return await this.agentAExecute(prompt, phaseARole, chatOptions) }
-      finally { cleanup() }
+      try {
+        return await this.agentAExecute(prompt, phaseARole, chatOptions)
+      } finally {
+        cleanup()
+      }
     }
     const runB = async (prompt: string) => {
-      try { return await this.agentBExecute(prompt, phaseBRole, chatOptions) }
-      finally { cleanup() }
+      try {
+        return await this.agentBExecute(prompt, phaseBRole, chatOptions)
+      } finally {
+        cleanup()
+      }
     }
 
     let aOutput: string
@@ -131,12 +137,18 @@ export class RolePlaying {
 
     if (this.turn === 0) {
       aOutput = await runA(task)
-      bFeedback = await runB(`Review the following output from ${roleA} and provide specific, actionable feedback:\n\n${aOutput}`)
+      bFeedback = await runB(
+        `Review the following output from ${roleA} and provide specific, actionable feedback:\n\n${aOutput}`,
+      )
     } else {
       const lastB = this.lastMessageByRole("B")
       if (!lastB) throw new Error("Unexpected: no B message in history")
-      aOutput = await runA(`Address the following feedback from ${roleB} and revise your output accordingly:\n\n${lastB.content}`)
-      bFeedback = await runB(`Re-review the revised output from ${roleA} and state whether it adequately addresses your previous feedback. If still unsatisfactory, provide further corrections:\n\n${aOutput}`)
+      aOutput = await runA(
+        `Address the following feedback from ${roleB} and revise your output accordingly:\n\n${lastB.content}`,
+      )
+      bFeedback = await runB(
+        `Re-review the revised output from ${roleA} and state whether it adequately addresses your previous feedback. If still unsatisfactory, provide further corrections:\n\n${aOutput}`,
+      )
     }
 
     const aMsg: RolePlayMessage = { role: "A", content: aOutput, timestamp: new Date() }
@@ -249,7 +261,9 @@ export class RolePlaying {
   private estimateConsensusScore(_aOutput: string, bFeedback: string): number {
     // Explicit approval phrases with word boundaries to avoid "not approved" matching.
     const approved =
-      /\b(approved|looks good|looks correct|looks acceptable|accepted|satisfied|good enough|lgtm)\b/i.test(bFeedback)
+      /\b(approved|looks good|looks correct|looks acceptable|accepted|satisfied|good enough|lgtm)\b/i.test(
+        bFeedback,
+      )
     // Explicit rejection/fix keywords.
     const needsWork =
       /\b(revise|fix|change|update|address|correct|rewrite|redo|must|should)\b/i.test(bFeedback)

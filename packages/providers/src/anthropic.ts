@@ -6,15 +6,12 @@
  * the registry / preset pipeline.
  */
 
-import {
-  AnthropicMessagesProvider,
-  type AnthropicMessagesConfig,
-} from "./formats/anthropic.js";
+import { AnthropicMessagesProvider, type AnthropicMessagesConfig } from "./formats/anthropic.js"
 
 export interface AnthropicConfig {
-  apiKey: string;
-  baseURL?: string;
-  defaultModel?: string;
+  apiKey: string
+  baseURL?: string
+  defaultModel?: string
 }
 
 export class AnthropicProvider extends AnthropicMessagesProvider {
@@ -25,6 +22,6 @@ export class AnthropicProvider extends AnthropicMessagesProvider {
       apiKey: config.apiKey,
       baseURL: config.baseURL,
       defaultModel: config.defaultModel ?? "claude-3-5-haiku-20241022",
-    } satisfies AnthropicMessagesConfig);
+    } satisfies AnthropicMessagesConfig)
   }
 }

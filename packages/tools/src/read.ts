@@ -57,9 +57,7 @@ export const readTool = makeTool<ReadInput, ReadOutput>({
         entries: entries.map((e) => ({
           name: e.name,
           type: (e.isDirectory() ? "directory" : e.isSymbolicLink() ? "symlink" : "file") as
-            | "file"
-            | "directory"
-            | "symlink",
+            "file" | "directory" | "symlink",
         })),
       }
     }

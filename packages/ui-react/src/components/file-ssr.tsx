@@ -66,12 +66,7 @@ const DiffSSRViewer: React.FC<DiffSSRViewerProps> = (props) => {
   const prerenderedHTML = props.preloadedDiff?.prerenderedHTML ?? ""
 
   return (
-    <div
-      data-component="file"
-      data-mode="diff"
-      ref={containerRef}
-      className={cn(props.className)}
-    >
+    <div data-component="file" data-mode="diff" ref={containerRef} className={cn(props.className)}>
       <DIFFS_TAG_NAME_CUSTOM ref={fileDiffRef} id="ssr-diff">
         {isServer ? (
           <template
