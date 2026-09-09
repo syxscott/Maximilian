@@ -9,7 +9,8 @@
     "build": "tsc",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/demo.ts",
+    "contract:update": "node scripts/update-contract.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
@@ -20,6 +21,7 @@
     "@max/commander": "workspace:*",
     "@max/config": "workspace:*",
     "@max/core": "workspace:*",
+    "@max/core-thin-sdk": "workspace:*",
     "@max/dags": "workspace:*",
     "@max/database": "workspace:*",
     "@max/evolution": "workspace:*",

@@ -51,4 +51,9 @@ export {
   llmTokensTotal,
   llmCallDuration,
   llmErrorsTotal,
+  // Phase 9 — SLO indicator metrics
+  truthAuditVerdictsTotal,
+  opencodeSessionsCreatedTotal,
+  opencodeSessionsLeakedTotal,
+  metaCycleDuration,
 } from "./metrics.js";

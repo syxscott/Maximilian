@@ -2,9 +2,9 @@
 // Derived from OpenCode packages/core/src/tool/glob.ts
 // Plain TypeScript, no Effect-TS
 
-import { makeTool, type ToolContent } from "@max/llm"
+import { makeTool, type ToolContent, ToolKind } from "@max/llm"
 import { resolve, relative } from "node:path"
-import { readdir, stat } from "node:fs/promises"
+import { readdir } from "node:fs/promises"
 
 export interface GlobInput {
   pattern: string
@@ -58,6 +58,7 @@ async function walkDir(dir: string, maxResults: number): Promise<string[]> {
 export const globTool = makeTool<GlobInput, GlobOutput>({
   name: "glob",
   description: "Find files matching a glob pattern. Supports *, **, and ?.",
+  kind: ToolKind.Search,
   inputSchema: {
     type: "object",
     properties: {

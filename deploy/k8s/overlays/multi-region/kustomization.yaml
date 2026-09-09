@@ -1,0 +1,63 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Multi-region example — apply with:
+#   kubectl apply -k deploy/k8s/overlays/multi-region --context=us-east
+#   kubectl apply -k deploy/k8s/overlays/multi-region --context=eu-west
+#
+# Architecture:
+#   - Each region runs the full stack (api + worker + dashboard)
+#   - Postgres uses a managed multi-region cluster (e.g. Aurora Global,
+#     Spanner, CockroachDB). Each region's pods read from the cluster's
+#     nearest endpoint; writes go to the region-local primary.
+#   - Redis is per-region (RDB snapshots cross-replicate for failover).
+#   - BullMQ jobs are tagged with the origin region so a regional
+#     failover doesn't re-process jobs that already ran elsewhere.
+#   - opencode serve runs co-located with the worker in each region.
+#
+# This overlay produces a per-region configuration that adds:
+#   - A `region` label on every resource for filtering
+#   - Region-specific env vars (DATABASE_URL points to the regional
+#     primary, etc.)
+#   - Network policies that only allow egress to the regional endpoints
+#
+# To deploy:
+#   1. Provision the multi-region Postgres cluster and capture the
+#      regional primary endpoint URLs.
+#   2. Replace REGION_PRIMARY_DSN below for each cluster context.
+#   3. Apply this overlay against each cluster context.
+
+namespace: maximilian
+
+resources:
+  - ../../base
+
+labels:
+  - includeSelectors: true
+    pairs:
+      region: us-east-1   # change per region when applying
+
+# Region-specific env. The overlay assumes US-East-1; copy the file
+# and change for each region.
+configMapGenerator:
+  - name: maximilian-config
+    behavior: merge
+    literals:
+      - DEPLOY_REGION=us-east-1
+      - DATABASE_URL=postgres://maximilian:REPLACE_ME@postgres-us-east-1.maximilian-global.example.com:5432/maximilian
+      - REDIS_URL=redis://redis-us-east-1.maximilian-global.example.com:6379
+      - OPENCODE_BASE_URL=http://opencode-serve:4096
+      - OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io
+      - SLO_ALERT_SLACK_WEBHOOOK=https://hooks.slack.com/services/REPLACE_ME_PROD
+      # Cross-region failover: when this region's primary is down,
+      # BullMQ jobs that were enqueued here get retried against the
+      # peer region. See multi-region.md for the BullMQ migration.
+      - FAILOVER_PEER_REGIONS=eu-west-1,ap-southeast-1
+
+# NetworkPolicy: only egress to known endpoints (the regional
+# Postgres + Redis + opencode sidecar). Blocks accidental egress to
+# arbitrary internet endpoints, which is a defense-in-depth layer.
+# Note: NetworkPolicy requires a CNI that supports it (Calico,
+# Cilium, etc.). Most managed k8s has this on by default.
+generatorOptions:
+  disableNameSuffixHash: true

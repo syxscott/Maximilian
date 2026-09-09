@@ -24,8 +24,8 @@
   <img src="https://img.shields.io/badge/pnpm-9-F69220?style=for-the-badge&logo=pnpm&logoColor=white" alt="pnpm"/>
   <br>
   <img src="https://img.shields.io/badge/License-TBD-lightgrey?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/Tests-1283%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
-  <img src="https://img.shields.io/badge/Packages-21%20%2B%204%20apps-7B1FA2?style=for-the-badge&logo=npm&logoColor=white" alt="Packages"/>
+  <img src="https://img.shields.io/badge/Tests-2300%2B%20%E2%9C%93-4c1?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Packages-23%20%2B%204%20apps-7B1FA2?style=for-the-badge&logo=npm&logoColor=white" alt="Packages"/>
   <img src="https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
 </p>
 
@@ -153,9 +153,9 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
   <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
   <circle cx="50" cy="50" r="45" fill="none" stroke="#7c3aed" stroke-width="6"
           stroke-dasharray="283" stroke-dashoffset="14" transform="rotate(-90 50 50)" stroke-linecap="round"/>
-  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">1283</text>
+  <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#7c3aed">2300+</text>
 </svg>
-<br><b>1283 Tests</b>
+<br><b>2300+ Tests</b>
 <br><sub>✅ 全部通过 / all green</sub>
 </td>
 <td align="center" width="14%">
@@ -163,10 +163,10 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
   <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="6"/>
   <circle cx="50" cy="50" r="45" fill="none" stroke="#ec4899" stroke-width="6"
           stroke-dasharray="283" stroke-dashoffset="0" transform="rotate(-90 50 50)" stroke-linecap="round"/>
-  <text x="50" y="48" text-anchor="middle" font-size="20" font-weight="900" fill="#ec4899">21</text>
+  <text x="50" y="48" text-anchor="middle" font-size="20" font-weight="900" fill="#ec4899">23</text>
   <text x="50" y="64" text-anchor="middle" font-size="9" fill="#ec4899">+4 apps</text>
 </svg>
-<br><b>21 + 4</b>
+<br><b>23 + 4</b>
 <br><sub>📦 包 + 应用 / packages + apps</sub>
 </td>
 <td align="center" width="14%">
@@ -176,7 +176,7 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
           stroke-dasharray="283" stroke-dashoffset="28" transform="rotate(-90 50 50)" stroke-linecap="round"/>
   <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="900" fill="#06b6d4">86</text>
 </svg>
-<br><b>86 Routes</b>
+<br><b>92 Routes</b>
 <br><sub>🔌 HTTP API 路由</sub>
 </td>
 <td align="center" width="14%">
@@ -289,9 +289,9 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
 </tr>
 <tr>
 <td align="center">🗄️</td>
-<td><b>PostgreSQL + 文件双模</b> — 有 DB 用 PG,无 DB 自动落盘</td>
+<td><b>PostgreSQL + 文件双模</b> — 进程内模式无 DB 自动落盘;队列模式(worker)需 <code>DATABASE_URL</code></td>
 <td align="center">🗄️</td>
-<td><b>PostgreSQL + file dual-mode</b> — PG with <code>DATABASE_URL</code>, else file fallback</td>
+<td><b>PostgreSQL + file dual-mode</b> — file fallback for in-process mode; queue mode (worker) requires <code>DATABASE_URL</code></td>
 </tr>
 <tr>
 <td align="center">📨</td>
@@ -301,15 +301,45 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
 </tr>
 <tr>
 <td align="center">🧪</td>
-<td><b>1283+ 测试</b> — 21 包 + 4 app 覆盖,Vitest + CI 跑 PG 真实库</td>
+<td><b>2300+ 测试</b> — 23 包 + 4 app 覆盖,Vitest + CI 跑 PG 真实库</td>
 <td align="center">🧪</td>
-<td><b>1283+ tests</b> — 21 packages + 4 apps, Vitest + CI runs against real Postgres</td>
+<td><b>2300+ tests</b> — 23 packages + 4 apps, Vitest + CI runs against real Postgres</td>
 </tr>
 <tr>
 <td align="center">📈</td>
 <td><b>可观测性</b> — Pino + OpenTelemetry + Prometheus</td>
 <td align="center">📈</td>
 <td><b>Observability</b> — Pino + OpenTelemetry + Prometheus</td>
+</tr>
+<tr>
+<td align="center">🔧</td>
+<td><b>ToolKind 枚举系统</b> — 编译期穷举检查,Capability Mode 格子</td>
+<td align="center">🔧</td>
+<td><b>ToolKind enum</b> — compile-time exhaustiveness, Capability Mode lattice</td>
+</tr>
+<tr>
+<td align="center">📦</td>
+<td><b>统一工具上下文</b> — ExtensionBag 扩展机制,Symbol key 类型安全</td>
+<td align="center">📦</td>
+<td><b>Unified tool context</b> — ExtensionBag, type-safe Symbol keys</td>
+</tr>
+<tr>
+<td align="center">🌊</td>
+<td><b>流式工具协议</b> — AsyncIterable Progress/Terminal, 支持实时输出</td>
+<td align="center">🌊</td>
+<td><b>Streaming tool protocol</b> — AsyncIterable Progress/Terminal, real-time output</td>
+</tr>
+<tr>
+<td align="center">🛡️</td>
+<td><b>SandboxProfile</b> — 5 种沙箱预设(Off/Workspace/Devbox/ReadOnly/Strict)</td>
+<td align="center">🛡️</td>
+<td><b>SandboxProfile</b> — 5 sandbox presets with path/network policy</td>
+</tr>
+<tr>
+<td align="center">💡</td>
+<td><b>Reminder 系统</b> — 工具执行后提醒,安全/性能/验证提示</td>
+<td align="center">💡</td>
+<td><b>Reminder system</b> — post-execution hints, security/performance checks</td>
 </tr>
 </table>
 
@@ -407,7 +437,7 @@ cd Maximilian
 pnpm install
 ```
 
-**这一步会**:装 21 个 packages + 4 个 apps 的依赖(用 pnpm workspace),拉 turbo / vitest / drizzle 等 devDeps。
+**这一步会**:装 23 个 packages + 4 个 apps 的依赖(用 pnpm workspace),拉 turbo / vitest / drizzle 等 devDeps。
 
 **首次预计时间**:~2 分钟(取决于网速)。
 
@@ -420,7 +450,7 @@ cd Maximilian
 pnpm install
 ```
 
-**What this does**: installs 21 packages + 4 apps via pnpm workspaces, plus devDeps (turbo, vitest, drizzle, etc.).
+**What this does**: installs 23 packages + 4 apps via pnpm workspaces, plus devDeps (turbo, vitest, drizzle, etc.).
 
 **First run time**: ~2 min (network-dependent).
 
@@ -541,12 +571,12 @@ pnpm start:all
 # C. 分布式(BullMQ 队列 + worker)
 pnpm start:full
 # → 起 API + Dashboard + Worker 三个进程
-# → 需要先 docker compose up redis 起 Redis
+# → 需要先 docker compose up redis 起 Redis;worker 还要求 DATABASE_URL
 
 # D. Docker 一键全栈(API + Dashboard + Worker + Postgres + Redis + OTel + Prometheus)
 docker compose --profile queue --profile observability up -d
 
-# E. 只看 SDK 演示
+# E. 只跑内置 E2E 演示
 pnpm demo
 ```
 
@@ -566,12 +596,12 @@ pnpm start:all
 # C. Distributed (BullMQ queue + worker)
 pnpm start:full
 # → API + Dashboard + Worker in three procs
-# → Requires `docker compose up redis` first
+# → Requires `docker compose up redis` first; the worker also requires DATABASE_URL
 
 # D. Docker full stack (API + Dashboard + Worker + Postgres + Redis + OTel + Prometheus)
 docker compose --profile queue --profile observability up -d
 
-# E. SDK demo only
+# E. Built-in E2E demo only
 pnpm demo
 ```
 
@@ -603,9 +633,6 @@ pnpm demo
 curl http://localhost:3001/api/health
 # → {"status":"ok",...}
 
-# Liveness(K8s)
-curl http://localhost:3001/api/health/live
-
 # Readiness(K8s,带 DB / Redis ping)
 curl http://localhost:3001/api/ready
 
@@ -628,9 +655,6 @@ curl http://localhost:3001/api/openapi.json | jq '.info.title'
 # Health check
 curl http://localhost:3001/api/health
 # → {"status":"ok",...}
-
-# Liveness (K8s)
-curl http://localhost:3001/api/health/live
 
 # Readiness (K8s, pings DB / Redis)
 curl http://localhost:3001/api/ready
@@ -657,7 +681,7 @@ curl http://localhost:3001/api/openapi.json | jq '.info.title'
 
 ```bash
 pnpm type-check          # 全包 TS 类型检查 (~15s)
-pnpm test                # 全包 vitest 单元测试 (~30s,~1283 tests)
+pnpm test                # 全包 vitest 单元测试 (~30s,~2300+ tests)
 pnpm --filter @max/api test  # 只跑某个包
 pnpm e2e                 # Playwright 端到端(需要 dashboard 先起)
 ```
@@ -675,7 +699,7 @@ pnpm e2e                 # Playwright 端到端(需要 dashboard 先起)
 | `Cannot find module '@max/...'`                | pnpm workspace 没 link          | `pnpm install` 重跑                                                        |
 | Dashboard 空白                                 | `pnpm dev` 起时 vite 还没编译   | 等 5-10s,或开 DevTools 看 console                                          |
 | Docker 起来后 API 报 `ECONNREFUSED postgres`   | postgres 还没 ready             | `docker compose logs -f postgres` 等 `database system is ready`,API 会重试 |
-| 测试跑挂 `Cannot read properties of undefined` | 之前的运行残留 state            | `pnpm clean && pnpm install`                                               |
+| 测试跑挂 `Cannot read properties of undefined` | 之前的运行残留 state            | 删除 node_modules 后重新 `pnpm install`                                    |
 | 启动后立刻 `Out of memory`                     | LLM stream 没消费               | 检查 `pnpm dev` 的 worker 进程,只跑单 workspace                            |
 
 > 🔍 更深的生产部署 + 迁移 + 扩 worker + 备份恢复 → [`docs/operations/deployment.md`](docs/operations/deployment.md)
@@ -696,7 +720,7 @@ flowchart TB
     end
 
     subgraph API["🔌 API 层 / API Layer"]
-        HONO["⚡ Hono + OpenAPI 3.1<br/><sub>:3001 · 86 routes</sub>"]
+        HONO["⚡ Hono + OpenAPI 3.0<br/><sub>:3001 · 92 routes</sub>"]
         AUTH["🔐 JWT + RBAC<br/><sub>3 roles</sub>"]
         RATE["🚦 Rate Limiter<br/><sub>100 req/min</sub>"]
     end
@@ -791,14 +815,14 @@ flowchart TB
 
 - **API + Worker 分离** — API 接收请求立即返回,真正的执行在 Worker 进程跑,水平扩展只需要加 Worker
 - **心跳检测** — Worker 每 15s 写一次 Redis key(TTL 30s),API 入队前先看心跳,没心跳就 503
-- **存储双模** — 有 `DATABASE_URL` 走 PostgreSQL(11 个 PG store),无就走文件系统
+- **存储双模** — 有 `DATABASE_URL` 走 PostgreSQL(14 个 PG store),无就走文件系统
 
 </td>
 <td valign="top">
 
 - **API + Worker split** — API accepts and returns immediately, real work runs in Worker, scale by adding Workers
 - **Heartbeat probe** — Worker writes Redis key every 15s (TTL 30s); API checks before enqueue, returns 503 if missing
-- **Dual-mode storage** — with `DATABASE_URL` uses PostgreSQL (11 PG stores); without, falls back to file system
+- **Dual-mode storage** — with `DATABASE_URL` uses PostgreSQL (14 PG stores); without, falls back to file system
 
 </td>
 </tr>
@@ -816,7 +840,7 @@ flowchart TB
 <th>选型 / Choice</th>
 <th width="5%">图标 / Icon</th>
 </tr>
-<tr><td><b>API server</b></td><td>Hono + OpenAPI 3.1</td><td align="center">⚡</td></tr>
+<tr><td><b>API server</b></td><td>Hono + OpenAPI 3.0</td><td align="center">⚡</td></tr>
 <tr><td><b>Frontend</b></td><td>React 19 + Vite + Tailwind</td><td align="center">🎨</td></tr>
 <tr><td><b>Terminal UI</b></td><td>Ink + React (OpenCode-port)</td><td align="center">⌨️</td></tr>
 <tr><td><b>Worker</b></td><td>BullMQ + Redis</td><td align="center">📨</td></tr>
@@ -827,7 +851,7 @@ flowchart TB
 <tr><td><b>Logging</b></td><td>Pino (structured JSON)</td><td align="center">📝</td></tr>
 <tr><td><b>Tracing</b></td><td>OpenTelemetry + OTLP</td><td align="center">🔭</td></tr>
 <tr><td><b>Metrics</b></td><td>prom-client + Prometheus</td><td align="center">📊</td></tr>
-<tr><td><b>Tests</b></td><td>Vitest (1283 tests, 21 packages + 4 apps)</td><td align="center">🧪</td></tr>
+<tr><td><b>Tests</b></td><td>Vitest (2300+ tests, 23 packages + 4 apps)</td><td align="center">🧪</td></tr>
 <tr><td><b>CI/CD</b></td><td>GitHub Actions + Docker multi-stage</td><td align="center">🐳</td></tr>
 <tr><td><b>Load test</b></td><td>k6 (nightly)</td><td align="center">📈</td></tr>
 </table>
@@ -841,12 +865,12 @@ flowchart TB
 ```
 Maximilian/
 ├── 🎯 apps/
-│   ├── api/            ⚡ Hono server, OpenAPI 3.1, 86 routes
+│   ├── api/            ⚡ Hono server, OpenAPI 3.0, 92 routes
 │   ├── dashboard/      🎨 React 19 + Vite UI
 │   ├── tui/            ⌨️ Terminal UI (Ink + React)
 │   └── worker/         📨 BullMQ consumer
 │
-├── 📦 packages/        (21 packages)
+├── 📦 packages/        (23 packages)
 │   ├── core/           🧠 Agent runtime, plan/task/result types
 │   ├── providers/      🔌 Unified LLM provider + retry + circuit-breaker
 │   ├── dags/           🤖 Team graph composition
@@ -857,11 +881,13 @@ Maximilian/
 │   ├── commander/      🧭 LLM-driven request decomposition
 │   ├── llm/            💬 Generation options, presets, tool calls
 │   ├── workspace/      📁 File workspace + atomic write helpers
-│   ├── database/       🐘 Drizzle schema + 11 PG stores
+│   ├── database/       🐘 Drizzle schema + 14 PG stores
 │   ├── queue/          📨 BullMQ producer/consumer + heartbeat
+│   ├── gateway/        🌐 Webhook / external-channel gateway
 │   ├── telemetry/      📝 Pino + OTel + Prometheus
 │   ├── config/         ⚙️ Zod-validated env + feature flags
 │   ├── sdk/            📦 Client SDK for the TUI
+│   ├── core-thin-sdk/  🪶 Slim core re-export SDK
 │   ├── tools/          🛠️ bash / read / grep / edit / glob
 │   ├── i18n/           🌐 Locale catalog + plural rules
 │   ├── ui-react/       🧩 React component primitives
@@ -889,25 +915,29 @@ Maximilian/
 
 <div align="center">
 
-| 标签 / Tag         | 路径前缀 / Path prefix                      | 用途 / Purpose                   |
-| ------------------ | ------------------------------------------- | -------------------------------- |
-| 🔐 `auth`          | `/api/auth/*`                               | 注册 / 登录 / 刷新 / 登出 (JWT)  |
-| 💬 `chat`          | `/api/chat`                                 | 提交需求,触发 workspace          |
-| 📦 `workspaces`    | `/api/workspaces/*`                         | CRUD + 列表 / 详情 / 产物        |
-| 🌀 `executions`    | `/api/executions/*`                         | 执行历史、回放、产物下载         |
-| 🧠 `learning`      | `/api/learning/*`                           | Agent 表现学习数据               |
-| 📈 `evolution`     | `/api/evolution/*`                          | 画像 / 排行榜 / 版本快照         |
-| 🔬 `meta`          | `/api/meta/*`                               | 进化 / 发现 / 治理 / 出生 / 淘汰 |
-| 🛡️ `governance`    | `/api/governance/*`                         | 风险评估 / 审批 / 策略           |
-| 🏢 `tenants`       | `/api/tenants/*`                            | 租户 CRUD(多租户模式)            |
-| 👥 `permissions`   | `/api/permissions/*`                        | RBAC 权限矩阵                    |
-| 📊 `usage`         | `/api/usage/*`                              | LLM token 用量、计费             |
-| 📈 `observability` | `/api/observability/*`                      | 指标 / 事件 / 健康检查           |
-| ⚙️ `system`        | `/api/health`, `/api/metrics`, `/api/ready` | 健康 / Prometheus / K8s 就绪     |
+| 标签 / Tag         | 路径前缀 / Path prefix                      | 用途 / Purpose                     |
+| ------------------ | ------------------------------------------- | ---------------------------------- |
+| 🔐 `auth`          | `/api/auth/*`                               | 注册 / 登录 / 刷新 / 登出 (JWT)    |
+| 💬 `chat`          | `/api/chat`                                 | 提交需求,触发 workspace            |
+| 📦 `workspaces`    | `/api/workspaces/*`                         | CRUD + 列表 / 详情 / 产物          |
+| 🌀 `executions`    | `/api/executions/*`                         | 执行历史、回放、产物下载           |
+| 🧠 `learning`      | `/api/learning/*`                           | Agent 表现学习数据                 |
+| 📈 `evolution`     | `/api/evolution/*`                          | 画像 / 排行榜 / 版本快照           |
+| 🔬 `meta`          | `/api/meta/*`                               | 进化 / 发现 / 治理 / 出生 / 淘汰   |
+| 🛡️ `governance`    | `/api/governance/*`                         | 风险评估 / 审批 / 策略             |
+| 🏢 `tenants`       | `/api/tenants/*`                            | 租户 CRUD(多租户模式)              |
+| 👥 `permissions`   | `/api/permissions/*`                        | RBAC 权限矩阵                      |
+| 📊 `usage`         | `/api/usage/*`                              | LLM token 用量、计费               |
+| 📈 `observability` | `/api/observability/*`                      | 指标 / 事件 / 健康检查             |
+| ⚙️ `system`        | `/api/health`, `/api/metrics`, `/api/ready` | 健康 / Prometheus / K8s 就绪       |
+| 🚩 `feature-flags` | `/api/flags/*`                              | 功能开关 / 评估 / 覆盖(写需 admin) |
+| 🔔 `subscriptions` | `/api/subscriptions/*`                      | Webhook 订阅 / 事件流              |
+| 📡 `opencode`      | `/api/opencode/*`                           | opencode 会话桥接                  |
+| ✅ `approvals`     | `/api/approvals/*`                          | 审批应答                           |
 
 </div>
 
-> **共 86 个路由,分 13 个 tag 组**。完整 OpenAPI 3.1 spec 在运行时通过 <http://localhost:3001/api/openapi.json> 拉取,Swagger UI 在 <http://localhost:3001/api/docs>。
+> **共 92 条路径、18 个 tag 组**。完整 OpenAPI 3.0 spec 在运行时通过 <http://localhost:3001/api/openapi.json> 拉取,Swagger UI 在 <http://localhost:3001/api/docs>。
 
 ---
 
@@ -1019,8 +1049,8 @@ docker compose --profile queue --profile observability up -d
 ## 🧪 跑测试 / Running Tests
 
 ```bash
-pnpm test                       # 全部 1283+ tests
-pnpm --filter @max/api test     # 只跑 API(170 tests)
+pnpm test                       # 全部 2300+ tests
+pnpm --filter @max/api test     # 只跑 API(215 tests)
 pnpm type-check                 # 只跑 TS 类型检查
 pnpm lint                       # 只跑 lint
 ```
@@ -1042,6 +1072,63 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 
 ---
 
+## 🔬 深度借鉴 / Deep Borrowings (22 项目研究 wave)
+
+<div align="center">
+
+> 2026-07 集中调研了 GitHub 上 22 个与 Maximilian 思路类似的项目,将其中可借鉴的模式全部落地实现。
+> July 2026: systematically researched 22 similar projects on GitHub and implemented every borrowable pattern.
+
+</div>
+
+本轮共新增 **~3800 行生产代码,68 个文件改动,50+ 新测试**,源自 22 个项目的 30+ 模式。
+
+### 🏆 高价值项目 / Top-Tier Sources
+
+| 项目                                                                                         | Stars  | 借鉴模式                                                          | 本仓位置                                                                          |
+| -------------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)                          | 37.8k★ | Teams-first 多 agent 编排 + Team Memory + readable delegation IDs | `packages/core/src/team-orchestrator.ts`                                          |
+| [cft0808/edict](https://github.com/cft0808/edict)                                            | 16.2k★ | 实时 dashboard + 三省六部制 agent 分工                            | SSE replay + `apps/dashboard` 实时流                                              |
+| [kyegomez/swarms](https://github.com/kyegomez/swarms)                                        | 6.9k★  | Provider Failover 优先级队列 + 自动切换 + 健康检查                | `packages/core/src/provider-failover.ts`                                          |
+| [sentient-agi/ROMA](https://github.com/sentient-agi/ROMA)                                    | 5.1k★  | 递归任务分解 + 不可变 TaskNode 状态机 + 深度守卫                  | `packages/core/src/{task-node,atomizer,recursive-phase-runner}.ts`                |
+| [VRSEN/agency-swarm](https://github.com/VRSEN/agency-swarm)                                  | 4.5k★  | 多 agent 角色委派 + 错误分类 + failover                           | `packages/core/src/provider-failover.ts`                                          |
+| [Kocoro-lab/Shannon](https://github.com/Kocoro-lab/Shannon)                                  | 2.1k★  | Redis Streams 事件日志 + SSE replay + 批量持久化                  | `apps/api/src/{event-log,sse-replay}.ts` + `packages/core/src/batched-persist.ts` |
+| [myclaude](https://github.com/stellarlinkco/myclaude)                                        | 2.7k★  | 多 vendor CLI 包装 + 敏感值日志脱敏                               | `packages/core/src/log-mask.ts`                                                   |
+| [voicetree](https://github.com/voicetreelab/voicetree)                                       | 894★   | CRDT 风格图 undo + reverseDelta + reconnect 语义                  | `packages/meta-system/src/graph-undo.ts`                                          |
+| [NousResearch/hermes-evolution](https://github.com/NousResearch/hermes-agent-self-evolution) | 4.7k★  | 自进化 prompt 突变 + 约束门 + 反事实 Δ 评估                       | `packages/evolution/src/{secret-scrub,constraint-gates,llm-judge}.ts`             |
+| [EverMind-AI/EvoAgentBench](https://github.com/EverMind-AI/EvoAgentBench)                    | 26★    | 自进化评测基线 + min-coverage 守卫                                | `packages/evolution/src/leaderboard.ts`                                           |
+| [framerslab/agentos](https://github.com/framerslab/agentos)                                  | 600★   | HEXACO+PAD 人格配置 + 语音覆盖 + prompt 注入                      | `packages/dags/src/personality-prompt.ts`                                         |
+| [Ranjan-Mayank/BrandBrain---AI](https://github.com/Ranjan-Mayank/BrandBrain---AI)            | 3★     | 多 persona 组合 + HARD RULES 隐藏内部路由                         | `packages/meta-system/src/persona-composer.ts`                                    |
+| [openai/swarm](https://github.com/openai/swarm)                                              | 21.8k★ | Routine + handoff 模式                                            | `packages/agents/src/role-play.ts`                                                |
+| [kdcokenny/opencode-workspace](https://github.com/kdcokenny/opencode-workspace)              | 537★   | OpenCode 多 agent harness + compaction 重注入                     | `apps/tui/src/command-palette.tsx`                                                |
+| [sdeonvacation/opencode-x](https://github.com/sdeonvacation/opencode-x)                      | 138★   | 窗口滚动 + 两步确认 + leader-key 模式                             | `apps/tui/src/components/destructive-confirm.tsx`                                 |
+| [thinkneo-ai/mcp-server](https://github.com/thinkneo-ai/mcp-server)                          | 3★     | MCP↔A2A 双协议桥 + agent card 自动生成                            | `packages/core/src/acp/{agent-card,well-known}.ts`                                |
+| [ibmlachezar/multi-agent-patterns](https://github.com/ibmlachezar/multi-agent-patterns)      | 1★     | 5 个 A2A 模式(发现/委派/桥接/联邦/事件网格)                       | `packages/core/src/acp/a2a-handler.ts`                                            |
+| [ajbarea/kourai-khryseai](https://github.com/ajbarea/kourai-khryseai)                        | 1★     | 10 个 A2A agent + CONFIRM_ORDER + pre-screen                      | `packages/core/src/acp/{quick-classify,redact}.ts`                                |
+| [a7ul/vibes](https://github.com/a7ul/vibes)                                                  | 12★    | pydantic-ai 风格 + per-tool approval + TestModel                  | `packages/autonomy/src/hitl.ts`                                                   |
+| [axar-ai/axar](https://github.com/axar-ai/axar)                                              | 162★   | 装饰器声明式 agent(已评估,未采用 TC39)                            | —                                                                                 |
+| [kingkillery/pk-pi-hermes-evolve](https://github.com/kingkillery/pk-pi-hermes-evolve)        | 9★     | TS + DSPY 双 backend 模式                                         | 参考 `packages/evolution` 双 scorer                                               |
+| [questflowai/awesome-a2a-hub](https://github.com/questflowai/awesome-a2a-hub)                | 26★    | A2A 生态基线 + card 字段长度约定                                  | `packages/core/src/acp/agent-card.ts`                                             |
+
+### 📊 本轮新增模块 / New Modules (W4–W6)
+
+| 模块                   | 文件                                                                                | 测试 | 借鉴                                     |
+| ---------------------- | ----------------------------------------------------------------------------------- | ---- | ---------------------------------------- |
+| A2A v0.3.0 完整协议    | `packages/core/src/acp/{agent-card,well-known,tracing,quick-classify,redact}.ts`    | 7    | mcp-server, kourai, multi-agent-patterns |
+| 进化真实突变           | `packages/evolution/src/{secret-scrub,constraint-gates,llm-judge}.ts`               | 52   | hermes-evolution, EvoAgentBench          |
+| 生产基础设施           | `packages/core/src/{circuit-breaker,log-mask,hot-reload-config,batched-persist}.ts` | 16   | Shannon, myclaude, agentos               |
+| Persona 组合           | `packages/meta-system/src/persona-composer.ts`                                      | 155  | BrandBrain                               |
+| 纯函数图布局           | `apps/dashboard/src/lib/graph-layout.ts`                                            | 6    | voicetree                                |
+| ROMA 递归 PhaseRunner  | `packages/core/src/recursive-phase-runner.ts`                                       | 7    | ROMA                                     |
+| HEXACO 人格            | `packages/dags/src/personality-prompt.ts`                                           | 33   | agentos                                  |
+| SSE replay + event-log | `apps/api/src/{event-log,sse-replay}.ts`                                            | 32   | Shannon                                  |
+| Digital Twin CRDT undo | `packages/meta-system/src/graph-undo.ts`                                            | 28   | voicetree                                |
+| Provider Failover      | `packages/core/src/provider-failover.ts`                                            | 13   | swarms, agency-swarm                     |
+| Teams-first 编排       | `packages/core/src/team-orchestrator.ts`                                            | 12   | oh-my-claudecode                         |
+| Dashboard i18n         | `apps/dashboard/src/components/*.tsx` + `packages/i18n`                             | —    | —                                        |
+
+---
+
 ## 🙏 致谢与借鉴 / Acknowledgements
 
 <div align="center">
@@ -1051,14 +1138,14 @@ CI 在每次 push 到 main 跑全套,并启一个 PostgreSQL service container �
 
 </div>
 
-Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (borrow / adapt) 了 30 个模块 / 模式**,源自 11 个开源项目。
+Maximilian 在 6 个开发 phase + 4 个 Kosmos wave + 22 项目研究 wave 中,共 **借鉴 / 改编 (borrow / adapt) 了 50+ 个模块 / 模式**,源自 30+ 个开源项目。
 每一个借鉴模块都在源码头部标注 `借鉴 <project>` 注释,便于追溯。
 
 下面按 **来源项目** 列出所有借鉴内容。每一项注明:**借鉴模块** → **本仓位置**。
 
-### 🌌 [Kosmos](https://github.com/jimmc414/Kosmos) — 15 patterns (4 waves)
+### 🌌 [Kosmos](https://github.com/jimmc414/Kosmos) — 12 patterns
 
-> jimmc414 的多 agent 科研自动化系统,基于 Claude 的科学发现流水线。我们从中扫描并借鉴了 15 个最匹配 Maximilian 的模式。
+> jimmc414 的多 agent 科研自动化系统,基于 Claude 的科学发现流水线。我们从中扫描并借鉴了 12 个最匹配 Maximilian 的模式。
 
 | 借鉴模块 (Borrowed)                                                    | 本仓位置 (In this repo)                                 | 原始文件 (Origin)                          |
 | ---------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
@@ -1169,13 +1256,37 @@ Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (
 | ----------------------------------- | ---------------------------------- |
 | File-based repo-scoped memory store | `packages/core/src/repo-memory.ts` |
 
+### 🌐 [opencode](https://github.com/anomalyco/opencode) — 15 patterns (Wave 5)
+
+> anomalyco 的 AI coding tool,以 TypeScript + Effect-TS + LSP + git-based snapshot 著称。Maximilian 此前已借鉴 opencode 的 Tools 层(7 个文件)和 UI 层(`packages/ui-react/`);本 Wave 进一步借鉴 15 个内核增强模式。
+
+| 借鉴模块 (Borrowed)                                         | 本仓位置 (In this repo)                          | 原始文件 (Origin)                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------- |
+| ModelStatus — `alpha/beta/deprecated/active` 状态枚举       | `packages/core/src/model-router.ts`              | `opencode/packages/opencode/src/provider/model-status.ts`                   |
+| DOOM_LOOP_THRESHOLD=3 — 同工具循环拦截                      | `packages/core/src/stall-detection.ts`           | `opencode/packages/opencode/src/session/processor.ts`                       |
+| Retry-with-Headers — `retry-after`/`retry-after-ms` 解析    | `packages/providers/src/retry.ts`                | `opencode/packages/opencode/src/session/retry.ts`                           |
+| SessionStatus FSM — `idle/retry/busy` 有限状态机            | `packages/core/src/session-status.ts`            | `opencode/packages/opencode/src/session/status.ts`                          |
+| TodoList 状态机 — `pending/in_progress/completed/cancelled` | `packages/core/src/todo.ts`                      | `opencode/packages/opencode/src/session/todo.ts`                            |
+| Subagent PermissionScope 派生                               | `packages/tools/src/permission.ts`               | `opencode/packages/opencode/src/agent/subagent-permissions.ts`              |
+| StructuredOutput tool — Zod schema 强制收尾                 | `packages/llm/src/tool.ts`                       | `opencode/packages/opencode/src/session/prompt.ts`                          |
+| SkillDiscovery — URL 拉 SKILL.md 索引 + 7d 缓存             | `packages/core/src/skill-discovery.ts`           | `opencode/packages/opencode/src/skill/discovery.ts`                         |
+| ProviderTransform — 中间件 registry + 默认 anthropic/openai | `packages/providers/src/formats/transform.ts`    | `opencode/packages/opencode/src/provider/transform.ts`                      |
+| SnapshotSaver — git-based patch + revert                    | `packages/core/src/checkpoint/snapshot-saver.ts` | `opencode/packages/opencode/src/snapshot/index.ts`                          |
+| BackgroundJob — start/extend/wait/promote/cancel 生命周期   | `packages/queue/src/background-job.ts`           | `opencode/packages/core/src/background-job.ts`                              |
+| Context Compaction — token-budget prune + tool output 截断  | `packages/core/src/compaction.ts`                | `opencode/packages/opencode/src/session/compaction.ts`                      |
+| WorkspaceAdapter — local/remote 后端抽象                    | `packages/workspace/src/adapter.ts`              | `opencode/packages/opencode/src/control-plane/workspace-adapter-runtime.ts` |
+| InstanceState — per-project scope + LIFO finalizer          | `packages/core/src/instance-state.ts`            | `opencode/packages/opencode/src/effect/instance-state.ts`                   |
+| LSP Client — JSON-RPC over stdio + Content-Length 帧解析    | `packages/tools/src/lsp.ts`                      | `opencode/packages/opencode/src/lsp/client.ts`                              |
+
+> **累计借鉴 opencode 22 个模块**(Tools 层 7 + UI 层 + Wave 5 新增 15)。
+
 ---
 
 ### 📊 借鉴统计 / Borrowing Stats
 
 | 来源项目                     | 模块数 | 占比 |
 | ---------------------------- | ------ | ---- |
-| Kosmos                       | 15     | 50%  |
+| Kosmos                       | 12     | 44%  |
 | crewAI                       | 4      | 13%  |
 | AutoGen / Magentic-One       | 4      | 13%  |
 | openclaw                     | 4      | 13%  |
@@ -1187,8 +1298,8 @@ Maximilian 在 6 个开发 phase + 4 个 Kosmos wave 中,共 **借鉴 / 改编 (
 | Conductor                    | 1      | 3%   |
 | codebase-memory-mcp          | 1      | 3%   |
 
-**合计 30 个借鉴模式,源自 11 个项目。**
-**Total: 30 borrowed patterns from 11 projects.**
+**合计 50+ 个借鉴模式,源自 30+ 个项目。**
+**Total: 50+ borrowed patterns from 30+ projects.**
 
 ### 🙏 致敬 / Special Thanks
 
@@ -1247,7 +1358,7 @@ Every borrowed module is annotated with `借鉴 <project>` in its source header 
 <br>
 
 <sub>
-Built with ❤️ by syxscott · Powered by 21 packages · 4 apps · 1283 tests<br>
+Built with ❤️ by syxscott · Powered by 23 packages · 4 apps · 2300+ tests<br>
 <sub>⚡ Meta-agent OS · 2026</sub>
 </sub>
 

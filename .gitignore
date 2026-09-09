@@ -10,6 +10,7 @@ coverage/
 .vite/
 .cache/
 workspaces/
+__pycache__/
 
 # Per-package `pnpm-lock.yaml` files are created as a side effect of
 # running `pnpm install` from inside a sub-package directory. The
@@ -17,3 +18,5 @@ workspaces/
 # per-package copies are noise and not tracked.
 /**/pnpm-lock.yaml
 !pnpm-lock.yaml
+research/similar-projects/
+*.tsbuildinfo

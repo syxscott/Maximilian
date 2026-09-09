@@ -2,9 +2,9 @@
 // Derived from OpenCode packages/core/src/tool/read.ts
 // Plain TypeScript, no Effect-TS
 
-import { makeTool, type ToolContent } from "@max/llm"
+import { makeTool, type ToolContent, ToolKind } from "@max/llm"
 import { readFile, readdir, stat } from "node:fs/promises"
-import { resolve, relative, isAbsolute } from "node:path"
+import { resolve } from "node:path"
 
 export interface ReadInput {
   path: string
@@ -20,6 +20,8 @@ export interface FileContent {
   content: string
   totalLines: number
   truncated: boolean
+  /** Starting line number (1-based) for numbered output */
+  startLine: number
 }
 
 export interface DirectoryListing {
@@ -33,6 +35,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 export const readTool = makeTool<ReadInput, ReadOutput>({
   name: "read",
   description: "Read the contents of a file or list a directory.",
+  kind: ToolKind.Read,
   inputSchema: {
     type: "object",
     properties: {
@@ -78,6 +81,7 @@ export const readTool = makeTool<ReadInput, ReadOutput>({
       content: sliced.join("\n"),
       totalLines,
       truncated: offset + limit < totalLines,
+      startLine: offset + 1, // 1-based line numbering
     }
   },
   toModelOutput(output): ToolContent[] {
@@ -87,7 +91,7 @@ export const readTool = makeTool<ReadInput, ReadOutput>({
     }
     const numbered = output.content
       .split("\n")
-      .map((line, i) => `${(output.truncated ? i + (output.truncated ? 0 : 0) : i) + 1}\t${line}`)
+      .map((line, i) => `${output.startLine + i}\t${line}`)
       .join("\n")
     return [{ type: "text", text: numbered }]
   },

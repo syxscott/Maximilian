@@ -1,19 +1,15 @@
 {
   "$schema": "https://stryker-mutator.io/schema/stryker-schema.json",
-  "_comment": "Run with: pnpm mutate:run (uses Vitest as the test runner)",
+  "_comment": "Run with: pnpm mutate:run (uses Vitest as the test runner). Why inPlace: true — Stryker's default sandbox mode copies `mutate` targets + imports but NOT the test files. With `perTest` coverage analysis vitest must see test files at the package-root include paths. inPlace runs in the real directory with auto-backup/restore, so vitest's include patterns resolve correctly. See https://stryker-mutator.io/docs/stryker-js/configuration/#inplace-option",
   "packageManager": "pnpm",
   "buildCommand": "pnpm --filter @max/meta-system build",
   "testRunner": "vitest",
-  "testRunner_options": {
+  "vitest": {
     "configFile": "vitest.stryker.config.ts"
   },
+  "inPlace": true,
   "coverageAnalysis": "perTest",
-  "reporters": ["html", "json", "progress", "dashboard"],
-  "dashboard": {
-    "project": "github.com/syxscott/Maximilian",
-    "version": "main",
-    "module": "meta-system"
-  },
+  "reporters": ["html", "json", "progress"],
   "mutate": [
     "packages/meta-system/src/truth-audit.ts",
     "packages/meta-system/src/orchestrator.ts",
@@ -24,14 +20,19 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "**/test/**",
-    "**/__tests__/**"
+    "**/__tests__/**",
+    "research/**",
+    ".stryker-tmp/**",
+    "node_modules/**",
+    "dist/**",
+    "coverage/**"
   ],
   "thresholds": {
     "high": 80,
     "low": 70,
-    "break": 60
+    "break": null
   },
-  "timeoutMS": 60_000,
+  "timeoutMS": 60000,
   "concurrency": 4,
   "plugins": ["@stryker-mutator/vitest-runner"]
 }

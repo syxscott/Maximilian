@@ -76,6 +76,52 @@ export const llmErrorsTotal = new Counter({
   labelNames: ["provider", "errorType"] as const,
 });
 
+// ── Phase 9 — SLO indicator metrics ──────────────────────────────────────
+
+/**
+ * TruthAudit verdicts, labelled by `verdict` ("correct" | "under_predicted"
+ * | "over_predicted"). The SLO target is
+ * `verdict="correct"` / `total_verdicts_total ≥ 0.8`. Computed by the
+ * meta-system's TruthAudit when it emits a TruthReport.
+ */
+export const truthAuditVerdictsTotal = new Counter({
+  name: "maximilian_truth_audit_verdicts_total",
+  help: "TruthAudit verdicts, labelled by verdict kind",
+  registers: [registry],
+  labelNames: ["verdict"] as const,
+});
+
+/**
+ * opencode sessions created vs sessions leaked (no `abortSession` call
+ * before the workspace closed). The SLO target is
+ * `opencode_session_leak_total / opencode_session_created_total < 0.0001`.
+ * Phase 3 fixed the underlying leak (H6 + Phase 6) but the *measurement*
+ * was added in Phase 9 so the SLO dashboard has data to chart.
+ */
+export const opencodeSessionsCreatedTotal = new Counter({
+  name: "maximilian_opencode_sessions_created_total",
+  help: "opencode sessions created",
+  registers: [registry],
+});
+
+export const opencodeSessionsLeakedTotal = new Counter({
+  name: "maximilian_opencode_sessions_leaked_total",
+  help: "opencode sessions abandoned without an explicit abortSession (SessionProcessor leak)",
+  registers: [registry],
+});
+
+/**
+ * MetaOrchestrator cycle duration. The SLO target is P95 ≤ 60s. Wired
+ * in `packages/meta-system/src/orchestrator.ts` cycle end. Exposed as a
+ * histogram so dashboards can compute quantiles.
+ */
+export const metaCycleDuration = new Histogram({
+  name: "maximilian_meta_cycle_duration_seconds",
+  help: "MetaOrchestrator cycle duration in seconds",
+  registers: [registry],
+  buckets: [1, 5, 10, 30, 60, 120, 300, 600],
+});
+
 // ── Accessor ─────────────────────────────────────────────────────────────
 
 export function metricsRegistry(): Registry {

@@ -10,38 +10,48 @@
  * which keeps the contract with AgentRuntime intact.
  */
 
-import { Agent, type AgentContext, type AgentRole, type Result, type Task } from "@max/core";
-import { defaultAgentFactory } from "@max/agents";
-import type { Provider } from "@max/providers";
-import type { EvolutionFacade } from "./facade.js";
-import { AgentMemoryStore } from "./memory.js";
-import type { ModelSelection } from "./types.js";
+import { Agent, type AgentContext, type AgentRole, type Result, type Task } from "@max/core"
+import { defaultAgentFactory } from "@max/agents"
+import type { Provider } from "@max/providers"
+import type { EvolutionFacade } from "./facade.js"
+import { AgentMemoryStore } from "./memory.js"
+import type { ModelSelection } from "./types.js"
 
-export function evolutionAwareFactory(facade: EvolutionFacade): (role: AgentRole) => Agent | undefined {
+export function evolutionAwareFactory(
+  facade: EvolutionFacade,
+): (role: AgentRole) => Agent | undefined {
   return (role) => {
-    const selection = facade.selectForRole(role);
-    const provider = resolveProvider(facade, selection.provider);
-    const inner = defaultAgentFactory(() => provider)(role);
-    if (!inner) return undefined;
+    const selection = facade.selectForRole(role)
+    const provider = resolveProvider(facade, selection.provider)
+    const inner = defaultAgentFactory(() => provider)(role)
+    if (!inner) return undefined
     // Plumb evolution's per-role model choice into the agent's override
     // field so concrete agents (which read `getEffectiveModel()` and pass
     // it as ChatOptions.model) actually use the selected model. Without
     // this, the leaderboard-driven selection is dropped at the LLM call.
-    inner.setModelOverride(selection.provider, selection.model);
+    inner.setModelOverride(selection.provider, selection.model)
 
-    return new MemoryAugmentedAgent(inner, facade, selection);
-  };
+    return new MemoryAugmentedAgent(inner, facade, selection)
+  }
 }
 
 class MemoryAugmentedAgent extends Agent {
-  private selection: ModelSelection;
+  private selection: ModelSelection
+  /**
+   * Frozen memory snapshot (hermes memory_tool): the prelude is rendered
+   * once, at the first task this agent instance sees, and reused for every
+   * later task. Mid-execution `recordCompletion` writes never mutate the
+   * running prompt, so the provider-side prefix cache stays valid across
+   * the whole workspace run.
+   */
+  private frozenPrelude: string | null = null
   constructor(
     private readonly inner: Agent,
     private readonly facade: EvolutionFacade,
-    selection: ModelSelection
+    selection: ModelSelection,
   ) {
-    super(inner["provider"] as Provider, inner.id);
-    this.selection = selection;
+    super(inner["provider"] as Provider, inner.id)
+    this.selection = selection
   }
 
   get manifest() {
@@ -49,7 +59,7 @@ class MemoryAugmentedAgent extends Agent {
       ...this.inner.manifest,
       modelProviderId: this.selection.provider,
       modelName: this.selection.model,
-    };
+    }
   }
 
   /**
@@ -64,33 +74,38 @@ class MemoryAugmentedAgent extends Agent {
    * dropping skills entirely.
    */
   override setMemoryPrelude(prelude: string): void {
-    this.inner.setMemoryPrelude(prelude);
+    this.inner.setMemoryPrelude(prelude)
   }
 
   /** Forward skills prelude to inner so its `buildMessages` sees it. */
   override setSkillsPrelude(prelude: string): void {
-    this.inner.setSkillsPrelude(prelude);
+    this.inner.setSkillsPrelude(prelude)
   }
 
   override async receiveTask(task: Task, _ctx: AgentContext): Promise<void> {
-    const profile = await this.facade.activeProfile(task.agentRole);
-    const prelude = AgentMemoryStore.toPrelude(profile.memory);
-    if (prelude) {
+    if (this.frozenPrelude === null) {
+      const profile = await this.facade.activeProfile(task.agentRole)
+      // Freeze once per agent instance: later memory writes don't change
+      // this workspace's prompts (prefix-cache stability over freshness —
+      // the next workspace run picks the updated memory up).
+      this.frozenPrelude = AgentMemoryStore.toPrelude(profile.memory)
+    }
+    if (this.frozenPrelude) {
       // Goes through the overridden setter, which forwards to inner.
-      this.setMemoryPrelude(prelude);
+      this.setMemoryPrelude(this.frozenPrelude)
     }
   }
 
   override async execute(task: Task, ctx: AgentContext): Promise<Result> {
-    return this.inner.execute(task, ctx);
+    return this.inner.execute(task, ctx)
   }
 
   override async submitResult(result: Result): Promise<Result> {
-    return this.inner.submitResult(result);
+    return this.inner.submitResult(result)
   }
 }
 
 function resolveProvider(facade: EvolutionFacade, id: string): Provider {
-  const candidates = (facade as unknown as { opts: { candidates: Provider[] } }).opts.candidates;
-  return candidates.find((p) => p.id === id) ?? candidates[0]!;
+  const candidates = (facade as unknown as { opts: { candidates: Provider[] } }).opts.candidates
+  return candidates.find((p) => p.id === id) ?? candidates[0]!
 }

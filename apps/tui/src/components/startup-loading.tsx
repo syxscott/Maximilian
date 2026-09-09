@@ -36,21 +36,26 @@ export function StartupLoading({ ready }: StartupLoadingProps) {
 
   React.useEffect(() => {
     if (ready) {
-      if (!show) return
+      if (!show) {
+        // No timers to clear (we never started any) but still return
+        // `clearTimers` so a subsequent re-run with a live `show`
+        // cleans up its own timers, not a previous run's.
+        return clearTimers
+      }
       const left = 3000 - (Date.now() - stampRef.current)
       if (left <= 0) {
         setShow(false)
-        return
+        return clearTimers
       }
       holdRef.current = setTimeout(() => {
         holdRef.current = null
         setShow(false)
       }, left)
-      return
+      return clearTimers
     }
 
     // not ready
-    if (show) return
+    if (show) return clearTimers
     waitRef.current = setTimeout(() => {
       waitRef.current = null
       stampRef.current = Date.now()

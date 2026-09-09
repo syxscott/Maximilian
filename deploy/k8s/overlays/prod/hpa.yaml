@@ -1,0 +1,33 @@
+# HorizontalPodAutoscaler for the API in production.
+# Scales 3 → 10 replicas on CPU > 70% or request rate > 100 RPS/instance.
+#
+# Requires the metrics-server addon (most managed k8s has it on by
+# default). For RPS, we'd need Prometheus Adapter — leave CPU-only
+# scaling until we wire that.
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  namespace: maximilian
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 min — avoid flapping
+    scaleUp:
+      stabilizationWindowSeconds: 30
