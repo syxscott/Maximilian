@@ -13,7 +13,13 @@ Usage:
 from .client import Maximilian, AsyncMaximilian
 from .flags import FlagsClient, AsyncFlagsClient
 from .subscriptions import Subscription, SubscriptionsClient
-from .errors import MaximilianError, ApiError
+from .errors import (
+    MaximilianError,
+    ApiError,
+    AuthError,
+    NotFoundError,
+    RateLimitError,
+)
 
 __version__ = "0.1.0"
 
@@ -26,5 +32,8 @@ __all__ = [
     "SubscriptionsClient",
     "MaximilianError",
     "ApiError",
+    "AuthError",
+    "NotFoundError",
+    "RateLimitError",
     "__version__",
 ]

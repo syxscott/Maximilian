@@ -1,6 +1,6 @@
 import * as React from "react"
-import { cn } from "../../lib/utils"
-import { TooltipV2 } from "./tooltip-v2"
+import { cn } from "../../lib/utils.js"
+import { TooltipV2 } from "./tooltip-v2.js"
 
 type FieldContextValue = {
   controlId: string

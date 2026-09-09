@@ -16,6 +16,8 @@ import type { UsageSummary } from "../api"
 
 export interface LiveUsage {
   totalCostUsd: number
+  /** False when any request in the window lacked pricing (total is partial). */
+  totalCostUsdKnown?: boolean
   totalTokens: number
   cacheReadTokens: number
   cacheHitRate: number
@@ -33,6 +35,7 @@ const POLL_INTERVAL_MS = 30_000
 function trim(summary: UsageSummary): LiveUsage {
   return {
     totalCostUsd: summary.totalCostUsd,
+    totalCostUsdKnown: summary.totalCostUsdKnown,
     totalTokens: summary.realTotalTokens,
     cacheReadTokens: summary.totalCacheReadTokens,
     cacheHitRate: summary.cacheHitRate,

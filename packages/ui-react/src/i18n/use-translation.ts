@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react"
-import { useI18n } from "../context/i18n"
-import type { UiI18nParams, UiI18nKey } from "../context/i18n"
+import { useI18n } from "../context/i18n.js"
+import type { UiI18nParams, UiI18nKey } from "../context/i18n.js"
 
 export interface UseTranslationResult {
   locale: string

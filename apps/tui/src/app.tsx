@@ -45,7 +45,19 @@ import {
   type PluginHost,
   type Route,
 } from "./context"
+import {
+  TuiRuntimeProvider,
+  type TuiPaths,
+  type TuiTerminalEnvironment,
+  type TuiStartup,
+} from "./context/runtime"
+import { ProjectProvider } from "./context/project"
+import { SyncProvider, useSync } from "./context/sync"
+import { LocalProvider, useLocal, parseModel } from "./context/local"
+import { useArgs } from "./context/args"
 import { useLiveUsage } from "./hooks/useLiveUsage"
+import { Prompt } from "./prompt"
+import { Session as RealSession } from "./routes/session/session"
 import { formatTokens, formatPercent } from "@max/i18n"
 import { type ExecutionTrace, type Health, type PendingProposal, type UsageSummary } from "./api"
 
@@ -85,7 +97,7 @@ export async function run(input: TuiInput): Promise<void> {
   })
   // Surface where we ended up reading from — operators debugging "why is
   // my TUI in Chinese" need this hint in stderr.
-  // eslint-disable-next-line no-console
+
   console.error(`[tui] locale=${resolved} stateDir=${stateDir()}`)
 
   // OpenCode wraps the whole thing in an `Effect.scoped` to manage cleanup of
@@ -93,7 +105,6 @@ export async function run(input: TuiInput): Promise<void> {
   // lifecycle with a try/finally around `render()`.
   const onExit = (reason?: unknown) => {
     if (reason !== undefined) {
-      // eslint-disable-next-line no-console
       console.error(reason)
     }
   }
@@ -114,7 +125,6 @@ export async function run(input: TuiInput): Promise<void> {
     try {
       await input.pluginHost.dispose()
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error("Failed to dispose TUI plugins", err)
     }
   }
@@ -133,7 +143,35 @@ interface RootProps {
   onExit(reason?: unknown): void
 }
 
+// Compute the runtime values used by `TuiRuntimeProvider` once at the
+// provider-mount boundary. `process.env` reads are stable for the process
+// lifetime; freezing the object prevents accidental drift across re-renders.
+function buildRuntime(directory?: string): {
+  paths: TuiPaths
+  env: TuiTerminalEnvironment
+  startup: TuiStartup
+} {
+  const cwd = directory ?? process.cwd()
+  const paths: TuiPaths = {
+    cwd,
+    home: process.env.HOME ?? "",
+    state: stateDir(),
+    worktree: cwd,
+  }
+  const env: TuiTerminalEnvironment = {
+    platform: process.platform,
+    multiplexer: process.env.TMUX ? "tmux" : process.env.STY ? "screen" : undefined,
+    displayServer: undefined,
+  }
+  const startup: TuiStartup = {
+    initialRoute: undefined,
+    skipInitialLoading: false,
+  }
+  return Object.freeze({ paths, env, startup })
+}
+
 function Root(props: RootProps) {
+  const runtime = React.useMemo(() => buildRuntime(props.directory), [props.directory])
   return (
     <ExitProvider exit={props.onExit}>
       <ReactErrorBoundary
@@ -141,25 +179,39 @@ function Root(props: RootProps) {
           <ErrorComponent error={error as Error} reset={reset} mode="dark" />
         )}
       >
-        <ClipboardProvider>
-          <ArgsProvider value={props.args}>
-            <KVProvider>
-              <ToastProvider>
-                <RouteProvider>
-                  <SDKProvider url={props.url} directory={props.directory} token={props.token}>
-                    <ThemeProvider mode="dark">
-                      <DialogProvider>
-                        <PluginRuntimeProvider>
-                          <App config={props.config} />
-                        </PluginRuntimeProvider>
-                      </DialogProvider>
-                    </ThemeProvider>
-                  </SDKProvider>
-                </RouteProvider>
-              </ToastProvider>
-            </KVProvider>
-          </ArgsProvider>
-        </ClipboardProvider>
+        <TuiRuntimeProvider value={runtime}>
+          <ClipboardProvider>
+            <ArgsProvider value={props.args}>
+              <KVProvider>
+                <ToastProvider>
+                  <RouteProvider>
+                    <SDKProvider url={props.url} directory={props.directory} token={props.token}>
+                      {React.createElement(
+                        ProjectProvider,
+                        null,
+                        React.createElement(
+                          SyncProvider,
+                          null,
+                          React.createElement(
+                            LocalProvider,
+                            null,
+                            <ThemeProvider mode="dark">
+                              <DialogProvider>
+                                <PluginRuntimeProvider>
+                                  <App config={props.config} />
+                                </PluginRuntimeProvider>
+                              </DialogProvider>
+                            </ThemeProvider>,
+                          ),
+                        ),
+                      )}
+                    </SDKProvider>
+                  </RouteProvider>
+                </ToastProvider>
+              </KVProvider>
+            </ArgsProvider>
+          </ClipboardProvider>
+        </TuiRuntimeProvider>
       </ReactErrorBoundary>
     </ExitProvider>
   )
@@ -187,7 +239,6 @@ class ReactErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBounda
   }
 
   override componentDidCatch(error: unknown) {
-    // eslint-disable-next-line no-console
     console.error("TUI fatal error", error)
   }
 
@@ -221,6 +272,11 @@ function App({ config }: AppProps) {
   const toast = useToast()
   const pluginRuntime = usePluginRuntime()
   const exit = useExit()
+  const args = useArgs() as Args
+  const local = useLocal()
+  const sync = useSync()
+  const sdk = useSDK()
+  void sync
 
   // `config` is the resolved TUI config; we keep it as a prop for future
   // keybinding wiring.
@@ -236,6 +292,50 @@ function App({ config }: AppProps) {
     const id = setTimeout(() => setReady(true), 100)
     return () => clearTimeout(id)
   }, [])
+
+  // Wire CLI flags (--model, --agent, --continue) into the live contexts.
+  // --prompt flows through `useArgs()` directly so the Home route's Prompt
+  // picks it up via `args.prompt`; the other three mutate local state / the
+  // route so the rest of the tree can observe them on next render.
+  //
+  // We guard each setter behind a once-only ref so re-renders or hot reload
+  // don't re-apply the flag every time.
+  const cliAppliedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (cliAppliedRef.current) return
+    if (!ready) return
+    cliAppliedRef.current = true
+    if (args.model && typeof args.model === "string") {
+      try {
+        local.model.set(parseModel(args.model))
+      } catch (err) {
+        console.error("Failed to apply --model", err)
+      }
+    }
+    if (args.agent && typeof args.agent === "string") {
+      try {
+        local.agent.set(args.agent)
+      } catch (err) {
+        console.error("Failed to apply --agent", err)
+      }
+    }
+    if (args.continue === true && args.sessionID && typeof args.sessionID === "string") {
+      route.navigate({ type: "session", sessionID: args.sessionID })
+    } else if (args.continue === true) {
+      // No explicit sessionID — fetch the most recent execution so the
+      // session route has something to load. Best-effort: if the API is
+      // unreachable we just stay on the home view.
+      void sdk.client
+        .get<{ executions: Array<{ id: string }> }>("/api/obs/executions")
+        .then((res) => {
+          const next = res?.executions?.[0]?.id
+          if (next) route.navigate({ type: "session", sessionID: next })
+        })
+        .catch((err: unknown) => {
+          console.error("Failed to resolve --continue", err)
+        })
+    }
+  }, [ready, args.model, args.agent, args.continue, args.sessionID, local, route, sdk])
 
   // Register the /language slash command into the command palette so users
   // can find it via ctrl+\ too (not just by typing `/` directly).
@@ -297,9 +397,13 @@ function App({ config }: AppProps) {
     if (key.ctrl && input === "t") {
       setTerminalTitleEnabled((prev) => !prev)
     }
-    // `/language` slash command: opens the language picker dialog. Mirrors the
-    // `/theme` convention used by OpenCode's command palette.
-    if (input === "/") {
+    // ctrl+l opens the language picker. It must NOT be bound to a bare "/"
+    // — every keystroke reaches every useInput handler in ink, so a global
+    // "/" keybind would pop the dialog on the way to the prompt and the
+    // user could never type a leading slash. ctrl+l doesn't collide with
+    // typing and keeps the picker reachable without a session (the
+    // command palette is still a stub and slash commands need a session).
+    if (key.ctrl && input === "l") {
       openLanguageDialog()
     }
   })
@@ -313,7 +417,7 @@ function App({ config }: AppProps) {
           {routeData.type === "home" ? (
             <Home />
           ) : routeData.type === "session" ? (
-            <Session sessionID={routeData.sessionID} />
+            <RealSession />
           ) : routeData.type === "plugin" ? (
             <PluginRoute id={routeData.id} />
           ) : (
@@ -343,6 +447,7 @@ function Home() {
   useLocale()
   const theme = useTheme()
   const sdk = useSDK()
+  const args = useArgs() as Args
   const [health, setHealth] = React.useState<Health | null>(null)
   const [executions, setExecutions] = React.useState<ExecutionTrace[]>([])
   const [pending, setPending] = React.useState<PendingProposal[]>([])
@@ -382,6 +487,22 @@ function Home() {
     return () => ctrl.abort()
   }, [sdk.url, sdk.directory])
 
+  // Seed the prompt with --prompt (if any) once it mounts. We don't
+  // auto-submit because that would discard any UX the user expects
+  // (e.g. editing before send). The user can hit enter themselves; this
+  // matches how editors like Claude Code / Codex behave when invoked with
+  // a starter prompt.
+  const initialPrompt = typeof args.prompt === "string" ? args.prompt : undefined
+  const seededRef = React.useRef(false)
+  const bindPrompt = React.useCallback(
+    (ref: import("./prompt").PromptRef | undefined) => {
+      if (seededRef.current || !ref || !initialPrompt) return
+      seededRef.current = true
+      ref.set({ input: initialPrompt, parts: [] })
+    },
+    [initialPrompt],
+  )
+
   return (
     <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
       <Text bold color={theme.theme.text}>
@@ -400,8 +521,20 @@ function Home() {
           <LiveUsageBar />
         </>
       )}
+      <Box marginTop={1} flexDirection="column">
+        <Prompt
+          ref={bindPrompt}
+          placeholders={{
+            normal: [
+              "Fix a TODO in the codebase",
+              "What is the tech stack of this project?",
+              "Fix broken tests",
+            ],
+          }}
+        />
+      </Box>
       <Text color={theme.theme.textMuted}>
-        Press / for language, ctrl+\ for the command palette (stub).
+        Press ctrl+l to change language · ctrl+\ for the command palette (stub).
       </Text>
     </Box>
   )
@@ -431,7 +564,8 @@ function UsageRow({ usage }: { usage: UsageSummary | null }) {
       <Text bold>{t("tui.today")}</Text>
       <Text>
         {" "}
-        requests: {usage.totalRequests} · cost: ${usage.totalCostUsd.toFixed(4)} · success:{" "}
+        requests: {usage.totalRequests} · cost:{" "}
+        {usage.totalCostUsdKnown === false ? "—" : `$${usage.totalCostUsd.toFixed(4)}`} · success:{" "}
         {(usage.successRate * 100).toFixed(1)}%
       </Text>
       <Text>
@@ -512,7 +646,8 @@ function LiveUsageBar() {
   return (
     <Box marginTop={1}>
       <Text color={isError ? "red" : "green"}>
-        · 💰 ${data.totalCostUsd.toFixed(4)} · {formatTokens(data.totalTokens)} tok
+        · 💰 {data.totalCostUsdKnown === false ? "—" : `$${data.totalCostUsd.toFixed(4)}`} ·{" "}
+        {formatTokens(data.totalTokens)} tok
         {data.cacheHitRate > 0 ? ` · ${formatPercent(data.cacheHitRate, 0)} cache` : ""}
         {isError ? " (stale)" : ""}
       </Text>
@@ -520,13 +655,18 @@ function LiveUsageBar() {
   )
 }
 
-function Session({ sessionID }: { sessionID: string }) {
+function Session(_props: { sessionID: string }) {
+  // Placeholder kept as a no-op for backwards compatibility; the real
+  // Session route is mounted directly via `RealSession` in the App
+  // component above. If a future caller references this local stub, we
+  // delegate so its visual contract (an inline "Session <id>" header)
+  // is preserved rather than rendering nothing.
   useLocale()
   const theme = useTheme()
   return (
     <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
       <Text bold color={theme.theme.text}>
-        Session {sessionID}
+        Session {_props.sessionID}
       </Text>
       <Text color={theme.theme.textMuted}>{t("tui.sessionRouteStub")}</Text>
     </Box>

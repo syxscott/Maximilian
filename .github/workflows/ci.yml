@@ -12,6 +12,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Phase 10 — secret scan before verify. Cheap, catches committed
+  # API keys / JWT secrets. Runs in parallel with verify so it doesn't
+  # add wall-clock time.
+  secret-scan:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+
   verify:
     name: type-check + test + build
     runs-on: ubuntu-latest
@@ -87,11 +106,22 @@ jobs:
         # still enforces "new code stays formatted" without piling on a
         # separate "format whole repo" PR.
         #
-        # Use `github.event.before` + `github.sha` instead of `HEAD~1` so
-        # this works with the shallow clone (`fetch-depth: 1`).
+        # Compare against `github.event.before` (the previous tip of the
+        # branch) rather than `HEAD~1` so multi-commit pushes still diff
+        # against the right base. The shallow clone (`fetch-depth: 2`)
+        # doesn't always include `before`, so fetch it explicitly when
+        # needed. The all-zeros SHA means a brand-new branch — diff
+        # against HEAD itself in that case (empty diff → skip).
         run: |
           BEFORE="${{ github.event.before }}"
           SHA="${{ github.sha }}"
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO_SHA" ]; then
+            BEFORE="$SHA"
+          fi
+          if ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BEFORE"
+          fi
           CHANGED=$(git diff --name-only --diff-filter=ACMRTUXB "$BEFORE" "$SHA" \
             -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.md' '*.yml' '*.yaml' \
             ':(exclude)pnpm-lock.yaml' ':(exclude)CHANGELOG.md')
@@ -101,6 +131,10 @@ jobs:
           fi
           echo "Checking format on:"
           echo "$CHANGED"
+          # Quote `$CHANGED` so paths with spaces or newlines don't get
+          # word-split. `set -e` so a prettier failure aborts this step
+          # (without it, a `npx prettier --check` exit code is ignored).
+          set -e
           npx prettier --check $CHANGED
 
       - name: License headers (new files)
@@ -120,7 +154,14 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=2048
 
       - name: Test
-        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run test
+        # @max/e2e is a Playwright visual regression suite that needs the
+        # Chromium binary and a built dashboard. It's already gated by a
+        # dedicated workflow (e2e.yml) that installs browsers and only
+        # runs when dashboard / e2e / ui-react files change — running
+        # it on every CI push both blocks the queue (~30s+ browser
+        # download) and hits the "browser binary missing" error from the
+        # top-level CI. Filter it out here.
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" --filter '!@max/e2e' run test
 
       - name: Build
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run build
@@ -156,7 +197,7 @@ jobs:
     name: Docker build smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: verify
+    needs: [verify, secret-scan]
 
     steps:
       - uses: actions/checkout@v7

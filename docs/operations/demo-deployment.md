@@ -21,13 +21,13 @@ It uses the same images published by the
 
 Target: **$0/month** by staying within free tiers.
 
-| Service | Tier | Limit | Current usage |
-|---|---|---|---|
-| Vercel (dashboard) | Free | 100 GB/mo bandwidth | < 5 GB/mo |
-| Fly.io (API + worker) | Free allowance | 3 shared VMs | 2 VMs |
-| Neon PostgreSQL | Free | 0.5 GB storage | < 100 MB |
-| Upstash Redis | Free | 10k commands/day | < 1k/day |
-| GitHub Container Registry | Free | Unlimited public | unlimited |
+| Service                   | Tier           | Limit               | Current usage |
+| ------------------------- | -------------- | ------------------- | ------------- |
+| Vercel (dashboard)        | Free           | 100 GB/mo bandwidth | < 5 GB/mo     |
+| Fly.io (API + worker)     | Free allowance | 3 shared VMs        | 2 VMs         |
+| Neon PostgreSQL           | Free           | 0.5 GB storage      | < 100 MB      |
+| Upstash Redis             | Free           | 10k commands/day    | < 1k/day      |
+| GitHub Container Registry | Free           | Unlimited public    | unlimited     |
 
 If usage approaches a tier limit, an alert emails the maintainer.
 
@@ -58,10 +58,10 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/**'
-      - 'packages/**'
-      - 'infrastructure/demo/**'
-      - '.github/workflows/demo-deploy.yml'
+      - "apps/**"
+      - "packages/**"
+      - "infrastructure/demo/**"
+      - ".github/workflows/demo-deploy.yml"
 ```
 
 Steps:
@@ -88,25 +88,25 @@ who want persistent data should run Maximilian themselves.
 
 ## Seeded scenarios
 
-The seed script (`scripts/seed-demo.ts`) creates a handful of
+The seed script (`scripts/seed-demo.ts` — **planned, not yet implemented**; `pnpm demo` runs the in-process equivalent) creates a handful of
 workspaces demonstrating each feature:
 
-| Workspace | Demonstrates |
-|---|---|
-| `tour-tokyo` | Multi-agent trip planning |
-| `summarize-corpus` | TruthAudit evaluation |
-| `code-search-bench` | Digital Twin canary rollout |
-| `self-evolve-demo` | Meta-system birth → promote → retire |
+| Workspace           | Demonstrates                         |
+| ------------------- | ------------------------------------ |
+| `tour-tokyo`        | Multi-agent trip planning            |
+| `summarize-corpus`  | TruthAudit evaluation                |
+| `code-search-bench` | Digital Twin canary rollout          |
+| `self-evolve-demo`  | Meta-system birth → promote → retire |
 
 ## Rate limits
 
 The demo API is rate-limited to be polite to free tiers:
 
 ```ts
-// apps/api/src/middleware/rate-limit.ts (demo mode only)
+// planned demo-mode limits — current implementation: rate limiter inline in apps/api/src/index.ts (100 req/min)
 RATE_LIMITS = {
-  perIp:    { points: 60, duration: 60 },   // 60 req/min
-  perToken: { points: 600, duration: 60 },  // 600 req/min with API key
+  perIp: { points: 60, duration: 60 }, // 60 req/min
+  perToken: { points: 600, duration: 60 }, // 600 req/min with API key
 }
 ```
 

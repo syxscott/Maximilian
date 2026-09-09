@@ -5,7 +5,7 @@ import {
   type KeyboardEvent,
   type HTMLAttributes,
 } from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export function LineCommentV2OverflowIcon(props: HTMLAttributes<SVGSVGElement> & { width?: number; height?: number }) {
   const { width = 16, height = 16, ...rest } = props

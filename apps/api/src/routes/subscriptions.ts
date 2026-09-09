@@ -24,6 +24,7 @@ export interface Subscription {
   secret: string
   createdAt: string
   createdBy?: string
+  tenantId?: string
   lastDeliveredAt?: string
   totalDeliveries: number
   totalFailures: number
@@ -34,17 +35,23 @@ interface SseClient {
   send: (data: string) => void
   close: () => void
   events: string[]
+  tenantId?: string // auth context of the connecting client
 }
 
 const subscriptions = new Map<string, Subscription>()
 const sseClients = new Map<string, SseClient>()
 
-export function listSubscriptions(): Subscription[] {
-  return [...subscriptions.values()]
+export function listSubscriptions(tenantId?: string): Subscription[] {
+  const all = [...subscriptions.values()]
+  if (!tenantId) return all
+  return all.filter((s) => !s.tenantId || s.tenantId === tenantId)
 }
 
-export function getSubscription(id: string): Subscription | undefined {
-  return subscriptions.get(id)
+export function getSubscription(id: string, tenantId?: string): Subscription | undefined {
+  const sub = subscriptions.get(id)
+  if (!sub) return undefined
+  if (tenantId && sub.tenantId && sub.tenantId !== tenantId) return undefined
+  return sub
 }
 
 export function createSubscription(input: {
@@ -52,6 +59,7 @@ export function createSubscription(input: {
   target: string
   events?: string[]
   createdBy?: string
+  tenantId?: string
 }): Subscription {
   const sub: Subscription = {
     id: `sub_${randomUUID().slice(0, 8)}`,
@@ -61,6 +69,7 @@ export function createSubscription(input: {
     secret: randomUUID(),
     createdAt: new Date().toISOString(),
     createdBy: input.createdBy,
+    tenantId: input.tenantId,
     totalDeliveries: 0,
     totalFailures: 0,
   }
@@ -68,7 +77,10 @@ export function createSubscription(input: {
   return sub
 }
 
-export function deleteSubscription(id: string): boolean {
+export function deleteSubscription(id: string, tenantId?: string): boolean {
+  const sub = subscriptions.get(id)
+  if (!sub) return false
+  if (tenantId && sub.tenantId && sub.tenantId !== tenantId) return false
   return subscriptions.delete(id)
 }
 
@@ -83,38 +95,21 @@ export function unregisterSseClient(id: string): void {
 /**
  * Publish an event to all subscribers whose filters match.
  * Called by ScopedBus handlers — see api/src/index.ts.
+ * @param eventName - the runtime event type
+ * @param payload - the event payload (contains workspaceId for tenant routing)
+ * @param tenantId - tenant that originated this event (from workspace.metadata.tenantId)
  */
-export async function publishEvent(eventName: string, payload: unknown): Promise<void> {
-  // Webhooks
-  for (const sub of subscriptions.values()) {
-    if (sub.type !== "webhook") continue
-    if (sub.events.length > 0 && !sub.events.includes(eventName)) continue
-
-    const body = JSON.stringify({ event: eventName, payload, deliveredAt: new Date().toISOString() })
-    const sig = createHmac("sha256", sub.secret).update(body).digest("hex")
-    try {
-      const res = await fetch(sub.target, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-maximilian-event": eventName,
-          "x-maximilian-signature": `sha256=${sig}`,
-        },
-        body,
-        // 10-second timeout — webhooks must be fast.
-        signal: AbortSignal.timeout(10_000),
-      })
-      sub.lastDeliveredAt = new Date().toISOString()
-      sub.totalDeliveries++
-      if (!res.ok) sub.totalFailures++
-    } catch (err) {
-      sub.totalFailures++
-      console.warn(`[subscription ${sub.id}] webhook delivery failed:`, (err as Error).message)
-    }
-  }
-
-  // SSE
+export async function publishEvent(
+  eventName: string,
+  payload: unknown,
+  tenantId?: string,
+): Promise<void> {
+  // SSE first - synchronous send, no network I/O. Subscribers get events
+  // immediately even when webhook deliveries are slow or timing out.
   for (const client of sseClients.values()) {
+    // Filter by tenant: client with no tenantId (legacy/global) receives all;
+    // client with tenantId only receives events from the same tenant.
+    if (client.tenantId !== undefined && client.tenantId !== tenantId) continue
     if (client.events.length > 0 && !client.events.includes(eventName)) continue
     try {
       client.send(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`)
@@ -122,6 +117,59 @@ export async function publishEvent(eventName: string, payload: unknown): Promise
       console.warn(`[sse ${client.id}] send failed:`, (err as Error).message)
     }
   }
+
+  // Webhooks - deliver concurrently so one slow endpoint can't block the
+  // others. Previously this was a serial for-await loop, which meant a
+  // single 10s-timeout webhook delayed every subsequent webhook AND every
+  // SSE subscriber (SSE was sent after the webhook loop finished).
+  // Tenant filter: sub without tenantId (legacy) receives all; sub with
+  // tenantId only receives events from the same tenant.
+  const webhookSubs = [...subscriptions.values()].filter(
+    (s) =>
+      s.type === "webhook" &&
+      (s.tenantId === undefined || s.tenantId === tenantId) &&
+      (s.events.length === 0 || s.events.includes(eventName)),
+  )
+  await Promise.allSettled(
+    webhookSubs.map(async (sub) => {
+      const body = JSON.stringify({
+        event: eventName,
+        payload,
+        deliveredAt: new Date().toISOString(),
+      })
+      const sig = createHmac("sha256", sub.secret).update(body).digest("hex")
+
+      // Retry delivery up to 3 times with exponential backoff
+      const maxRetries = 3
+      let lastError: Error | undefined
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const res = await fetch(sub.target, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-maximilian-event": eventName,
+              "x-maximilian-signature": `sha256=${sig}`,
+            },
+            body,
+            signal: AbortSignal.timeout(10_000),
+          })
+          sub.lastDeliveredAt = new Date().toISOString()
+          sub.totalDeliveries++
+          if (!res.ok) sub.totalFailures++
+          return // Success, no need to retry
+        } catch (err) {
+          lastError = err as Error
+          sub.totalFailures++
+          // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+          if (attempt < maxRetries - 1) {
+            await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)))
+          }
+        }
+      }
+      console.warn(`[subscription ${sub.id}] webhook delivery failed after ${maxRetries} attempts:`, lastError?.message)
+    }),
+  )
 }
 
 // ── OpenAPI routes ──────────────────────────────────────────────────────────
@@ -137,7 +185,11 @@ const SubscriptionResponse = z.object({
   type: z.enum(["webhook", "sse"]),
   target: z.string(),
   events: z.array(z.string()),
-  secret: z.string(),
+  // Secret is only returned at creation time. List/get responses omit
+  // it so tenant A can't read tenant B's webhook signing key - the
+  // list filter lets callers see global (tenantId-less) subscriptions,
+  // and without stripping the secret those would leak to every tenant.
+  secret: z.string().optional(),
   createdAt: z.string(),
   lastDeliveredAt: z.string().optional(),
   totalDeliveries: z.number(),

@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
-import { cn } from "../../lib/utils"
+import { cn } from "../../lib/utils.js"
 
 export interface ButtonV2Props
   extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> {

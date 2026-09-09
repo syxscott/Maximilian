@@ -1,5 +1,5 @@
 import { forwardRef, type KeyboardEvent, type ReactNode } from "react"
-import { DockShell, DockTray } from "./dock-surface"
+import { DockShell, DockTray } from "./dock-surface.js"
 
 export interface DockPromptProps {
   kind: "question" | "permission"

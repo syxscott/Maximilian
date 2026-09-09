@@ -29,7 +29,11 @@ for arg in "$@"; do
       sed -n '2,12p' "$0"
       exit 0
       ;;
-    *) echo "unknown flag: $arg" >&2; exit 2 ;;
+    # lint-staged appends file paths to every command. They've already
+    # been staged by `git add`, so the script's `--staged` mode picks
+    # them up via `git diff --cached` and the explicit paths are
+    # redundant — ignore them rather than rejecting as unknown flags.
+    -*) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
 

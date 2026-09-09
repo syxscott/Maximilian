@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as ToastPrimitive from "@radix-ui/react-toast"
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from "lucide-react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export type NotificationTone = "default" | "success" | "info" | "warning" | "error"
 

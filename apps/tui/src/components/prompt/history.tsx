@@ -11,7 +11,7 @@
  * util module.
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import path from "node:path"
 import { createSimpleContext } from "../../context/helper"
 import { useTuiPaths } from "../../context/runtime"
@@ -93,72 +93,91 @@ type PromptHistoryValue = {
   append: (item: PromptInfo) => void
 }
 
-export const { use: usePromptHistory, provider: PromptHistoryProvider } = createSimpleContext<PromptHistoryValue, Record<string, never>>({
+export const { use: usePromptHistory, provider: PromptHistoryProvider } = createSimpleContext<
+  PromptHistoryValue,
+  Record<string, never>
+>({
   name: "PromptHistory",
   init: () => {
     const paths = useTuiPaths()
     const historyPath = path.join(paths.state, "prompt-history.jsonl")
     const [state, setState] = useState<HistoryState>({ index: 0, history: [] })
+    // Synchronous mirror of `state`: mutators can fire several times within
+    // one render tick (rapid arrow-key recalls, submit right after recall)
+    // and useState commits are async — reading render-closure state there
+    // loses updates. The ref is advanced eagerly in commit() and kept in
+    // step everywhere state changes.
+    const stateRef = useRef(state)
+    const commit = useCallback((next: HistoryState) => {
+      stateRef.current = next
+      setState(next)
+    }, [])
 
     useEffect(() => {
       let cancelled = false
       void readText(historyPath).then((text) => {
         if (cancelled) return
         const lines = parsePromptHistory(text)
-        setState((prev) => ({ ...prev, history: lines }))
+        commit({ ...stateRef.current, history: lines })
         // Self-heal on load: rewrite any retained entries so corruption is
         // trimmed and the limit is enforced.
         if (lines.length > 0) {
-          void writeText(historyPath, lines.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(() => {})
+          void writeText(
+            historyPath,
+            lines.map((line) => JSON.stringify(line)).join("\n") + "\n",
+          ).catch(() => {})
         }
       })
       return () => {
         cancelled = true
       }
-    }, [historyPath])
+    }, [historyPath, commit])
 
     const move = useCallback(
       (direction: 1 | -1, input: string): PromptInfo | undefined => {
-        const current = state.history.at(state.index)
+        // Read the ref, not the render closure: the returned entry must
+        // reflect every move() that already ran in this render tick.
+        const { index, history } = stateRef.current
+        const current = history.at(index)
         if (!current) return undefined
-        if (current.input !== input && input.length) return
-        setState((prev) => {
-          const next = prev.index + direction
-          if (Math.abs(next) > prev.history.length) return prev
-          if (next > 0) return prev
-          return { ...prev, index: next }
-        })
-        if (state.index === 0) return { input: "", parts: [] }
-        return state.history.at(state.index)
+        if (current.input !== input && input.length) return undefined
+        const nextIndex = index + direction
+        if (Math.abs(nextIndex) > history.length) return current
+        if (nextIndex > 0) return current
+        commit({ index: nextIndex, history })
+        return nextIndex === 0 ? { input: "", parts: [] } : history.at(nextIndex)
       },
-      [state],
+      [commit],
     )
 
     const append = useCallback(
       (item: PromptInfo) => {
+        // Compute from the ref and persist OUTSIDE any setState updater —
+        // an updater can run twice (Strict Mode) or be skipped (concurrent
+        // rendering), which would duplicate or drop the disk write.
         const entry = structuredClone(item)
-        setState((prev) => {
-          if (isDuplicateEntry(prev.history.at(-1), entry)) {
-            return { ...prev, index: 0 }
-          }
-          let trimmed = false
-          const nextHistory = [...prev.history, entry]
-          if (nextHistory.length > MAX_HISTORY_ENTRIES) {
-            nextHistory.splice(0, nextHistory.length - MAX_HISTORY_ENTRIES)
-            trimmed = true
-          }
-          const final: HistoryState = { history: nextHistory, index: 0 }
-          if (trimmed) {
-            void writeText(historyPath, nextHistory.map((line) => JSON.stringify(line)).join("\n") + "\n").catch(
-              () => {},
-            )
-          } else {
-            void appendText(historyPath, JSON.stringify(entry) + "\n").catch(() => {})
-          }
-          return final
-        })
+        const { history } = stateRef.current
+        if (isDuplicateEntry(history.at(-1), entry)) {
+          commit({ index: 0, history })
+          return
+        }
+        const nextHistory = [...history, entry]
+        let trimmed = false
+        if (nextHistory.length > MAX_HISTORY_ENTRIES) {
+          nextHistory.splice(0, nextHistory.length - MAX_HISTORY_ENTRIES)
+          trimmed = true
+        }
+        commit({ history: nextHistory, index: 0 })
+        if (trimmed) {
+          void writeText(
+            historyPath,
+            nextHistory.map((line) => JSON.stringify(line)).join("\n") + "\n",
+          ).catch(() => {})
+        } else {
+          void appendText(historyPath, JSON.stringify(entry) + "\n").catch(() => {})
+        }
       },
-      [historyPath],
+      [historyPath, commit],
     )
 
     return { move, append }

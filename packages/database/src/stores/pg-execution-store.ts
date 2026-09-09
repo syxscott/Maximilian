@@ -1,43 +1,59 @@
-import { and, eq, isNull, lt } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { executions, executionsArchive } from "../schema.js";
+import { and, eq, gt, isNull, lt, sql } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { executions, executionsArchive } from "../schema.js"
 
 interface ExecutionRecord {
-  id: string;
-  taskId: string;
-  workspaceId: string;
-  agentRole: string;
-  blueprintId?: string;
-  blueprintVersion?: string;
-  graphId?: string;
-  modelAssignment?: { provider: string; model: string; reason?: string; score?: number };
-  artifacts: string[];
-  review?: unknown;
-  userFeedback: Array<{ at: string; text: string; rating?: number }>;
-  startedAt: string;
-  completedAt?: string;
-  durationMs?: number;
-  status: "pending" | "running" | "completed" | "failed";
-  error?: string;
-  archivedAt?: string;
-  archiveBucket?: string;
+  id: string
+  tenantId?: string
+  taskId: string
+  workspaceId: string
+  agentRole: string
+  blueprintId?: string
+  blueprintVersion?: string
+  graphId?: string
+  modelAssignment?: { provider: string; model: string; reason?: string; score?: number }
+  artifacts: string[]
+  review?: unknown
+  userFeedback: Array<{ at: string; text: string; rating?: number }>
+  startedAt: string
+  completedAt?: string
+  durationMs?: number
+  status: "pending" | "running" | "completed" | "failed"
+  error?: string
+  archivedAt?: string
+  archiveBucket?: string
 }
 
 interface ExecutionListOptions {
-  includeArchived?: boolean;
+  includeArchived?: boolean
+  tenantId?: string
+  /** Number of records to skip (for pagination). Mutually exclusive with cursor. */
+  skip?: number
+  /** Maximum records to return. If combined with skip, enables offset pagination. */
+  take?: number
+  /** Cursor ID for keyset pagination. Mutually exclusive with skip. */
+  cursor?: string
 }
 
 interface ArchiveResult {
-  archived: number;
+  archived: number
 }
 
 interface RetentionOptions {
-  retainDays: number;
+  retainDays: number
 }
 
 /**
  * PostgreSQL-backed execution store.
  * API-compatible with ExecutionStore from @max/autonomy.
+ *
+ * Tenant isolation: when `tenantId` is provided in list/get options, queries
+ * filter strictly on `executions.tenantId` — NULL-tenant rows are invisible
+ * to tenant-scoped callers (fail-closed). Writes stamp `record.tenantId`
+ * (set by AutonomyOrchestrator.buildExecutionRecord from the workspace's
+ * metadata); rows saved before multi-tenant support predate this stamp and
+ * need a one-time backfill (`UPDATE executions SET tenant_id = …` per
+ * workspace) to become visible to tenant-scoped queries again.
  */
 export class PgExecutionStore {
   constructor(private db: PostgresJsDatabase) {}
@@ -47,6 +63,7 @@ export class PgExecutionStore {
       .insert(executions)
       .values({
         id: record.id,
+        tenantId: record.tenantId ?? null,
         taskId: record.taskId,
         workspaceId: record.workspaceId,
         agentRole: record.agentRole,
@@ -67,6 +84,7 @@ export class PgExecutionStore {
       .onConflictDoUpdate({
         target: executions.id,
         set: {
+          tenantId: record.tenantId ?? null,
           taskId: record.taskId,
           workspaceId: record.workspaceId,
           agentRole: record.agentRole,
@@ -83,143 +101,161 @@ export class PgExecutionStore {
           error: record.error ?? null,
           archivedAt: record.archivedAt ? new Date(record.archivedAt) : null,
         },
-      });
+      })
   }
 
-  async get(id: string, options: ExecutionListOptions = {}): Promise<ExecutionRecord | undefined> {
-    const rows = await this.db
-      .select()
-      .from(executions)
-      .where(and(eq(executions.id, id), isNull(executions.archivedAt)))
-      .limit(1);
-    if (rows.length > 0) return rowToExecution(rows[0]);
-    if (!options.includeArchived) return undefined;
-
-    const archived = await this.db
-      .select()
-      .from(executionsArchive)
-      .where(eq(executionsArchive.id, id))
-      .limit(1);
-    return archived[0] ? rowToExecution(archived[0]) : undefined;
+  async get(id: string, tenantId?: string): Promise<ExecutionRecord | undefined> {
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
+    const liveWhere = tenantFilter
+      ? and(eq(executions.id, id), isNull(executions.archivedAt), tenantFilter)
+      : and(eq(executions.id, id), isNull(executions.archivedAt))
+    const rows = await this.db.select().from(executions).where(liveWhere).limit(1)
+    if (rows.length > 0) return rowToExecution(rows[0])
+    // Always check archive — get has no includeArchived flag, it's a direct lookup
+    const archiveWhere = tenantId
+      ? and(eq(executionsArchive.id, id), eq(executionsArchive.tenantId, tenantId))
+      : eq(executionsArchive.id, id)
+    const archived = await this.db.select().from(executionsArchive).where(archiveWhere).limit(1)
+    return archived[0] ? rowToExecution(archived[0]) : undefined
   }
 
-  async listAll(options: ExecutionListOptions = {}): Promise<ExecutionRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(executions)
-      .where(isNull(executions.archivedAt));
-    const out = rows.map(rowToExecution);
-    if (!options.includeArchived) return out;
+  async listAll(tenantIdOrOptions?: string | ExecutionListOptions): Promise<ExecutionRecord[]> {
+    const opts: ExecutionListOptions =
+      typeof tenantIdOrOptions === "string"
+        ? { tenantId: tenantIdOrOptions }
+        : (tenantIdOrOptions ?? {})
+    const { tenantId, skip, take, cursor } = opts
 
-    const archived = await this.db.select().from(executionsArchive);
-    return [...out, ...archived.map(rowToExecution)];
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
+    const archivedFilter = isNull(executions.archivedAt)
+    const liveWhere = tenantFilter ? and(archivedFilter, tenantFilter) : archivedFilter
+
+    // Build query with optional cursor
+    const baseQuery = cursor
+      ? this.db
+          .select()
+          .from(executions)
+          .where(and(liveWhere, gt(executions.id, cursor)))
+          .orderBy(executions.id)
+      : this.db.select().from(executions).where(liveWhere).orderBy(executions.id)
+
+    const rows =
+      take !== undefined
+        ? skip !== undefined
+          ? await baseQuery.limit(take).offset(skip)
+          : await baseQuery.limit(take)
+        : await baseQuery
+
+    return rows.map(rowToExecution)
   }
 
-  async listForWorkspace(workspaceId: string, options: ExecutionListOptions = {}): Promise<ExecutionRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(executions)
-      .where(and(eq(executions.workspaceId, workspaceId), isNull(executions.archivedAt)));
-    const out = rows.map(rowToExecution);
-    if (!options.includeArchived) return out;
-
-    const archived = await this.db
-      .select()
-      .from(executionsArchive)
-      .where(eq(executionsArchive.workspaceId, workspaceId));
-    return [...out, ...archived.map(rowToExecution)];
+  async listForWorkspace(workspaceId: string, tenantId?: string): Promise<ExecutionRecord[]> {
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
+    const liveWhere = tenantFilter
+      ? and(eq(executions.workspaceId, workspaceId), isNull(executions.archivedAt), tenantFilter)
+      : and(eq(executions.workspaceId, workspaceId), isNull(executions.archivedAt))
+    const rows = await this.db.select().from(executions).where(liveWhere)
+    return rows.map(rowToExecution)
   }
 
-  async listForRole(role: string, options: ExecutionListOptions = {}): Promise<ExecutionRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(executions)
-      .where(and(eq(executions.agentRole, role), isNull(executions.archivedAt)));
-    const out = rows.map(rowToExecution);
-    if (!options.includeArchived) return out;
-
-    const archived = await this.db
-      .select()
-      .from(executionsArchive)
-      .where(eq(executionsArchive.agentRole, role));
-    return [...out, ...archived.map(rowToExecution)];
+  async listForRole(role: string, tenantId?: string): Promise<ExecutionRecord[]> {
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
+    const liveWhere = tenantFilter
+      ? and(eq(executions.agentRole, role), isNull(executions.archivedAt), tenantFilter)
+      : and(eq(executions.agentRole, role), isNull(executions.archivedAt))
+    const rows = await this.db.select().from(executions).where(liveWhere)
+    return rows.map(rowToExecution)
   }
 
-  async listForBlueprint(blueprintId: string, options: ExecutionListOptions = {}): Promise<ExecutionRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(executions)
-      .where(and(eq(executions.blueprintId, blueprintId), isNull(executions.archivedAt)));
-    const out = rows.map(rowToExecution);
-    if (!options.includeArchived) return out;
-
-    const archived = await this.db
-      .select()
-      .from(executionsArchive)
-      .where(eq(executionsArchive.blueprintId, blueprintId));
-    return [...out, ...archived.map(rowToExecution)];
+  async listForBlueprint(blueprintId: string, tenantId?: string): Promise<ExecutionRecord[]> {
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
+    const liveWhere = tenantFilter
+      ? and(eq(executions.blueprintId, blueprintId), isNull(executions.archivedAt), tenantFilter)
+      : and(eq(executions.blueprintId, blueprintId), isNull(executions.archivedAt))
+    const rows = await this.db.select().from(executions).where(liveWhere)
+    return rows.map(rowToExecution)
   }
 
   async archiveOlderThan(cutoff: Date): Promise<ArchiveResult> {
-    const rows = await this.db
-      .select()
-      .from(executions)
-      .where(and(lt(executions.startedAt, cutoff), isNull(executions.archivedAt)));
-    if (rows.length === 0) return { archived: 0 };
+    const archivedAt = new Date()
+    const rows = await this.db.transaction(async (tx) => {
+      // Atomically delete and return the rows to archive.
+      const deleted = await tx
+        .delete(executions)
+        .where(and(lt(executions.startedAt, cutoff), isNull(executions.archivedAt)))
+        .returning()
 
-    const archivedAt = new Date();
-    await this.db.insert(executionsArchive).values(rows.map((row) => ({
-      id: row.id,
-      tenantId: row.tenantId,
-      taskId: row.taskId,
-      workspaceId: row.workspaceId,
-      agentRole: row.agentRole,
-      blueprintId: row.blueprintId,
-      blueprintVersion: row.blueprintVersion,
-      graphId: row.graphId,
-      modelAssignment: row.modelAssignment,
-      artifacts: row.artifacts,
-      review: row.review,
-      userFeedback: row.userFeedback,
-      startedAt: row.startedAt,
-      completedAt: row.completedAt,
-      durationMs: row.durationMs,
-      status: row.status,
-      error: row.error,
-      archivedAt,
-      archiveBucket: bucketFor(row.startedAt),
-    }))).onConflictDoNothing();
+      if (deleted.length === 0) return []
 
-    await this.db
-      .delete(executions)
-      .where(and(lt(executions.startedAt, cutoff), isNull(executions.archivedAt)));
+      await tx
+        .insert(executionsArchive)
+        .values(
+          deleted.map((row) => ({
+            id: row.id,
+            tenantId: row.tenantId,
+            taskId: row.taskId,
+            workspaceId: row.workspaceId,
+            agentRole: row.agentRole,
+            blueprintId: row.blueprintId,
+            blueprintVersion: row.blueprintVersion,
+            graphId: row.graphId,
+            modelAssignment: row.modelAssignment,
+            artifacts: row.artifacts,
+            review: row.review,
+            userFeedback: row.userFeedback,
+            startedAt: row.startedAt,
+            completedAt: row.completedAt,
+            durationMs: row.durationMs,
+            status: row.status,
+            error: row.error,
+            archivedAt,
+            archiveBucket: bucketFor(row.startedAt),
+          })),
+        )
+        .onConflictDoNothing()
 
-    return { archived: rows.length };
+      return deleted
+    })
+
+    return { archived: rows.length }
   }
 
   async archiveByRetention(options: RetentionOptions): Promise<ArchiveResult> {
-    return this.archiveOlderThan(cutoffForRetention(options.retainDays));
+    return this.archiveOlderThan(cutoffForRetention(options.retainDays))
   }
 
   async appendUserFeedback(
     executionId: string,
     text: string,
     rating?: number,
+    tenantId?: string,
   ): Promise<ExecutionRecord> {
-    const existing = await this.get(executionId);
-    if (!existing) throw new Error(`execution ${executionId} not found`);
-    const feedback = [...existing.userFeedback, { at: new Date().toISOString(), text, rating }];
-    await this.db
+    // Single UPDATE with array concatenation avoids read-write race.
+    const tenantFilter = tenantId ? eq(executions.tenantId, tenantId) : undefined
+    const where = tenantFilter
+      ? and(eq(executions.id, executionId), tenantFilter)
+      : eq(executions.id, executionId)
+
+    const newEntry = { at: new Date().toISOString(), text, rating }
+    const updated = await this.db
       .update(executions)
-      .set({ userFeedback: feedback })
-      .where(eq(executions.id, executionId));
-    return { ...existing, userFeedback: feedback };
+      .set({
+        userFeedback: sql`${executions.userFeedback} || ${JSON.stringify([newEntry])}::jsonb`,
+      })
+      .where(where)
+      .returning()
+
+    if (updated.length === 0) throw new Error(`execution ${executionId} not found`)
+    return rowToExecution(updated[0])
   }
 }
 
-function rowToExecution(row: typeof executions.$inferSelect | typeof executionsArchive.$inferSelect): ExecutionRecord {
+function rowToExecution(
+  row: typeof executions.$inferSelect | typeof executionsArchive.$inferSelect,
+): ExecutionRecord {
   return {
     id: row.id,
+    tenantId: row.tenantId ?? undefined,
     taskId: row.taskId,
     workspaceId: row.workspaceId,
     agentRole: row.agentRole,
@@ -237,13 +273,13 @@ function rowToExecution(row: typeof executions.$inferSelect | typeof executionsA
     error: row.error ?? undefined,
     archivedAt: row.archivedAt?.toISOString(),
     archiveBucket: "archiveBucket" in row ? row.archiveBucket : undefined,
-  };
+  }
 }
 
 function cutoffForRetention(retainDays: number): Date {
-  return new Date(Date.now() - retainDays * 24 * 60 * 60 * 1000);
+  return new Date(Date.now() - retainDays * 24 * 60 * 60 * 1000)
 }
 
 function bucketFor(date: Date): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`
 }

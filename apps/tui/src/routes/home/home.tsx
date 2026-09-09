@@ -69,7 +69,7 @@ export function Home() {
       <Box flexDirection="column" flexGrow={1} alignItems="center" paddingLeft={2} paddingRight={2}>
         <Box flexGrow={1} />
         <Box height={4} flexShrink={1}>
-          <Text>opencode</Text>
+          <Text>Maximilian</Text>
         </Box>
         <Box height={1} flexShrink={1} />
         <Box width="100%" zIndex={1000} paddingTop={1} flexShrink={0}>
