@@ -98,14 +98,11 @@ export const useLocalStore = create<LocalStore>()((set, get) => ({
       return { store: next }
     }),
 
-  setCurrentAgent: (name) =>
-    set((state) => ({ store: { ...state.store, current: name } })),
+  setCurrentAgent: (name) => set((state) => ({ store: { ...state.store, current: name } })),
 
-  setDraft: (draft) =>
-    set((state) => ({ store: { ...state.store, draft } })),
+  setDraft: (draft) => set((state) => ({ store: { ...state.store, draft } })),
 
-  setLast: (last) =>
-    set((state) => ({ store: { ...state.store, last } })),
+  setLast: (last) => set((state) => ({ store: { ...state.store, last } })),
 
   setSessionSaved: (sessionID, value) =>
     set((state) => {
@@ -118,8 +115,7 @@ export const useLocalStore = create<LocalStore>()((set, get) => ({
       return { saved: next }
     }),
 
-  resetDraft: () =>
-    set((state) => ({ store: { ...state.store, draft: undefined } })),
+  resetDraft: () => set((state) => ({ store: { ...state.store, draft: undefined } })),
 
   replaceSaved: (next) => set({ saved: next }),
 
@@ -131,7 +127,10 @@ export const useLocalStore = create<LocalStore>()((set, get) => ({
 // stays identical regardless of the reactive runtime.
 // ----------------------------------------------------------------------------
 
-export function pickAgent(items: AgentDescriptor[], name: string | undefined): AgentDescriptor | undefined {
+export function pickAgent(
+  items: AgentDescriptor[],
+  name: string | undefined,
+): AgentDescriptor | undefined {
   if (items.length === 0) return undefined
   return items.find((item) => item.name === name) ?? items[0]
 }

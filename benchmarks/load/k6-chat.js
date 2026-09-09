@@ -19,16 +19,16 @@
  *   BASE_URL — API base URL (default: http://localhost:3001)
  */
 
-import http from "k6/http";
-import { check, sleep } from "k6";
-import { Rate, Trend } from "k6/metrics";
-import { provisionUsers, authHeaders } from "./lib/auth.js";
+import http from "k6/http"
+import { check, sleep } from "k6"
+import { Rate, Trend } from "k6/metrics"
+import { provisionUsers, authHeaders } from "./lib/auth.js"
 
-const BASE_URL = __ENV.BASE_URL || "http://localhost:3001";
-const USER_POOL_SIZE = 100;
+const BASE_URL = __ENV.BASE_URL || "http://localhost:3001"
+const USER_POOL_SIZE = 100
 
-const errorRate = new Rate("errors");
-const chatDuration = new Trend("chat_duration", true);
+const errorRate = new Rate("errors")
+const chatDuration = new Trend("chat_duration", true)
 
 export const options = {
   stages: [
@@ -40,39 +40,39 @@ export const options = {
     "http_req_duration{endpoint:chat}": ["p(95)<2000"],
     errors: ["rate<0.10"],
   },
-};
+}
 
 export function setup() {
-  return { users: provisionUsers(BASE_URL, USER_POOL_SIZE) };
+  return { users: provisionUsers(BASE_URL, USER_POOL_SIZE) }
 }
 
 export default function (data) {
-  const user = data.users[__VU % data.users.length];
+  const user = data.users[__VU % data.users.length]
 
   const payload = JSON.stringify({
     message: `Load test message vu=${__VU} iter=${__ITER}`,
-  });
+  })
 
   const params = {
     ...authHeaders(user.accessToken),
     tags: { endpoint: "chat" },
-  };
+  }
 
-  const res = http.post(`${BASE_URL}/api/chat`, payload, params);
+  const res = http.post(`${BASE_URL}/api/chat`, payload, params)
 
   const ok = check(res, {
     "status is 200 or 202": (r) => r.status === 200 || r.status === 202,
     "has workspaceId": (r) => {
       try {
-        return JSON.parse(r.body).workspaceId !== undefined;
+        return JSON.parse(r.body).workspaceId !== undefined
       } catch (e) {
-        return false;
+        return false
       }
     },
-  });
+  })
 
-  errorRate.add(!ok);
-  chatDuration.add(res.timings.duration);
+  errorRate.add(!ok)
+  chatDuration.add(res.timings.duration)
 
-  sleep(1 + Math.random());
+  sleep(1 + Math.random())
 }

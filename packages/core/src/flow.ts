@@ -139,9 +139,8 @@ export class Flow<T = unknown> {
             // Find which step failed by matching the batch
             const idx = settled.indexOf(outcome)
             const name = batch[idx]!
-            errors[name] = outcome.reason instanceof Error
-              ? outcome.reason.message
-              : String(outcome.reason)
+            errors[name] =
+              outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)
             failed.add(name)
             pending.delete(name)
           }

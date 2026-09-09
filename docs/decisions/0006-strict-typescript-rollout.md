@@ -57,12 +57,12 @@ needed.
 Run `pnpm --filter @max/<name> type-check`. Fix any new errors. Common
 fixes:
 
-| Error | Fix |
-|---|---|
+| Error                                  | Fix                                                  |
+| -------------------------------------- | ---------------------------------------------------- |
 | `Element implicitly has an 'any' type` | Add an explicit type or `!` assertion after indexing |
-| `Types of property X are incompatible` | Use `X?: T` consistently with optional handling |
-| `Type 'undefined' is not assignable` | Add `if (x)` guard or `x ?? defaultValue` |
-| `'X' is possibly 'undefined'` | Add a non-null assertion or early-return guard |
+| `Types of property X are incompatible` | Use `X?: T` consistently with optional handling      |
+| `Type 'undefined' is not assignable`   | Add `if (x)` guard or `x ?? defaultValue`            |
+| `'X' is possibly 'undefined'`          | Add a non-null assertion or early-return guard       |
 
 ## References
 

@@ -87,8 +87,11 @@
 
   /* ─── Typography ───────────────────────────────────────────────────── */
 
-  --mx-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --mx-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --mx-font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mx-font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
 
   --mx-text-xs: 11px;
   --mx-text-sm: 13px;
@@ -188,29 +191,23 @@
   /* ─── Elevation ────────────────────────────────────────────────────── */
 
   --mx-elevation-raised:
-    0px 2px 4px 0px var(--mx-alpha-dark-4),
-    0px 1px 2px -1px var(--mx-alpha-dark-8),
+    0px 2px 4px 0px var(--mx-alpha-dark-4), 0px 1px 2px -1px var(--mx-alpha-dark-8),
     0px 0px 0px 0.5px var(--mx-alpha-dark-12);
 
   --mx-elevation-floating:
-    0px 8px 16px 0px var(--mx-alpha-dark-4),
-    0px 4px 8px 0px var(--mx-alpha-dark-8),
+    0px 8px 16px 0px var(--mx-alpha-dark-4), 0px 4px 8px 0px var(--mx-alpha-dark-8),
     0px 0px 0px 0.5px var(--mx-alpha-dark-12);
 
   --mx-elevation-overlay:
-    0px 16px 32px 0px var(--mx-alpha-dark-4),
-    0px 8px 16px 0px var(--mx-alpha-dark-8),
+    0px 16px 32px 0px var(--mx-alpha-dark-4), 0px 8px 16px 0px var(--mx-alpha-dark-8),
     0px 0px 0px 0.5px var(--mx-alpha-dark-12);
 
   --mx-elevation-button-neutral:
-    0px 1px 1.5px 0px var(--mx-alpha-dark-10),
-    0px 0px 0px 0.5px var(--mx-alpha-dark-14);
+    0px 1px 1.5px 0px var(--mx-alpha-dark-10), 0px 0px 0px 0.5px var(--mx-alpha-dark-14);
 
   --mx-elevation-button-contrast:
-    0px 1px 1.5px 0px var(--mx-alpha-dark-20),
-    0px 0px 0px 0.5px var(--mx-grey-800),
-    inset 0px 1px 2px 0px var(--mx-alpha-light-14),
-    inset 0px -1px 2px 0px var(--mx-alpha-dark-6);
+    0px 1px 1.5px 0px var(--mx-alpha-dark-20), 0px 0px 0px 0.5px var(--mx-grey-800),
+    inset 0px 1px 2px 0px var(--mx-alpha-light-14), inset 0px -1px 2px 0px var(--mx-alpha-dark-6);
 }
 
 /* ─── Light mode override ─────────────────────────────────────────── */
@@ -272,8 +269,13 @@
   }
 }
 @keyframes status-dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 /* ─── wave indicator (used by TaskPanel) ─────────────────────────────── */

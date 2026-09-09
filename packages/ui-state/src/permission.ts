@@ -67,7 +67,9 @@ export const createPermissionStore = (storageKey = "permission.v3") =>
       }),
       {
         name: storageKey,
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         migrate: (value) => {
           if (!value || typeof value !== "object" || Array.isArray(value)) return value
           const data = value as Record<string, unknown>
@@ -75,7 +77,9 @@ export const createPermissionStore = (storageKey = "permission.v3") =>
           return {
             ...data,
             autoAccept:
-              typeof data.autoAcceptEdits === "object" && data.autoAcceptEdits && !Array.isArray(data.autoAcceptEdits)
+              typeof data.autoAcceptEdits === "object" &&
+              data.autoAcceptEdits &&
+              !Array.isArray(data.autoAcceptEdits)
                 ? data.autoAcceptEdits
                 : {},
           }

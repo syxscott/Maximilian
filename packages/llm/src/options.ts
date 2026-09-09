@@ -53,8 +53,14 @@ export function mergeGenerationOptions(
   if (defined.length === 0) return undefined
   const result: GenerationOptions = {}
   const keys: Array<keyof GenerationOptions> = [
-    "maxTokens", "temperature", "topP", "topK",
-    "frequencyPenalty", "presencePenalty", "seed", "stop",
+    "maxTokens",
+    "temperature",
+    "topP",
+    "topK",
+    "frequencyPenalty",
+    "presencePenalty",
+    "seed",
+    "stop",
   ]
   for (const key of keys) {
     let val: unknown

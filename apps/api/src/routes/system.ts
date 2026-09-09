@@ -5,18 +5,21 @@
  * their `api.get(...)` form and stay documented in the README instead.
  */
 
-import { createRoute } from "@hono/zod-openapi";
-import { z } from "zod";
-import { ProviderListResponseSchema } from "../schemas.js";
+import { createRoute } from "@hono/zod-openapi"
+import { z } from "zod"
+import { ProviderListResponseSchema } from "../schemas.js"
 
 export const listProvidersRoute = createRoute({
   method: "get",
   path: "/providers",
   tags: ["system"],
   responses: {
-    200: { content: { "application/json": { schema: ProviderListResponseSchema } }, description: "Available LLM providers" },
+    200: {
+      content: { "application/json": { schema: ProviderListResponseSchema } },
+      description: "Available LLM providers",
+    },
   },
-});
+})
 
 export const healthRoute = createRoute({
   method: "get",
@@ -24,9 +27,12 @@ export const healthRoute = createRoute({
   tags: ["system"],
   responses: {
     200: { content: { "application/json": { schema: z.unknown() } }, description: "Healthy" },
-    503: { content: { "application/json": { schema: z.unknown() } }, description: "Degraded or down" },
+    503: {
+      content: { "application/json": { schema: z.unknown() } },
+      description: "Degraded or down",
+    },
   },
-});
+})
 
 export const readyRoute = createRoute({
   method: "get",
@@ -36,21 +42,34 @@ export const readyRoute = createRoute({
     200: { content: { "application/json": { schema: z.unknown() } }, description: "Ready" },
     503: { content: { "application/json": { schema: z.unknown() } }, description: "Not ready" },
   },
-});
+})
 
 export const setDefaultProviderRoute = createRoute({
   method: "put",
   path: "/system/providers/default",
   tags: ["system"],
   request: {
-    body: { content: { "application/json": { schema: z.object({ providerId: z.string().min(1) }) } } },
+    body: {
+      content: { "application/json": { schema: z.object({ providerId: z.string().min(1) }) } },
+    },
   },
   responses: {
-    200: { content: { "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string() }) } }, description: "Default provider updated" },
-    404: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Provider not found" },
-    500: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Internal error" },
+    200: {
+      content: {
+        "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string() }) },
+      },
+      description: "Default provider updated",
+    },
+    404: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Provider not found",
+    },
+    500: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Internal error",
+    },
   },
-});
+})
 
 export const setProviderModelRoute = createRoute({
   method: "put",
@@ -61,12 +80,28 @@ export const setProviderModelRoute = createRoute({
     body: { content: { "application/json": { schema: z.object({ model: z.string().min(1) }) } } },
   },
   responses: {
-    200: { content: { "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string(), model: z.string() }) } }, description: "Default model updated" },
-    404: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Provider not found" },
-    400: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Invalid model" },
-    500: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Internal error" },
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({ ok: z.boolean(), providerId: z.string(), model: z.string() }),
+        },
+      },
+      description: "Default model updated",
+    },
+    404: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Provider not found",
+    },
+    400: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Invalid model",
+    },
+    500: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Internal error",
+    },
   },
-});
+})
 
 // ── Circuit Breaker & Health (borrowed from cc-switch) ───────────────────────
 
@@ -89,9 +124,12 @@ export const providerHealthRoute = createRoute({
       },
       description: "Provider health status",
     },
-    404: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Provider not found" },
+    404: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Provider not found",
+    },
   },
-});
+})
 
 export const circuitBreakerStatsRoute = createRoute({
   method: "get",
@@ -112,9 +150,12 @@ export const circuitBreakerStatsRoute = createRoute({
       },
       description: "Circuit breaker statistics",
     },
-    404: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Provider not found" },
+    404: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Provider not found",
+    },
   },
-});
+})
 
 export const circuitBreakerResetRoute = createRoute({
   method: "post",
@@ -122,10 +163,18 @@ export const circuitBreakerResetRoute = createRoute({
   tags: ["system"],
   request: { params: z.object({ id: z.string().min(1) }) },
   responses: {
-    200: { content: { "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string() }) } }, description: "Circuit breaker reset" },
-    404: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Provider not found" },
+    200: {
+      content: {
+        "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string() }) },
+      },
+      description: "Circuit breaker reset",
+    },
+    404: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Provider not found",
+    },
   },
-});
+})
 
 // ── Failover Queue (borrowed from cc-switch) ─────────────────────────────────
 
@@ -138,18 +187,20 @@ export const failoverQueueRoute = createRoute({
       content: {
         "application/json": {
           schema: z.object({
-            queue: z.array(z.object({
-              providerId: z.string(),
-              priority: z.number().int().positive(),
-              addedAt: z.number().int().positive(),
-            })),
+            queue: z.array(
+              z.object({
+                providerId: z.string(),
+                priority: z.number().int().positive(),
+                addedAt: z.number().int().positive(),
+              }),
+            ),
           }),
         },
       },
       description: "Failover queue",
     },
   },
-});
+})
 
 export const failoverQueueAddRoute = createRoute({
   method: "post",
@@ -168,10 +219,18 @@ export const failoverQueueAddRoute = createRoute({
     },
   },
   responses: {
-    200: { content: { "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string() }) } }, description: "Provider added to failover queue" },
-    404: { content: { "application/json": { schema: z.object({ error: z.string() }) } }, description: "Provider not found" },
+    200: {
+      content: {
+        "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string() }) },
+      },
+      description: "Provider added to failover queue",
+    },
+    404: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Provider not found",
+    },
   },
-});
+})
 
 export const failoverQueueRemoveRoute = createRoute({
   method: "post",
@@ -187,18 +246,26 @@ export const failoverQueueRemoveRoute = createRoute({
     },
   },
   responses: {
-    200: { content: { "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string() }) } }, description: "Provider removed from failover queue" },
+    200: {
+      content: {
+        "application/json": { schema: z.object({ ok: z.boolean(), providerId: z.string() }) },
+      },
+      description: "Provider removed from failover queue",
+    },
   },
-});
+})
 
 export const autoFailoverRoute = createRoute({
   method: "get",
   path: "/system/failover/auto",
   tags: ["system"],
   responses: {
-    200: { content: { "application/json": { schema: z.object({ enabled: z.boolean() }) } }, description: "Auto-failover state" },
+    200: {
+      content: { "application/json": { schema: z.object({ enabled: z.boolean() }) } },
+      description: "Auto-failover state",
+    },
   },
-});
+})
 
 export const setAutoFailoverRoute = createRoute({
   method: "put",

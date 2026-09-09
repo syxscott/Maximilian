@@ -45,10 +45,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
     if (key.escape) props.onCancel?.()
   })
 
-  const formatItems = useMemo(
-    () => FORMATS.map((f) => ({ label: f.label, value: f.value })),
-    [],
-  )
+  const formatItems = useMemo(() => FORMATS.map((f) => ({ label: f.label, value: f.value })), [])
 
   const optionItems = useMemo(
     () => [

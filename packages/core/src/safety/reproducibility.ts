@@ -97,7 +97,8 @@ export class ReproducibilityManager {
       hostname: hostname(),
       cpuCount: cpus().length,
       capturedEnv,
-      packages: Object.keys(this.packageVersions).length > 0 ? { ...this.packageVersions } : undefined,
+      packages:
+        Object.keys(this.packageVersions).length > 0 ? { ...this.packageVersions } : undefined,
       timestamp: new Date().toISOString(),
     }
   }
@@ -129,7 +130,11 @@ export class ReproducibilityManager {
    * Check reproducibility of two result snapshots. Both must be plain
    * objects; we hash their JSON representation and compare.
    */
-  checkReproducibility<T>(experimentId: string, firstResult: T, secondResult: T): ReproducibilityReport {
+  checkReproducibility<T>(
+    experimentId: string,
+    firstResult: T,
+    secondResult: T,
+  ): ReproducibilityReport {
     const checks: string[] = []
     const issues: string[] = []
 
@@ -179,10 +184,15 @@ export function hashObject(obj: unknown): string {
   // Sort keys recursively for determinism.
   const sorted = JSON.stringify(obj, (_key, value) => {
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      return Object.keys(value as Record<string, unknown>).sort().reduce(
-        (acc, k) => { acc[k] = (value as Record<string, unknown>)[k]; return acc },
-        {} as Record<string, unknown>,
-      )
+      return Object.keys(value as Record<string, unknown>)
+        .sort()
+        .reduce(
+          (acc, k) => {
+            acc[k] = (value as Record<string, unknown>)[k]
+            return acc
+          },
+          {} as Record<string, unknown>,
+        )
     }
     return value
   })

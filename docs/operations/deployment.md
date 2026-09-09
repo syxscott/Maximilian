@@ -126,6 +126,7 @@ docker compose \
 ```
 
 This brings up:
+
 - `postgres` (always)
 - `api` (always)
 - `dashboard` (always)
@@ -229,7 +230,7 @@ spec:
             periodSeconds: 30
           resources:
             requests: { cpu: "500m", memory: "512Mi" }
-            limits:   { cpu: "2",    memory: "2Gi" }
+            limits: { cpu: "2", memory: "2Gi" }
 ```
 
 Same shape for the worker (no readiness probe needed; liveness
@@ -279,6 +280,7 @@ the API container. The default config (`observability/prometheus.yaml`)
 also scrapes the worker's heartbeat. View at <http://localhost:9090>.
 
 Key metrics:
+
 - `maximilian_http_request_total{method,route,status}`
 - `maximilian_http_request_duration_seconds_bucket{method,route,status,le}`
 - `maximilian_task_total{role,status}` and `…_duration_seconds`
@@ -372,16 +374,16 @@ don't accumulate on the API disk.
 
 ## 12. Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `/api/ready` returns 503 | DB unreachable | check `DATABASE_URL`, check `pg_isready` from API container |
-| `/api/health` shows `llm: degraded` | provider key missing or invalid | check `ANTHROPIC_API_KEY` etc. |
-| 401 on every request | `JWT_SECRET` rotated mid-session | clients re-auth; or use dual-sign |
-| 429 on dashboard polls | rate limit hit | raise limit, or scope to IP range, or scale API replicas |
-| `telemetry.jsonl` huge | no log rotation | add logrotate or switch to log shipper |
-| Worker not picking up jobs | Redis disconnected | check `REDIS_URL`, check `docker compose ps` |
-| OpenAPI spec empty | `createRoute` not used in a route file | convert to `api.openapi()` (see `apps/api/test/openapi-coverage.test.ts`) |
-| `circuit breaker is OPEN` in logs | LLM provider flaky | wait for `resetTimeout` (default 30s, ±20% jitter), check provider status page |
+| Symptom                             | Likely cause                           | Fix                                                                            |
+| ----------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------ |
+| `/api/ready` returns 503            | DB unreachable                         | check `DATABASE_URL`, check `pg_isready` from API container                    |
+| `/api/health` shows `llm: degraded` | provider key missing or invalid        | check `ANTHROPIC_API_KEY` etc.                                                 |
+| 401 on every request                | `JWT_SECRET` rotated mid-session       | clients re-auth; or use dual-sign                                              |
+| 429 on dashboard polls              | rate limit hit                         | raise limit, or scope to IP range, or scale API replicas                       |
+| `telemetry.jsonl` huge              | no log rotation                        | add logrotate or switch to log shipper                                         |
+| Worker not picking up jobs          | Redis disconnected                     | check `REDIS_URL`, check `docker compose ps`                                   |
+| OpenAPI spec empty                  | `createRoute` not used in a route file | convert to `api.openapi()` (see `apps/api/test/openapi-coverage.test.ts`)      |
+| `circuit breaker is OPEN` in logs   | LLM provider flaky                     | wait for `resetTimeout` (default 30s, ±20% jitter), check provider status page |
 
 ## 13. Capacity planning (rough estimates)
 

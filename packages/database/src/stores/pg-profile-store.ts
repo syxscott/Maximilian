@@ -1,37 +1,43 @@
-import { eq } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { agentProfiles } from "../schema.js";
+import { eq } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { agentProfiles } from "../schema.js"
 
 // Use the same AgentProfile type as ProfileStore from @max/evolution.
 // The memory field is stored as JSONB and reconstructed on read.
 interface AgentMemory {
-  userFeedback: unknown[];
-  reviewSuggestions: unknown[];
-  commonErrors: unknown[];
-  goodExamples: unknown[];
-  totalEntries: number;
-  compressedAt?: string;
+  userFeedback: unknown[]
+  reviewSuggestions: unknown[]
+  commonErrors: unknown[]
+  goodExamples: unknown[]
+  totalEntries: number
+  compressedAt?: string
 }
 
 interface AgentProfileData {
-  id: string;
-  role: string;
-  createdAt: string;
-  totalTasks: number;
-  avgScore: number;
-  successRate: number;
-  avgExecutionTime: number;
-  preferredModel?: string;
-  strengths: string[];
-  weaknesses: string[];
-  memory: AgentMemory;
-  currentVersion: string;
-  versions: string[];
-  manifest?: unknown;
+  id: string
+  role: string
+  createdAt: string
+  totalTasks: number
+  avgScore: number
+  successRate: number
+  avgExecutionTime: number
+  preferredModel?: string
+  strengths: string[]
+  weaknesses: string[]
+  memory: AgentMemory
+  currentVersion: string
+  versions: string[]
+  manifest?: unknown
 }
 
 function emptyMemory(): AgentMemory {
-  return { userFeedback: [], reviewSuggestions: [], commonErrors: [], goodExamples: [], totalEntries: 0 };
+  return {
+    userFeedback: [],
+    reviewSuggestions: [],
+    commonErrors: [],
+    goodExamples: [],
+    totalEntries: 0,
+  }
 }
 
 /**
@@ -49,16 +55,16 @@ export class PgProfileStore {
       .select()
       .from(agentProfiles)
       .where(eq(agentProfiles.role, role))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToProfile(rows[0]);
+      .limit(1)
+    if (rows.length === 0) return undefined
+    return rowToProfile(rows[0])
   }
 
   async getOrCreate(role: string, defaultManifest: unknown): Promise<AgentProfileData> {
-    const existing = await this.get(role);
-    if (existing) return existing;
+    const existing = await this.get(role)
+    if (existing) return existing
 
-    const now = new Date().toISOString();
+    const now = new Date().toISOString()
     const profile: AgentProfileData = {
       id: role,
       role,
@@ -73,9 +79,9 @@ export class PgProfileStore {
       currentVersion: "v1",
       versions: ["v1"],
       manifest: defaultManifest,
-    };
-    await this.save(profile);
-    return profile;
+    }
+    await this.save(profile)
+    return profile
   }
 
   async save(profile: AgentProfileData): Promise<void> {
@@ -93,24 +99,20 @@ export class PgProfileStore {
         .from(agentProfiles)
         .where(eq(agentProfiles.role, profile.role))
         .for("update")
-        .limit(1);
+        .limit(1)
 
-      const existingMemory: AgentMemory = existingRows.length > 0
-        ? rowToMemory(existingRows[0].memory)
-        : emptyMemory();
-      const existingVersions: string[] = existingRows.length > 0
-        ? ((existingRows[0].versions as string[]) ?? [])
-        : [];
+      const existingMemory: AgentMemory =
+        existingRows.length > 0 ? rowToMemory(existingRows[0].memory) : emptyMemory()
+      const existingVersions: string[] =
+        existingRows.length > 0 ? ((existingRows[0].versions as string[]) ?? []) : []
 
-      const mergedMemory = mergeMemory(existingMemory, profile.memory);
-      const mergedVersions = mergeVersions(existingVersions, profile.versions);
+      const mergedMemory = mergeMemory(existingMemory, profile.memory)
+      const mergedVersions = mergeVersions(existingVersions, profile.versions)
 
       // For aggregates: totalTasks is an increment (增量), so we sum them.
       // If two callers raced and both computed aggregates from different
       // metric windows, taking the sum gives the correct total count.
-      const mergedTotalTasks = (
-        existingRows[0]?.totalTasks ?? 0
-      ) + profile.totalTasks;
+      const mergedTotalTasks = (existingRows[0]?.totalTasks ?? 0) + profile.totalTasks
 
       await tx
         .insert(agentProfiles)
@@ -146,29 +148,33 @@ export class PgProfileStore {
             manifest: profile.manifest ?? null,
             updatedAt: new Date(),
           },
-        });
-    });
+        })
+    })
   }
 
   async listAll(): Promise<AgentProfileData[]> {
-    const rows = await this.db.select().from(agentProfiles);
-    return rows.map(rowToProfile);
+    const rows = await this.db.select().from(agentProfiles)
+    return rows.map(rowToProfile)
   }
 
   /**
    * Recompute aggregate stats from a fresh batch of metrics.
    * Mirrors ProfileStore.recompute() from @max/evolution.
    */
-  static recompute(profile: AgentProfileData, records: Array<{ reviewScore?: number; error?: string; executionTime: number }>): AgentProfileData {
-    if (records.length === 0) return profile;
-    const scored = records.filter((r) => r.reviewScore !== undefined);
-    const successes = records.filter((r) => !r.error);
+  static recompute(
+    profile: AgentProfileData,
+    records: Array<{ reviewScore?: number; error?: string; executionTime: number }>,
+  ): AgentProfileData {
+    if (records.length === 0) return profile
+    const scored = records.filter((r) => r.reviewScore !== undefined)
+    const successes = records.filter((r) => !r.error)
 
-    const avgScore = scored.length > 0
-      ? scored.reduce((a, r) => a + (r.reviewScore ?? 0), 0) / scored.length
-      : profile.avgScore;
-    const successRate = successes.length / records.length;
-    const avgExecutionTime = records.reduce((a, r) => a + r.executionTime, 0) / records.length;
+    const avgScore =
+      scored.length > 0
+        ? scored.reduce((a, r) => a + (r.reviewScore ?? 0), 0) / scored.length
+        : profile.avgScore
+    const successRate = successes.length / records.length
+    const avgExecutionTime = records.reduce((a, r) => a + r.executionTime, 0) / records.length
 
     return {
       ...profile,
@@ -176,7 +182,7 @@ export class PgProfileStore {
       avgScore,
       successRate,
       avgExecutionTime,
-    };
+    }
   }
 }
 
@@ -196,11 +202,11 @@ function rowToProfile(row: typeof agentProfiles.$inferSelect): AgentProfileData 
     currentVersion: row.currentVersion,
     versions: (row.versions as string[]) ?? ["v1"],
     manifest: row.manifest ?? undefined,
-  };
+  }
 }
 
 function rowToMemory(raw: unknown): AgentMemory {
-  const rawMemory = (raw as Record<string, unknown>) ?? {};
+  const rawMemory = (raw as Record<string, unknown>) ?? {}
   return {
     userFeedback: (rawMemory.userFeedback as unknown[]) ?? [],
     reviewSuggestions: (rawMemory.reviewSuggestions as unknown[]) ?? [],
@@ -208,7 +214,7 @@ function rowToMemory(raw: unknown): AgentMemory {
     goodExamples: (rawMemory.goodExamples as unknown[]) ?? [],
     totalEntries: (rawMemory.totalEntries as number) ?? 0,
     compressedAt: rawMemory.compressedAt as string | undefined,
-  };
+  }
 }
 
 /**
@@ -227,27 +233,27 @@ export function mergeMemory(existing: AgentMemory, incoming: AgentMemory): Agent
     goodExamples: unionByContent(existing.goodExamples, incoming.goodExamples),
     totalEntries: Math.max(existing.totalEntries, incoming.totalEntries),
     compressedAt: incoming.compressedAt ?? existing.compressedAt,
-  };
+  }
 }
 
 export function unionByContent(a: unknown[], b: unknown[]): unknown[] {
-  const seen = new Set<string>();
-  const out: unknown[] = [];
+  const seen = new Set<string>()
+  const out: unknown[] = []
   for (const item of a) {
-    const key = JSON.stringify(item);
+    const key = JSON.stringify(item)
     if (!seen.has(key)) {
-      seen.add(key);
-      out.push(item);
+      seen.add(key)
+      out.push(item)
     }
   }
   for (const item of b) {
-    const key = JSON.stringify(item);
+    const key = JSON.stringify(item)
     if (!seen.has(key)) {
-      seen.add(key);
-      out.push(item);
+      seen.add(key)
+      out.push(item)
     }
   }
-  return out;
+  return out
 }
 
 /**
@@ -257,15 +263,15 @@ export function unionByContent(a: unknown[], b: unknown[]): unknown[] {
  * other's results.
  */
 export function mergeVersions(existing: string[], incoming: string[]): string[] {
-  const seen = new Set(existing);
-  const out = [...existing];
+  const seen = new Set(existing)
+  const out = [...existing]
   for (const v of incoming) {
     if (!seen.has(v)) {
-      seen.add(v);
-      out.push(v);
+      seen.add(v)
+      out.push(v)
     }
   }
-  return out;
+  return out
 }
 
 // PgProfileStore: PostgreSQL-backed agent profile persistence.

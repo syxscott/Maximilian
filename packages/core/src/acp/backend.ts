@@ -15,36 +15,36 @@
  */
 
 export interface BackendCapabilities {
-  filesystem: boolean;
-  terminal: boolean;
-  internet: boolean;
-  gpu: boolean;
+  filesystem: boolean
+  terminal: boolean
+  internet: boolean
+  gpu: boolean
   /** Agent can spawn subprocesses inside the sandbox. */
-  subprocess: boolean;
+  subprocess: boolean
 }
 
 export interface BackendHealth {
-  status: "healthy" | "degraded" | "down";
-  latencyMs?: number;
-  error?: string;
+  status: "healthy" | "degraded" | "down"
+  latencyMs?: number
+  error?: string
 }
 
 export interface BackendSession {
-  id: string;
-  createdAt: number;
-  backendId: string;
+  id: string
+  createdAt: number
+  backendId: string
 }
 
 export interface BackendResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  durationMs: number;
+  stdout: string
+  stderr: string
+  exitCode: number
+  durationMs: number
 }
 
 export interface UploadResult {
-  path: string;
-  size: number;
+  path: string
+  size: number
 }
 
 /**
@@ -54,34 +54,30 @@ export interface UploadResult {
  * This abstraction enables future Docker/VM/cloud support without changing agent code.
  */
 export interface ExecutionBackend {
-  readonly id: string;
-  readonly type: "process" | "docker" | "vm" | "cloud";
-  readonly capabilities: BackendCapabilities;
+  readonly id: string
+  readonly type: "process" | "docker" | "vm" | "cloud"
+  readonly capabilities: BackendCapabilities
 
-  health(): Promise<BackendHealth>;
+  health(): Promise<BackendHealth>
 
   /** Start a new session and return its id. */
-  createSession(cwd?: string): Promise<BackendSession>;
+  createSession(cwd?: string): Promise<BackendSession>
 
   /** Execute a command in an existing session. */
-  execute(
-    sessionId: string,
-    command: string,
-    timeoutMs?: number,
-  ): Promise<BackendResult>;
+  execute(sessionId: string, command: string, timeoutMs?: number): Promise<BackendResult>
 
   /** Upload a file into the session sandbox. */
-  uploadFile(sessionId: string, path: string, content: string): Promise<UploadResult>;
+  uploadFile(sessionId: string, path: string, content: string): Promise<UploadResult>
 
   /** Download a file from the sandbox. */
-  downloadFile(sessionId: string, path: string): Promise<string>;
+  downloadFile(sessionId: string, path: string): Promise<string>
 
   /** Pause a running session (hibernate). */
-  pause(sessionId: string): Promise<void>;
+  pause(sessionId: string): Promise<void>
 
   /** Resume a paused session. */
-  resume(sessionId: string): Promise<void>;
+  resume(sessionId: string): Promise<void>
 
   /** Permanently destroy a session and release resources. */
-  destroy(sessionId: string): Promise<void>;
+  destroy(sessionId: string): Promise<void>
 }

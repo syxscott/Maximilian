@@ -33,11 +33,11 @@ export class RuntimeInterrupt extends Error {
     /** Optional payload attached to the interrupt (e.g. requestId, nodeId). */
     public readonly payload?: unknown,
   ) {
-    super(`interrupt: ${reason}`);
-    this.name = "RuntimeInterrupt";
+    super(`interrupt: ${reason}`)
+    this.name = "RuntimeInterrupt"
     // Maintains proper stack trace in V8 environments
     if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, RuntimeInterrupt);
+      Error.captureStackTrace(this, RuntimeInterrupt)
     }
   }
 }
@@ -46,7 +46,7 @@ export class RuntimeInterrupt extends Error {
  * Type guard: returns true if the given value is a RuntimeInterrupt.
  */
 export function isRuntimeInterrupt(error: unknown): error is RuntimeInterrupt {
-  return error instanceof RuntimeInterrupt;
+  return error instanceof RuntimeInterrupt
 }
 
 /**
@@ -54,14 +54,14 @@ export function isRuntimeInterrupt(error: unknown): error is RuntimeInterrupt {
  * Throws if the value is not a RuntimeInterrupt.
  */
 export function getInterruptInfo(error: RuntimeInterrupt): {
-  reason: string;
-  payload?: unknown;
+  reason: string
+  payload?: unknown
 } {
   if (!isRuntimeInterrupt(error)) {
-    throw new Error("getInterruptInfo requires a RuntimeInterrupt");
+    throw new Error("getInterruptInfo requires a RuntimeInterrupt")
   }
   return {
     reason: error.reason,
     payload: error.payload,
-  };
+  }
 }

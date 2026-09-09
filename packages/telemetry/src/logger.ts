@@ -12,21 +12,21 @@
  * with OTel traces in your log aggregator.
  */
 
-import pino, { type Logger, type LoggerOptions } from "pino";
-import { trace, context as otelContext } from "@opentelemetry/api";
+import pino, { type Logger, type LoggerOptions } from "pino"
+import { trace, context as otelContext } from "@opentelemetry/api"
 
-let _logger: Logger | null = null;
+let _logger: Logger | null = null
 
 function isProduction(): boolean {
-  return (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  return (process.env.NODE_ENV ?? "").toLowerCase() === "production"
 }
 
 function isPretty(): boolean {
   // Force pretty on when stdout is a TTY and we're not in production.
-  if (isProduction()) return false;
-  if (process.env.LOG_PRETTY === "true") return true;
-  if (process.env.LOG_PRETTY === "false") return false;
-  return Boolean(process.stdout.isTTY);
+  if (isProduction()) return false
+  if (process.env.LOG_PRETTY === "true") return true
+  if (process.env.LOG_PRETTY === "false") return false
+  return Boolean(process.stdout.isTTY)
 }
 
 /**
@@ -47,20 +47,20 @@ export function getLogger(name?: string): Logger {
       },
       timestamp: pino.stdTimeFunctions.isoTime,
       mixin() {
-        const span = trace.getSpan(otelContext.active());
-        if (!span) return {};
-        const ctx = span.spanContext();
+        const span = trace.getSpan(otelContext.active())
+        if (!span) return {}
+        const ctx = span.spanContext()
         return {
           traceId: ctx.traceId,
           spanId: ctx.spanId,
-        };
+        }
       },
-    };
+    }
     _logger = isPretty()
-      ? pino(opts)  // Plain pino in dev — production-grade formatters live in callers
-      : pino(opts);
+      ? pino(opts) // Plain pino in dev — production-grade formatters live in callers
+      : pino(opts)
   }
-  return name ? _logger.child({ module: name }) : _logger;
+  return name ? _logger.child({ module: name }) : _logger
 }
 
 /**
@@ -68,7 +68,7 @@ export function getLogger(name?: string): Logger {
  * that want to change LOG_LEVEL between cases.
  */
 export function resetLogger(): void {
-  _logger = null;
+  _logger = null
 }
 
 /**
@@ -76,11 +76,11 @@ export function resetLogger(): void {
  * paths you can call this to ensure all buffered output is flushed.
  */
 export function flushLogger(): void {
-  if (!_logger) return;
+  if (!_logger) return
   // Pino exposes the underlying stream via Symbol.for("pino.stream")
   // when using pino-pretty or transport. For raw stdout (default),
   // the write is synchronous so there's nothing to flush.
-  const key = Symbol.for("pino.stream");
-  const obj = _logger as unknown as Record<symbol, { flush?: () => void } | undefined>;
-  obj[key]?.flush?.();
+  const key = Symbol.for("pino.stream")
+  const obj = _logger as unknown as Record<symbol, { flush?: () => void } | undefined>
+  obj[key]?.flush?.()
 }

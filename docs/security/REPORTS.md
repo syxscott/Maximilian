@@ -28,13 +28,13 @@ What to include:
 
 ## Response targets
 
-| Stage | Target |
-| ----- | ------ |
-| Initial acknowledgement | 2 business days |
-| Triage + severity assessment | 5 business days |
-| Patch shipped for High/Critical | 30 days |
-| Patch shipped for Medium | 90 days |
-| Public disclosure | After patch is in production + 30 days |
+| Stage                           | Target                                 |
+| ------------------------------- | -------------------------------------- |
+| Initial acknowledgement         | 2 business days                        |
+| Triage + severity assessment    | 5 business days                        |
+| Patch shipped for High/Critical | 30 days                                |
+| Patch shipped for Medium        | 90 days                                |
+| Public disclosure               | After patch is in production + 30 days |
 
 These targets assume the report is reproducible and the threat is real.
 Social-engineering and physical-access reports are acknowledged but not
@@ -46,12 +46,12 @@ subject to the patch timeline.
 
 We use CVSS 3.1 as the baseline. Internal classification:
 
-| Severity | CVSS | Example |
-| -------- | ---- | ------- |
-| Critical | 9.0-10.0 | Auth bypass without credentials |
-| High | 7.0-8.9 | Cross-tenant data access |
-| Medium | 4.0-6.9 | Limited info disclosure |
-| Low | 0.1-3.9 | Defense-in-depth gap with no known exploit |
+| Severity | CVSS     | Example                                    |
+| -------- | -------- | ------------------------------------------ |
+| Critical | 9.0-10.0 | Auth bypass without credentials            |
+| High     | 7.0-8.9  | Cross-tenant data access                   |
+| Medium   | 4.0-6.9  | Limited info disclosure                    |
+| Low      | 0.1-3.9  | Defense-in-depth gap with no known exploit |
 
 ---
 
@@ -65,10 +65,10 @@ Researchers who reported a vulnerability fixed in production:
 
 ## Audits
 
-| Date | Scope | Auditor | Report |
-| ---- | ----- | ------- | ------ |
+| Date                  | Scope                                                                 | Auditor       | Report            |
+| --------------------- | --------------------------------------------------------------------- | ------------- | ----------------- |
 | 2026-08-18 (Phase 10) | Internal — STRIDE threat model + tenant-guard + permission translator | Platform team | `THREAT_MODEL.md` |
-| _future_ | Pre-publish external review | TBD | TBD |
+| _future_              | Pre-publish external review                                           | TBD           | TBD               |
 
 ---
 

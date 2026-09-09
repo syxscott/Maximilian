@@ -186,7 +186,9 @@ function computePercentile(observed: number, nullStats: number[]): number {
 function summarizeDistribution(values: number[]): number[] {
   if (values.length === 0) return [0, 0, 0, 0, 0]
   const sorted = [...values].sort((a, b) => a - b)
-  return [5, 25, 50, 75, 95].map((p) => sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))])
+  return [5, 25, 50, 75, 95].map(
+    (p) => sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))],
+  )
 }
 
 function shuffle<T>(arr: readonly T[], rng: () => number): T[] {
@@ -203,7 +205,7 @@ function createRng(seed?: number): () => number {
   if (seed === undefined) return Math.random
   let s = seed >>> 0
   return () => {
-    s = (s + 0x6D2B79F5) >>> 0
+    s = (s + 0x6d2b79f5) >>> 0
     let t = s
     t = Math.imul(t ^ (t >>> 15), t | 1)
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61)

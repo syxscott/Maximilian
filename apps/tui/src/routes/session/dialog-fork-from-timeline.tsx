@@ -23,7 +23,9 @@ export type PromptInfo = {
   parts: Array<{ type: string; [k: string]: unknown }>
 }
 
-function stripPromptPartIDs<T extends { id?: unknown; messageID?: unknown; sessionID?: unknown }>(part: T): Omit<T, "id" | "messageID" | "sessionID"> {
+function stripPromptPartIDs<T extends { id?: unknown; messageID?: unknown; sessionID?: unknown }>(
+  part: T,
+): Omit<T, "id" | "messageID" | "sessionID"> {
   const { id: _id, messageID: _mid, sessionID: _sid, ...rest } = part as Record<string, unknown>
   return rest as Omit<T, "id" | "messageID" | "sessionID">
 }
@@ -50,7 +52,13 @@ export function DialogForkFromTimeline(props: {
   }, [dialog])
 
   const options = useMemo((): Option[] => {
-    const messages = (sync.data.message as Record<string, Array<{ id: string; role: string; time: { created: number }; [k: string]: unknown }>>)?.[props.sessionID] ?? []
+    const messages =
+      (
+        sync.data.message as Record<
+          string,
+          Array<{ id: string; role: string; time: { created: number }; [k: string]: unknown }>
+        >
+      )?.[props.sessionID] ?? []
 
     const fullSession: Option = {
       title: "Full session",
@@ -67,7 +75,8 @@ export function DialogForkFromTimeline(props: {
     const result: Option[] = []
     for (const message of messages) {
       if (message.role !== "user") continue
-      const parts = ((sync.data.part as Record<string, TextPart[]>)?.[message.id] ?? []) as TextPart[]
+      const parts = ((sync.data.part as Record<string, TextPart[]>)?.[message.id] ??
+        []) as TextPart[]
       const part = parts.find((x) => x.type === "text" && !x.synthetic && !x.ignored)
       if (!part) continue
       result.push({
@@ -79,7 +88,8 @@ export function DialogForkFromTimeline(props: {
             sessionID: props.sessionID,
             messageID: message.id,
           })
-          const msgParts = ((sync.data.part as Record<string, unknown[]>)?.[message.id] ?? []) as Array<Record<string, unknown>>
+          const msgParts = ((sync.data.part as Record<string, unknown[]>)?.[message.id] ??
+            []) as Array<Record<string, unknown>>
           const prompt = msgParts.reduce(
             (agg: PromptInfo, part: Record<string, unknown>) => {
               if (part.type === "text") {

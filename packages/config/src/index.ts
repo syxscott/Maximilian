@@ -1,18 +1,18 @@
-import { config as loadDotenv } from "dotenv";
-import { resolve } from "node:path";
-import { ConfigSchema, type Config } from "./schema.js";
-import { cascadeSettings, type SettingsLayer } from "./cascade.js";
+import { config as loadDotenv } from "dotenv"
+import { resolve } from "node:path"
+import { ConfigSchema, type Config } from "./schema.js"
+import { cascadeSettings, type SettingsLayer } from "./cascade.js"
 
 // Load .env from cwd and common fallback paths.
 // This runs once at import time.
-const cwd = process.cwd();
-loadDotenv({ path: resolve(cwd, ".env") });
-loadDotenv({ path: resolve(cwd, "../../.env") });
+const cwd = process.cwd()
+loadDotenv({ path: resolve(cwd, ".env") })
+loadDotenv({ path: resolve(cwd, "../../.env") })
 
-let _config: Config | null = null;
-let _userLayer: SettingsLayer | undefined;
-let _projectLayer: SettingsLayer | undefined;
-let _sessionLayer: SettingsLayer | undefined;
+let _config: Config | null = null
+let _userLayer: SettingsLayer | undefined
+let _projectLayer: SettingsLayer | undefined
+let _sessionLayer: SettingsLayer | undefined
 
 /**
  * Returns the validated, frozen config object.
@@ -25,13 +25,11 @@ let _sessionLayer: SettingsLayer | undefined;
  * values recurse; primitives and arrays replace wholesale.
  */
 export function getConfig(): Config {
-  if (_config) return _config;
-  const result = ConfigSchema.safeParse(process.env);
+  if (_config) return _config
+  const result = ConfigSchema.safeParse(process.env)
   if (!result.success) {
-    const issues = result.error.issues
-      .map((i) => `  ${i.path.join(".")}: ${i.message}`)
-      .join("\n");
-    throw new Error(`Invalid environment configuration:\n${issues}`);
+    const issues = result.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n")
+    throw new Error(`Invalid environment configuration:\n${issues}`)
   }
   // Cascade: defaults (env) ← user ← project ← session. Each layer
   // overrides earlier ones; missing layers are skipped.
@@ -42,17 +40,17 @@ export function getConfig(): Config {
     _sessionLayer,
   ) as unknown as Config
   _config = Object.freeze(cascaded) as Config
-  return _config;
+  return _config
 }
 
 /**
  * Reset the cached config (for testing).
  */
 export function resetConfig(): void {
-  _config = null;
-  _userLayer = undefined;
-  _projectLayer = undefined;
-  _sessionLayer = undefined;
+  _config = null
+  _userLayer = undefined
+  _projectLayer = undefined
+  _sessionLayer = undefined
 }
 
 /**
@@ -62,20 +60,20 @@ export function resetConfig(): void {
  * layer wins.
  */
 export function registerUserOverride(layer: SettingsLayer | undefined): void {
-  _userLayer = layer;
+  _userLayer = layer
 }
 
 /** Register a project-level override layer. See `registerUserOverride`. */
 export function registerProjectOverride(layer: SettingsLayer | undefined): void {
-  _projectLayer = layer;
+  _projectLayer = layer
 }
 
 /** Register a session-level override layer. See `registerUserOverride`. */
 export function registerSessionOverride(layer: SettingsLayer | undefined): void {
-  _sessionLayer = layer;
+  _sessionLayer = layer
 }
 
-export { ConfigSchema } from "./schema.js";
-export type { Config } from "./schema.js";
-export * from "./feature-flags.js";
-export * from "./cascade.js";
+export { ConfigSchema } from "./schema.js"
+export type { Config } from "./schema.js"
+export * from "./feature-flags.js"
+export * from "./cascade.js"

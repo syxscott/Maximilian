@@ -120,14 +120,10 @@ export class FileWorkspaceStore {
     // of O(n) sequential round-trips. Same isolation rule as loadWorkspace:
     // a tenantId caller gets rows matching that tenant; a dev caller
     // (no tenantId) only sees rows whose tenant key is empty/missing.
-    const tenants = await Promise.all(
-      ids.map((id) => this.storage.getItem<string>(`tenant/${id}`)),
-    )
+    const tenants = await Promise.all(ids.map((id) => this.storage.getItem<string>(`tenant/${id}`)))
     const filtered = ids
       .map((id, i) => ({ id, tenant: (tenants[i] ?? "").trim() }))
-      .filter(({ tenant }) =>
-        tenantId !== undefined ? tenant === tenantId : tenant === "",
-      )
+      .filter(({ tenant }) => (tenantId !== undefined ? tenant === tenantId : tenant === ""))
       .map(({ id }) => id)
     return filtered.sort().reverse()
   }

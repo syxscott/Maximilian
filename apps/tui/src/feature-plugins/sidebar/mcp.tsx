@@ -15,7 +15,9 @@ function View(props: { api: TuiPluginApi }) {
     () =>
       list.filter(
         (item) =>
-          item.status === "failed" || item.status === "needs_auth" || item.status === "needs_client_registration",
+          item.status === "failed" ||
+          item.status === "needs_auth" ||
+          item.status === "needs_client_registration",
       ).length,
     [list],
   )
@@ -57,7 +59,7 @@ function View(props: { api: TuiPluginApi }) {
       {(list.length <= 2 || open) &&
         list.map((item) => (
           <Box key={item.name} flexDirection="row" gap={1}>
-            <Text color={dot(item.status)}>{'•'}</Text>
+            <Text color={dot(item.status)}>{"•"}</Text>
             <Text color={theme.text} wrap="word">
               {item.name}{" "}
               <Text color={theme.textMuted} italic={item.status === "failed"}>

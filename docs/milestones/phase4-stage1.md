@@ -18,11 +18,11 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `src/types.ts` | 156 |
-| `src/capability-library.ts` | 215 |
-| `src/capability-analyzer.ts` | 51 |
+| 文件                         | 行数 |
+| ---------------------------- | ---- |
+| `src/types.ts`               | 156  |
+| `src/capability-library.ts`  | 215  |
+| `src/capability-analyzer.ts` | 51   |
 
 ## 遗留问题
 

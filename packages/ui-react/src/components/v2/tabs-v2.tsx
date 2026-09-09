@@ -2,8 +2,7 @@ import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 import { cn } from "../../lib/utils.js"
 
-export interface TabsV2Props
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> {
+export interface TabsV2Props extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> {
   variant?: "normal" | "pill" | "settings"
   orientation?: "horizontal" | "vertical"
 }
@@ -28,17 +27,13 @@ export const TabsV2List = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
 >(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    data-slot="tabs-v2-list"
-    className={cn(className)}
-    {...props}
-  />
+  <TabsPrimitive.List ref={ref} data-slot="tabs-v2-list" className={cn(className)} {...props} />
 ))
 TabsV2List.displayName = "TabsV2List"
 
-export interface TabsV2TriggerProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger> {
+export interface TabsV2TriggerProps extends React.ComponentPropsWithoutRef<
+  typeof TabsPrimitive.Trigger
+> {
   onMiddleClick?: () => void
   subtext?: React.ReactNode
 }
@@ -83,8 +78,7 @@ export const TabsV2Trigger = React.forwardRef<
 ))
 TabsV2Trigger.displayName = "TabsV2Trigger"
 
-export interface TabsV2CloseButtonProps
-  extends React.HTMLAttributes<HTMLDivElement> {}
+export interface TabsV2CloseButtonProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export const TabsV2CloseButton = React.forwardRef<HTMLDivElement, TabsV2CloseButtonProps>(
   ({ className, onClick, ...props }, ref) => (
@@ -106,7 +100,13 @@ export const TabsV2CloseButton = React.forwardRef<HTMLDivElement, TabsV2CloseBut
       }}
       {...props}
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
         <path d="M10.8889 3.11108L3.11108 10.8889" stroke="currentColor" strokeLinejoin="round" />
         <path d="M3.11108 3.11108L10.8889 10.8889" stroke="currentColor" strokeLinejoin="round" />
       </svg>
@@ -119,12 +119,7 @@ export const TabsV2Content = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
-  <TabsPrimitive.Content
-    ref={ref}
-    data-slot="tabs-v2-content"
-    className={cn(className)}
-    {...props}
-  >
+  <TabsPrimitive.Content ref={ref} data-slot="tabs-v2-content" className={cn(className)} {...props}>
     {children}
   </TabsPrimitive.Content>
 ))

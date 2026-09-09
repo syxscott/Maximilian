@@ -1,7 +1,14 @@
 // LLM event types — plain TypeScript
 // Derived from OpenCode packages/llm/src/schema/events.ts
 
-import type { ContentBlockID, FinishReason, ProtocolID, ProviderMetadata, RouteID, ToolCallID } from "./types.js"
+import type {
+  ContentBlockID,
+  FinishReason,
+  ProtocolID,
+  ProviderMetadata,
+  RouteID,
+  ToolCallID,
+} from "./types.js"
 import type { ModelDef } from "./options.js"
 import type { ToolOutput, ToolResultValue } from "./messages.js"
 
@@ -165,26 +172,57 @@ export const LLMEvent = {
   textDelta: (id: ContentBlockID, text: string): TextDelta => ({ type: "text-delta", id, text }),
   textEnd: (id: ContentBlockID): TextEnd => ({ type: "text-end", id }),
   reasoningStart: (id: ContentBlockID): ReasoningStart => ({ type: "reasoning-start", id }),
-  reasoningDelta: (id: ContentBlockID, text: string): ReasoningDelta => ({ type: "reasoning-delta", id, text }),
-  reasoningEnd: (id: ContentBlockID): ReasoningEnd => ({ type: "reasoning-end", id }),
-  toolInputStart: (id: ToolCallID, name: string): ToolInputStart => ({ type: "tool-input-start", id, name }),
-  toolInputDelta: (id: ToolCallID, name: string, text: string): ToolInputDelta => ({
-    type: "tool-input-delta", id, name, text,
+  reasoningDelta: (id: ContentBlockID, text: string): ReasoningDelta => ({
+    type: "reasoning-delta",
+    id,
+    text,
   }),
-  toolInputEnd: (id: ToolCallID, name: string): ToolInputEnd => ({ type: "tool-input-end", id, name }),
-  toolCall: (id: ToolCallID, name: string, input: unknown): ToolCall => ({ type: "tool-call", id, name, input }),
+  reasoningEnd: (id: ContentBlockID): ReasoningEnd => ({ type: "reasoning-end", id }),
+  toolInputStart: (id: ToolCallID, name: string): ToolInputStart => ({
+    type: "tool-input-start",
+    id,
+    name,
+  }),
+  toolInputDelta: (id: ToolCallID, name: string, text: string): ToolInputDelta => ({
+    type: "tool-input-delta",
+    id,
+    name,
+    text,
+  }),
+  toolInputEnd: (id: ToolCallID, name: string): ToolInputEnd => ({
+    type: "tool-input-end",
+    id,
+    name,
+  }),
+  toolCall: (id: ToolCallID, name: string, input: unknown): ToolCall => ({
+    type: "tool-call",
+    id,
+    name,
+    input,
+  }),
   toolResult: (id: ToolCallID, name: string, result: ToolResultValue): ToolResult => ({
-    type: "tool-result", id, name, result,
+    type: "tool-result",
+    id,
+    name,
+    result,
   }),
   toolError: (id: ToolCallID, name: string, message: string): ToolError => ({
-    type: "tool-error", id, name, message,
+    type: "tool-error",
+    id,
+    name,
+    message,
   }),
   stepFinish: (index: number, reason: FinishReason, usage?: Usage): StepFinish => ({
-    type: "step-finish", index, reason, usage,
+    type: "step-finish",
+    index,
+    reason,
+    usage,
   }),
   finish: (reason: FinishReason, usage?: Usage): Finish => ({ type: "finish", reason, usage }),
   providerError: (message: string, retryable?: boolean): ProviderErrorEvent => ({
-    type: "provider-error", message, retryable,
+    type: "provider-error",
+    message,
+    retryable,
   }),
 } as const
 
@@ -244,5 +282,7 @@ export function responseToolCalls(response: LLMResponse): ToolCall[] {
 }
 
 export function responseUsage(response: LLMResponse): Usage | undefined {
-  return response.usage ?? response.events.find((e): e is StepFinish => e.type === "step-finish")?.usage
+  return (
+    response.usage ?? response.events.find((e): e is StepFinish => e.type === "step-finish")?.usage
+  )
 }

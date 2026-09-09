@@ -1,9 +1,4 @@
-import {
-  type ReactNode,
-  type HTMLAttributes,
-  useState,
-  useCallback,
-} from "react"
+import { type ReactNode, type HTMLAttributes, useState, useCallback } from "react"
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
 import { cn } from "../lib/utils.js"
 
@@ -82,8 +77,10 @@ function ChevronIcon() {
   )
 }
 
-export interface ToolErrorCardV2Props
-  extends Omit<HTMLAttributes<HTMLDivElement>, "children" | "title"> {
+export interface ToolErrorCardV2Props extends Omit<
+  HTMLAttributes<HTMLDivElement>,
+  "children" | "title"
+> {
   title: ReactNode | string
   subtitle: ReactNode | string
   suffix?: ReactNode | string
@@ -132,10 +129,7 @@ export function ToolErrorCardV2({
       onOpenChange={handleOpenChange}
       disabled={!hasSuffix}
       aria-busy={loading ? true : undefined}
-      className={cn(
-        "rounded-md border border-destructive/30 bg-destructive/5",
-        className,
-      )}
+      className={cn("rounded-md border border-destructive/30 bg-destructive/5", className)}
       {...(rest as Record<string, unknown>)}
     >
       <CollapsiblePrimitive.Trigger asChild disabled={!hasSuffix}>
@@ -149,11 +143,18 @@ export function ToolErrorCardV2({
             {loading ? <LoaderIcon /> : <BanIcon />}
           </span>
           <div data-slot="tool-error-card-main" className="flex-1">
-            <div data-slot="tool-error-card-labels" className="flex flex-wrap items-center gap-1.5 text-sm">
+            <div
+              data-slot="tool-error-card-labels"
+              className="flex flex-wrap items-center gap-1.5 text-sm"
+            >
               <span data-slot="tool-error-card-title" className="font-medium text-destructive">
                 {title}
               </span>
-              <span data-slot="tool-error-card-sep" aria-hidden="true" className="text-muted-foreground">
+              <span
+                data-slot="tool-error-card-sep"
+                aria-hidden="true"
+                className="text-muted-foreground"
+              >
                 ·
               </span>
               {subtitleHref ? (
@@ -182,7 +183,10 @@ export function ToolErrorCardV2({
       </CollapsiblePrimitive.Trigger>
       {hasSuffix && (
         <CollapsiblePrimitive.Content data-slot="tool-error-card-content">
-          <div data-slot="tool-error-card-suffix" className="border-t border-destructive/20 px-3 py-2 text-sm">
+          <div
+            data-slot="tool-error-card-suffix"
+            className="border-t border-destructive/20 px-3 py-2 text-sm"
+          >
             {suffix}
           </div>
         </CollapsiblePrimitive.Content>

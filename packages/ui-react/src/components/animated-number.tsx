@@ -91,12 +91,7 @@ export const AnimatedNumber: React.FC<AnimatedNumberProps> = ({ value, className
   const width = `${digits.length}ch`
 
   return (
-    <span
-      data-component="animated-number"
-      className={cn(className)}
-      aria-label={label}
-      {...rest}
-    >
+    <span data-component="animated-number" className={cn(className)} aria-label={label} {...rest}>
       <span
         data-slot="animated-number-value"
         style={{ ["--animated-number-width" as string]: width }}

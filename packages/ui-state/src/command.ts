@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { createStore, useStore } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
@@ -130,7 +138,10 @@ export interface CommandRegistration {
   options: CommandOption[]
 }
 
-export function upsertCommandRegistration(registrations: CommandRegistration[], entry: CommandRegistration) {
+export function upsertCommandRegistration(
+  registrations: CommandRegistration[],
+  entry: CommandRegistration,
+) {
   if (entry.key === undefined) return [entry, ...registrations]
   return [entry, ...registrations.filter((x) => x.key !== entry.key)]
 }
@@ -309,7 +320,9 @@ export const createCommandStore = () => {
       }),
       {
         name: "command.catalog.v1",
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         onRehydrateStorage: () => (state) => {
           if (state) state.ready = true
         },
@@ -354,7 +367,8 @@ export interface CommandProviderProps {
 }
 
 export function CommandProvider(props: CommandProviderProps) {
-  const { children, getCustomKeybind, t, suggestedCategoryLabel, onShowPalette, dialogActive } = props
+  const { children, getCustomKeybind, t, suggestedCategoryLabel, onShowPalette, dialogActive } =
+    props
   const [store] = useState(() => createCommandStore())
   const warnedDuplicates = useRef<Set<string>>(new Set())
 
@@ -370,7 +384,9 @@ export function CommandProvider(props: CommandProviderProps) {
         if (seen.has(opt.id)) {
           if (process.env.NODE_ENV !== "production" && !warnedDuplicates.current.has(opt.id)) {
             warnedDuplicates.current.add(opt.id)
-            console.warn(`[command] duplicate command id "${opt.id}" registered; keeping first entry`)
+            console.warn(
+              `[command] duplicate command id "${opt.id}" registered; keeping first entry`,
+            )
           }
           continue
         }

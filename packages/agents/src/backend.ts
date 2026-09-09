@@ -4,10 +4,10 @@
  * Generates server-side code (Node.js / Express / REST API).
  */
 
-import { randomUUID } from "node:crypto";
-import { Agent, type AgentContext } from "@max/core";
-import type { AgentManifest, Result, Task } from "@max/core";
-import type { Provider } from "@max/providers";
+import { randomUUID } from "node:crypto"
+import { Agent, type AgentContext } from "@max/core"
+import type { AgentManifest, Result, Task } from "@max/core"
+import type { Provider } from "@max/providers"
 
 const MANIFEST: AgentManifest = {
   role: "backend",
@@ -25,25 +25,22 @@ Rules:
 5. Expose REST endpoints with clear JSON contracts.
 6. Include a brief "API Contract" comment block listing endpoints.
 `,
-};
+}
 
 export class BackendAgent extends Agent {
-  override readonly manifest = MANIFEST;
+  override readonly manifest = MANIFEST
 
   constructor(provider: Provider) {
-    super(provider);
+    super(provider)
   }
 
-  override async execute(
-    task: Task,
-    _ctx: AgentContext
-  ): Promise<Result> {
-    const messages = this.buildMessages(`Task: ${task.description}`);
+  override async execute(task: Task, _ctx: AgentContext): Promise<Result> {
+    const messages = this.buildMessages(`Task: ${task.description}`)
     const response = await this.provider.chat(messages, {
       temperature: 0.3,
       maxTokens: 4096,
       model: this.getEffectiveModel(),
-    });
+    })
 
     return {
       id: randomUUID(),
@@ -57,6 +54,6 @@ export class BackendAgent extends Agent {
       },
       createdAt: new Date().toISOString(),
       durationMs: undefined,
-    };
+    }
   }
 }

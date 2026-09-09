@@ -25,10 +25,10 @@ pnpm --filter @max/meta-system test --coverage
 
 ## Thresholds
 
-| package         | lines | functions | branches | statements |
-| --------------- | ----- | --------- | -------- | ---------- |
-| `@max/core`     | 60%   | 60%       | 50%      | 60%        |
-| `@max/meta-system` | 60% | 60%       | 50%      | 60%        |
+| package            | lines | functions | branches | statements |
+| ------------------ | ----- | --------- | -------- | ---------- |
+| `@max/core`        | 60%   | 60%       | 50%      | 60%        |
+| `@max/meta-system` | 60%   | 60%       | 50%      | 60%        |
 
 ## Baseline numbers (recorded 2026-08-18)
 
@@ -36,10 +36,10 @@ The baseline was measured by running `--coverage` against the test suite as
 of commit `504d2bb` (Phase 7). Numbers will be tightened in a follow-up phase
 once a few weeks of coverage drift are recorded.
 
-| package         | lines  | functions | branches | statements |
-| --------------- | ------ | --------- | -------- | ---------- |
-| `@max/core`     | _see coverage/index.html_ | _see_ | _see_ | _see_ |
-| `@max/meta-system` | _see_ | _see_ | _see_ | _see_ |
+| package            | lines                     | functions | branches | statements |
+| ------------------ | ------------------------- | --------- | -------- | ---------- |
+| `@max/core`        | _see coverage/index.html_ | _see_     | _see_    | _see_      |
+| `@max/meta-system` | _see_                     | _see_     | _see_    | _see_      |
 
 > The exact numbers depend on the live `coverage/coverage-summary.json` file.
 > The CI job that runs `--coverage` (added in Phase 8) archives it as a build
@@ -78,5 +78,5 @@ become testable:
 1. Add new file under `packages/<pkg>/test/<area>.test.ts`.
 2. Re-run `--coverage` and check whether the new file's branch coverage
    brings the package above the threshold.
-3. If you're refactoring an existing file, run `--coverage` *before* and
-   *after* to confirm you haven't lost ground.
+3. If you're refactoring an existing file, run `--coverage` _before_ and
+   _after_ to confirm you haven't lost ground.

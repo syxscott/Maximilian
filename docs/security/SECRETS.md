@@ -12,18 +12,18 @@ secret leaks.
 
 ## Inventory
 
-| Secret | Required? | Where stored | Who can read |
-| ------ | --------- | ------------ | ------------ |
-| `JWT_SECRET` | Yes | K8s Secret (base) or External Secrets Operator (prod) | API process |
-| `JWT_REFRESH_SECRET` | Yes | Same as above | API process |
-| `OPENCODE_BASE_URL` | No (default `http://127.0.0.1:4096`) | env | API + worker |
-| `DATABASE_URL` | Yes | K8s Secret / External Secrets Operator | API + worker |
-| `ANTHROPIC_API_KEY` (per provider) | Conditional | K8s Secret, one per provider | API + worker |
-| `OPENAI_API_KEY` | Conditional | Same as above | API + worker |
-| `MINIMAX_API_KEY` (Chinese vendors) | Conditional | Same as above | API + worker |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No (uses debug by default) | env | API + worker |
-| `HONEYCOMB_API_KEY` | No (production optional) | K8s Secret | API |
-| `GRAFANA_CLOUD_AUTH` | No (production optional) | K8s Secret | API |
+| Secret                              | Required?                            | Where stored                                          | Who can read |
+| ----------------------------------- | ------------------------------------ | ----------------------------------------------------- | ------------ |
+| `JWT_SECRET`                        | Yes                                  | K8s Secret (base) or External Secrets Operator (prod) | API process  |
+| `JWT_REFRESH_SECRET`                | Yes                                  | Same as above                                         | API process  |
+| `OPENCODE_BASE_URL`                 | No (default `http://127.0.0.1:4096`) | env                                                   | API + worker |
+| `DATABASE_URL`                      | Yes                                  | K8s Secret / External Secrets Operator                | API + worker |
+| `ANTHROPIC_API_KEY` (per provider)  | Conditional                          | K8s Secret, one per provider                          | API + worker |
+| `OPENAI_API_KEY`                    | Conditional                          | Same as above                                         | API + worker |
+| `MINIMAX_API_KEY` (Chinese vendors) | Conditional                          | Same as above                                         | API + worker |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`       | No (uses debug by default)           | env                                                   | API + worker |
+| `HONEYCOMB_API_KEY`                 | No (production optional)             | K8s Secret                                            | API          |
+| `GRAFANA_CLOUD_AUTH`                | No (production optional)             | K8s Secret                                            | API          |
 
 The full inventory (including all 9 Chinese vendor keys) lives in
 `packages/providers/src/presets/data.ts`.
@@ -64,13 +64,13 @@ not acceptable for prod).
 
 ## Rotation policy
 
-| Secret | Rotation cadence | Method |
-| ------ | ---------------- | ------ |
-| `JWT_SECRET` | 90 days | Generate new HMAC secret, deploy with 2-secret dual-window sign/verify, force re-login by rotating refresh secret |
-| `JWT_REFRESH_SECRET` | 90 days (offset +7 days from access) | Same as above |
-| `DATABASE_URL` | 180 days | Rotate Postgres password, update both K8s Secret and DSN references |
-| Provider API keys | 180 days | Generate in vendor dashboard, update K8s Secret |
-| `OPENCODE_BASE_URL` | n/a (config, not secret) | n/a |
+| Secret               | Rotation cadence                     | Method                                                                                                            |
+| -------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `JWT_SECRET`         | 90 days                              | Generate new HMAC secret, deploy with 2-secret dual-window sign/verify, force re-login by rotating refresh secret |
+| `JWT_REFRESH_SECRET` | 90 days (offset +7 days from access) | Same as above                                                                                                     |
+| `DATABASE_URL`       | 180 days                             | Rotate Postgres password, update both K8s Secret and DSN references                                               |
+| Provider API keys    | 180 days                             | Generate in vendor dashboard, update K8s Secret                                                                   |
+| `OPENCODE_BASE_URL`  | n/a (config, not secret)             | n/a                                                                                                               |
 
 A secret is **compromised** (not just due for rotation) when:
 
@@ -91,18 +91,27 @@ Secrets are read via `process.env` and never logged. The logger in
 ```ts
 // Logger redacts anything matching these names
 const REDACTED_FIELDS = new Set([
-  "password", "secret", "token", "apikey", "api_key",
-  "authorization", "jwt", "cookie", "session_id",
-  "minimax_api_key", "openai_api_key", "anthropic_api_key",
-]);
+  "password",
+  "secret",
+  "token",
+  "apikey",
+  "api_key",
+  "authorization",
+  "jwt",
+  "cookie",
+  "session_id",
+  "minimax_api_key",
+  "openai_api_key",
+  "anthropic_api_key",
+])
 ```
 
 If you need to log a config object for debugging, use the `redact()`
 helper:
 
 ```ts
-import { redact } from "@max/telemetry";
-log.debug({ config: redact(envConfig) }, "loaded config");
+import { redact } from "@max/telemetry"
+log.debug({ config: redact(envConfig) }, "loaded config")
 ```
 
 Never log a raw `process.env` dump.

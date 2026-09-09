@@ -80,9 +80,7 @@ async function resolveProvider(provider: PermissionProvider): Promise<Permission
 function isToolName(name: string): name is ToolName {
   // The ToolName union lives in permission.ts; replicate the membership check
   // here to avoid a circular import. Keep in sync with TOOL_NAMES.
-  return (["bash", "read", "write", "edit", "glob", "grep"] as const).some(
-    (t) => t === name,
-  )
+  return (["bash", "read", "write", "edit", "glob", "grep"] as const).some((t) => t === name)
 }
 
 function newRequestId(): string {

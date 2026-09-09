@@ -21,9 +21,10 @@ export type SimpleContextHandle<T, Props> = {
   use: () => T
 }
 
-export function createSimpleContext<T, Props extends Record<string, unknown> = Record<string, never>>(
-  input: { name: string; init: SimpleContextInit<T, Props> },
-): SimpleContextHandle<T, Props> {
+export function createSimpleContext<
+  T,
+  Props extends Record<string, unknown> = Record<string, never>,
+>(input: { name: string; init: SimpleContextInit<T, Props> }): SimpleContextHandle<T, Props> {
   const Ctx = createContext<T | undefined>(undefined)
 
   function ProviderInner(props: Props & { children?: ReactNode }) {

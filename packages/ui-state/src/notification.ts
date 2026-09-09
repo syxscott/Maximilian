@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react"
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { createStore, useStore } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
@@ -85,7 +92,8 @@ export function buildNotificationIndex(list: Notification[]): NotificationIndex 
         const unseen = index.project.unseen[notification.directory] ?? []
         index.project.unseen[notification.directory] = [...unseen, notification]
         index.project.unseenCount[notification.directory] = unseen.length + 1
-        if (notification.type === "error") index.project.unseenHasError[notification.directory] = true
+        if (notification.type === "error")
+          index.project.unseenHasError[notification.directory] = true
       }
     }
   }
@@ -153,7 +161,9 @@ export const createNotificationStore = (opts: NotificationStoreOptions = {}) =>
       }),
       {
         name: opts.storageKey ?? "notification.v1",
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         onRehydrateStorage: () => (state) => {
           if (state) state.ready = true
         },
@@ -240,7 +250,10 @@ export function NotificationProvider({ storageKey, children, onEvent }: Notifica
   useEffect(() => {
     if (!onEvent) return
     const unsub = onEvent((event) => {
-      const ev = event as { details?: { type?: string; properties?: Record<string, unknown> }; name?: string }
+      const ev = event as {
+        details?: { type?: string; properties?: Record<string, unknown> }
+        name?: string
+      }
       const details = ev.details
       if (!details) return
       if (details.type === "session.idle") {
@@ -256,7 +269,8 @@ export function NotificationProvider({ storageKey, children, onEvent }: Notifica
         })
       } else if (details.type === "session.error") {
         const sessionID = (details.properties?.sessionID as string | undefined) ?? "global"
-        const error = (details.properties?.error as ErrorNotificationPayload | undefined) ?? undefined
+        const error =
+          (details.properties?.error as ErrorNotificationPayload | undefined) ?? undefined
         const directory = ev.name
         store.getState().append({
           directory,

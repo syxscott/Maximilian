@@ -60,12 +60,7 @@ describe("cascadeSettings", () => {
 
 describe("resolveSetting", () => {
   it("walks from most-specific to least-specific layer", () => {
-    const v = resolveSetting<string>(
-      "theme",
-      { theme: "dark" },
-      { theme: "light" },
-      undefined,
-    )
+    const v = resolveSetting<string>("theme", { theme: "dark" }, { theme: "light" }, undefined)
     expect(v).toBe("light")
   })
 

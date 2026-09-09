@@ -5,8 +5,18 @@ import { cn } from "../lib/utils.js"
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ]
 
 function startOfDay(d: Date): Date {
@@ -69,8 +79,10 @@ function parseDate(value: string, format: DateFormat): Date | undefined {
 
 export type DateFormat = "yyyy-MM-dd" | "MM/dd/yyyy" | "dd/MM/yyyy" | "MMM d, yyyy" | "MMMM d, yyyy"
 
-export interface DatePickerProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "value" | "onChange" | "defaultValue"> {
+export interface DatePickerProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "value" | "onChange" | "defaultValue"
+> {
   value?: Date
   defaultValue?: Date
   onChange?: (date: Date | undefined) => void

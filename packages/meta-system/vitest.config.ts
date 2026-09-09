@@ -10,7 +10,7 @@
  * catastrophic drops, not nitpicks. Tighten once enough history exists.
  */
 
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   test: {
@@ -19,11 +19,7 @@ export default defineConfig({
       reporter: ["text", "html", "json-summary"],
       reportsDirectory: "./coverage",
       include: ["src/**/*.ts"],
-      exclude: [
-        "src/**/*.{test,spec}.ts",
-        "src/**/*.d.ts",
-        "src/**/index.ts",
-      ],
+      exclude: ["src/**/*.{test,spec}.ts", "src/**/*.d.ts", "src/**/index.ts"],
       thresholds: {
         lines: 60,
         functions: 60,
@@ -32,4 +28,4 @@ export default defineConfig({
       },
     },
   },
-});
+})

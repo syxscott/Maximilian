@@ -6,6 +6,7 @@ locally (file-backed storage, no PostgreSQL, no auth). Run with
 the original baseline environment).
 
 **Test environment**
+
 - API process: 1x Node.js v20 on developer laptop
 - Storage: file-backed (`./workspaces`)
 - LLM providers: OpenAI / Anthropic / OpenRouter configured but not exercised
@@ -13,20 +14,21 @@ the original baseline environment).
 - Auth: disabled (`JWT_SECRET` and `ADMIN_TOKEN` both unset → dev mode)
 
 **Methodology**
+
 - Each endpoint hammered with 30-50 VUs for 10-15 seconds
 - Single in-process fetch loop per VU (Node.js keeps VUs on the same event loop)
 - No think-time, no warmup — represents peak burst, not steady state
 
 ## Results
 
-| Endpoint | VUs | Duration | Requests | Throughput | p50 | p95 | p99 | Errors |
-|----------|----:|---------:|---------:|-----------:|----:|----:|----:|-------:|
-| `GET /api/health` | 30 | 15s | 234,890 | 15,660 req/s | 2ms | 4ms | 5ms | 0.04% |
-| `GET /api/workspaces` | 50 | 15s | 241,173 | 16,078 req/s | 3ms | 6ms | 8ms | 0.00% |
-| `GET /api/providers` | 30 | 10s | 159,555 | 15,957 req/s | 2ms | 4ms | 5ms | 0.00% |
-| `GET /api/evolution/metrics` | 30 | 10s | 156,573 | 15,660 req/s | 2ms | 4ms | 5ms | 0.00% |
-| `GET /api/learning/status` | 30 | 10s | 152,983 | 15,300 req/s | 2ms | 4ms | 6ms | 0.00% |
-| `GET /api/permissions` | 30 | 10s | 155,211 | 15,523 req/s | 2ms | 4ms | 5ms | 0.00% |
+| Endpoint                     | VUs | Duration | Requests |   Throughput | p50 | p95 | p99 | Errors |
+| ---------------------------- | --: | -------: | -------: | -----------: | --: | --: | --: | -----: |
+| `GET /api/health`            |  30 |      15s |  234,890 | 15,660 req/s | 2ms | 4ms | 5ms |  0.04% |
+| `GET /api/workspaces`        |  50 |      15s |  241,173 | 16,078 req/s | 3ms | 6ms | 8ms |  0.00% |
+| `GET /api/providers`         |  30 |      10s |  159,555 | 15,957 req/s | 2ms | 4ms | 5ms |  0.00% |
+| `GET /api/evolution/metrics` |  30 |      10s |  156,573 | 15,660 req/s | 2ms | 4ms | 5ms |  0.00% |
+| `GET /api/learning/status`   |  30 |      10s |  152,983 | 15,300 req/s | 2ms | 4ms | 6ms |  0.00% |
+| `GET /api/permissions`       |  30 |      10s |  155,211 | 15,523 req/s | 2ms | 4ms | 5ms |  0.00% |
 
 ## Observations
 
@@ -43,12 +45,12 @@ the original baseline environment).
 
 ## Targets & gates
 
-| SLA | Target | Achieved |
-|---|---|---|
-| p95 reads | < 1000ms | ✓ < 10ms (100x headroom) |
-| p95 chat enqueue | < 2000ms | not measured (requires LLM mock) |
-| p95 auth login | < 1500ms | not measured (bcrypt is CPU-bound) |
-| Error rate | < 5% | ✓ 0.00% |
+| SLA              | Target   | Achieved                           |
+| ---------------- | -------- | ---------------------------------- |
+| p95 reads        | < 1000ms | ✓ < 10ms (100x headroom)           |
+| p95 chat enqueue | < 2000ms | not measured (requires LLM mock)   |
+| p95 auth login   | < 1500ms | not measured (bcrypt is CPU-bound) |
+| Error rate       | < 5%     | ✓ 0.00%                            |
 
 ## To reproduce
 

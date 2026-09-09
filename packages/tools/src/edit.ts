@@ -33,7 +33,8 @@ function countOccurrences(text: string, search: string): number {
 
 export const editTool = makeTool<EditInput, EditOutput>({
   name: "edit",
-  description: "Replace a string in a file. The old string must appear exactly once (unless replaceAll is true).",
+  description:
+    "Replace a string in a file. The old string must appear exactly once (unless replaceAll is true).",
   kind: ToolKind.Edit,
   inputSchema: {
     type: "object",
@@ -70,7 +71,7 @@ export const editTool = makeTool<EditInput, EditOutput>({
     }
     if (occurrences > 1 && !input.replaceAll) {
       throw new Error(
-        `oldString found ${occurrences} times in ${filePath}. Use replaceAll=true or provide a more specific string.`
+        `oldString found ${occurrences} times in ${filePath}. Use replaceAll=true or provide a more specific string.`,
       )
     }
 
@@ -89,6 +90,8 @@ export const editTool = makeTool<EditInput, EditOutput>({
     }
   },
   toModelOutput(output): ToolContent[] {
-    return [{ type: "text", text: `Edited ${output.target}: ${output.replacements} replacement(s)` }]
+    return [
+      { type: "text", text: `Edited ${output.target}: ${output.replacements} replacement(s)` },
+    ]
   },
 })

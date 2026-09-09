@@ -5,11 +5,11 @@
  * Output format: { score, issues, suggestions, summary }
  */
 
-import { randomUUID } from "node:crypto";
-import { Agent, type AgentContext } from "@max/core";
-import type { AgentManifest, Result, Task } from "@max/core";
-import type { Provider } from "@max/providers";
-import type { ReviewResult } from "@max/core";
+import { randomUUID } from "node:crypto"
+import { Agent, type AgentContext } from "@max/core"
+import type { AgentManifest, Result, Task } from "@max/core"
+import type { Provider } from "@max/providers"
+import type { ReviewResult } from "@max/core"
 
 const MANIFEST: AgentManifest = {
   role: "review",
@@ -36,47 +36,41 @@ Review criteria:
 
 Be honest. A score of 10 is rare.
 `,
-};
+}
 
 export class ReviewAgent extends Agent {
-  override readonly manifest = MANIFEST;
+  override readonly manifest = MANIFEST
 
   constructor(provider: Provider) {
-    super(provider);
+    super(provider)
   }
 
-  override async execute(
-    task: Task,
-    ctx: AgentContext
-  ): Promise<Result> {
+  override async execute(task: Task, ctx: AgentContext): Promise<Result> {
     const bundle = ctx.priorResults
-      .map(
-        (r) =>
-          `--- ${r.agentRole.toUpperCase()} (resultId=${r.id}) ---\n${r.output}`
-      )
-      .join("\n\n");
+      .map((r) => `--- ${r.agentRole.toUpperCase()} (resultId=${r.id}) ---\n${r.output}`)
+      .join("\n\n")
 
     const messages = this.buildMessages(
-      `Original user request: ${ctx.priorResults[0]?.metadata?.userRequest ?? "(unknown)"}\n\nArtifacts to review:\n${bundle}\n\nProduce the JSON review now.`
-    );
+      `Original user request: ${ctx.priorResults[0]?.metadata?.userRequest ?? "(unknown)"}\n\nArtifacts to review:\n${bundle}\n\nProduce the JSON review now.`,
+    )
 
     const response = await this.provider.chat(messages, {
       temperature: 0.2,
       maxTokens: 1500,
       jsonMode: true,
       model: this.getEffectiveModel(),
-    });
+    })
 
-    let parsed: Omit<ReviewResult, "id" | "workspaceId" | "planId" | "reviewedAt">;
+    let parsed: Omit<ReviewResult, "id" | "workspaceId" | "planId" | "reviewedAt">
     try {
-      parsed = JSON.parse(response.content);
+      parsed = JSON.parse(response.content)
     } catch {
       // Fallback: extract JSON if model wrapped it.
-      const match = response.content.match(/\{[\s\S]*\}/);
+      const match = response.content.match(/\{[\s\S]*\}/)
       if (!match) {
-        throw new Error("Review Agent did not produce valid JSON");
+        throw new Error("Review Agent did not produce valid JSON")
       }
-      parsed = JSON.parse(match[0]);
+      parsed = JSON.parse(match[0])
     }
 
     // Validate shape minimally; clamp values.
@@ -86,12 +80,10 @@ export class ReviewAgent extends Agent {
       planId: "",
       score: clampScore(parsed.score),
       issues: Array.isArray(parsed.issues) ? parsed.issues.map(String) : [],
-      suggestions: Array.isArray(parsed.suggestions)
-        ? parsed.suggestions.map(String)
-        : [],
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.map(String) : [],
       summary: String(parsed.summary ?? ""),
       reviewedAt: new Date().toISOString(),
-    };
+    }
 
     return {
       id: randomUUID(),
@@ -101,12 +93,12 @@ export class ReviewAgent extends Agent {
       output: JSON.stringify(review, null, 2),
       metadata: { review },
       createdAt: new Date().toISOString(),
-    };
+    }
   }
 }
 
 function clampScore(v: unknown): number {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 5;
-  return Math.max(0, Math.min(10, Math.round(n)));
+  const n = Number(v)
+  if (!Number.isFinite(n)) return 5
+  return Math.max(0, Math.min(10, Math.round(n)))
 }

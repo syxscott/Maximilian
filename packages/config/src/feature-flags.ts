@@ -16,29 +16,29 @@
 
 export interface FlagDefinition {
   /** Default value when no override matches. */
-  defaultValue: boolean;
+  defaultValue: boolean
   /** Optional: percentage of users who get `defaultValue` (rest get !defaultValue). */
-  rolloutPercentage?: number;
+  rolloutPercentage?: number
   /** Optional: list of user IDs that always get the flag enabled. */
-  allowlist?: string[];
+  allowlist?: string[]
   /** Human-readable description for the flag. */
-  description?: string;
+  description?: string
 }
 
 export interface JsonFlagDefinition<T = unknown> {
-  defaultValue: T;
-  description?: string;
+  defaultValue: T
+  description?: string
 }
 
 export interface FeatureFlagsConfig {
   /** Flag definitions. */
-  flags?: Record<string, FlagDefinition>;
+  flags?: Record<string, FlagDefinition>
   /** JSON value flags. */
-  jsonFlags?: Record<string, JsonFlagDefinition>;
+  jsonFlags?: Record<string, JsonFlagDefinition>
   /** Optional user ID for targeting/allowlist evaluation. */
-  userId?: string | undefined;
+  userId?: string | undefined
   /** Optional: load overrides from FEATURE_FLAGS env var. */
-  loadFromEnv?: boolean;
+  loadFromEnv?: boolean
 }
 
 // ── Default flags ─────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ export const DEFAULT_FLAGS: Record<string, FlagDefinition> = {
     defaultValue: true,
     description: "Enable SSE streaming for real-time workspace updates",
   },
-};
+}
 
 export const DEFAULT_JSON_FLAGS: Record<string, JsonFlagDefinition> = {
   MAX_TEAM_SIZE: {
@@ -87,24 +87,24 @@ export const DEFAULT_JSON_FLAGS: Record<string, JsonFlagDefinition> = {
     defaultValue: 7,
     description: "Minimum review score to pass (1-10)",
   },
-};
+}
 
 // ── Feature Flags implementation ──────────────────────────────────────────
 
 export class FeatureFlags {
-  private readonly flags: Map<string, FlagDefinition>;
-  private readonly jsonFlags: Map<string, JsonFlagDefinition>;
-  private readonly userId: string | undefined;
-  private readonly overrides: Map<string, boolean> = new Map();
+  private readonly flags: Map<string, FlagDefinition>
+  private readonly jsonFlags: Map<string, JsonFlagDefinition>
+  private readonly userId: string | undefined
+  private readonly overrides: Map<string, boolean> = new Map()
 
   constructor(config: FeatureFlagsConfig = {}) {
-    this.flags = new Map(Object.entries(config.flags ?? DEFAULT_FLAGS));
-    this.jsonFlags = new Map(Object.entries(config.jsonFlags ?? DEFAULT_JSON_FLAGS));
-    this.userId = config.userId ?? undefined;
+    this.flags = new Map(Object.entries(config.flags ?? DEFAULT_FLAGS))
+    this.jsonFlags = new Map(Object.entries(config.jsonFlags ?? DEFAULT_JSON_FLAGS))
+    this.userId = config.userId ?? undefined
 
     // Load env overrides
     if (config.loadFromEnv !== false) {
-      this.loadEnvOverrides();
+      this.loadEnvOverrides()
     }
   }
 
@@ -114,96 +114,96 @@ export class FeatureFlags {
   isEnabled(flagName: string): boolean {
     // Check manual override first
     if (this.overrides.has(flagName)) {
-      return this.overrides.get(flagName)!;
+      return this.overrides.get(flagName)!
     }
 
-    const flag = this.flags.get(flagName);
-    if (!flag) return false;
+    const flag = this.flags.get(flagName)
+    if (!flag) return false
 
     // Allowlist check
     if (this.userId && flag.allowlist?.includes(this.userId)) {
-      return true;
+      return true
     }
 
     // Rollout percentage
     if (flag.rolloutPercentage !== undefined && flag.rolloutPercentage < 100) {
-      const hash = this.hash(flagName + (this.userId ?? ""));
+      const hash = this.hash(flagName + (this.userId ?? ""))
       if (hash > flag.rolloutPercentage) {
-        return !flag.defaultValue;
+        return !flag.defaultValue
       }
     }
 
-    return flag.defaultValue;
+    return flag.defaultValue
   }
 
   /**
    * Get a JSON flag value.
    */
   getJsonValue<T>(flagName: string, fallback: T): T {
-    const flag = this.jsonFlags.get(flagName);
-    return (flag?.defaultValue as T) ?? fallback;
+    const flag = this.jsonFlags.get(flagName)
+    return (flag?.defaultValue as T) ?? fallback
   }
 
   /**
    * Get all flag values (for debugging/admin UI).
    */
   getAllFlags(): Record<string, boolean> {
-    const result: Record<string, boolean> = {};
+    const result: Record<string, boolean> = {}
     for (const [name] of this.flags) {
-      result[name] = this.isEnabled(name);
+      result[name] = this.isEnabled(name)
     }
-    return result;
+    return result
   }
 
   /**
    * Get all JSON flag values.
    */
   getAllJsonFlags(): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
+    const result: Record<string, unknown> = {}
     for (const [name, flag] of this.jsonFlags) {
-      result[name] = flag.defaultValue;
+      result[name] = flag.defaultValue
     }
-    return result;
+    return result
   }
 
   /**
    * Override a flag value at runtime (e.g., from admin API).
    */
   override(flagName: string, value: boolean): void {
-    this.overrides.set(flagName, value);
+    this.overrides.set(flagName, value)
   }
 
   /**
    * Clear a runtime override.
    */
   clearOverride(flagName: string): void {
-    this.overrides.delete(flagName);
+    this.overrides.delete(flagName)
   }
 
   /**
    * Get flag definition (for admin UI).
    */
   getFlagDefinition(flagName: string): FlagDefinition | undefined {
-    return this.flags.get(flagName);
+    return this.flags.get(flagName)
   }
 
   /**
    * List all flag names.
    */
   listFlagNames(): string[] {
-    return [...this.flags.keys()];
+    return [...this.flags.keys()]
   }
 
   // ── Internal ──────────────────────────────────────────────────────────
 
   private loadEnvOverrides(): void {
     try {
-      const raw = typeof process !== "undefined" ? process.env["FEATURE_FLAGS"] : undefined;
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Record<string, boolean>;
+      const raw = typeof process !== "undefined" ? process.env["FEATURE_FLAGS"] : undefined
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Record<string, boolean>
       for (const [key, value] of Object.entries(parsed)) {
         if (typeof value === "boolean") {
-          this.overrides.set(key, value);
+          this.overrides.set(key, value)
         }
       }
     } catch {
@@ -212,11 +212,11 @@ export class FeatureFlags {
   }
 
   private hash(input: string): number {
-    let h = 0;
+    let h = 0
     for (let i = 0; i < input.length; i++) {
-      h = ((h << 5) - h + input.charCodeAt(i)) | 0;
+      h = ((h << 5) - h + input.charCodeAt(i)) | 0
     }
-    return Math.abs(h % 100);
+    return Math.abs(h % 100)
   }
 }
 
@@ -224,5 +224,5 @@ export class FeatureFlags {
  * Create a FeatureFlags instance with defaults.
  */
 export function createFeatureFlags(config?: FeatureFlagsConfig): FeatureFlags {
-  return new FeatureFlags(config);
+  return new FeatureFlags(config)
 }

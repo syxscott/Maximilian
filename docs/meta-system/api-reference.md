@@ -65,10 +65,11 @@ Run one full meta-system cycle.
 
 ```json
 {
-  "recentExecutions": [],          // ExecutionRecord[]
-  "blueprints": [],                // AgentBlueprint[]
-  "graphs": [],                    // TeamGraph[]
-  "discoverySignals": [            // DiscoverySignal[]
+  "recentExecutions": [], // ExecutionRecord[]
+  "blueprints": [], // AgentBlueprint[]
+  "graphs": [], // TeamGraph[]
+  "discoverySignals": [
+    // DiscoverySignal[]
     {
       "text": "Build iOS app",
       "context": "user request",
@@ -166,7 +167,7 @@ Predict cost/latency/quality/risk for a single org.
 ```json
 {
   "orgName": "OrgA",
-  "graph": { /* TeamGraph */ },
+  "graph": {/* TeamGraph */},
   "profiles": {
     "frontend": { "costPerCall": 1, "latencyMs": 1000, "qualityScore": 8 }
   },
@@ -196,8 +197,8 @@ Compare two orgs and get a recommendation.
 
 ```json
 {
-  "a": { /* same shape as /simulate */ },
-  "b": { /* same shape as /simulate */ }
+  "a": {/* same shape as /simulate */},
+  "b": {/* same shape as /simulate */}
 }
 ```
 
@@ -205,8 +206,8 @@ Compare two orgs and get a recommendation.
 
 ```json
 {
-  "a": { /* SimulationResult */ },
-  "b": { /* SimulationResult */ },
+  "a": {/* SimulationResult */},
+  "b": {/* SimulationResult */},
   "recommendation": "A",
   "reason": "A scores 7.50 > B 5.20 (quality − cost − latency)"
 }
@@ -237,7 +238,7 @@ Update governance config (hot-reloadable).
 **Response**
 
 ```json
-{ "ok": true, "config": { /* updated */ } }
+{ "ok": true, "config": {/* updated */} }
 ```
 
 ## Error Format

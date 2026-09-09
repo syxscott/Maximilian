@@ -4,11 +4,7 @@
 // Licensed under the MIT License. See LICENSE in the project root.
 
 import { describe, it, expect } from "vitest"
-import {
-  RuntimeInterrupt,
-  isRuntimeInterrupt,
-  getInterruptInfo,
-} from "../src/runtime-interrupt.js"
+import { RuntimeInterrupt, isRuntimeInterrupt, getInterruptInfo } from "../src/runtime-interrupt.js"
 
 describe("RuntimeInterrupt", () => {
   it("creates an interrupt with reason and optional payload", () => {

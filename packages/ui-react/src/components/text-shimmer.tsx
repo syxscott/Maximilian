@@ -10,15 +10,7 @@ export interface TextShimmerProps extends Omit<React.HTMLAttributes<HTMLElement>
 }
 
 export function TextShimmer(props: TextShimmerProps) {
-  const {
-    text,
-    className,
-    as,
-    active = true,
-    offset = 0,
-    style,
-    ...rest
-  } = props
+  const { text, className, as, active = true, offset = 0, style, ...rest } = props
 
   const swap = 220
   const [run, setRun] = React.useState(active)

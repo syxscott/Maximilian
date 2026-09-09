@@ -30,7 +30,11 @@ export class Container {
    * `singleton` — created once on first resolve, then cached.
    * `transient` — new instance on every resolve.
    */
-  register<T>(token: string, factory: (c: Container) => T, lifecycle: Lifecycle = "singleton"): void {
+  register<T>(
+    token: string,
+    factory: (c: Container) => T,
+    lifecycle: Lifecycle = "singleton",
+  ): void {
     this.registry.set(token, { factory, lifecycle } as Registration<T>)
   }
 
@@ -74,7 +78,11 @@ export class Container {
    * Override an existing registration (useful for testing).
    * Creates the registration if it doesn't exist.
    */
-  override<T>(token: string, factory: (c: Container) => T, lifecycle: Lifecycle = "singleton"): void {
+  override<T>(
+    token: string,
+    factory: (c: Container) => T,
+    lifecycle: Lifecycle = "singleton",
+  ): void {
     this.registry.set(token, { factory, lifecycle } as Registration<T>)
   }
 

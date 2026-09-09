@@ -90,9 +90,14 @@ export class NoveltyDetector {
         sim = cosineSimilarity(embedding, this.pastEmbeddings[i])
       } else {
         const pastEmb = this.pastEmbeddings[i]
-        sim = pastEmb && pastEmb.length > 0 && embedding
-          ? cosineSimilarity(embedding, pastEmb)
-          : jaccardSimilarity(tokenize(taskDescription), tokenize(this.pastTasks[i].description), this.ngramSize)
+        sim =
+          pastEmb && pastEmb.length > 0 && embedding
+            ? cosineSimilarity(embedding, pastEmb)
+            : jaccardSimilarity(
+                tokenize(taskDescription),
+                tokenize(this.pastTasks[i].description),
+                this.ngramSize,
+              )
       }
       if (sim > maxSim) maxSim = sim
       if (sim >= this.threshold) similar.push(this.pastTasks[i].description)

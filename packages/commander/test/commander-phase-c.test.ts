@@ -90,19 +90,30 @@ describe("Phase C — PlannerOutput schema (借鉴 #1 #14 #9)", () => {
     const provider = stubProvider("stub", () =>
       JSON.stringify({
         rationale: "Multi-track plan.",
-        tasks: [
-          { agentRole: "backend", description: "API", dependsOn: [] },
-        ],
+        tasks: [{ agentRole: "backend", description: "API", dependsOn: [] }],
         tracks: [
-          { id: "track-1", name: "Foundation", description: "Build core", phases: ["design", "implement", "review"] },
-          { id: "track-2", name: "Polish", description: "Final touches", phases: ["test", "deploy"] },
+          {
+            id: "track-1",
+            name: "Foundation",
+            description: "Build core",
+            phases: ["design", "implement", "review"],
+          },
+          {
+            id: "track-2",
+            name: "Polish",
+            description: "Final touches",
+            phases: ["test", "deploy"],
+          },
         ],
       }),
     )
     const commander = new Commander(() => provider)
     const { plan } = await commander.plan("Build with tracks")
     expect(plan.metadata?.tracks).toBeDefined()
-    expect((plan.metadata!.tracks as Array<{ id: string }>).map((t) => t.id)).toEqual(["track-1", "track-2"])
+    expect((plan.metadata!.tracks as Array<{ id: string }>).map((t) => t.id)).toEqual([
+      "track-1",
+      "track-2",
+    ])
   })
 
   it("does not set plan.metadata when tracks are absent", async () => {
@@ -146,8 +157,20 @@ describe("Phase C — Commander.preflight (借鉴 #3)", () => {
       userRequest: "x",
       rationale: "",
       tasks: [
-        { id: "task-1", agentRole: "backend" as const, description: "x", status: "pending" as const, dependsOn: [] },
-        { id: "task-2", agentRole: "review" as const, description: "review", status: "pending" as const, dependsOn: ["task-1"] },
+        {
+          id: "task-1",
+          agentRole: "backend" as const,
+          description: "x",
+          status: "pending" as const,
+          dependsOn: [],
+        },
+        {
+          id: "task-2",
+          agentRole: "review" as const,
+          description: "review",
+          status: "pending" as const,
+          dependsOn: ["task-1"],
+        },
       ],
       createdAt: new Date().toISOString(),
     }
@@ -173,7 +196,13 @@ describe("Phase C — Commander.preflight (借鉴 #3)", () => {
       userRequest: "x",
       rationale: "",
       tasks: [
-        { id: "task-1", agentRole: "backend" as const, description: "x", status: "pending" as const, dependsOn: [] },
+        {
+          id: "task-1",
+          agentRole: "backend" as const,
+          description: "x",
+          status: "pending" as const,
+          dependsOn: [],
+        },
       ],
       createdAt: new Date().toISOString(),
     }
@@ -187,8 +216,20 @@ describe("Phase C — Commander.preflight (借鉴 #3)", () => {
       userRequest: "x",
       rationale: "",
       tasks: [
-        { id: "task-1", agentRole: "backend" as const, description: "x", status: "pending" as const, dependsOn: ["task-99"] },
-        { id: "task-2", agentRole: "review" as const, description: "review", status: "pending" as const, dependsOn: ["task-1"] },
+        {
+          id: "task-1",
+          agentRole: "backend" as const,
+          description: "x",
+          status: "pending" as const,
+          dependsOn: ["task-99"],
+        },
+        {
+          id: "task-2",
+          agentRole: "review" as const,
+          description: "review",
+          status: "pending" as const,
+          dependsOn: ["task-1"],
+        },
       ],
       createdAt: new Date().toISOString(),
     }
@@ -203,9 +244,29 @@ describe("Phase C — Commander.preflight (借鉴 #3)", () => {
       userRequest: "x",
       rationale: "",
       tasks: [
-        { id: "task-1", agentRole: "backend" as const, description: "x", status: "pending" as const, dependsOn: [], metadata: { ownedFiles: ["src/shared.ts"] } },
-        { id: "task-2", agentRole: "frontend" as const, description: "y", status: "pending" as const, dependsOn: [], metadata: { ownedFiles: ["src/shared.ts"] } },
-        { id: "task-3", agentRole: "review" as const, description: "review", status: "pending" as const, dependsOn: ["task-1", "task-2"] },
+        {
+          id: "task-1",
+          agentRole: "backend" as const,
+          description: "x",
+          status: "pending" as const,
+          dependsOn: [],
+          metadata: { ownedFiles: ["src/shared.ts"] },
+        },
+        {
+          id: "task-2",
+          agentRole: "frontend" as const,
+          description: "y",
+          status: "pending" as const,
+          dependsOn: [],
+          metadata: { ownedFiles: ["src/shared.ts"] },
+        },
+        {
+          id: "task-3",
+          agentRole: "review" as const,
+          description: "review",
+          status: "pending" as const,
+          dependsOn: ["task-1", "task-2"],
+        },
       ],
       createdAt: new Date().toISOString(),
     }
@@ -220,9 +281,29 @@ describe("Phase C — Commander.preflight (借鉴 #3)", () => {
       userRequest: "x",
       rationale: "",
       tasks: [
-        { id: "task-1", agentRole: "backend" as const, description: "x", status: "pending" as const, dependsOn: [], metadata: { ownedFiles: ["src/api/x.ts"] } },
-        { id: "task-2", agentRole: "frontend" as const, description: "y", status: "pending" as const, dependsOn: [], metadata: { ownedFiles: ["src/ui/x.tsx"] } },
-        { id: "task-3", agentRole: "review" as const, description: "review", status: "pending" as const, dependsOn: ["task-1", "task-2"] },
+        {
+          id: "task-1",
+          agentRole: "backend" as const,
+          description: "x",
+          status: "pending" as const,
+          dependsOn: [],
+          metadata: { ownedFiles: ["src/api/x.ts"] },
+        },
+        {
+          id: "task-2",
+          agentRole: "frontend" as const,
+          description: "y",
+          status: "pending" as const,
+          dependsOn: [],
+          metadata: { ownedFiles: ["src/ui/x.tsx"] },
+        },
+        {
+          id: "task-3",
+          agentRole: "review" as const,
+          description: "review",
+          status: "pending" as const,
+          dependsOn: ["task-1", "task-2"],
+        },
       ],
       createdAt: new Date().toISOString(),
     }

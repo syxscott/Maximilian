@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { createStore, useStore } from "zustand"
 
 /**
@@ -55,7 +63,10 @@ export interface GlobalProviderProps {
    * Build the per-server context payload.  Receives the resolved connection
    * and the scope string, and returns an opaque payload plus a dispose hook.
    */
-  buildServerCtx?: (conn: ServerConnection.Any, scope: string) => { payload: unknown; dispose: () => void }
+  buildServerCtx?: (
+    conn: ServerConnection.Any,
+    scope: string,
+  ) => { payload: unknown; dispose: () => void }
 }
 
 export function GlobalProvider({ children, buildServerCtx }: GlobalProviderProps) {

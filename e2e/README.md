@@ -40,6 +40,7 @@ E2E_NO_SERVER=1 E2E_BASE_URL=http://localhost:5173 pnpm test
 ## CI Integration
 
 The Playwright config automatically:
+
 - Uses GitHub reporter in CI (`process.env.CI`)
 - Retries twice on failure in CI
 - Generates HTML report at `playwright-report/`

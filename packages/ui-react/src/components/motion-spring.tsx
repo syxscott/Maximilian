@@ -104,9 +104,7 @@ export function useSpring(target: number, options?: Opt | (() => Opt)): number {
   const [value, setValue] = useState(target)
   const sourceRef = useRef<SpringHandle>(createMotionValue(target))
   const springRef = useRef<SpringHandle>(createMotionValue(target))
-  const configRef = useRef<Opt | undefined>(
-    typeof options === "function" ? options() : options,
-  )
+  const configRef = useRef<Opt | undefined>(typeof options === "function" ? options() : options)
   const stopRef = useRef<(() => void) | null>(null)
   const offRef = useRef<(() => void) | null>(null)
 

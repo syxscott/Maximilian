@@ -40,8 +40,7 @@ export const SandboxProfileName = {
   Off: "off",
 } as const
 
-export type SandboxProfileName =
-  (typeof SandboxProfileName)[keyof typeof SandboxProfileName]
+export type SandboxProfileName = (typeof SandboxProfileName)[keyof typeof SandboxProfileName]
 
 // ── Path Policy ────────────────────────────────────────────────────────────────
 
@@ -98,10 +97,10 @@ function matchGlob(pattern: string, text: string): boolean {
  * 网络访问策略
  */
 export type NetworkPolicy =
-  | { mode: "allow" }                           // 允许所有网络
-  | { mode: "deny" }                            // 拒绝所有网络
-  | { mode: "allow-list"; hosts: string[] }     // 只允许指定 hosts
-  | { mode: "read-only" }                       // 只允许 HTTP GET
+  | { mode: "allow" } // 允许所有网络
+  | { mode: "deny" } // 拒绝所有网络
+  | { mode: "allow-list"; hosts: string[] } // 只允许指定 hosts
+  | { mode: "read-only" } // 只允许 HTTP GET
 
 // ── SandboxProfile ────────────────────────────────────────────────────────────
 
@@ -157,14 +156,29 @@ export const SANDBOX_PROFILES: Record<SandboxProfileName, SandboxProfile> = {
     description: "工作区沙箱 - 允许文件操作和构建命令",
     paths: { allow: ["**"], deny: ["/etc/**", "/root/**", "/sys/**", "/proc/**"] },
     network: { mode: "allow" },
-    allowedCommands: ["git", "npm", "pnpm", "yarn", "node", "npm", "make", "gcc", "g++", "cargo", "rustc"],
+    allowedCommands: [
+      "git",
+      "npm",
+      "pnpm",
+      "yarn",
+      "node",
+      "npm",
+      "make",
+      "gcc",
+      "g++",
+      "cargo",
+      "rustc",
+    ],
     inheritEnv: true,
   },
 
   [SandboxProfileName.Devbox]: {
     name: SandboxProfileName.Devbox,
     description: "开发沙箱 - 适合执行用户代码，更严格限制",
-    paths: { allow: ["**"], deny: ["/etc/**", "/root/**", "/sys/**", "/proc/**", "/bin/**", "/sbin/**"] },
+    paths: {
+      allow: ["**"],
+      deny: ["/etc/**", "/root/**", "/sys/**", "/proc/**", "/bin/**", "/sbin/**"],
+    },
     network: { mode: "allow-list", hosts: ["localhost", "127.0.0.1", "::1"] },
     deniedCommands: ["rm", "dd", "mkfs", "fdisk", "mount", "umount"],
     inheritEnv: false,
@@ -177,7 +191,7 @@ export const SANDBOX_PROFILES: Record<SandboxProfileName, SandboxProfile> = {
     description: "严格沙箱 - 最小权限原则",
     paths: { allow: [], deny: ["**"] },
     network: { mode: "deny" },
-    deniedCommands: ["*"],  // 全部禁止再逐个允许
+    deniedCommands: ["*"], // 全部禁止再逐个允许
     inheritEnv: false,
     memoryLimitMB: 512,
     cpuTimeLimit: 60,
@@ -418,7 +432,10 @@ export function createSandboxBackend(
 
     case SandboxProfileName.Devbox:
       // Devbox 模式优先使用 Docker（如果可用）
-      return { backend: "docker", options: { ...opts, dockerImage: opts.dockerImage ?? "ubuntu:22.04" } }
+      return {
+        backend: "docker",
+        options: { ...opts, dockerImage: opts.dockerImage ?? "ubuntu:22.04" },
+      }
 
     case SandboxProfileName.ReadOnly:
       // 只读模式使用本地后端 + 路径限制

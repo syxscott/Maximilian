@@ -12,7 +12,10 @@ import { persist, createJSONStorage } from "zustand/middleware"
 
 type StoredProject = { worktree: string; expanded: boolean }
 type StoredServer = string | ServerConnection.HttpBase | ServerConnection.Http
-type ServerProjectState = { projects: Record<string, StoredProject[]>; lastProject: Record<string, string> }
+type ServerProjectState = {
+  projects: Record<string, StoredProject[]>
+  lastProject: Record<string, string>
+}
 
 export function normalizeServerUrl(input: string) {
   const trimmed = input.trim()
@@ -36,7 +39,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-export function migrateCanonicalLocalServerState(value: unknown, canonicalLocalServer?: ServerConnection.Key) {
+export function migrateCanonicalLocalServerState(
+  value: unknown,
+  canonicalLocalServer?: ServerConnection.Key,
+) {
   if (!canonicalLocalServer || canonicalLocalServer === "local") return value
   if (!isRecord(value)) return value
   const projects = isRecord(value.projects) ? value.projects : undefined
@@ -217,7 +223,9 @@ export const createServerStore = (params: {
         removeProject: (scope, worktree) => {
           const projects = get().projects
           const current = projects[scope] ?? []
-          set({ projects: { ...projects, [scope]: current.filter((p) => p.worktree !== worktree) } })
+          set({
+            projects: { ...projects, [scope]: current.filter((p) => p.worktree !== worktree) },
+          })
         },
         updateProject: (scope, worktree, patch) => {
           const projects = get().projects
@@ -244,7 +252,9 @@ export const createServerStore = (params: {
       }),
       {
         name: "server.v3",
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         migrate: (value) => (params.migrate ? params.migrate(value) : value),
         onRehydrateStorage: () => (state) => {
           if (state) state.ready = true
@@ -274,7 +284,12 @@ export interface ServerProviderProps {
   children: ReactNode
 }
 
-export function ServerProvider({ defaultServer, canonicalLocalServer, servers, children }: ServerProviderProps) {
+export function ServerProvider({
+  defaultServer,
+  canonicalLocalServer,
+  servers,
+  children,
+}: ServerProviderProps) {
   const [store] = useState(() =>
     createServerStore({
       defaultServer,
@@ -311,11 +326,15 @@ const urlOf = (x: StoredServer) => (typeof x === "string" ? x : "type" in x ? x.
 function projectsForScope(store: ServerStore, scope: string) {
   return {
     list: () => store.getState().projects[scope] ?? [],
-    open: (directory: string) => store.getState().upsertProject(scope, { worktree: directory, expanded: true }),
+    open: (directory: string) =>
+      store.getState().upsertProject(scope, { worktree: directory, expanded: true }),
     close: (directory: string) => store.getState().removeProject(scope, directory),
-    expand: (directory: string) => store.getState().updateProject(scope, directory, { expanded: true }),
-    collapse: (directory: string) => store.getState().updateProject(scope, directory, { expanded: false }),
-    move: (directory: string, toIndex: number) => store.getState().moveProject(scope, directory, toIndex),
+    expand: (directory: string) =>
+      store.getState().updateProject(scope, directory, { expanded: true }),
+    collapse: (directory: string) =>
+      store.getState().updateProject(scope, directory, { expanded: false }),
+    move: (directory: string, toIndex: number) =>
+      store.getState().moveProject(scope, directory, toIndex),
     last: () => store.getState().lastProject[scope],
     touch: (directory: string) => store.getState().touchLastProject(scope, directory),
   }
@@ -364,7 +383,11 @@ export function buildServerFacade(ctx: ServerContextValue) {
     add(input: ServerConnection.Http) {
       const url_ = normalizeServerUrl(input.http.url)
       if (!url_) return
-      const conn: ServerConnection.Http = { ...input, authToken: undefined, http: { ...input.http, url: url_ } }
+      const conn: ServerConnection.Http = {
+        ...input,
+        authToken: undefined,
+        http: { ...input.http, url: url_ },
+      }
       const state = store.getState()
       const existing = state.list.findIndex((x) => urlOf(x) === url_)
       if (existing !== -1) {

@@ -21,7 +21,9 @@ class CapturingProvider implements Provider {
   id = "capturing"
   name = "capturing"
   defaultModel = "p-1"
-  isConfigured(): boolean { return true }
+  isConfigured(): boolean {
+    return true
+  }
   captured: ChatMessage[][] = []
   async chat(messages: ChatMessage[]): Promise<ChatResponse> {
     this.captured.push(messages)
@@ -31,12 +33,16 @@ class CapturingProvider implements Provider {
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
     }
   }
-  async *stream() { /* noop */ throw new Error("not used") }
+  async *stream() {
+    /* noop */ throw new Error("not used")
+  }
 }
 
 class CaptureAgent extends Agent {
   override readonly manifest = MANIFEST
-  constructor(provider: Provider) { super(provider) }
+  constructor(provider: Provider) {
+    super(provider)
+  }
   override async execute(task: Task, ctx: AgentContext): Promise<Result> {
     // Force buildMessages() to run so the prelude is composed with the
     // skills + memory sections before the chat call.
@@ -76,31 +82,39 @@ function makeWorkspace(id: string, n: number, description: string): Workspace {
 function makeSink() {
   return {
     workspaces: new Map<string, Workspace>(),
-    async saveWorkspace(w: Workspace) { this.workspaces.set(w.id, w) },
-    async loadWorkspace(id: string) { return this.workspaces.get(id) },
+    async saveWorkspace(w: Workspace) {
+      this.workspaces.set(w.id, w)
+    },
+    async loadWorkspace(id: string) {
+      return this.workspaces.get(id)
+    },
   }
 }
 
 describe("Runtime skills prelude integration (P1-D)", () => {
   it("injects matching skill summaries into the system prompt", async () => {
     const provider = new CapturingProvider()
-    const rt = new AgentRuntime(
-      () => new CaptureAgent(provider),
-      makeSink(),
-      {
-        maxConcurrency: 1,
-        getSkills: async () => [
-          {
-            frontmatter: { name: "web-search", description: "Search the web.", triggers: ["search:"] },
-            body: "ignored",
+    const rt = new AgentRuntime(() => new CaptureAgent(provider), makeSink(), {
+      maxConcurrency: 1,
+      getSkills: async () => [
+        {
+          frontmatter: {
+            name: "web-search",
+            description: "Search the web.",
+            triggers: ["search:"],
           },
-          {
-            frontmatter: { name: "summarize", description: "Summarize text.", triggers: ["summarize:"] },
-            body: "ignored",
+          body: "ignored",
+        },
+        {
+          frontmatter: {
+            name: "summarize",
+            description: "Summarize text.",
+            triggers: ["summarize:"],
           },
-        ],
-      },
-    )
+          body: "ignored",
+        },
+      ],
+    })
     await rt.execute(makeWorkspace("ws-1", 1, "search: cats"))
     const sysMsg = provider.captured[0]?.[0]
     expect(sysMsg?.role).toBe("system")
@@ -112,16 +126,12 @@ describe("Runtime skills prelude integration (P1-D)", () => {
 
   it("emits an empty prelude when no triggers match", async () => {
     const provider = new CapturingProvider()
-    const rt = new AgentRuntime(
-      () => new CaptureAgent(provider),
-      makeSink(),
-      {
-        maxConcurrency: 1,
-        getSkills: async () => [
-          { frontmatter: { name: "web-search", triggers: ["search:"] }, body: "" },
-        ],
-      },
-    )
+    const rt = new AgentRuntime(() => new CaptureAgent(provider), makeSink(), {
+      maxConcurrency: 1,
+      getSkills: async () => [
+        { frontmatter: { name: "web-search", triggers: ["search:"] }, body: "" },
+      ],
+    })
     await rt.execute(makeWorkspace("ws-2", 1, "do math"))
     const sysMsg = provider.captured[0]?.[0]
     expect(sysMsg?.content).not.toContain("# Skills that may apply")
@@ -129,11 +139,7 @@ describe("Runtime skills prelude integration (P1-D)", () => {
 
   it("skips skill loading entirely when no getSkills source is configured", async () => {
     const provider = new CapturingProvider()
-    const rt = new AgentRuntime(
-      () => new CaptureAgent(provider),
-      makeSink(),
-      { maxConcurrency: 1 },
-    )
+    const rt = new AgentRuntime(() => new CaptureAgent(provider), makeSink(), { maxConcurrency: 1 })
     await rt.execute(makeWorkspace("ws-3", 1, "search: anything"))
     const sysMsg = provider.captured[0]?.[0]
     expect(sysMsg?.content).toBe("PROBE_SYSTEM")

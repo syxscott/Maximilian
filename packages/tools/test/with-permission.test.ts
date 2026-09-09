@@ -15,11 +15,7 @@ import {
   isPermissionDeniedError,
   type PermissionProvider,
 } from "../src/with-permission"
-import {
-  DEFAULT_PERMISSIONS,
-  type Permissions,
-  type ToolName,
-} from "../src/permission"
+import { DEFAULT_PERMISSIONS, type Permissions, type ToolName } from "../src/permission"
 import type { Materialization, ExecuteInput, Settlement } from "../src/registry"
 
 // ── Test helpers ─────────────────────────────────────────────────────────
@@ -49,7 +45,14 @@ const ask: Permissions = {
   patterns: {},
 }
 const allow: Permissions = {
-  defaults: { bash: "allow", write: "allow", edit: "allow", read: "allow", glob: "allow", grep: "allow" },
+  defaults: {
+    bash: "allow",
+    write: "allow",
+    edit: "allow",
+    read: "allow",
+    glob: "allow",
+    grep: "allow",
+  },
   patterns: {},
 }
 const deny: Permissions = {
@@ -189,7 +192,9 @@ describe("withPermission", () => {
   it("definitions are passed through unchanged", () => {
     const inner: Materialization = {
       definitions: [{ name: "read", description: "", inputSchema: { type: "object" } } as any],
-      async settle() { return { result: null } }
+      async settle() {
+        return { result: null }
+      },
     }
     const gate = withPermission(inner, allow)
     expect(gate.definitions).toBe(inner.definitions)
@@ -198,7 +203,12 @@ describe("withPermission", () => {
 
 describe("type guards", () => {
   it("distinguishes request vs denied", () => {
-    const req = new PermissionRequestError({ tool: "write", target: "/x", callId: "c", requestId: "r" })
+    const req = new PermissionRequestError({
+      tool: "write",
+      target: "/x",
+      callId: "c",
+      requestId: "r",
+    })
     const den = new PermissionDeniedError({ tool: "write", target: "/x", callId: "c" })
     expect(isPermissionRequestError(req)).toBe(true)
     expect(isPermissionRequestError(den)).toBe(false)

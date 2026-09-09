@@ -4,10 +4,10 @@
 
 The following Maximilian release lines receive security updates:
 
-| Version | Supported | Notes |
-|---------|-----------|-------|
-| 0.1.x (current) | ✓ active | production-readiness push — auth, PG, isolation, rate limits |
-| < 0.1.0 | ✗ | pre-production; no security backports |
+| Version         | Supported | Notes                                                        |
+| --------------- | --------- | ------------------------------------------------------------ |
+| 0.1.x (current) | ✓ active  | production-readiness push — auth, PG, isolation, rate limits |
+| < 0.1.0         | ✗         | pre-production; no security backports                        |
 
 ## Reporting a vulnerability
 
@@ -57,19 +57,19 @@ We follow **coordinated disclosure**:
 
 ## Scope — what's in
 
-| Asset | In scope |
-|---|---|
-| `apps/api/` and all HTTP routes | ✓ |
-| `apps/worker/` (BullMQ consumer) | ✓ |
-| `packages/database/` (PG stores) | ✓ |
-| `packages/auth/` and JWT/refresh logic | ✓ |
-| `packages/providers/` (LLM client retry, rate-limit) | ✓ |
-| `packages/core/` runtime (permission gate, sink) | ✓ |
-| `docker-compose.yml`, `Dockerfile`s | ✓ |
-| GitHub Actions workflows | ✓ |
-| Demo / example scripts in `scripts/` | limited |
-| `docs/` documentation | ✗ (no code execution) |
-| Issues filed publicly before coordinated disclosure | n/a — please don't |
+| Asset                                                | In scope              |
+| ---------------------------------------------------- | --------------------- |
+| `apps/api/` and all HTTP routes                      | ✓                     |
+| `apps/worker/` (BullMQ consumer)                     | ✓                     |
+| `packages/database/` (PG stores)                     | ✓                     |
+| `packages/auth/` and JWT/refresh logic               | ✓                     |
+| `packages/providers/` (LLM client retry, rate-limit) | ✓                     |
+| `packages/core/` runtime (permission gate, sink)     | ✓                     |
+| `docker-compose.yml`, `Dockerfile`s                  | ✓                     |
+| GitHub Actions workflows                             | ✓                     |
+| Demo / example scripts in `scripts/`                 | limited               |
+| `docs/` documentation                                | ✗ (no code execution) |
+| Issues filed publicly before coordinated disclosure  | n/a — please don't    |
 
 ## Scope — what's out
 
@@ -103,15 +103,15 @@ configured correctly:
 
 ## Security-related configuration
 
-| Env var | Purpose | Default | Production guidance |
-|---|---|---|---|
-| `JWT_SECRET` | HS256 signing key | unset → no auth | **required**, ≥ 32 bytes random |
-| `ADMIN_TOKEN` | bearer token for `/api/metrics` and dev auth | unset | use a long random string |
-| `TRUSTED_PROXIES` | CIDR list of reverse proxies | empty (no header trust) | set to your proxy subnet |
-| `CORS_ORIGIN` | allowed browser origin | `http://localhost:5174` | set to dashboard origin |
-| `DATABASE_URL` | PG connection string | unset → file storage | use SSL (`?sslmode=require`) |
-| `RATE_LIMIT` | request / minute / IP | 100 | tune per instance size |
-| `WORKER_CONCURRENCY` | jobs / worker | 3 | scale with worker count |
+| Env var              | Purpose                                      | Default                 | Production guidance             |
+| -------------------- | -------------------------------------------- | ----------------------- | ------------------------------- |
+| `JWT_SECRET`         | HS256 signing key                            | unset → no auth         | **required**, ≥ 32 bytes random |
+| `ADMIN_TOKEN`        | bearer token for `/api/metrics` and dev auth | unset                   | use a long random string        |
+| `TRUSTED_PROXIES`    | CIDR list of reverse proxies                 | empty (no header trust) | set to your proxy subnet        |
+| `CORS_ORIGIN`        | allowed browser origin                       | `http://localhost:5174` | set to dashboard origin         |
+| `DATABASE_URL`       | PG connection string                         | unset → file storage    | use SSL (`?sslmode=require`)    |
+| `RATE_LIMIT`         | request / minute / IP                        | 100                     | tune per instance size          |
+| `WORKER_CONCURRENCY` | jobs / worker                                | 3                       | scale with worker count         |
 
 ## Acknowledgements
 

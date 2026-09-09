@@ -21,11 +21,12 @@
  *
  * All other flags are reserved for future use.
  */
-import { render } from "ink";
-import meow from "meow";
-import App, { run as runApp } from "./app";
-import { TUI_CONFIG_DEFAULT } from "./context";
-const cli = meow(`
+import { render } from "ink"
+import meow from "meow"
+import App, { run as runApp } from "./app"
+import { TUI_CONFIG_DEFAULT } from "./context"
+const cli = meow(
+  `
   Usage
     $ max-tui [flags]
 
@@ -38,46 +39,51 @@ const cli = meow(`
     --directory <dir>  Override the working directory
     --token <token>   Bearer token for ADMIN_TOKEN / JWT protected endpoints
     --help             Show this help
-`, {
+`,
+  {
     importMeta: import.meta,
     flags: {
-        prompt: { type: "string" },
-        model: { type: "string" },
-        agent: { type: "string" },
-        continue: { type: "boolean", default: false },
-        url: { type: "string", default: process.env.MAX_TUI_URL ?? "http://localhost:3001" },
-        directory: { type: "string" },
-        token: { type: "string", default: process.env.MAX_TUI_TOKEN ?? process.env.ADMIN_TOKEN ?? "" },
+      prompt: { type: "string" },
+      model: { type: "string" },
+      agent: { type: "string" },
+      continue: { type: "boolean", default: false },
+      url: { type: "string", default: process.env.MAX_TUI_URL ?? "http://localhost:3001" },
+      directory: { type: "string" },
+      token: {
+        type: "string",
+        default: process.env.MAX_TUI_TOKEN ?? process.env.ADMIN_TOKEN ?? "",
+      },
     },
-});
+  },
+)
 const args = {
-    prompt: cli.flags.prompt,
-    model: cli.flags.model,
-    agent: cli.flags.agent,
-    continue: cli.flags.continue,
-};
+  prompt: cli.flags.prompt,
+  model: cli.flags.model,
+  agent: cli.flags.agent,
+  continue: cli.flags.continue,
+}
 const noopPluginHost = {
-    async start() {
-        /* no plugins in this build */
-    },
-    async dispose() {
-        /* nothing to release */
-    },
-};
+  async start() {
+    /* no plugins in this build */
+  },
+  async dispose() {
+    /* nothing to release */
+  },
+}
 const input = {
-    args,
-    config: TUI_CONFIG_DEFAULT,
-    url: cli.flags.url,
-    directory: cli.flags.directory,
-    token: cli.flags.token,
-    pluginHost: noopPluginHost,
-};
+  args,
+  config: TUI_CONFIG_DEFAULT,
+  url: cli.flags.url,
+  directory: cli.flags.directory,
+  token: cli.flags.token,
+  pluginHost: noopPluginHost,
+}
 // Delegate to `app.tsx`'s `run()` (mirrors OpenCode's Effect-based lifecycle)
 // which spins up the provider tree, mounts the routes, and tears down on exit.
 // `run` is async so callers can `await` it; we just kick it off here.
-void runApp(input);
+void runApp(input)
 // Keep `App` and `render` referenced so future entry-point rewrites that
 // inline-mount can reuse them without re-importing.
-void App;
-void render;
-void input;
+void App
+void render
+void input

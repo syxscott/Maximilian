@@ -1,2 +1,4 @@
-export function useServerSDK() { return { event: { on: () => () => {} } } }
+export function useServerSDK() {
+  return { event: { on: () => () => {} } }
+}
 export default useServerSDK

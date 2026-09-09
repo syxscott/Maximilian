@@ -7,17 +7,17 @@
  * static defaults.
  */
 
-import type { BenchmarkResult } from "./types.js";
-import { aggregateToRoleProfile } from "./bridge.js";
+import type { BenchmarkResult } from "./types.js"
+import { aggregateToRoleProfile } from "./bridge.js"
 
 /**
  * RoleProfile shape matching @max/meta-system/src/simulation.ts.
  * Declared locally to avoid circular dependency.
  */
 interface RoleProfile {
-  costPerCall: number;
-  latencyMs: number;
-  qualityScore: number;
+  costPerCall: number
+  latencyMs: number
+  qualityScore: number
 }
 
 /**
@@ -25,7 +25,7 @@ interface RoleProfile {
  * Declared locally to avoid circular dependency.
  */
 interface BenchmarkBridge {
-  getQualityProfile(role: string): Promise<RoleProfile | null>;
+  getQualityProfile(role: string): Promise<RoleProfile | null>
 }
 
 /**
@@ -38,11 +38,11 @@ interface BenchmarkBridge {
  * processes.
  */
 export class CachingBenchmarkBridge implements BenchmarkBridge {
-  private cache = new Map<string, BenchmarkResult[]>();
-  private maxEntriesPerRole: number;
+  private cache = new Map<string, BenchmarkResult[]>()
+  private maxEntriesPerRole: number
 
   constructor(maxEntriesPerRole = 100) {
-    this.maxEntriesPerRole = maxEntriesPerRole;
+    this.maxEntriesPerRole = maxEntriesPerRole
   }
 
   /**
@@ -50,12 +50,12 @@ export class CachingBenchmarkBridge implements BenchmarkBridge {
    * Evicts oldest entries when the per-role cap is exceeded.
    */
   record(role: string, results: BenchmarkResult[]): void {
-    const existing = this.cache.get(role) ?? [];
-    existing.push(...results);
+    const existing = this.cache.get(role) ?? []
+    existing.push(...results)
     if (existing.length > this.maxEntriesPerRole) {
-      existing.splice(0, existing.length - this.maxEntriesPerRole);
+      existing.splice(0, existing.length - this.maxEntriesPerRole)
     }
-    this.cache.set(role, existing);
+    this.cache.set(role, existing)
   }
 
   /**
@@ -63,12 +63,12 @@ export class CachingBenchmarkBridge implements BenchmarkBridge {
    * Evicts the oldest entry when the per-role cap is exceeded.
    */
   recordOne(role: string, result: BenchmarkResult): void {
-    const existing = this.cache.get(role) ?? [];
-    existing.push(result);
+    const existing = this.cache.get(role) ?? []
+    existing.push(result)
     if (existing.length > this.maxEntriesPerRole) {
-      existing.splice(0, existing.length - this.maxEntriesPerRole);
+      existing.splice(0, existing.length - this.maxEntriesPerRole)
     }
-    this.cache.set(role, existing);
+    this.cache.set(role, existing)
   }
 
   /**
@@ -76,30 +76,30 @@ export class CachingBenchmarkBridge implements BenchmarkBridge {
    * Returns null if no benchmark data exists for the role.
    */
   async getQualityProfile(role: string): Promise<RoleProfile | null> {
-    const results = this.cache.get(role);
-    if (!results || results.length === 0) return null;
-    return aggregateToRoleProfile(results);
+    const results = this.cache.get(role)
+    if (!results || results.length === 0) return null
+    return aggregateToRoleProfile(results)
   }
 
   /**
    * Check whether benchmark data exists for a role.
    */
   hasRole(role: string): boolean {
-    const results = this.cache.get(role);
-    return !!results && results.length > 0;
+    const results = this.cache.get(role)
+    return !!results && results.length > 0
   }
 
   /**
    * Get all roles that have benchmark data.
    */
   getRoles(): string[] {
-    return Array.from(this.cache.keys());
+    return Array.from(this.cache.keys())
   }
 
   /**
    * Clear all cached benchmark data.
    */
   clear(): void {
-    this.cache.clear();
+    this.cache.clear()
   }
 }

@@ -90,7 +90,9 @@ function configShortcut(api: TuiPluginApi, command: string): () => string {
   return () =>
     api.tuiConfig.keybinds
       .get(command)
-      .map((binding) => api.keys.formatSequence(Array.from(api.keymap.parseKeySequence(binding.key))))
+      .map((binding) =>
+        api.keys.formatSequence(Array.from(api.keymap.parseKeySequence(binding.key))),
+      )
       .filter(Boolean)
       .join(", ")
 }
@@ -173,7 +175,10 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
     if (props.connected === false) {
       tip = NO_MODELS_TIP
     } else {
-      const tips = [...TIPS, process.platform !== "win32" ? TERMINAL_SUSPEND_TIP : INPUT_UNDO_TIP].flatMap((item) => {
+      const tips = [
+        ...TIPS,
+        process.platform !== "win32" ? TERMINAL_SUSPEND_TIP : INPUT_UNDO_TIP,
+      ].flatMap((item) => {
         const value = typeof item === "string" ? item : item(shortcuts)
         return value ? [value] : []
       })
@@ -185,7 +190,7 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
   return (
     <Box flexDirection="row" maxWidth="100%">
       <Text color={theme.warning} flexShrink={0}>
-        {'● Tip '}
+        {"● Tip "}
       </Text>
       <Text flexShrink={1} wrap="word">
         {parts.map((part, index) => (
@@ -206,26 +211,41 @@ const TIPS: Tip[] = [
   "Use {highlight}/redo{/highlight} to restore previously undone messages and file changes",
   "Run {highlight}/share{/highlight} to create a public link to your conversation at opencode.ai",
   "Drag and drop images or PDFs into the terminal to add them as context",
-  (shortcuts) => press(shortcuts.inputPaste(), "to paste images from your clipboard into the prompt"),
-  (shortcuts) => `Use ${commandText("/editor", shortcuts.editorOpen())} to compose messages in your external editor`,
+  (shortcuts) =>
+    press(shortcuts.inputPaste(), "to paste images from your clipboard into the prompt"),
+  (shortcuts) =>
+    `Use ${commandText("/editor", shortcuts.editorOpen())} to compose messages in your external editor`,
   "Run {highlight}/init{/highlight} to auto-generate project rules based on your codebase",
-  (shortcuts) => `Use ${commandText("/models", shortcuts.modelList())} to see and switch between available AI models`,
-  (shortcuts) => `Use ${commandText("/themes", shortcuts.themeList())} to switch between ${themeCount} built-in themes`,
-  (shortcuts) => `Use ${commandText("/new", shortcuts.sessionNew())} to start a fresh conversation session`,
-  (shortcuts) => `Use ${commandText("/sessions", shortcuts.sessionList())} to list, pin, and continue sessions`,
-  (shortcuts) => press(shortcuts.sessionPinToggle(), "in the session list to pin a session so it stays at the top"),
+  (shortcuts) =>
+    `Use ${commandText("/models", shortcuts.modelList())} to see and switch between available AI models`,
+  (shortcuts) =>
+    `Use ${commandText("/themes", shortcuts.themeList())} to switch between ${themeCount} built-in themes`,
+  (shortcuts) =>
+    `Use ${commandText("/new", shortcuts.sessionNew())} to start a fresh conversation session`,
+  (shortcuts) =>
+    `Use ${commandText("/sessions", shortcuts.sessionList())} to list, pin, and continue sessions`,
+  (shortcuts) =>
+    press(
+      shortcuts.sessionPinToggle(),
+      "in the session list to pin a session so it stays at the top",
+    ),
   (shortcuts) =>
     shortcuts.sessionQuickSwitch1() && shortcuts.sessionQuickSwitch9()
       ? `Pinned sessions are assigned quick slots; use ${shortcutText(shortcuts.sessionQuickSwitch1())} through ${shortcutText(shortcuts.sessionQuickSwitch9())} to switch`
       : undefined,
   "Run {highlight}/compact{/highlight} to summarize long sessions near context limits",
-  (shortcuts) => `Use ${commandText("/export", shortcuts.sessionExport())} to save the conversation as Markdown`,
-  (shortcuts) => press(shortcuts.messagesCopy(), "to copy the assistant's last message to clipboard"),
+  (shortcuts) =>
+    `Use ${commandText("/export", shortcuts.sessionExport())} to save the conversation as Markdown`,
+  (shortcuts) =>
+    press(shortcuts.messagesCopy(), "to copy the assistant's last message to clipboard"),
   (shortcuts) => press(shortcuts.commandList(), "to see all available actions and commands"),
   "Run {highlight}/connect{/highlight} to add API keys for 75+ supported LLM providers",
-  (shortcuts) => `The leader key is ${shortcutText(shortcuts.leader())}; combine with other keys for quick actions`,
-  (shortcuts) => press(shortcuts.modelCycleRecent(), "to quickly switch between recently used models"),
-  (shortcuts) => press(shortcuts.sessionSidebarToggle(), "in a session to show or hide the sidebar panel"),
+  (shortcuts) =>
+    `The leader key is ${shortcutText(shortcuts.leader())}; combine with other keys for quick actions`,
+  (shortcuts) =>
+    press(shortcuts.modelCycleRecent(), "to quickly switch between recently used models"),
+  (shortcuts) =>
+    press(shortcuts.sessionSidebarToggle(), "in a session to show or hide the sidebar panel"),
   (shortcuts) =>
     shortcuts.messagesPageUp() && shortcuts.messagesPageDown()
       ? `Use ${shortcutText(shortcuts.messagesPageUp())}/${shortcutText(shortcuts.messagesPageDown())} to navigate through conversation history`
@@ -303,8 +323,10 @@ const TIPS: Tip[] = [
   "Permission {highlight}external_directory{/highlight} protects files outside project",
   "Run {highlight}opencode debug config{/highlight} to troubleshoot configuration",
   "Use {highlight}--print-logs{/highlight} flag to see detailed logs in stderr",
-  (shortcuts) => `Use ${commandText("/timeline", shortcuts.sessionTimeline())} to jump to specific messages`,
-  (shortcuts) => press(shortcuts.messagesToggleConceal(), "to toggle code block visibility in messages"),
+  (shortcuts) =>
+    `Use ${commandText("/timeline", shortcuts.sessionTimeline())} to jump to specific messages`,
+  (shortcuts) =>
+    press(shortcuts.messagesToggleConceal(), "to toggle code block visibility in messages"),
   (shortcuts) => `Use ${commandText("/status", shortcuts.statusView())} to see system status info`,
   "Enable {highlight}scroll_acceleration{/highlight} in {highlight}tui.json{/highlight} for smooth macOS-style scrolling",
   (shortcuts) =>
@@ -319,6 +341,7 @@ const TIPS: Tip[] = [
   "Use {highlight}/rename{/highlight} to rename the current session",
 ]
 
-const INPUT_UNDO_TIP: Tip = (shortcuts) => press(shortcuts.inputUndo(), "to undo changes in your prompt")
+const INPUT_UNDO_TIP: Tip = (shortcuts) =>
+  press(shortcuts.inputUndo(), "to undo changes in your prompt")
 const TERMINAL_SUSPEND_TIP: Tip = (shortcuts) =>
   press(shortcuts.terminalSuspend(), "to suspend the terminal and return to your shell")

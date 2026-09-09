@@ -5,15 +5,12 @@
  * imports still work and to lock in the OpenRouter-specific defaults.
  */
 
-import {
-  OpenAIChatProvider,
-  type OpenAIChatConfig,
-} from "./formats/openai-chat.js";
+import { OpenAIChatProvider, type OpenAIChatConfig } from "./formats/openai-chat.js"
 
 export interface OpenRouterConfig {
-  apiKey: string;
-  baseURL?: string;
-  defaultModel?: string;
+  apiKey: string
+  baseURL?: string
+  defaultModel?: string
 }
 
 export class OpenRouterProvider extends OpenAIChatProvider {
@@ -24,6 +21,6 @@ export class OpenRouterProvider extends OpenAIChatProvider {
       apiKey: config.apiKey,
       baseURL: config.baseURL ?? "https://openrouter.ai/api/v1",
       defaultModel: config.defaultModel ?? "anthropic/claude-3.5-haiku",
-    } satisfies OpenAIChatConfig);
+    } satisfies OpenAIChatConfig)
   }
 }

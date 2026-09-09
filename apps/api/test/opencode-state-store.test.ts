@@ -64,7 +64,9 @@ describe("OpencodeStateStore", () => {
     store.applyEvent(ev({ type: "message:part", data: { sessionID: "ws-1" } }))
     expect(store.getSession("ws-1")?.status).toBe("unknown")
 
-    store.applyEvent(ev({ type: "session:status", data: { sessionID: "ws-1", statusType: "busy" } }))
+    store.applyEvent(
+      ev({ type: "session:status", data: { sessionID: "ws-1", statusType: "busy" } }),
+    )
     expect(store.getSession("ws-1")?.status).toBe("busy")
 
     store.applyEvent(ev({ type: "session:idle", data: { sessionID: "ws-1" } }))
@@ -105,9 +107,7 @@ describe("OpencodeStateStore", () => {
   })
 
   it("ignores events without a sessionable key (e.g. pty.*)", () => {
-    const result = store.applyEvent(
-      ev({ type: "pty:created", data: {}, aggregateId: "global" }),
-    )
+    const result = store.applyEvent(ev({ type: "pty:created", data: {}, aggregateId: "global" }))
     expect(result).toBeUndefined()
     expect(store.size()).toBe(0)
   })
@@ -115,12 +115,8 @@ describe("OpencodeStateStore", () => {
   it("snapshots are sorted by lastEventAt descending", () => {
     const older = "2026-06-01T00:00:00.000Z"
     const newer = "2026-06-02T00:00:00.000Z"
-    store.applyEvent(
-      ev({ type: "message:part", data: { sessionID: "old" }, timestamp: older }),
-    )
-    store.applyEvent(
-      ev({ type: "message:part", data: { sessionID: "new" }, timestamp: newer }),
-    )
+    store.applyEvent(ev({ type: "message:part", data: { sessionID: "old" }, timestamp: older }))
+    store.applyEvent(ev({ type: "message:part", data: { sessionID: "new" }, timestamp: newer }))
     const list = store.listSessions()
     expect(list[0]?.sessionId).toBe("new")
     expect(list[1]?.sessionId).toBe("old")

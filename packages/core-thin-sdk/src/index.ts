@@ -68,7 +68,7 @@ export type {
   TokenUsage,
   TopEvent,
   UserMessage,
-} from "./types.js";
+} from "./types.js"
 
 export {
   InvalidRequestError,
@@ -77,16 +77,16 @@ export {
   ServiceUnavailableError,
   UnauthorizedError,
   errorFromResponse,
-} from "./errors.js";
+} from "./errors.js"
 
-export { healthCheck, type HealthCheckOptions, type HealthResult } from "./health.js";
+export { healthCheck, type HealthCheckOptions, type HealthResult } from "./health.js"
 
 export {
   Supervisor,
   type ReadyInfo,
   type SupervisorEvents,
   type SupervisorOptions,
-} from "./supervisor.js";
+} from "./supervisor.js"
 
 // EventBridge: subscribes to opencode's SSE stream and dispatches events
 // into Maximilian's EventStore via a normalized mapping table.
@@ -97,7 +97,7 @@ export {
   type EventBridgeOptions,
   type EventBridgeMetrics,
   type MappedEventInfo,
-} from "./event-bridge.js";
+} from "./event-bridge.js"
 
 export {
   OPENCODE_EVENT_MAP,
@@ -108,4 +108,4 @@ export {
   type OpencodeEvent,
   type OpencodeEventMapping,
   type MappedEventDraft,
-} from "./event-mapping.js";
+} from "./event-mapping.js"

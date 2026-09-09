@@ -241,10 +241,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
   // and `pause` / `resume` for callers to attach to DOM as needed.
 
   const setScrollRef = useCallback((el: HTMLElement | null) => {
-    scrollRef.current = el ?? undefined as any
+    scrollRef.current = el ?? (undefined as any)
   }, [])
   const setContentRef = useCallback((el: HTMLElement | null) => {
-    contentRef.current = el ?? undefined as any
+    contentRef.current = el ?? (undefined as any)
   }, [])
 
   return {

@@ -157,17 +157,13 @@ export class SnapshotSaver {
 
   private git(cmd: string, args: string[]): string {
     try {
-      return execFileSync(
-        "git",
-        [...GIT_CORE, cmd, ...args],
-        {
-          cwd: this.root,
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-          maxBuffer: LIMIT_BYTES,
-        },
-      )
+      return execFileSync("git", [...GIT_CORE, cmd, ...args], {
+        cwd: this.root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        maxBuffer: LIMIT_BYTES,
+      })
     } catch {
       return ""
     }

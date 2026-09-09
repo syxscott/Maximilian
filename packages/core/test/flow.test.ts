@@ -5,8 +5,16 @@ describe("Flow DSL", () => {
   it("runs independent steps concurrently", async () => {
     const order: string[] = []
     const flow = new Flow("test")
-    flow.step("a", async () => { await delay(10); order.push("a"); return "A" })
-    flow.step("b", async () => { await delay(5); order.push("b"); return "B" })
+    flow.step("a", async () => {
+      await delay(10)
+      order.push("a")
+      return "A"
+    })
+    flow.step("b", async () => {
+      await delay(5)
+      order.push("b")
+      return "B"
+    })
 
     const result = await flow.run()
     expect(result.status).toBe("completed")
@@ -20,11 +28,18 @@ describe("Flow DSL", () => {
   it("respects dependencies", async () => {
     const order: string[] = []
     const flow = new Flow("deps")
-    flow.step("fetch", async () => { order.push("fetch"); return 42 })
-    flow.step("process", async ({ priorResults }) => {
-      order.push("process")
-      return priorResults.fetch * 2
-    }, { dependsOn: ["fetch"] })
+    flow.step("fetch", async () => {
+      order.push("fetch")
+      return 42
+    })
+    flow.step(
+      "process",
+      async ({ priorResults }) => {
+        order.push("process")
+        return priorResults.fetch * 2
+      },
+      { dependsOn: ["fetch"] },
+    )
 
     const result = await flow.run()
     expect(result.status).toBe("completed")
@@ -34,7 +49,9 @@ describe("Flow DSL", () => {
 
   it("skips steps whose dependencies failed", async () => {
     const flow = new Flow("skip")
-    flow.step("fail", async () => { throw new Error("boom") })
+    flow.step("fail", async () => {
+      throw new Error("boom")
+    })
     flow.step("after", async () => "ok", { dependsOn: ["fail"] })
 
     const result = await flow.run()
@@ -72,7 +89,10 @@ describe("Flow DSL", () => {
 
   it("tracks duration", async () => {
     const flow = new Flow("timing")
-    flow.step("slow", async () => { await delay(50); return "done" })
+    flow.step("slow", async () => {
+      await delay(50)
+      return "done"
+    })
 
     const result = await flow.run()
     expect(result.durationMs).toBeGreaterThanOrEqual(40)

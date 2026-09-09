@@ -1,14 +1,14 @@
-import type { Plugin } from "./plugin-system.js";
+import type { Plugin } from "./plugin-system.js"
 
 export interface DomainToolSpec {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
 }
 
 export interface DomainToolCollection {
-  domain: string;
-  tools: DomainToolSpec[];
+  domain: string
+  tools: DomainToolSpec[]
 }
 
 export function createGeologicalEngineeringPlugin(): Plugin {
@@ -17,7 +17,8 @@ export function createGeologicalEngineeringPlugin(): Plugin {
     tools: [
       {
         name: "classify_lithology",
-        description: "Classify lithology from field notes, grain size, color, texture, and mineral observations.",
+        description:
+          "Classify lithology from field notes, grain size, color, texture, and mineral observations.",
         inputSchema: {
           type: "object",
           properties: {
@@ -31,7 +32,8 @@ export function createGeologicalEngineeringPlugin(): Plugin {
       },
       {
         name: "slope_stability_screen",
-        description: "Screen a slope for qualitative stability risk from angle, material, water, and discontinuity observations.",
+        description:
+          "Screen a slope for qualitative stability risk from angle, material, water, and discontinuity observations.",
         inputSchema: {
           type: "object",
           properties: {
@@ -45,7 +47,8 @@ export function createGeologicalEngineeringPlugin(): Plugin {
       },
       {
         name: "borehole_log_summarizer",
-        description: "Summarize borehole intervals into engineering units and flag weak layers or groundwater observations.",
+        description:
+          "Summarize borehole intervals into engineering units and flag weak layers or groundwater observations.",
         inputSchema: {
           type: "object",
           properties: {
@@ -66,18 +69,18 @@ export function createGeologicalEngineeringPlugin(): Plugin {
         },
       },
     ],
-  };
+  }
 
   return {
     name: "domain:geological-engineering",
     hooks: {
       "plan-created": (ctx) => {
         const collections = Array.isArray(ctx.domainToolCollections)
-          ? ctx.domainToolCollections as DomainToolCollection[]
-          : [];
-        collections.push(collection);
-        ctx.domainToolCollections = collections;
+          ? (ctx.domainToolCollections as DomainToolCollection[])
+          : []
+        collections.push(collection)
+        ctx.domainToolCollections = collections
       },
     },
-  };
+  }
 }

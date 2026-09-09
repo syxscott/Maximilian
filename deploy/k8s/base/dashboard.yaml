@@ -21,7 +21,7 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101   # nginx user in the alpine image
+        runAsUser: 101 # nginx user in the alpine image
         runAsGroup: 101
         fsGroup: 101
       containers:

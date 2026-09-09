@@ -51,7 +51,13 @@ type Part =
       type: "tool"
       tool: string
       callID: string
-      state: { status: string; input?: Record<string, unknown>; output?: string; metadata?: Record<string, unknown>; time?: { compacted?: boolean } }
+      state: {
+        status: string
+        input?: Record<string, unknown>
+        output?: string
+        metadata?: Record<string, unknown>
+        time?: { compacted?: boolean }
+      }
     }
   | { type: "file"; mime: string; filename: string; url: string }
   | { type: "compaction" }
@@ -69,7 +75,12 @@ type Message = {
   error?: { name: string; data?: { message?: string }; message?: string }
   finish?: string
   time: { created: number; completed?: number }
-  tokens?: { input: number; output: number; reasoning: number; cache: { read: number; write: number } }
+  tokens?: {
+    input: number
+    output: number
+    reasoning: number
+    cache: { read: number; write: number }
+  }
 }
 
 type PromptInfo = { input: string; parts: Array<{ type: string; [k: string]: unknown }> }
@@ -113,7 +124,15 @@ function formatTodayOrDate(ts: number): string {
 
 // -- Sub-components ----------------------------------------------------------
 
-function ReasoningHeader({ part, open, toggleable }: { part: { text: string; time: { end?: number } }; open: boolean; toggleable: boolean }) {
+function ReasoningHeader({
+  part,
+  open,
+  toggleable,
+}: {
+  part: { text: string; time: { end?: number } }
+  open: boolean
+  toggleable: boolean
+}) {
   const { theme } = useTheme()
   const done = part.time.end !== undefined
   if (!done) {
@@ -210,7 +229,13 @@ function UserMessage({
   const color = local.agent.color(message.agent ?? "")
   if (!text && files.length === 0) return null
   return (
-    <Box flexDirection="column" marginTop={1} borderStyle="single" borderColor={color} paddingLeft={1}>
+    <Box
+      flexDirection="column"
+      marginTop={1}
+      borderStyle="single"
+      borderColor={color}
+      paddingLeft={1}
+    >
       <Box paddingLeft={1} paddingTop={1} paddingBottom={1} flexDirection="column">
         {text ? <Text color={theme.text}>{text}</Text> : null}
         {files.length > 0 ? (
@@ -256,7 +281,8 @@ function AssistantMessage({ message, parts }: { message: Message; parts: Part[];
     <Box flexDirection="column">
       {parts.map((part, index) => {
         if (part.type === "text") return <TextPart key={`${part.type}-${index}`} part={part} />
-        if (part.type === "reasoning") return <ReasoningPart key={`${part.type}-${index}`} part={part} />
+        if (part.type === "reasoning")
+          return <ReasoningPart key={`${part.type}-${index}`} part={part} />
         if (part.type === "tool") return <ToolPart key={`${part.type}-${index}`} part={part} />
         return null
       })}
@@ -265,7 +291,9 @@ function AssistantMessage({ message, parts }: { message: Message; parts: Part[];
           <Text color={theme.error}>{message.error.data?.message ?? message.error.message}</Text>
         </Box>
       ) : null}
-      {(message as { last?: boolean }).last || final || message.error?.name === "MessageAbortedError" ? (
+      {(message as { last?: boolean }).last ||
+      final ||
+      message.error?.name === "MessageAbortedError" ? (
         <Box paddingLeft={3}>
           <Text>
             <Text color={theme.primary}>▣ </Text>
@@ -336,7 +364,11 @@ export function Session() {
 
   useEffect(() => {
     const off = event.on("message.part.updated", (evt) => {
-      const part = (evt as { properties: { part: { type: string; sessionID: string; id: string; tool: string } } }).properties.part
+      const part = (
+        evt as {
+          properties: { part: { type: string; sessionID: string; id: string; tool: string } }
+        }
+      ).properties.part
       if (part.type !== "tool") return
       if (part.sessionID !== route.sessionID) return
       if (part.tool === "plan_exit") local.agent.set("build")
@@ -365,7 +397,10 @@ export function Session() {
       compact: async () => {
         const m = local.model.current()
         if (!m) return
-        await sdk.client.post(`/session/${route.sessionID}/summarize`, { modelID: m.modelID, providerID: m.providerID })
+        await sdk.client.post(`/session/${route.sessionID}/summarize`, {
+          modelID: m.modelID,
+          providerID: m.providerID,
+        })
       },
       unshare: () => console.log("[session.unshare] not yet wired"),
       toggleSidebar: () => setSidebarVisible((v) => !v),

@@ -54,8 +54,7 @@ export function useHealth(options?: Partial<UseQueryOptions<Health>>) {
 export function useWorkspaces(opts?: { limit?: number }) {
   return useQuery({
     queryKey: [...queryKeys.workspaces, opts?.limit ?? 20] as const,
-    queryFn: ({ signal }) =>
-      chatApi.listWorkspaces({ limit: opts?.limit ?? 20 }, signal),
+    queryFn: ({ signal }) => chatApi.listWorkspaces({ limit: opts?.limit ?? 20 }, signal),
     staleTime: 15_000,
     // Without `retry`, a transient 502/504 at startup permanently
     // marks the switcher empty until the user reloads — same fix
@@ -100,8 +99,7 @@ export function useProviders(options?: Partial<UseQueryOptions<ProviderListRespo
 export function useSetDefaultProvider() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ providerId }: { providerId: string }) =>
-      chatApi.setDefaultProvider(providerId),
+    mutationFn: ({ providerId }: { providerId: string }) => chatApi.setDefaultProvider(providerId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.providers })
     },
@@ -160,8 +158,7 @@ export function useCircuitBreakerStats(providerId: string | null) {
 export function useResetCircuitBreaker() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ providerId }: { providerId: string }) =>
-      chatApi.resetCircuitBreaker(providerId),
+    mutationFn: ({ providerId }: { providerId: string }) => chatApi.resetCircuitBreaker(providerId),
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: failoverKeys.health(variables.providerId) })
       qc.invalidateQueries({ queryKey: queryKeys.providers })
@@ -181,13 +178,8 @@ export function useFailoverQueue() {
 export function useAddToFailoverQueue() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      providerId,
-      priority,
-    }: {
-      providerId: string
-      priority?: number
-    }) => chatApi.addToFailoverQueue(providerId, priority),
+    mutationFn: ({ providerId, priority }: { providerId: string; priority?: number }) =>
+      chatApi.addToFailoverQueue(providerId, priority),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: failoverKeys.queue })
       qc.invalidateQueries({ queryKey: queryKeys.providers })
@@ -222,8 +214,7 @@ export function useAutoFailoverEnabled() {
 export function useSetAutoFailoverEnabled() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ enabled }: { enabled: boolean }) =>
-      chatApi.setAutoFailoverEnabled(enabled),
+    mutationFn: ({ enabled }: { enabled: boolean }) => chatApi.setAutoFailoverEnabled(enabled),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: failoverKeys.autoFailoverEnabled })
       qc.invalidateQueries({ queryKey: queryKeys.providers })

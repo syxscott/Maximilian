@@ -183,7 +183,6 @@ export class DefaultRoleRegistry implements RoleRegistry {
     for (const item of parsed) {
       const role = item as RoleSpec
       if (!role.id) {
-         
         console.warn(`[DefaultRoleRegistry] skipping role with missing id in ${filePath}`)
         continue
       }

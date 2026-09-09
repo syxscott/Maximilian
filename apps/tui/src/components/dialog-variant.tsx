@@ -33,13 +33,11 @@ export function DialogVariant(props: DialogVariantProps) {
       <Box marginTop={1}>
         <SelectInput
           items={items}
-          initialIndex={
-            items.findIndex((i) =>
-              i.value === "__default__"
-                ? props.current === undefined || props.current === "default"
-                : i.value === props.current,
-            )
-          }
+          initialIndex={items.findIndex((i) =>
+            i.value === "__default__"
+              ? props.current === undefined || props.current === "default"
+              : i.value === props.current,
+          )}
           onSelect={(item) => {
             if (item.value === "__default__") {
               props.onSelect?.(undefined)
