@@ -16,10 +16,12 @@
     "@max/telemetry": "workspace:*",
     "@max/llm": "workspace:*",
     "@max/tools": "workspace:*",
+    "@max/core-thin-sdk": "workspace:*",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
+    "fast-check": "^3.23.1",
     "typescript": "^5.6.3",
     "vitest": "^2.1.9"
   }

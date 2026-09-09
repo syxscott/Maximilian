@@ -155,7 +155,6 @@ export const FileMedia: React.FC<FileMediaProps> = ({ media, fallback }) => {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg()?.path, cfg()?.current, cfg()?.after, cfg()?.before, kind(), cfg()?.deleted])
 
   const remoteSrc = (() => {
@@ -203,7 +202,6 @@ export const FileMedia: React.FC<FileMediaProps> = ({ media, fallback }) => {
   React.useEffect(() => {
     if (!svgInvalid) return
     cfg()?.onError?.({ kind: "svg" })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [svgInvalid?.[0], svgInvalid?.[1]])
 
   const kindLabel = (value: "image" | "audio") =>
@@ -248,7 +246,6 @@ export const FileMedia: React.FC<FileMediaProps> = ({ media, fallback }) => {
     if (k === "image") {
       return (
         <div className="flex justify-center bg-background-stronger px-6 py-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={src}
             alt={cfg()?.path}
@@ -278,7 +275,6 @@ export const FileMedia: React.FC<FileMediaProps> = ({ media, fallback }) => {
         {svgSource !== undefined && fallback()}
         {svgSrc && (
           <div className="flex justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={svgSrc}
               alt={cfg()?.path}

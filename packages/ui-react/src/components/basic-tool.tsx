@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import * as Collapsible from "@radix-ui/react-collapsible"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export type IconName =
   | "glasses"
@@ -114,7 +114,6 @@ export const BasicTool: React.FC<BasicToolProps> = ({
   React.useEffect(() => {
     if (defer && open) scheduleReady(true)
     return cancelReady
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   React.useEffect(() => {
@@ -122,7 +121,6 @@ export const BasicTool: React.FC<BasicToolProps> = ({
       if (openProp === undefined) setInternalOpen(true)
       onOpenChange?.(true)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceOpen])
 
   React.useEffect(() => {

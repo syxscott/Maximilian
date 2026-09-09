@@ -16,7 +16,7 @@ import {
   httpRequestTotal,
   taskTotal,
   llmTokensTotal,
-  activeWorkspaces,
+  activeTasks,
   metricsRegistry,
 } from "@max/telemetry";
 import { initOtel } from "@max/telemetry";
@@ -37,7 +37,7 @@ describe("Prometheus metrics surface", () => {
     expect(body).toContain("maximilian_request_duration_seconds");
     expect(body).toContain("maximilian_tasks_total");
     expect(body).toContain("maximilian_task_duration_seconds");
-    expect(body).toContain("maximilian_active_workspaces");
+    expect(body).toContain("maximilian_active_tasks");
     expect(body).toContain("maximilian_llm_tokens_total");
     expect(body).toContain("maximilian_llm_call_duration_seconds");
     expect(body).toContain("maximilian_llm_errors_total");
@@ -62,12 +62,12 @@ describe("Prometheus metrics surface", () => {
   it("records task + LLM metric increments", async () => {
     taskTotal.inc({ agentRole: "coder", status: "completed" });
     llmTokensTotal.inc({ provider: "openai", model: "gpt-4o", kind: "input" }, 123);
-    activeWorkspaces.set(7);
+    activeTasks.set(7);
 
     const body = await collectMetrics();
     expect(body).toMatch(/maximilian_tasks_total\{[^}]*agentRole="coder"[^}]*\}/);
     expect(body).toMatch(/maximilian_llm_tokens_total\{[^}]*provider="openai"[^}]*\} 123/);
-    expect(body).toMatch(/maximilian_active_workspaces 7/);
+    expect(body).toMatch(/maximilian_active_tasks 7/);
   });
 
   it("exposes the registry for advanced consumers (Prometheus + OTel bridges)", () => {

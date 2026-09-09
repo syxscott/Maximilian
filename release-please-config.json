@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "package-name": "maximilian",
+  "version-file": "package.json",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "pull-request-header": "chore(release): 🚀 release-please",
+  "pull-request-title-pattern": "chore(release): release ${version}",
+  "include-component-in-tag": false,
+  "tag-separator": "@",
+  "packages": {
+    ".": {
+      "package-name": "maximilian",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "draft": false,
+      "prerelease": false
+    }
+  },
+  "extra-files": [
+    "package.json"
+  ]
+}

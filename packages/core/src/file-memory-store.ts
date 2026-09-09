@@ -47,10 +47,51 @@ export class FileMemoryStore implements AgentMemoryStorePort {
   private readonly cap: number;
   /** Per-process in-memory cache so we don't re-read on every task. */
   private readonly cache = new Map<AgentRole, MemoryFile>();
+  /**
+   * Per-role mutex serialising the read-modify-write inside
+   * `recordSuccess` / `recordFailure`. Without this, two parallel tasks
+   * of the same role would both load the same `MemoryFile`, each append
+   * their own snippet, and the second `persist` would overwrite the
+   * first's write — losing one task's snippet silently.
+   *
+   * A single per-process map is enough because `recordSuccess` is only
+   * invoked from inside one `AgentRuntime.execute` (which runs tasks in
+   * a single Node.js process), and same-role concurrent tasks are the
+   * only contention case.
+   */
+  private readonly writeLocks = new Map<AgentRole, Promise<void>>();
 
   constructor(opts: FileMemoryStoreOptions) {
     this.dir = join(opts.rootDir, "memory");
     this.cap = opts.cap ?? 50;
+  }
+
+  /**
+   * Serialise a write per role. The next caller sees the previous
+   * caller's resolved state (both the cache and the on-disk file) so
+   * its read-modify-write starts from up-to-date data, not a stale
+   * snapshot. We chain onto the existing promise rather than blocking
+   * the event loop.
+   */
+  private async withWriteLock<T>(role: AgentRole, fn: () => Promise<T>): Promise<T> {
+    const prev = this.writeLocks.get(role) ?? Promise.resolve();
+    let release: () => void = () => {};
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.writeLocks.set(role, prev.then(() => next));
+    try {
+      await prev;
+      return await fn();
+    } finally {
+      release();
+      // GC the chain entry once drained so the map doesn't grow forever
+      // for one-shot workspaces; if a fresh caller arrived in the meantime
+      // their promise now lives at the head and the map stays correct.
+      if (this.writeLocks.get(role) === prev.then(() => next)) {
+        this.writeLocks.delete(role);
+      }
+    }
   }
 
   async init(): Promise<void> {
@@ -110,29 +151,33 @@ export class FileMemoryStore implements AgentMemoryStorePort {
     snippet?: string
   ): Promise<void> {
     if (!snippet) return;
-    const mem = await this.load(role);
-    const next: MemoryFile = {
-      ...mem,
-      goodExamples: appendCapped(mem.goodExamples, snippet, this.cap),
-      totalEntries: mem.totalEntries + 1,
-    };
-    const compressed = await this.maybeCompress(next);
-    await this.persist(role, compressed);
+    await this.withWriteLock(role, async () => {
+      const mem = await this.load(role);
+      const next: MemoryFile = {
+        ...mem,
+        goodExamples: appendCapped(mem.goodExamples, snippet, this.cap),
+        totalEntries: mem.totalEntries + 1,
+      };
+      const compressed = await this.maybeCompress(next);
+      await this.persist(role, compressed);
+    });
   }
 
   async recordFailure(
     role: AgentRole,
     record: { taskId: string; reviewScore?: number; error?: string }
   ): Promise<void> {
-    const text = record.error ?? `Score ${record.reviewScore ?? "?"}/10 below threshold`;
-    const mem = await this.load(role);
-    const next: MemoryFile = {
-      ...mem,
-      commonErrors: appendCapped(mem.commonErrors, text, this.cap),
-      totalEntries: mem.totalEntries + 1,
-    };
-    const compressed = await this.maybeCompress(next);
-    await this.persist(role, compressed);
+    await this.withWriteLock(role, async () => {
+      const text = record.error ?? `Score ${record.reviewScore ?? "?"}/10 below threshold`;
+      const mem = await this.load(role);
+      const next: MemoryFile = {
+        ...mem,
+        commonErrors: appendCapped(mem.commonErrors, text, this.cap),
+        totalEntries: mem.totalEntries + 1,
+      };
+      const compressed = await this.maybeCompress(next);
+      await this.persist(role, compressed);
+    });
   }
 
   toPrelude(role: AgentRole): string {

@@ -15,7 +15,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@max/telemetry": "workspace:*",
-    "openai": "^4.71.1"
+    "openai": "^4.71.1",
+    "@max/llm": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

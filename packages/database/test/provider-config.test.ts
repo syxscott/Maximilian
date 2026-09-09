@@ -30,7 +30,7 @@ d("provider-config", () => {
   beforeAll(async () => {
     if (skipPg) return;
     const db = createDb(url!);
-    await runMigrations({ databaseUrl: url!, folder: "./drizzle" });
+    await runMigrations({ url: url!, migrationsFolder: "./drizzle" });
     await db.delete(providerConfigs);
   });
 

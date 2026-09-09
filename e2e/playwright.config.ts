@@ -9,7 +9,8 @@ import { defineConfig, devices } from "@playwright/test";
  * run the API separately before `pnpm test`.
  */
 export default defineConfig({
-  testDir: "./tests",
+  testDir: "./",
+  testMatch: ["tests/**/*.spec.ts", "tests-visual/**/*.spec.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -34,4 +35,11 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,
       },
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixels: 50,
+      threshold: 0.2,
+      animations: "disabled",
+    },
+  },
 });

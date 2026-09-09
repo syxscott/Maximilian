@@ -1,0 +1,72 @@
+name: render-architecture
+
+# Re-render every ```mermaid``` block in docs/**/*.md to PNG/SVG and
+# commit the result back to the same branch. Caches the puppeteer
+# chromium download so the workflow stays under ~3 minutes.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docs/**/*.md'
+      - 'scripts/render-architecture.sh'
+      - '.github/workflows/render-architecture.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-arch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: render mermaid → PNG/SVG
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Cache puppeteer / chrome download — without this mermaid-cli
+      # pulls ~150 MB on every run.
+      - name: Cache puppeteer chrome
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/puppeteer
+            ~/.npm/_cacache
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('**/package.json') }}
+          restore-keys: |
+            puppeteer-${{ runner.os }}-
+
+      - name: Render diagrams
+        run: ./scripts/render-architecture.sh
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if [[ -n "$(git status --porcelain docs/architecture/diagrams/ 2>/dev/null)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit & push rendered diagrams
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/architecture/diagrams/
+          git commit -m "chore(docs): re-render architecture diagrams"
+          git push

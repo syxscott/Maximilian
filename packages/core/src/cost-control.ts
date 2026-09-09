@@ -53,7 +53,7 @@ export interface ModelPricing {
  */
 export const DEFAULT_PRICING: ModelPricing[] = [
   // Anthropic — Claude 4.x family
-  { provider: "anthropic", model: "claude-sonnet-4-5",       inputPer1M: 3,    outputPer1M: 15,   cacheReadPer1M: 0.30, cacheCreationPer1M: 3.75 },
+  { provider: "anthropic", model: "claude-3-5-sonnet",       inputPer1M: 3,    outputPer1M: 15,   cacheReadPer1M: 0.30, cacheCreationPer1M: 3.75 },
   { provider: "anthropic", model: "claude-sonnet-4-20250514", inputPer1M: 3,    outputPer1M: 15,   cacheReadPer1M: 0.30, cacheCreationPer1M: 3.75 },
   { provider: "anthropic", model: "claude-opus-4-20250514",   inputPer1M: 15,   outputPer1M: 75,   cacheReadPer1M: 1.50, cacheCreationPer1M: 18.75 },
   { provider: "anthropic", model: "claude-3-5-sonnet-20241022", inputPer1M: 3,  outputPer1M: 15,   cacheReadPer1M: 0.30, cacheCreationPer1M: 3.75 },

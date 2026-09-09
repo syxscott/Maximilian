@@ -133,3 +133,75 @@ describe("validatePermissions", () => {
     expect(result.patterns.bogus).toBeUndefined();
   });
 });
+// 借鉴 opencode - subagent-permissions
+import {
+  deriveSubagentScope,
+  scopeAllowsTool,
+  scopeForbidsPath,
+  type PermissionScope,
+} from "../src/permission.js"
+
+describe("Subagent PermissionScope (借鉴 opencode)", () => {
+  const root: PermissionScope = {
+    allowedTools: ["read", "bash", "edit"],
+    forbiddenPaths: ["/etc", "/root"],
+    requireApproval: false,
+  }
+
+  it("child inherits allowed tools when not specified", () => {
+    const child = deriveSubagentScope(root, { forbiddenPaths: ["/var"] })
+    expect(child.allowedTools).toEqual(root.allowedTools)
+  })
+
+  it("child can narrow allowed tools explicitly", () => {
+    const child = deriveSubagentScope(root, { allowedTools: ["read"] })
+    expect(child.allowedTools).toEqual(["read"])
+  })
+
+  it("child unions forbidden paths (cannot relax parent)", () => {
+    const child = deriveSubagentScope(root, { forbiddenPaths: ["/var"] })
+    expect([...child.forbiddenPaths].sort()).toEqual(["/etc", "/root", "/var"])
+  })
+
+  it("child can require approval even if parent doesn't", () => {
+    const child = deriveSubagentScope(root, { requireApproval: true })
+    expect(child.requireApproval).toBe(true)
+  })
+
+  it("parent.requireApproval=true stays when child doesn't override", () => {
+    const strictParent: PermissionScope = { ...root, requireApproval: true }
+    const child = deriveSubagentScope(strictParent, {})
+    expect(child.requireApproval).toBe(true)
+  })
+
+  it("scopeAllowsTool returns true for allowed tools", () => {
+    expect(scopeAllowsTool(root, "read")).toBe(true)
+    expect(scopeAllowsTool(root, "bash")).toBe(true)
+  })
+
+  it("scopeAllowsTool returns false for disallowed tools", () => {
+    expect(scopeAllowsTool(root, "write")).toBe(false)
+  })
+
+  it("scopeAllowsTool returns true for empty allowedTools (inherit parent)", () => {
+    const open: PermissionScope = { allowedTools: [], forbiddenPaths: [], requireApproval: false }
+    expect(scopeAllowsTool(open, "anything")).toBe(true)
+  })
+
+  it("scopeAllowsTool honors '*' wildcard", () => {
+    const wildcard: PermissionScope = { allowedTools: ["*"], forbiddenPaths: [], requireApproval: false }
+    expect(scopeAllowsTool(wildcard, "anything")).toBe(true)
+  })
+
+  it("scopeForbidsPath checks forbidden prefix", () => {
+    expect(scopeForbidsPath(root, "/etc/passwd")).toBe(true)
+    expect(scopeForbidsPath(root, "/root/.ssh")).toBe(true)
+    expect(scopeForbidsPath(root, "/tmp/data")).toBe(false)
+  })
+
+  it("scopeForbidsPath unions parent + child", () => {
+    const child = deriveSubagentScope(root, { forbiddenPaths: ["/var"] })
+    expect(scopeForbidsPath(child, "/var/log")).toBe(true)
+    expect(scopeForbidsPath(child, "/etc/shadow")).toBe(true)
+  })
+})

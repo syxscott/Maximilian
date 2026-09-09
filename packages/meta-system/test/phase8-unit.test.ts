@@ -41,6 +41,7 @@ import {
   fromAgentChange,
   fromTeamHint,
   birthResultToBlueprint,
+  TruthAudit,
   type DiscoverySignal,
   type MetaOrchestratorDeps,
   type MetaCycleInput,
@@ -743,5 +744,46 @@ describe("8.7 MetaOrchestrator (Phase 8 — pipeline wired)", () => {
       expect(bp.id).toBe(result.births[0]!.blueprintId);
       expect(bp.role).toBe(result.births[0]!.role);
     }
+  });
+
+  it("TruthAudit integration: record + verify + report through orchestrator", async () => {
+    // Without audit wired, methods are no-ops.
+    expect(orchestrator.recordTruthMeasurement({
+      proposalId: "p-1",
+      proposalAction: "birth",
+      predicted: { costDelta: 0, latencyDeltaMs: 0, qualityDelta: 0, riskDelta: 0 },
+      actual:    { costDelta: 0, latencyDeltaMs: 0, qualityDelta: 0, riskDelta: 0 },
+    })).toBeNull();
+    expect(orchestrator.verifyTruth("p-1")).toBeNull();
+    expect(await orchestrator.truthReport()).toBeNull();
+
+    // With audit wired: record enough samples to clear minSampleSize.
+    let time = 0;
+    const truthAudit = new TruthAudit({
+      now: () => new Date(Date.UTC(2026, 5, 22, 12, 0, time++)),
+    });
+    const tracedDeps: MetaOrchestratorDeps = { ...deps, truthAudit };
+    const orch = new MetaOrchestrator(tracedDeps);
+
+    for (let i = 0; i < 5; i++) {
+      const m = orch.recordTruthMeasurement({
+        proposalId: "p-test",
+        proposalAction: "birth",
+        predicted: { costDelta: 0.1, latencyDeltaMs: 50, qualityDelta: 1.0, riskDelta: 0.1 },
+        actual:    { costDelta: 0.12, latencyDeltaMs: 60, qualityDelta: 0.9, riskDelta: 0.12 },
+        sampleSize: 3,
+      });
+      expect(m).not.toBeNull();
+      expect(m!.proposalId).toBe("p-test");
+    }
+
+    const v = orch.verifyTruth("p-test");
+    expect(v).not.toBeNull();
+    expect(v!.verdict).toBe("accurate");
+
+    const report = await orch.truthReport();
+    expect(report).not.toBeNull();
+    expect(report!.totalMeasurements).toBe(5);
+    expect(report!.verdictCounts.accurate).toBe(1);
   });
 });

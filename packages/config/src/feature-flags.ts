@@ -36,7 +36,7 @@ export interface FeatureFlagsConfig {
   /** JSON value flags. */
   jsonFlags?: Record<string, JsonFlagDefinition>;
   /** Optional user ID for targeting/allowlist evaluation. */
-  userId?: string;
+  userId?: string | undefined;
   /** Optional: load overrides from FEATURE_FLAGS env var. */
   loadFromEnv?: boolean;
 }
@@ -94,13 +94,13 @@ export const DEFAULT_JSON_FLAGS: Record<string, JsonFlagDefinition> = {
 export class FeatureFlags {
   private readonly flags: Map<string, FlagDefinition>;
   private readonly jsonFlags: Map<string, JsonFlagDefinition>;
-  private readonly userId?: string;
+  private readonly userId: string | undefined;
   private readonly overrides: Map<string, boolean> = new Map();
 
   constructor(config: FeatureFlagsConfig = {}) {
     this.flags = new Map(Object.entries(config.flags ?? DEFAULT_FLAGS));
     this.jsonFlags = new Map(Object.entries(config.jsonFlags ?? DEFAULT_JSON_FLAGS));
-    this.userId = config.userId;
+    this.userId = config.userId ?? undefined;
 
     // Load env overrides
     if (config.loadFromEnv !== false) {
@@ -198,7 +198,7 @@ export class FeatureFlags {
 
   private loadEnvOverrides(): void {
     try {
-      const raw = typeof process !== "undefined" ? process.env.FEATURE_FLAGS : undefined;
+      const raw = typeof process !== "undefined" ? process.env["FEATURE_FLAGS"] : undefined;
       if (!raw) return;
       const parsed = JSON.parse(raw) as Record<string, boolean>;
       for (const [key, value] of Object.entries(parsed)) {

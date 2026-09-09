@@ -1,8 +1,8 @@
 import { forwardRef, useState, useCallback, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react"
-import { useI18n } from "../context/i18n"
-import { IconButton } from "./icon-button"
-import { Tooltip, TooltipTrigger, TooltipContent } from "./tooltip"
-import { cn } from "../lib/utils"
+import { useI18n } from "../context/i18n.js"
+import { IconButton } from "./icon-button.js"
+import { Tooltip, TooltipTrigger, TooltipContent } from "./tooltip.js"
+import { cn } from "../lib/utils.js"
 
 export interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string

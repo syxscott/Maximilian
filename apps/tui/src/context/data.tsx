@@ -118,7 +118,10 @@ function locationQuery(ref?: LocationRef) {
   return ref ? { directory: ref.directory, workspace: ref.workspaceID } : undefined
 }
 
-export const { use: useData, provider: DataProvider } = createSimpleContext<DataContextValue, Record<string, never>>({
+export const { use: useData, provider: DataProvider } = createSimpleContext<
+  DataContextValue,
+  Record<string, never>
+>({
   name: "Data",
   init: () => {
     const sdk = useSDK() as any
@@ -131,17 +134,20 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
       directory: sdk.directory ?? process.cwd(),
     })
 
-    const updateMessage = useCallback((sessionID: string, fn: (draft: SessionMessage[]) => void) => {
-      setStore((prev) => {
-        const existing = prev.session.message[sessionID] ?? []
-        const next = [...existing]
-        fn(next)
-        return {
-          ...prev,
-          session: { ...prev.session, message: { ...prev.session.message, [sessionID]: next } },
-        }
-      })
-    }, [])
+    const updateMessage = useCallback(
+      (sessionID: string, fn: (draft: SessionMessage[]) => void) => {
+        setStore((prev) => {
+          const existing = prev.session.message[sessionID] ?? []
+          const next = [...existing]
+          fn(next)
+          return {
+            ...prev,
+            session: { ...prev.session, message: { ...prev.session.message, [sessionID]: next } },
+          }
+        })
+      },
+      [],
+    )
 
     const prependUnique = useCallback((messages: SessionMessage[], item: SessionMessage) => {
       if (messages.some((existing) => existing.id === item.id)) return
@@ -149,7 +155,9 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
     }, [])
 
     const findActiveAssistant = (messages: SessionMessage[]) => {
-      const item = messages.find((item) => item.type === "assistant" && !(item as any).time?.completed)
+      const item = messages.find(
+        (item) => item.type === "assistant" && !(item as any).time?.completed,
+      )
       return item?.type === "assistant" ? item : undefined
     }
     const findAssistant = (messages: SessionMessage[], id: string) => {
@@ -167,23 +175,29 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
     const latestText = (assistant: any, textID: string) =>
       assistant?.content?.findLast?.((item: any) => item.type === "text" && item.id === textID)
     const latestReasoning = (assistant: any, reasoningID: string) =>
-      assistant?.content?.findLast?.((item: any) => item.type === "reasoning" && item.id === reasoningID)
+      assistant?.content?.findLast?.(
+        (item: any) => item.type === "reasoning" && item.id === reasoningID,
+      )
 
-    const setLocation = useCallback(
-      (key: string, slot: keyof LocationData, value: unknown) => {
-        setStore((prev) => {
-          const existing = prev.location[key] ?? {}
-          const next: LocationData = { ...existing, [slot]: value as never }
-          return { ...prev, location: { ...prev.location, [key]: next } }
-        })
-      },
-      [],
-    )
+    const setLocation = useCallback((key: string, slot: keyof LocationData, value: unknown) => {
+      setStore((prev) => {
+        const existing = prev.location[key] ?? {}
+        const next: LocationData = { ...existing, [slot]: value as never }
+        return { ...prev, location: { ...prev.location, [key]: next } }
+      })
+    }, [])
 
     const refreshLocation = useCallback(
       async (ref?: LocationRef) => {
-        const response = await sdk.client.v2.location
-          .get({ location: locationQuery(ref) }, { throwOnError: true })
+        // Maximilian's SDK stub does not implement the `v2` namespace
+        // yet. Bail silently when the surface is absent so the data
+        // provider mounts and the rest of the TUI keeps working.
+        const v2 = sdk.client.v2
+        if (!v2?.location?.get) return
+        const response = await v2.location.get(
+          { location: locationQuery(ref) },
+          { throwOnError: true },
+        )
         const location = response.data
         const key = locationKey(location)
         setStore((prev) =>
@@ -191,7 +205,8 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
             ? prev
             : { ...prev, location: { ...prev.location, [key]: prev.location[key] ?? {} } },
         )
-        if (!ref) setDefaultLocation({ directory: location.directory, workspaceID: location.workspaceID })
+        if (!ref)
+          setDefaultLocation({ directory: location.directory, workspaceID: location.workspaceID })
       },
       [sdk],
     )
@@ -316,27 +331,38 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
                 agent: event.properties.agent,
                 model: event.properties.model,
                 content: [],
-                snapshot: event.properties.snapshot ? { start: event.properties.snapshot } : undefined,
+                snapshot: event.properties.snapshot
+                  ? { start: event.properties.snapshot }
+                  : undefined,
                 time: { created: event.properties.timestamp },
               })
             })
             break
           case "session.next.step.ended":
             message.update(event.properties.sessionID, (draft) => {
-              const currentAssistant = message.assistant(draft, event.properties.assistantMessageID) as any
+              const currentAssistant = message.assistant(
+                draft,
+                event.properties.assistantMessageID,
+              ) as any
               if (!currentAssistant) return
               currentAssistant.time.completed = event.properties.timestamp
               currentAssistant.finish = event.properties.finish
               currentAssistant.cost = event.properties.cost
               currentAssistant.tokens = event.properties.tokens
               if (event.properties.snapshot) {
-                currentAssistant.snapshot = { ...currentAssistant.snapshot, end: event.properties.snapshot }
+                currentAssistant.snapshot = {
+                  ...currentAssistant.snapshot,
+                  end: event.properties.snapshot,
+                }
               }
             })
             break
           case "session.next.step.failed":
             message.update(event.properties.sessionID, (draft) => {
-              const currentAssistant = message.assistant(draft, event.properties.assistantMessageID) as any
+              const currentAssistant = message.assistant(
+                draft,
+                event.properties.assistantMessageID,
+              ) as any
               if (!currentAssistant) return
               currentAssistant.time.completed = event.properties.timestamp
               currentAssistant.finish = "error"
@@ -432,6 +458,13 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
                 event.properties.callID,
               )
               if (match?.state?.status !== "running") return
+              // Tolerate missing `provider` on the event envelope so a
+              // partial sync doesn't crash the data reducer (which runs
+              // inside a setStore updater and so would unmount the
+              // entire React tree).
+              const providerPayload =
+                (event.properties.provider as
+                  { executed?: unknown; metadata?: unknown } | undefined) ?? {}
               match.state = {
                 status: "completed",
                 input: match.state.input,
@@ -440,9 +473,9 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
                 result: event.properties.result,
               }
               match.provider = {
-                executed: event.properties.provider.executed || match.provider?.executed === true,
+                executed: providerPayload.executed === true || match.provider?.executed === true,
                 metadata: match.provider?.metadata,
-                resultMetadata: event.properties.provider.metadata,
+                resultMetadata: providerPayload.metadata,
               }
               match.time.completed = event.properties.timestamp
             })
@@ -453,7 +486,16 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
                 message.assistant(draft, event.properties.assistantMessageID) as any,
                 event.properties.callID,
               )
-              if (!match || (match.state.status !== "pending" && match.state.status !== "running")) return
+              if (!match || (match.state.status !== "pending" && match.state.status !== "running"))
+                return
+              // Read provider through a tolerant guard. The OpenCode SDK
+              // event envelope sometimes omits `provider` for partial
+              // syncs; dereferencing it without a guard crashes the data
+              // reducer, which is called inside a setStore updater and
+              // so unmounts the entire React tree.
+              const providerPayload =
+                (event.properties.provider as
+                  { executed?: unknown; metadata?: unknown } | undefined) ?? {}
               match.state = {
                 status: "error",
                 error: event.properties.error,
@@ -463,9 +505,9 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
                 result: event.properties.result,
               }
               match.provider = {
-                executed: event.properties.provider.executed || match.provider?.executed === true,
+                executed: providerPayload.executed === true || match.provider?.executed === true,
                 metadata: match.provider?.metadata,
-                resultMetadata: event.properties.provider.metadata,
+                resultMetadata: providerPayload.metadata,
               }
               match.time.completed = event.properties.timestamp
             })
@@ -527,9 +569,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
     }, [sdk, message, refreshLocation])
 
     useEffect(() => {
-      void Promise.allSettled([
-        refreshLocation(),
-      ]).then((settled) => {
+      void Promise.allSettled([refreshLocation()]).then((settled) => {
         for (const failure of settled.filter((item) => item.status === "rejected")) {
           console.error("Failed to refresh default location data", failure.reason)
         }
@@ -542,8 +582,14 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
     }
 
     const refreshAt = useCallback(
-      async (slot: keyof LocationData, fetcher: () => Promise<{ data: { location: LocationRef } & any }>) => {
+      async (
+        slot: keyof LocationData,
+        fetcher: () => Promise<{ data: { location: LocationRef } & any } | undefined>,
+      ) => {
+        // A fetcher may return undefined when the SDK stub lacks the v2
+        // surface — bail instead of dereferencing `.data` of undefined.
         const result = await fetcher()
+        if (!result?.data?.location) return
         const key = locationKey(result.data.location)
         setLocation(key, slot, result.data.data)
       },
@@ -554,39 +600,64 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
       session: {
         get: (sessionID: string) => store.session.info[sessionID],
         refresh: async (sessionID: string) => {
+          if (!sdk.client.v2?.session?.get) return
           const result = await sdk.client.v2.session.get({ sessionID }, { throwOnError: true })
           setStore((prev) => ({
             ...prev,
-            session: { ...prev.session, info: { ...prev.session.info, [sessionID]: result.data.data } },
+            session: {
+              ...prev.session,
+              info: { ...prev.session.info, [sessionID]: result.data.data },
+            },
           }))
         },
         message: {
           list: (sessionID: string) => store.session.message[sessionID],
           refresh: async (sessionID: string) => {
-            const result = await sdk.client.v2.session.messages({ sessionID }, { throwOnError: true })
+            if (!sdk.client.v2?.session?.messages) return
+            const result = await sdk.client.v2.session.messages(
+              { sessionID },
+              { throwOnError: true },
+            )
             setStore((prev) => ({
               ...prev,
-              session: { ...prev.session, message: { ...prev.session.message, [sessionID]: result.data.data } },
+              session: {
+                ...prev.session,
+                message: { ...prev.session.message, [sessionID]: result.data.data },
+              },
             }))
           },
         },
         permission: {
           list: (sessionID: string) => store.session.permission[sessionID],
           refresh: async (sessionID: string) => {
-            const result = await sdk.client.v2.session.permission.list({ sessionID }, { throwOnError: true })
+            if (!sdk.client.v2?.session?.permission?.list) return
+            const result = await sdk.client.v2.session.permission.list(
+              { sessionID },
+              { throwOnError: true },
+            )
             setStore((prev) => ({
               ...prev,
-              session: { ...prev.session, permission: { ...prev.session.permission, [sessionID]: result.data.data } },
+              session: {
+                ...prev.session,
+                permission: { ...prev.session.permission, [sessionID]: result.data.data },
+              },
             }))
           },
         },
         question: {
           list: (sessionID: string) => store.session.question[sessionID],
           refresh: async (sessionID: string) => {
-            const result = await sdk.client.v2.session.question.list({ sessionID }, { throwOnError: true })
+            if (!sdk.client.v2?.session?.question?.list) return
+            const result = await sdk.client.v2.session.question.list(
+              { sessionID },
+              { throwOnError: true },
+            )
             setStore((prev) => ({
               ...prev,
-              session: { ...prev.session, question: { ...prev.session.question, [sessionID]: result.data.data } },
+              session: {
+                ...prev.session,
+                question: { ...prev.session.question, [sessionID]: result.data.data },
+              },
             }))
           },
         },
@@ -595,10 +666,17 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
         permission: {
           list: (projectID: string) => store.project.permission[projectID],
           refresh: async (projectID: string) => {
-            const result = await sdk.client.v2.permission.saved.list({ projectID }, { throwOnError: true })
+            if (!sdk.client.v2?.permission?.saved?.list) return
+            const result = await sdk.client.v2.permission.saved.list(
+              { projectID },
+              { throwOnError: true },
+            )
             setStore((prev) => ({
               ...prev,
-              project: { ...prev.project, permission: { ...prev.project.permission, [projectID]: result.data.data } },
+              project: {
+                ...prev.project,
+                permission: { ...prev.project.permission, [projectID]: result.data.data },
+              },
             }))
           },
         },
@@ -608,38 +686,80 @@ export const { use: useData, provider: DataProvider } = createSimpleContext<Data
         refresh: refreshLocation,
         agent: {
           list: (location?: LocationRef) => listAt<AgentInfo>("agent", location),
-          refresh: (ref?: LocationRef) => refreshAt("agent", () => sdk.client.v2.agent.list({ location: locationQuery(ref) }, { throwOnError: true })),
+          refresh: (ref?: LocationRef) =>
+            refreshAt("agent", async () => {
+              if (!sdk.client.v2?.agent?.list) return undefined
+              return sdk.client.v2.agent.list(
+                { location: locationQuery(ref) },
+                { throwOnError: true },
+              )
+            }),
         },
         command: {
           list: (location?: LocationRef) => listAt<CommandInfo>("command", location),
-          refresh: (ref?: LocationRef) => refreshAt("command", () => sdk.client.v2.command.list({ location: locationQuery(ref) }, { throwOnError: true })),
+          refresh: (ref?: LocationRef) =>
+            refreshAt("command", async () => {
+              if (!sdk.client.v2?.command?.list) return undefined
+              return sdk.client.v2.command.list(
+                { location: locationQuery(ref) },
+                { throwOnError: true },
+              )
+            }),
         },
         integration: {
           list: (location?: LocationRef) => listAt<IntegrationInfo>("integration", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("integration", () =>
-              sdk.client.v2.integration.list({ location: locationQuery(ref) }, { throwOnError: true }),
-            ),
+            refreshAt("integration", async () => {
+              if (!sdk.client.v2?.integration?.list) return undefined
+              return sdk.client.v2.integration.list(
+                { location: locationQuery(ref) },
+                { throwOnError: true },
+              )
+            }),
         },
         model: {
           list: (location?: LocationRef) => listAt<ModelInfo>("model", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("model", () => sdk.client.v2.model.list({ location: locationQuery(ref) }, { throwOnError: true })),
+            refreshAt("model", async () => {
+              if (!sdk.client.v2?.model?.list) return undefined
+              return sdk.client.v2.model.list(
+                { location: locationQuery(ref) },
+                { throwOnError: true },
+              )
+            }),
         },
         provider: {
           list: (location?: LocationRef) => listAt<ProviderInfo>("provider", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("provider", () => sdk.client.v2.provider.list({ location: locationQuery(ref) }, { throwOnError: true })),
+            refreshAt("provider", async () => {
+              if (!sdk.client.v2?.provider?.list) return undefined
+              return sdk.client.v2.provider.list(
+                { location: locationQuery(ref) },
+                { throwOnError: true },
+              )
+            }),
         },
         reference: {
           list: (location?: LocationRef) => listAt<ReferenceInfo>("reference", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("reference", () => sdk.client.v2.reference.list({ location: locationQuery(ref) }, { throwOnError: true })),
+            refreshAt("reference", async () => {
+              if (!sdk.client.v2?.reference?.list) return undefined
+              return sdk.client.v2.reference.list(
+                { location: locationQuery(ref) },
+                { throwOnError: true },
+              )
+            }),
         },
         skill: {
           list: (location?: LocationRef) => listAt<SkillInfo>("skill", location),
           refresh: (ref?: LocationRef) =>
-            refreshAt("skill", () => sdk.client.v2.skill.list({ location: locationQuery(ref) }, { throwOnError: true })),
+            refreshAt("skill", async () => {
+              if (!sdk.client.v2?.skill?.list) return undefined
+              return sdk.client.v2.skill.list(
+                { location: locationQuery(ref) },
+                { throwOnError: true },
+              )
+            }),
         },
       },
     }

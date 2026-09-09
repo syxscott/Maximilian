@@ -22,6 +22,7 @@ const VU = parseInt(arg("vu", "50"), 10);
 const DURATION_S = parseInt(arg("duration", "30"), 10);
 const AUTH = arg("auth", process.env.LOAD_TEST_TOKEN || "");
 const PATH_ = arg("path", "/api/workspaces");
+const OUTPUT = arg("output", "");
 const AUTO_REGISTER = args.includes("--auto-register");
 
 const headers = { "Content-Type": "application/json" };
@@ -100,6 +101,28 @@ console.log(`Requests:    ${totalRequests} (${success} ok, ${errors} err)`);
 console.log(`Throughput:  ${rps.toFixed(1)} req/s`);
 console.log(`Error rate:  ${errRate.toFixed(2)}%`);
 console.log(`Latency:     p50=${p50}ms  p95=${p95}ms  p99=${p99}ms  max=${latencies[latencies.length - 1] || 0}ms`);
+
+if (OUTPUT) {
+  const { writeFile, mkdir } = await import("node:fs/promises");
+  const { dirname } = await import("node:path");
+  await mkdir(dirname(OUTPUT), { recursive: true });
+  await writeFile(
+    OUTPUT,
+    JSON.stringify({
+      url: URL_,
+      path: PATH_,
+      vus: VU,
+      durationSeconds: DURATION_S,
+      elapsedSeconds: elapsed,
+      totalRequests,
+      success,
+      errors,
+      throughput: rps,
+      errorRate: errRate,
+      latency: { p50, p95, p99, max: latencies[latencies.length - 1] || 0 },
+    }, null, 2),
+  );
+}
 
 const p95Target = 1000;
 const errTarget = 5;

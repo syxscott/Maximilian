@@ -1,0 +1,73 @@
+name: mutation-test
+
+# Nightly mutation testing with Stryker. Slow (~30 min), so it runs
+# on a cron, not on every PR. Pushes results to the Stryker dashboard
+# for trend tracking.
+
+on:
+  schedule:
+    - cron: "17 5 * * *"  # 05:17 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mutate:
+    name: stryker mutation test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maximilian
+          POSTGRES_PASSWORD: maximilian
+          POSTGRES_DB: maximilian_mutation
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maximilian"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://maximilian:maximilian@localhost:5432/maximilian_mutation
+      JWT_SECRET: mutation-test-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm --filter @max/meta-system --filter @max/core --filter @max/telemetry build
+
+      - name: Run mutation tests
+        env:
+          STRYKER_DASHBOARD_API_KEY: ${{ secrets.STRYKER_DASHBOARD_API_KEY }}
+        run: pnpm mutate:run
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: |
+            reports/mutation/**
+          retention-days: 30

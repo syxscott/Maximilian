@@ -33,7 +33,7 @@ export {
 export { TelemetryCollector } from "./collector.js";
 
 // Logger
-export { getLogger, resetLogger } from "./logger.js";
+export { getLogger, resetLogger, flushLogger } from "./logger.js";
 
 // OpenTelemetry
 export { initOtel, getTracer, withSpan, context, trace } from "./otel.js";
@@ -47,8 +47,13 @@ export {
   httpRequestDuration,
   taskDuration,
   taskTotal,
-  activeWorkspaces,
+  activeTasks,
   llmTokensTotal,
   llmCallDuration,
   llmErrorsTotal,
+  // Phase 9 — SLO indicator metrics
+  truthAuditVerdictsTotal,
+  opencodeSessionsCreatedTotal,
+  opencodeSessionsLeakedTotal,
+  metaCycleDuration,
 } from "./metrics.js";

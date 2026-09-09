@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 function commonPrefix(active: string, done: string) {
   const a = Array.from(active)
@@ -83,7 +83,6 @@ export const ToolStatusTitle: React.FC<ToolStatusTitleProps> = ({
       setState((s) => ({ ...s, width: last }))
       finishTimerRef.current = setTimeout(finish, 600)
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, activeTail, doneTail])
 
   React.useEffect(() => {

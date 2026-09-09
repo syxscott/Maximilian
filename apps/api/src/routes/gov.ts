@@ -310,6 +310,8 @@ async function executeMutation(
           tools: [],
           preferredModels: [],
           constraints: result.constraints,
+          personality: {} as AgentBlueprint["personality"],
+          voice: {} as AgentBlueprint["voice"],
           version: result.version,
           createdAt: now,
           updatedAt: now,

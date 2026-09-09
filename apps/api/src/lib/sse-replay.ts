@@ -17,21 +17,30 @@
 
 export interface SseEvent {
   /** Monotonic id within this workspace's stream. */
-  id: number;
+  id: number
   /** Wire payload — `data:` field of the SSE frame. */
-  data: Record<string, unknown>;
+  data: Record<string, unknown>
   /** ISO timestamp for debugging. */
-  at: string;
+  at: string
 }
 
-const DEFAULT_CAPACITY = 64;
+const DEFAULT_CAPACITY = 64
 
 export class SseReplayBuffer {
-  private perWorkspace = new Map<string, { events: SseEvent[]; nextId: number }>();
-  private readonly capacity: number;
+  private perWorkspace = new Map<string, { events: SseEvent[]; nextId: number }>()
+  private readonly capacity: number
+  /**
+   * Per-buffer counter that seeds new workspace buckets. Initialized to
+   * `Date.now()` so the first id in this process is large enough to
+   * dominate any `Last-Event-ID` from before a restart (see #626 — a
+   * fresh buffer starting at 1 would make reconnecting clients miss
+   * events). Each new workspace bumps the counter, so two workspaces
+   * created in the same millisecond still get distinct ids.
+   */
+  private workspaceSeedCounter: number = Date.now()
 
   constructor(capacity: number = DEFAULT_CAPACITY) {
-    this.capacity = Math.max(1, capacity);
+    this.capacity = Math.max(1, capacity)
   }
 
   /**
@@ -39,21 +48,21 @@ export class SseReplayBuffer {
    * entries beyond `capacity` are evicted FIFO.
    */
   append(workspaceId: string, data: Record<string, unknown>): SseEvent {
-    let bucket = this.perWorkspace.get(workspaceId);
+    let bucket = this.perWorkspace.get(workspaceId)
     if (!bucket) {
-      bucket = { events: [], nextId: 1 };
-      this.perWorkspace.set(workspaceId, bucket);
+      bucket = { events: [], nextId: ++this.workspaceSeedCounter }
+      this.perWorkspace.set(workspaceId, bucket)
     }
     const event: SseEvent = {
       id: bucket.nextId++,
       data,
       at: new Date().toISOString(),
-    };
-    bucket.events.push(event);
-    if (bucket.events.length > this.capacity) {
-      bucket.events.shift();
     }
-    return event;
+    bucket.events.push(event)
+    if (bucket.events.length > this.capacity) {
+      bucket.events.shift()
+    }
+    return event
   }
 
   /**
@@ -66,30 +75,30 @@ export class SseReplayBuffer {
    * latest workspace snapshot, which is the recovery path.
    */
   since(workspaceId: string, lastEventId: number): SseEvent[] {
-    const bucket = this.perWorkspace.get(workspaceId);
-    if (!bucket) return [];
-    return bucket.events.filter((e) => e.id > lastEventId);
+    const bucket = this.perWorkspace.get(workspaceId)
+    if (!bucket) return []
+    return bucket.events.filter((e) => e.id > lastEventId)
   }
 
   /** Drop all events for a workspace — exposed for tests. */
   clear(workspaceId: string): void {
-    this.perWorkspace.delete(workspaceId);
+    this.perWorkspace.delete(workspaceId)
   }
 
   /** Total buffered events across all workspaces — for /metrics. */
   size(): number {
-    let total = 0;
-    for (const bucket of this.perWorkspace.values()) total += bucket.events.length;
-    return total;
+    let total = 0
+    for (const bucket of this.perWorkspace.values()) total += bucket.events.length
+    return total
   }
 }
 
 /** Parse the `Last-Event-ID` header into a non-negative integer. */
 export function parseLastEventId(value: string | undefined | null): number {
-  if (!value) return 0;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return parsed;
+  if (!value) return 0
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed < 0) return 0
+  return parsed
 }
 
 /**
@@ -101,5 +110,5 @@ export function parseLastEventId(value: string | undefined | null): number {
  *   (blank line terminates the event)
  */
 export function encodeSseFrame(event: SseEvent): string {
-  return `id: ${event.id}\ndata: ${JSON.stringify(event.data)}\n\n`;
+  return `id: ${event.id}\ndata: ${JSON.stringify(event.data)}\n\n`
 }

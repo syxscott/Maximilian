@@ -12,6 +12,7 @@
   "dependencies": {
     "@max/autonomy": "workspace:*",
     "@max/core": "workspace:*",
+    "@max/core-thin-sdk": "workspace:*",
     "@max/telemetry": "workspace:*",
     "@max/dags": "workspace:*",
     "@max/evolution": "workspace:*",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
+    "fast-check": "^3.23.1",
     "typescript": "^5.6.3",
     "vitest": "^2.1.5"
   }

@@ -1,0 +1,17 @@
+# Fly.io configuration for the Maximilian demo worker (BullMQ + meta-system loop)
+
+app = "maximilian-worker-demo"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/syxscott/maximilian-worker:demo"
+
+[env]
+  NODE_ENV = "production"
+  TASK_QUEUE_ENABLED = "true"
+  META_AGENT_ENABLED = "true"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

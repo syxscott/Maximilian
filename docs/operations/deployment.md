@@ -282,7 +282,7 @@ Key metrics:
 - `maximilian_http_request_total{method,route,status}`
 - `maximilian_http_request_duration_seconds_bucket{method,route,status,le}`
 - `maximilian_task_total{role,status}` and `…_duration_seconds`
-- `maximilian_active_workspaces`
+- `maximilian_active_tasks`
 - `maximilian_llm_tokens_total{provider,model,direction}`
 
 ### OpenTelemetry

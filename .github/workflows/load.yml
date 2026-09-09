@@ -48,7 +48,10 @@ jobs:
       # turn green. Use a fake — the load test only hits /api/workspaces.
       OPENAI_API_KEY: sk-fake-for-readiness
       OPENAI_MODEL: gpt-4o-mini
-      NODE_ENV: production
+      # NOTE: NODE_ENV=production is set only on the API-start step below.
+      # Setting it at the workflow env level makes `pnpm install` skip
+      # devDependencies, so `husky` (a devDep) isn't installed and the
+      # root package.json `prepare` script fails with `husky: not found`.
 
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +62,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -75,9 +78,12 @@ jobs:
         run: node scripts/migrate.mjs
 
       - name: Start API in background
+        env:
+          NODE_ENV: production
         run: |
           pnpm --filter @max/api build
-          nohup node apps/api/dist/index.js > api.log 2>&1 &
+          : > api.log
+          nohup pnpm --filter @max/api start > api.log 2>&1 &
           echo $! > api.pid
 
       - name: Wait for /api/ready
@@ -96,7 +102,7 @@ jobs:
           fi
 
       - name: Run read load test (50 VUs, 30s)
-        run: node benchmarks/load/load-test.mjs --url http://localhost:3001 --vu 50 --duration 30
+        run: node benchmarks/load/load-test.mjs --url http://localhost:3001 --vu 50 --duration 30 --auto-register --output benchmarks/load/load-report.json
 
       - name: Upload load report
         if: always()

@@ -71,6 +71,8 @@ export class AgentBirthEngine {
           maxTokens: result.constraints.maxTokens,
           temperature: result.constraints.temperature,
         },
+        personality: {} as AgentBlueprint["personality"],
+        voice: {} as AgentBlueprint["voice"],
         version: result.version,
         parentId: result.parentCapability,
         createdAt: result.createdAt,

@@ -12,6 +12,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Phase 10 — secret scan before verify. Cheap, catches committed
+  # API keys / JWT secrets. Runs in parallel with verify so it doesn't
+  # add wall-clock time.
+  secret-scan:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+
   verify:
     name: type-check + test + build
     runs-on: ubuntu-latest
@@ -40,6 +59,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        # fetch-depth: 2 keeps the previous commit on the branch in the
+        # local clone so `git diff ${{ github.event.before }} ${{ github.sha }}`
+        # in the "Format check" step resolves both SHAs. The default of 1
+        # is too shallow for that diff range.
+        with:
+          fetch-depth: 2
 
       - uses: pnpm/action-setup@v4
         with:
@@ -47,7 +72,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -69,11 +94,94 @@ jobs:
       - name: Type-check
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run type-check
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        # Scope prettier --check to files touched by this commit instead of
+        # the whole repo. The repo accumulated 960+ pre-existing formatting
+        # drift against `.prettierrc.json` (semi: false / singleQuote: false)
+        # before this step landed, so checking everything fails on every push
+        # even when the diff itself is clean. Touching only changed files
+        # still enforces "new code stays formatted" without piling on a
+        # separate "format whole repo" PR.
+        #
+        # Compare against `github.event.before` (the previous tip of the
+        # branch) rather than `HEAD~1` so multi-commit pushes still diff
+        # against the right base. The shallow clone (`fetch-depth: 2`)
+        # doesn't always include `before`, so fetch it explicitly when
+        # needed. The all-zeros SHA means a brand-new branch — diff
+        # against HEAD itself in that case (empty diff → skip).
+        run: |
+          BEFORE="${{ github.event.before }}"
+          SHA="${{ github.sha }}"
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO_SHA" ]; then
+            BEFORE="$SHA"
+          fi
+          if ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BEFORE"
+          fi
+          CHANGED=$(git diff --name-only --diff-filter=ACMRTUXB "$BEFORE" "$SHA" \
+            -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.md' '*.yml' '*.yaml' \
+            ':(exclude)pnpm-lock.yaml' ':(exclude)CHANGELOG.md')
+          if [ -z "$CHANGED" ]; then
+            echo "No formatted files changed — skipping prettier check."
+            exit 0
+          fi
+          echo "Checking format on:"
+          echo "$CHANGED"
+          # Quote `$CHANGED` so paths with spaces or newlines don't get
+          # word-split. `set -e` so a prettier failure aborts this step
+          # (without it, a `npx prettier --check` exit code is ignored).
+          set -e
+          npx prettier --check $CHANGED
+
+      - name: License headers (new files)
+        run: pnpm license:check
+
+      - name: Validate commit messages
+        if: github.event_name == 'pull_request'
+        run: |
+          # Verify every commit in the PR follows Conventional Commits.
+          # Range: from merge-base to HEAD.
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          RANGE="${BASE}..${HEAD}"
+          git fetch --depth=50 origin "$BASE" || true
+          pnpm exec commitlint --from "$BASE" --to "$HEAD" --verbose
+        env:
+          NODE_OPTIONS: --max-old-space-size=2048
+
       - name: Test
-        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run test
+        # @max/e2e is a Playwright visual regression suite that needs the
+        # Chromium binary and a built dashboard. It's already gated by a
+        # dedicated workflow (e2e.yml) that installs browsers and only
+        # runs when dashboard / e2e / ui-react files change — running
+        # it on every CI push both blocks the queue (~30s+ browser
+        # download) and hits the "browser binary missing" error from the
+        # top-level CI. Filter it out here.
+        run: pnpm --recursive --filter "@max/*" --filter "./packages/*" --filter '!@max/e2e' run test
 
       - name: Build
         run: pnpm --recursive --filter "@max/*" --filter "./packages/*" run build
+
+      - name: Bundle size check
+        run: pnpm size
+        env:
+          # size-limit needs GitHub API access to read PR comment context.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Schema dry-run on every PR that touches packages/database or
+      # scripts/migrate*. Verifies the migration set applies cleanly
+      # to a throwaway DB and the resulting schema passes invariants.
+      - name: Migration dry-run
+        if: |
+          contains(github.event.pull_request.changed_files, 'packages/database/') ||
+          contains(github.event.pull_request.changed_files, 'scripts/migrate')
+        run: pnpm db:dry-run
+        env:
+          DATABASE_URL: postgresql://maximilian:maximilian@localhost:5432/maximilian_test
 
       - name: Upload coverage
         if: always()
@@ -89,7 +197,7 @@ jobs:
     name: Docker build smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: verify
+    needs: [verify, secret-scan]
 
     steps:
       - uses: actions/checkout@v4

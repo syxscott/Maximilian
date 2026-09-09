@@ -42,6 +42,29 @@ describe("getFreshInputTokens", () => {
     }
   });
 
+  it("treats ids whose sibling variants are openai_chat as cache_inclusive", () => {
+    // Regression: the default `deepseek` / `openrouter` preset is
+    // anthropic-compatible, but `deepseek-2` / `openrouter-2` speak
+    // openai_chat. When most traffic to those providers actually goes
+    // over the OpenAI dialect, fresh-token math should subtract the
+    // cache read — even when the caller's provider id is the anthropic
+    // variant.
+    expect(
+      getFreshInputTokens({
+        provider: "deepseek",
+        promptTokens: 1000,
+        cacheReadTokens: 200,
+      })
+    ).toBe(800);
+    expect(
+      getFreshInputTokens({
+        provider: "openrouter",
+        promptTokens: 1000,
+        cacheReadTokens: 200,
+      })
+    ).toBe(800);
+  });
+
   it("treats missing cacheReadTokens as 0", () => {
     expect(getFreshInputTokens({ provider: "openai", promptTokens: 500 })).toBe(500);
   });

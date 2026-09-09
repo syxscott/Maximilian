@@ -5,11 +5,11 @@ import * as Accordion from "@radix-ui/react-accordion"
 import * as Checkbox from "@radix-ui/react-checkbox"
 import * as Collapsible from "@radix-ui/react-collapsible"
 import * as Tooltip from "@radix-ui/react-tooltip"
-import { cn } from "../lib/utils"
-import { BasicTool, GenericTool, type TriggerTitle, type IconName } from "./basic-tool"
-import { AnimatedCountList, type CountItem } from "./tool-count-summary"
-import { ToolStatusTitle } from "./tool-status-title"
-import { ToolErrorCard } from "./tool-error-card"
+import { cn } from "../lib/utils.js"
+import { BasicTool, GenericTool, type TriggerTitle, type IconName } from "./basic-tool.js"
+import { AnimatedCountList, type CountItem } from "./tool-count-summary.js"
+import { ToolStatusTitle } from "./tool-status-title.js"
+import { ToolErrorCard } from "./tool-error-card.js"
 
 // -----------------------------------------------------------------------------
 // Domain types (kept loose so the host can plug in its own SDK)
@@ -769,7 +769,6 @@ const FileIcon: React.FC<{ node?: { path?: string; type?: string } }> = ({ node 
 
 const ImagePreview: React.FC<{ src: string; alt?: string }> = ({ src, alt }) => (
   <div data-component="image-preview" className="flex items-center justify-center p-4">
-    {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src={src} alt={alt} className="max-h-[80vh] max-w-full rounded" />
   </div>
 )
@@ -1137,7 +1136,6 @@ const UserMessageDisplay: React.FC<{
                 className="flex items-center gap-2 rounded border border-border-weak-base bg-background-stronger p-2"
               >
                 {type === "image" ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img data-slot="user-message-attachment-image" src={file.url} alt={name} className="h-12 w-12 rounded object-cover" />
                 ) : (
                   <div data-slot="user-message-attachment-file" className="flex items-center gap-2">

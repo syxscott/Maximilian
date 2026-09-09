@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 import {
   File as FileBase,
   useFileComponent,
@@ -11,7 +11,7 @@ import {
   type FileContents,
   type PreloadMultiFileDiffResult,
   type PreloadFileDiffResult,
-} from "./file"
+} from "./file.js"
 
 type DiffPreload<T> = PreloadMultiFileDiffResult<T> | PreloadFileDiffResult<T>
 

@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "../lib/utils"
-import { AnimatedCountLabel } from "./tool-count-label"
+import { cn } from "../lib/utils.js"
+import { AnimatedCountLabel } from "./tool-count-label.js"
 
 export interface CountItem {
   key: string

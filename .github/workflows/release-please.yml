@@ -1,0 +1,59 @@
+name: release-please
+
+# Conventional Commits → CHANGELOG.md + GitHub Releases + version bumps.
+# Runs on every push to main; opens/updates a release PR.
+#
+# Auth note: this workflow prefers a PAT (RELEASE_PLEASE_TOKEN, repo
+# scope) and falls back to GITHUB_TOKEN. The fallback works only when
+# the repo's default workflow permissions allow PR creation
+# (Settings → Actions → General → Workflow permissions = "Allow
+# GitHub Actions to create and approve pull requests"). If the toggle
+# is off AND no PAT is configured, the create-PR API call fails with
+# "GitHub Actions is not permitted to create or approve pull requests".
+
+on:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          # Bump strategy derived from Conventional Commits.
+          # See https://www.conventionalcommits.org/
+          release-type: node
+
+      - name: Log release output
+        if: always()
+        # Pipe the outputs through env vars so we don't have to worry about
+        # bash metacharacters in the values (release-please's `pr` output is
+        # a JSON object containing `(`/`[`/`]` that breaks `echo`).
+        env:
+          PR: ${{ steps.release.outputs.pr }}
+          RELEASE_URL: ${{ steps.release.outputs.release_url }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+          MAJOR: ${{ steps.release.outputs.major_version }}
+          MINOR: ${{ steps.release.outputs.minor_version }}
+          PATCH: ${{ steps.release.outputs.patch_version }}
+        run: |
+          {
+            printf 'Release PR URL: %s\n' "${PR:-<none>}"
+            printf 'Release URL:    %s\n' "${RELEASE_URL:-<none>}"
+            printf 'Tag:            %s\n' "${TAG:-<none>}"
+            printf 'Version:        %s.%s.%s\n' "${MAJOR:-0}" "${MINOR:-0}" "${PATCH:-0}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

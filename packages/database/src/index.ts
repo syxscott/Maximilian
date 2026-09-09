@@ -47,6 +47,7 @@ export { PgGovernanceConfigStore } from "./stores/pg-governance-config-store.js"
 export { PgPendingProposalStore } from "./stores/pg-pending-proposal-store.js";
 export { PgTelemetryStore } from "./stores/pg-telemetry-store.js";
 export { PgGovernanceEngine } from "./stores/pg-governance-engine.js";
+export { PgTruthStore, type TruthMeasurementRow, type TruthVerificationRow } from "./stores/pg-truth-store.js";
 export {
   validateTenantId, makeTenantContext, scoped, assertSameTenant, sanitizeFilter,
   TenantGuardError, type TenantContext,

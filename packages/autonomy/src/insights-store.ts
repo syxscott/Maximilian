@@ -72,8 +72,8 @@ export class FailurePatternAnalyzer {
    * Look at the most recent `lookback` executions and surface the
    * most frequent failure patterns.
    */
-  async analyze(executions: ExecutionStore, lookback = 50): Promise<FailureInsight[]> {
-    const all = await executions.listAll();
+  async analyze(executions: ExecutionStore | ExecutionRecord[], lookback = 50): Promise<FailureInsight[]> {
+    const all = Array.isArray(executions) ? executions : await executions.listAll();
     const recent = all.slice(-lookback);
 
     const byPattern = new Map<string, ExecutionRecord[]>();
@@ -138,8 +138,8 @@ export class FailurePatternAnalyzer {
   /**
    * Mine a leaderboard-style insight: worst roles and worst models.
    */
-  async leaderboardInsight(executions: ExecutionStore): Promise<LeaderboardInsight> {
-    const all = await executions.listAll();
+  async leaderboardInsight(executions: ExecutionStore | ExecutionRecord[]): Promise<LeaderboardInsight> {
+    const all = Array.isArray(executions) ? executions : await executions.listAll();
     const totalExecutions = all.length;
 
     const byRole = groupBy(all, (e) => e.agentRole);

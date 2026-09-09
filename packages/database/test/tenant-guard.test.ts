@@ -123,3 +123,91 @@ describe("isolation simulation", () => {
     expect(() => fakeStore.list(sanitizeFilter({ tenantId: "acme" } as { tenantId: string }, betaCtx))).toThrow();
   });
 });
+
+// ── Phase 10 — SQL injection + advanced threat coverage ─────────────────────
+
+describe("Phase 10 — SQL injection attack vectors", () => {
+  /**
+   * The validateTenantId regex `/^[a-zA-Z0-9_-]{1,64}$/` blocks every
+   * common SQL injection shape. These tests enumerate the canonical
+   * payloads (OWASP) to lock down the defense against regressions.
+   */
+  const SQL_INJECTION_PAYLOADS = [
+    // Classic quote-stacking
+    `tenant'; DROP TABLE users;--`,
+    `tenant' OR '1'='1`,
+    `' OR 1=1--`,
+    `admin'--`,
+    // Union-based
+    `' UNION SELECT NULL,NULL,NULL--`,
+    `' UNION ALL SELECT NULL--`,
+    // Stacked queries
+    `tenant'; UPDATE users SET admin=true WHERE id=1;--`,
+    // Comment truncation (use /* */ form which contains /)
+    `tenant/*`,
+    // Encoding attempts (contain non-regex chars)
+    `tenant%00admin`,
+    // Path traversal
+    `../../../etc/passwd`,
+    // LDAP / NoSQL
+    `tenant*`,
+    `{$ne:null}`,
+    // Whitespace injection
+    `tenant 1`,
+    `tenant\t1`,
+    `tenant\n1`,
+  ];
+
+  for (const payload of SQL_INJECTION_PAYLOADS) {
+    it(`rejects SQL injection payload: ${JSON.stringify(payload)}`, () => {
+      expect(() => validateTenantId(payload)).toThrow(TenantGuardError);
+      expect(() => scoped(payload)).toThrow(TenantGuardError);
+      expect(() => makeTenantContext(payload)).toThrow(TenantGuardError);
+    });
+  }
+
+  it("rejects tenant ids that pass regex but are reserved", () => {
+    // Reserved names are blocked even though they match the regex
+    expect(() => validateTenantId("system")).toThrow(/reserved/);
+    expect(() => validateTenantId("anonymous")).toThrow(/reserved/);
+    expect(() => validateTenantId("null")).toThrow(/reserved/);
+    expect(() => validateTenantId("undefined")).toThrow(/reserved/);
+  });
+
+  it("rejects extremely long tenant ids (DoS resistance)", () => {
+    const longId = "a".repeat(10_000);
+    expect(() => validateTenantId(longId)).toThrow(/must match/);
+  });
+});
+
+describe("Phase 10 — cross-tenant probe via sanitizeFilter bypass attempts", () => {
+  it("rejects falsy-but-not-undefined tenant id in filter", () => {
+    const ctx = makeTenantContext("acme");
+    // 0 / false / "" — all should be rejected because they don't match ctx
+    expect(() => sanitizeFilter({ tenantId: "" as unknown as string }, ctx)).toThrow();
+    expect(() => sanitizeFilter({ tenantId: 0 as unknown as string }, ctx)).toThrow();
+    expect(() => sanitizeFilter({ tenantId: null as unknown as string }, ctx)).toThrow();
+  });
+
+  it("rejects prototype-pollution attempts in filter", () => {
+    const ctx = makeTenantContext("acme");
+    // attacker tries to slip in __proto__
+    const malicious = JSON.parse(
+      `{"__proto__": {"tenantId": "evil"}, "tenantId": "acme"}`,
+    );
+    // The function doesn't recursively sanitize __proto__, but
+    // tenantId matching wins. Confirm the ctx tenantId is what comes
+    // out, not the proto one.
+    const out = sanitizeFilter(malicious, ctx);
+    expect(out.tenantId).toBe("acme");
+  });
+
+  it("freezes the context so post-construction tampering is impossible", () => {
+    const ctx = scoped("acme");
+    expect(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ctx as any).tenantId = "evil";
+    }).toThrow();
+    expect(ctx.tenantId).toBe("acme");
+  });
+});

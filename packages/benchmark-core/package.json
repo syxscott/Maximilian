@@ -17,7 +17,7 @@
     "@max/core": "workspace:*",
     "@max/dags": "workspace:*",
     "@max/providers": "workspace:*",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.11.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {

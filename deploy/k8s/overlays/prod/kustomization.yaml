@@ -1,0 +1,84 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Production overlay — apply with:
+#   kubectl apply -k deploy/k8s/overlays/prod
+#
+# Differences from base:
+#   - Namespace stays `maximilian` (matches the base)
+#   - Replicas 3 with anti-affinity (HA)
+#   - Larger resource requests / limits
+#   - Ingress uses the production hostname
+#   - Production log level (info) and observability endpoints
+#   - HorizontalPodAutoscaler enabled (3-10 replicas)
+
+namespace: maximilian
+
+resources:
+  - ../../base
+  - hpa.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: api
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: add
+        path: /spec/template/spec/containers/0/resources/limits
+        value:
+          cpu: 2000m
+          memory: 2Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 500m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 512Mi
+      - op: add
+        path: /spec/template/spec/affinity/podAntiAffinity
+        value:
+          preferredDuringDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: api
+                topologyKey: kubernetes.io/hostname
+
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: add
+        path: /spec/template/spec/containers/0/resources/limits
+        value:
+          cpu: 4000m
+          memory: 4Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 1000m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 1Gi
+
+  - target:
+      kind: Deployment
+      name: dashboard
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+configMapGenerator:
+  - name: maximilian-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=info
+      - NODE_ENV=production
+      - SLO_ALERT_SLACK_WEBHOOK=https://hooks.slack.com/services/REPLACE_ME_PROD

@@ -10,8 +10,10 @@
  *   LearningSnapshot     5.7 - dashboard query result
  */
 
-import { z } from "zod";
-import { AgentRole } from "@max/core";
+import { z } from "zod"
+import { AgentRole } from "@max/core"
+import { SCORE_THRESHOLD, ACCEPTANCE_THRESHOLD } from "@max/evolution"
+import type { ScholarEvalResult } from "./validation/scholar-eval.js"
 
 // ============================================================================
 // 5.2 — StructuredReview
@@ -28,8 +30,9 @@ export const StructuredReviewSchema = z.object({
   improvementSuggestions: z.array(z.string()).default([]),
   summary: z.string(),
   reviewedAt: z.string(),
-});
-export type StructuredReview = z.infer<typeof StructuredReviewSchema>;
+  scholarEval: z.any().optional(), // ScholarEvalResult
+})
+export type StructuredReview = z.infer<typeof StructuredReviewSchema>
 
 // ============================================================================
 // 5.1 — ExecutionRecord
@@ -40,21 +43,22 @@ export const ModelAssignmentSchema = z.object({
   model: z.string(),
   reason: z.string().optional(),
   score: z.number().optional(),
-});
-export type ModelAssignment = z.infer<typeof ModelAssignmentSchema>;
+})
+export type ModelAssignment = z.infer<typeof ModelAssignmentSchema>
 
 export const UserFeedbackEntrySchema = z.object({
   at: z.string(),
   text: z.string(),
   rating: z.number().min(1).max(5).optional(),
-});
-export type UserFeedbackEntry = z.infer<typeof UserFeedbackEntrySchema>;
+})
+export type UserFeedbackEntry = z.infer<typeof UserFeedbackEntrySchema>
 
 export const ExecutionRecordSchema = z.object({
   id: z.string(),
+  tenantId: z.string().optional(),
   taskId: z.string(),
   workspaceId: z.string(),
-  agentRole: z.string(),                              // dynamic role, open string
+  agentRole: z.string(), // dynamic role, open string
   blueprintId: z.string().optional(),
   blueprintVersion: z.string().optional(),
   graphId: z.string().optional(),
@@ -67,8 +71,8 @@ export const ExecutionRecordSchema = z.object({
   durationMs: z.number().nonnegative().optional(),
   status: z.enum(["pending", "running", "completed", "failed"]).default("completed"),
   error: z.string().optional(),
-});
-export type ExecutionRecord = z.infer<typeof ExecutionRecordSchema>;
+})
+export type ExecutionRecord = z.infer<typeof ExecutionRecordSchema>
 
 // ============================================================================
 // 5.3 — FailureInsight
@@ -81,28 +85,32 @@ export const FailureInsightSchema = z.object({
   providers: z.array(z.string()).default([]),
   models: z.array(z.string()).default([]),
   avgScore: z.number().min(0).max(10),
-  examples: z.array(z.string()).default([]),          // executionIds
+  examples: z.array(z.string()).default([]), // executionIds
   firstSeen: z.string(),
   lastSeen: z.string(),
-});
-export type FailureInsight = z.infer<typeof FailureInsightSchema>;
+})
+export type FailureInsight = z.infer<typeof FailureInsightSchema>
 
 export const LeaderboardInsightSchema = z.object({
   generatedAt: z.string(),
   totalExecutions: z.number().int().nonnegative(),
-  worstRoles: z.array(z.object({
-    role: z.string(),
-    avgScore: z.number(),
-    sampleSize: z.number().int().nonnegative(),
-  })),
-  worstModels: z.array(z.object({
-    provider: z.string(),
-    model: z.string(),
-    avgScore: z.number(),
-    sampleSize: z.number().int().nonnegative(),
-  })),
-});
-export type LeaderboardInsight = z.infer<typeof LeaderboardInsightSchema>;
+  worstRoles: z.array(
+    z.object({
+      role: z.string(),
+      avgScore: z.number(),
+      sampleSize: z.number().int().nonnegative(),
+    }),
+  ),
+  worstModels: z.array(
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      avgScore: z.number(),
+      sampleSize: z.number().int().nonnegative(),
+    }),
+  ),
+})
+export type LeaderboardInsight = z.infer<typeof LeaderboardInsightSchema>
 
 // ============================================================================
 // 5.4 — EvolutionPlan
@@ -113,8 +121,8 @@ export const PlanChangeSchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   reason: z.string(),
-});
-export type PlanChange = z.infer<typeof PlanChangeSchema>;
+})
+export type PlanChange = z.infer<typeof PlanChangeSchema>
 
 export const EvolutionPlanSchema = z.object({
   id: z.string(),
@@ -135,17 +143,17 @@ export const EvolutionPlanSchema = z.object({
   }),
   createdAt: z.string(),
   status: z.enum(["draft", "applied", "abandoned"]).default("draft"),
-});
-export type EvolutionPlan = z.infer<typeof EvolutionPlanSchema>;
+})
+export type EvolutionPlan = z.infer<typeof EvolutionPlanSchema>
 
 // ============================================================================
 // 5.5 — CandidateVersion
 // ============================================================================
 
 export const CandidateVersionSchema = z.object({
-  id: z.string(),                                       // bp-frontend-v2-xxx
+  id: z.string(), // bp-frontend-v2-xxx
   agentRole: z.string(),
-  version: z.string(),                                  // "v2", "v3"
+  version: z.string(), // "v2", "v3"
   parentBlueprintId: z.string(),
   parentVersion: z.string(),
   systemPrompt: z.string(),
@@ -161,8 +169,8 @@ export const CandidateVersionSchema = z.object({
   status: z.enum(["candidate", "promoted", "rejected", "retired"]).default("candidate"),
   promotedAt: z.string().optional(),
   rejectedAt: z.string().optional(),
-});
-export type CandidateVersion = z.infer<typeof CandidateVersionSchema>;
+})
+export type CandidateVersion = z.infer<typeof CandidateVersionSchema>
 
 // ============================================================================
 // 5.6 — PromotionRecord
@@ -176,7 +184,7 @@ export const PromotionRecordSchema = z.object({
   sampleSize: z.number().int().nonnegative(),
   oldAvgScore: z.number(),
   newAvgScore: z.number(),
-  scoreGain: z.number(),                                // fraction (0.10 = 10%)
+  scoreGain: z.number(), // fraction (0.10 = 10%)
   oldAcceptance: z.number(),
   newAcceptance: z.number(),
   acceptanceGain: z.number(),
@@ -187,8 +195,8 @@ export const PromotionRecordSchema = z.object({
     minScoreGain: z.number(),
     minAcceptanceGain: z.number(),
   }),
-});
-export type PromotionRecord = z.infer<typeof PromotionRecordSchema>;
+})
+export type PromotionRecord = z.infer<typeof PromotionRecordSchema>
 
 // ============================================================================
 // Defaults
@@ -196,16 +204,16 @@ export type PromotionRecord = z.infer<typeof PromotionRecordSchema>;
 
 export const DEFAULT_PROMOTION_CONFIG = {
   minSample: 20,
-  minScoreGain: 0.10,
+  minScoreGain: 0.1,
   minAcceptanceGain: 0.15,
-};
+}
 
 export const DEFAULT_PLANNER_CONFIG = {
   minExecutions: 10,
-  scoreThreshold: 6.0,
-  acceptanceThreshold: 0.5,
+  scoreThreshold: SCORE_THRESHOLD,
+  acceptanceThreshold: ACCEPTANCE_THRESHOLD,
   topFailureCount: 3,
-};
+}
 
-export const PLANNER_CONFIG = DEFAULT_PLANNER_CONFIG;
-export const PROMOTION_CONFIG = DEFAULT_PROMOTION_CONFIG;
+export const PLANNER_CONFIG = DEFAULT_PLANNER_CONFIG
+export const PROMOTION_CONFIG = DEFAULT_PROMOTION_CONFIG

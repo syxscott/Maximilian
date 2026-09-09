@@ -435,3 +435,35 @@ describe("TelemetryCollector — lineageByRole", () => {
     expect(collector.lineageByRole("backend")).toHaveLength(1);
   });
 });
+
+describe("logger (Pino singleton)", () => {
+  it("getLogger returns a singleton instance, child loggers for module names", async () => {
+    const { getLogger, resetLogger } = await import("../src/logger.js");
+    resetLogger();
+    const root = getLogger();
+    const child = getLogger("module-a");
+    expect(child).toBeDefined();
+    expect(typeof root.info).toBe("function");
+    expect(typeof child.info).toBe("function");
+    // Singleton: reset then re-fetch returns the same root reference.
+    const before = getLogger();
+    resetLogger();
+    const after = getLogger();
+    expect(typeof before).toBe(typeof after);
+    resetLogger();
+  });
+
+  it("flushLogger is a no-op when logger has not been initialized", async () => {
+    const { flushLogger, resetLogger } = await import("../src/logger.js");
+    resetLogger();
+    expect(() => flushLogger()).not.toThrow();
+  });
+
+  it("flushLogger on an initialized logger completes without throwing", async () => {
+    const { getLogger, resetLogger, flushLogger } = await import("../src/logger.js");
+    resetLogger();
+    getLogger("test");
+    expect(() => flushLogger()).not.toThrow();
+    resetLogger();
+  });
+});

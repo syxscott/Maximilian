@@ -28,8 +28,10 @@ export function usePromptMove(input) {
         setCreating(true);
         setProgress("Creating copy");
         try {
-            // TODO: call `sdk.client.post('/project/copy', { projectID, ... })`
-            // once that endpoint exists in Maximilian's backend.
+            // Maximilian doesn't ship an OpenCode-style `/project/copy` endpoint.
+            // Until that lands we synthesize a deterministic worktree path locally
+            // so the rest of the submit pipeline can continue. The eventual swap is
+            // a one-liner: `await sdk.client.post('/project/copy', { projectID })`.
             const directory = `/tmp/max-worktree/${projectID.slice(0, 6)}`;
             setProgress("Creating session");
             return directory;
@@ -50,8 +52,10 @@ export function usePromptMove(input) {
         void session;
         setProgress("Moving session");
         try {
-            // TODO: call `sdk.client.post('/session/move', { sessionID, ... })`
-            // when the endpoint lands.
+            // No-op for now: Maximilian doesn't expose `/session/move`. The
+            // local-progress UI still flips through the `Moving session` state
+            // so users see feedback; the call below is a placeholder until the
+            // backend ships a matching endpoint.
             console.log("[move] move session", sessionID);
         }
         finally {
