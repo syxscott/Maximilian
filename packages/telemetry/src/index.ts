@@ -27,16 +27,16 @@ export {
   type RolloutStatus,
   type EvolutionTrace,
   type TelemetryConfig,
-} from "./types.js";
+} from "./types.js"
 
 // Collector
-export { TelemetryCollector } from "./collector.js";
+export { TelemetryCollector } from "./collector.js"
 
 // Logger
-export { getLogger, resetLogger, flushLogger } from "./logger.js";
+export { getLogger, resetLogger, flushLogger } from "./logger.js"
 
 // OpenTelemetry
-export { initOtel, getTracer, withSpan, context, trace } from "./otel.js";
+export { initOtel, getTracer, withSpan, context, trace } from "./otel.js"
 
 // Prometheus metrics
 export {
@@ -56,4 +56,4 @@ export {
   opencodeSessionsCreatedTotal,
   opencodeSessionsLeakedTotal,
   metaCycleDuration,
-} from "./metrics.js";
+} from "./metrics.js"

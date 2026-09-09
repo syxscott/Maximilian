@@ -45,19 +45,19 @@
 
 ## Transitions
 
-| From | To | Trigger |
-|------|----|---------|
-| proposed | experimental | `cycle()` (auto) |
-| proposed | active | (skipped — must pass through experimental) |
-| proposed | retired | manual |
-| experimental | active | `cycle()` (auto) |
-| experimental | deprecated | manual |
-| experimental | retired | manual |
-| active | deprecated | manual / governance |
-| active | retired | manual / capability retired |
-| deprecated | active | revival (manual) |
-| deprecated | retired | manual |
-| retired | (none) | terminal |
+| From         | To           | Trigger                                    |
+| ------------ | ------------ | ------------------------------------------ |
+| proposed     | experimental | `cycle()` (auto)                           |
+| proposed     | active       | (skipped — must pass through experimental) |
+| proposed     | retired      | manual                                     |
+| experimental | active       | `cycle()` (auto)                           |
+| experimental | deprecated   | manual                                     |
+| experimental | retired      | manual                                     |
+| active       | deprecated   | manual / governance                        |
+| active       | retired      | manual / capability retired                |
+| deprecated   | active       | revival (manual)                           |
+| deprecated   | retired      | manual                                     |
+| retired      | (none)       | terminal                                   |
 
 ## Events Emitted
 

@@ -3,8 +3,9 @@ import * as ToastPrimitive from "@radix-ui/react-toast"
 import { cn } from "../../lib/utils.js"
 import { ButtonV2 } from "./button-v2.js"
 
-export interface ToastV2RegionProps
-  extends React.ComponentPropsWithoutRef<typeof ToastPrimitive.Provider> {}
+export interface ToastV2RegionProps extends React.ComponentPropsWithoutRef<
+  typeof ToastPrimitive.Provider
+> {}
 
 export const ToastV2Region: React.FC<ToastV2RegionProps> = (props) => (
   <ToastPrimitive.Provider swipeDirection="right" {...props}>
@@ -13,8 +14,9 @@ export const ToastV2Region: React.FC<ToastV2RegionProps> = (props) => (
 )
 ToastV2Region.displayName = "ToastV2Region"
 
-export interface ToastV2RootComponentProps
-  extends React.ComponentPropsWithoutRef<typeof ToastPrimitive.Root> {
+export interface ToastV2RootComponentProps extends React.ComponentPropsWithoutRef<
+  typeof ToastPrimitive.Root
+> {
   className?: string
   children?: React.ReactNode
 }
@@ -23,12 +25,7 @@ export const ToastV2Root = React.forwardRef<
   React.ElementRef<typeof ToastPrimitive.Root>,
   ToastV2RootComponentProps
 >(({ className, children, ...props }, ref) => (
-  <ToastPrimitive.Root
-    ref={ref}
-    data-component="toast-v2"
-    className={cn(className)}
-    {...props}
-  >
+  <ToastPrimitive.Root ref={ref} data-component="toast-v2" className={cn(className)} {...props}>
     {children}
   </ToastPrimitive.Root>
 ))
@@ -60,12 +57,7 @@ export const ToastV2Title = React.forwardRef<
   React.ElementRef<typeof ToastPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitive.Title>
 >(({ className, ...props }, ref) => (
-  <ToastPrimitive.Title
-    ref={ref}
-    data-slot="toast-v2-title"
-    className={cn(className)}
-    {...props}
-  />
+  <ToastPrimitive.Title ref={ref} data-slot="toast-v2-title" className={cn(className)} {...props} />
 ))
 ToastV2Title.displayName = "ToastV2Title"
 
@@ -216,8 +208,7 @@ export interface ToastV2Options {
 }
 
 export function showToastV2(options: ToastV2Options | string): string {
-  const opts: ToastV2Options =
-    typeof options === "string" ? { description: options } : options
+  const opts: ToastV2Options = typeof options === "string" ? { description: options } : options
   return toasterV2.show(opts)
 }
 

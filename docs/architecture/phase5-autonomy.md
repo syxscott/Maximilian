@@ -13,6 +13,7 @@ Phase 1-4 让 Maximilian 具备了"自组织"能力：
 - Blueprint 可被版本化
 
 但这些能力都是**被动**的：
+
 - 人类决定何时升级
 - Agent 不知道自己哪里不好
 - 失败不会自动转化为改进
@@ -21,14 +22,14 @@ Phase 5 实现 **Autonomous Improvement Loop**：系统观察到失败 → 自�
 
 ## 2. 设计目标
 
-| 目标 | 描述 |
-|---|---|
-| **可回放** | 任意任务的执行上下文可被完整重建 |
+| 目标       | 描述                                 |
+| ---------- | ------------------------------------ |
+| **可回放** | 任意任务的执行上下文可被完整重建     |
 | **可解释** | Review 输出结构化，能被 Planner 消费 |
-| **可发现** | 失败模式从历史中自动浮现 |
+| **可发现** | 失败模式从历史中自动浮现             |
 | **可规划** | EvolutionPlan 描述要改什么、为什么改 |
-| **可验证** | A/B 满足阈值才晋升，否则丢弃 |
-| **可审计** | promotion-history 永久落盘 |
+| **可验证** | A/B 满足阈值才晋升，否则丢弃         |
+| **可审计** | promotion-history 永久落盘           |
 
 ## 3. 闭环
 
@@ -92,27 +93,27 @@ Phase 5 实现 **Autonomous Improvement Loop**：系统观察到失败 → 自�
 
 ## 4. 关键设计决策
 
-| ADR | 决策 |
-|---|---|
-| [ADR-015](../decisions/adr-015-execution-replayable.md) | ExecutionRecord 必须包含完整回放所需的所有上下文 |
-| [ADR-016](../decisions/adr-016-structured-review.md) | Review 必须输出结构化 JSON（含 failure_patterns） |
-| [ADR-017](../decisions/adr-017-ab-promotion.md) | A/B 晋升必须满足双阈值（score + acceptance） |
-| [ADR-018](../decisions/adr-018-dags-mode.md) | `DAGS_MODE=true` 让 DAGS 接管 `/api/chat` |
+| ADR                                                     | 决策                                              |
+| ------------------------------------------------------- | ------------------------------------------------- |
+| [ADR-015](../decisions/adr-015-execution-replayable.md) | ExecutionRecord 必须包含完整回放所需的所有上下文  |
+| [ADR-016](../decisions/adr-016-structured-review.md)    | Review 必须输出结构化 JSON（含 failure_patterns） |
+| [ADR-017](../decisions/adr-017-ab-promotion.md)         | A/B 晋升必须满足双阈值（score + acceptance）      |
+| [ADR-018](../decisions/adr-018-dags-mode.md)            | `DAGS_MODE=true` 让 DAGS 接管 `/api/chat`         |
 
 ## 5. 模块划分
 
 新增包 `@max/autonomy`：
 
-| 模块 | 阶段 | 持久化 |
-|---|---|---|
-| `ExecutionStore` | 5.1 | `executions/<id>.json` |
-| `ReviewIntelligence` | 5.2 | `reviews/<taskId>.json` |
-| `FailurePatternAnalyzer` | 5.3 | `insights/failure-patterns.json` |
-| `EvolutionPlanner` | 5.4 | `evolution-plans/<id>.json` |
-| `CandidateGenerator` | 5.5 | `candidates/<role>-v<n>.json` |
-| `PromotionEngine` | 5.6 | `promotion-history.json` |
-| `LearningAPI` | 5.7 | （仅查询，不落盘） |
-| `AutonomyOrchestrator` | 5.8 | （编排，不落盘） |
+| 模块                     | 阶段 | 持久化                           |
+| ------------------------ | ---- | -------------------------------- |
+| `ExecutionStore`         | 5.1  | `executions/<id>.json`           |
+| `ReviewIntelligence`     | 5.2  | `reviews/<taskId>.json`          |
+| `FailurePatternAnalyzer` | 5.3  | `insights/failure-patterns.json` |
+| `EvolutionPlanner`       | 5.4  | `evolution-plans/<id>.json`      |
+| `CandidateGenerator`     | 5.5  | `candidates/<role>-v<n>.json`    |
+| `PromotionEngine`        | 5.6  | `promotion-history.json`         |
+| `LearningAPI`            | 5.7  | （仅查询，不落盘）               |
+| `AutonomyOrchestrator`   | 5.8  | （编排，不落盘）                 |
 
 ## 6. 与现有模块的关系
 

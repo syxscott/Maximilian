@@ -18,8 +18,12 @@ function makeSink() {
   const workspaces = new Map<string, Workspace>()
   return {
     workspaces,
-    async saveWorkspace(w: Workspace) { workspaces.set(w.id, w) },
-    async loadWorkspace(id: string) { return workspaces.get(id) },
+    async saveWorkspace(w: Workspace) {
+      workspaces.set(w.id, w)
+    },
+    async loadWorkspace(id: string) {
+      return workspaces.get(id)
+    },
   }
 }
 
@@ -38,9 +42,7 @@ describe("saveState / loadState (借鉴 openclaw)", () => {
     const state = {
       ledger: {
         id: "ws-test",
-        entries: [
-          { kind: "plan", round: 0, summary: "test", at: new Date().toISOString() },
-        ],
+        entries: [{ kind: "plan", round: 0, summary: "test", at: new Date().toISOString() }],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },

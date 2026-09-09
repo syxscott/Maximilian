@@ -51,7 +51,9 @@ export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
   name: "Route",
   init: (props: { initialRoute?: Route }) => {
     const startup = useTuiStartup()
-    const [data, setData] = useState<Route>(props.initialRoute ?? initialRoute(startup.initialRoute) ?? { type: "home" })
+    const [data, setData] = useState<Route>(
+      props.initialRoute ?? initialRoute(startup.initialRoute) ?? { type: "home" },
+    )
 
     const navigate = useCallback((next: Route) => {
       setData(next)

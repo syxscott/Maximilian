@@ -4,23 +4,105 @@ import { Popover, PopoverContent, PopoverTrigger } from "./popover.js"
 import { cn } from "../lib/utils.js"
 
 const PRESET_COLORS = [
-  "#000000", "#ffffff", "#f87171", "#fb923c", "#fbbf24", "#a3e635",
-  "#34d399", "#22d3ee", "#60a5fa", "#818cf8", "#c084fc", "#f472b6",
-  "#94a3b8", "#64748b", "#475569", "#1e293b", "#fef2f2", "#fee2e2",
-  "#fecaca", "#fca5a5", "#fff7ed", "#ffedd5", "#fed7aa", "#fdba74",
-  "#fef3c7", "#fde68a", "#fcd34d", "#facc15", "#ecfccb", "#d9f99d",
-  "#bef264", "#a3e635", "#84cc16", "#dcfce7", "#bbf7d0", "#86efac",
-  "#4ade80", "#22c55e", "#16a34a", "#d1fae5", "#a7f3d0", "#6ee7b7",
-  "#34d399", "#10b981", "#059669", "#ccfbf1", "#99f6e4", "#5eead4",
-  "#2dd4bf", "#14b8a6", "#0d9488", "#cffafe", "#a5f3fc", "#67e8f9",
-  "#22d3ee", "#06b6d4", "#0891b2", "#e0f2fe", "#bae6fd", "#7dd3fc",
-  "#38bdf8", "#0ea5e9", "#0284c7", "#dbeafe", "#bfdbfe", "#93c5fd",
-  "#60a5fa", "#3b82f6", "#2563eb", "#e0e7ff", "#c7d2fe", "#a5b4fc",
-  "#818cf8", "#6366f1", "#4f46e5", "#ede9fe", "#ddd6fe", "#c4b5fd",
-  "#a78bfa", "#8b5cf6", "#7c3aed", "#f3e8ff", "#e9d5ff", "#d8b4fe",
-  "#c084fc", "#a855f7", "#9333ea", "#fae8ff", "#f5d0fe", "#f0abfc",
-  "#e879f9", "#d946ef", "#c026d3", "#fce7f3", "#fbcfe8", "#f9a8d4",
-  "#f472b6", "#ec4899", "#db2777",
+  "#000000",
+  "#ffffff",
+  "#f87171",
+  "#fb923c",
+  "#fbbf24",
+  "#a3e635",
+  "#34d399",
+  "#22d3ee",
+  "#60a5fa",
+  "#818cf8",
+  "#c084fc",
+  "#f472b6",
+  "#94a3b8",
+  "#64748b",
+  "#475569",
+  "#1e293b",
+  "#fef2f2",
+  "#fee2e2",
+  "#fecaca",
+  "#fca5a5",
+  "#fff7ed",
+  "#ffedd5",
+  "#fed7aa",
+  "#fdba74",
+  "#fef3c7",
+  "#fde68a",
+  "#fcd34d",
+  "#facc15",
+  "#ecfccb",
+  "#d9f99d",
+  "#bef264",
+  "#a3e635",
+  "#84cc16",
+  "#dcfce7",
+  "#bbf7d0",
+  "#86efac",
+  "#4ade80",
+  "#22c55e",
+  "#16a34a",
+  "#d1fae5",
+  "#a7f3d0",
+  "#6ee7b7",
+  "#34d399",
+  "#10b981",
+  "#059669",
+  "#ccfbf1",
+  "#99f6e4",
+  "#5eead4",
+  "#2dd4bf",
+  "#14b8a6",
+  "#0d9488",
+  "#cffafe",
+  "#a5f3fc",
+  "#67e8f9",
+  "#22d3ee",
+  "#06b6d4",
+  "#0891b2",
+  "#e0f2fe",
+  "#bae6fd",
+  "#7dd3fc",
+  "#38bdf8",
+  "#0ea5e9",
+  "#0284c7",
+  "#dbeafe",
+  "#bfdbfe",
+  "#93c5fd",
+  "#60a5fa",
+  "#3b82f6",
+  "#2563eb",
+  "#e0e7ff",
+  "#c7d2fe",
+  "#a5b4fc",
+  "#818cf8",
+  "#6366f1",
+  "#4f46e5",
+  "#ede9fe",
+  "#ddd6fe",
+  "#c4b5fd",
+  "#a78bfa",
+  "#8b5cf6",
+  "#7c3aed",
+  "#f3e8ff",
+  "#e9d5ff",
+  "#d8b4fe",
+  "#c084fc",
+  "#a855f7",
+  "#9333ea",
+  "#fae8ff",
+  "#f5d0fe",
+  "#f0abfc",
+  "#e879f9",
+  "#d946ef",
+  "#c026d3",
+  "#fce7f3",
+  "#fbcfe8",
+  "#f9a8d4",
+  "#f472b6",
+  "#ec4899",
+  "#db2777",
 ]
 
 function isValidHex(value: string): boolean {
@@ -52,12 +134,17 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 }
 
 function rgbToHex({ r, g, b }: { r: number; g: number; b: number }): string {
-  const toHex = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0")
+  const toHex = (n: number) =>
+    Math.max(0, Math.min(255, Math.round(n)))
+      .toString(16)
+      .padStart(2, "0")
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
 }
 
-export interface ColorPickerProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "value" | "onChange" | "defaultValue"> {
+export interface ColorPickerProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "value" | "onChange" | "defaultValue"
+> {
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
@@ -87,7 +174,7 @@ export const ColorPicker = React.forwardRef<HTMLDivElement, ColorPickerProps>(fu
 ) {
   const isControlled = value !== undefined
   const [internal, setInternal] = React.useState<string>(defaultValue)
-  const current = isControlled ? value ?? "#000000" : internal
+  const current = isControlled ? (value ?? "#000000") : internal
   const rgb = React.useMemo(() => hexToRgb(current) ?? { r: 0, g: 0, b: 0 }, [current])
 
   const commit = React.useCallback(
@@ -159,11 +246,15 @@ export const ColorPicker = React.forwardRef<HTMLDivElement, ColorPickerProps>(fu
                       <Check
                         className="absolute inset-0 m-auto h-3.5 w-3.5"
                         style={{
-                          color: isValidHex(color) && hexToRgb(color)
-                            ? (hexToRgb(color)!.r * 0.299 + hexToRgb(color)!.g * 0.587 + hexToRgb(color)!.b * 0.114 > 140
-                              ? "#000"
-                              : "#fff")
-                            : "#fff",
+                          color:
+                            isValidHex(color) && hexToRgb(color)
+                              ? hexToRgb(color)!.r * 0.299 +
+                                  hexToRgb(color)!.g * 0.587 +
+                                  hexToRgb(color)!.b * 0.114 >
+                                140
+                                ? "#000"
+                                : "#fff"
+                              : "#fff",
                         }}
                       />
                     ) : null}
@@ -200,13 +291,7 @@ export const ColorPicker = React.forwardRef<HTMLDivElement, ColorPickerProps>(fu
               </div>
             ) : null}
             {showAlpha ? (
-              <input
-                type="range"
-                min={0}
-                max={100}
-                aria-label="Alpha"
-                className="w-full"
-              />
+              <input type="range" min={0} max={100} aria-label="Alpha" className="w-full" />
             ) : null}
           </div>
         </PopoverContent>

@@ -10,10 +10,10 @@ on:
   pull_request:
     branches: [main, master]
     paths:
-      - 'apps/dashboard/**'
-      - 'e2e/**'
-      - 'packages/ui-react/**'
-      - '.github/workflows/e2e.yml'
+      - "apps/dashboard/**"
+      - "e2e/**"
+      - "packages/ui-react/**"
+      - ".github/workflows/e2e.yml"
 
 permissions:
   contents: read
@@ -70,7 +70,7 @@ jobs:
       - name: Run e2e tests
         run: pnpm e2e
         env:
-          E2E_NO_SERVER: "true"  # preview server handled in config
+          E2E_NO_SERVER: "true" # preview server handled in config
 
       - name: Upload diff on failure
         if: failure()

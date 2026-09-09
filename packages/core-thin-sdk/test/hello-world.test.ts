@@ -139,7 +139,10 @@ describe("hello-world integration (Phase 1 PoC)", () => {
     // Adding ws_c should evict ws_a (LRU)
     await pool.getOrCreate("ws_c", { title: "c" })
     expect(pool.size()).toBe(2)
-    const remaining = pool.list().map((s) => s.id).sort()
+    const remaining = pool
+      .list()
+      .map((s) => s.id)
+      .sort()
     // ws_a (oldest) should be gone; ws_b and ws_c remain
     expect(remaining.every((id) => id.startsWith("ses_") && id !== "ses_a")).toBe(true)
 

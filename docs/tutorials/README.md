@@ -5,12 +5,12 @@ demonstrating Maximilian. Record them as screen-capture walkthroughs.
 
 ## Available tutorials
 
-| # | Title | Length | Audience | Status |
-|---|---|---|---|---|
-| 01 | [Quickstart: hello-meta-agent](01-quickstart.md) | 3 min | New users | Draft |
-| 02 | [TruthAudit: from prediction to verification](02-truth-audit.md) | 8 min | Power users | Draft |
-| 03 | [Self-evolution: birth → promote → retire](03-self-evolution.md) | 12 min | Operators | Draft |
-| 04 | [Digital Twin: shadow → canary → full rollout](04-digital-twin.md) | 10 min | Operators | Draft |
+| #   | Title                                                              | Length | Audience    | Status |
+| --- | ------------------------------------------------------------------ | ------ | ----------- | ------ |
+| 01  | [Quickstart: hello-meta-agent](01-quickstart.md)                   | 3 min  | New users   | Draft  |
+| 02  | [TruthAudit: from prediction to verification](02-truth-audit.md)   | 8 min  | Power users | Draft  |
+| 03  | [Self-evolution: birth → promote → retire](03-self-evolution.md)   | 12 min | Operators   | Draft  |
+| 04  | [Digital Twin: shadow → canary → full rollout](04-digital-twin.md) | 10 min | Operators   | Draft  |
 
 ## Production notes
 

@@ -75,7 +75,9 @@ export function DialogWorkspaceList(props: DialogWorkspaceListProps) {
         <SelectInput
           items={items}
           onSelect={(item) => {
-            setDeleting((prev) => (prev === item.value.workspace.id ? prev : item.value.workspace.id))
+            setDeleting((prev) =>
+              prev === item.value.workspace.id ? prev : item.value.workspace.id,
+            )
             props.onSelect?.(item.value.workspace)
           }}
           itemComponent={({ isSelected, label }) => (

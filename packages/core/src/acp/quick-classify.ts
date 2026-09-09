@@ -23,18 +23,12 @@
  * No I/O. No side effects. Pure function.
  */
 
-import type { A2AContent, A2APart } from "./index.js";
+import type { A2AContent, A2APart } from "./index.js"
 
-export type QuickClassify =
-  | "noop"
-  | "binary"
-  | "passthrough"
-  | "complex"
-  | "sensitive"
-  | "unknown";
+export type QuickClassify = "noop" | "binary" | "passthrough" | "complex" | "sensitive" | "unknown"
 
 /** Byte threshold for "complex" content. Below this, treat as passthrough. */
-export const PASSTHROUGH_MAX_BYTES = 1024;
+export const PASSTHROUGH_MAX_BYTES = 1024
 
 /** Quick-check a list of regexes for sensitive content. */
 const SENSITIVE_PATTERNS: ReadonlyArray<RegExp> = [
@@ -52,7 +46,7 @@ const SENSITIVE_PATTERNS: ReadonlyArray<RegExp> = [
   /\b\d{3}-\d{2}-\d{4}\b/,
   // Email with 4+ digit TLD-like suffix; very rough PII signal.
   /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/,
-];
+]
 
 /** Compact "I acknowledge" tokens. Anything matching these is `noop`. */
 const NOOP_TOKENS = new Set<string>([
@@ -71,7 +65,7 @@ const NOOP_TOKENS = new Set<string>([
   "✅",
   "❌",
   "🆗",
-]);
+])
 
 const BLOB_DATA_PREFIXES = [
   "data:application/octet-stream",
@@ -79,34 +73,34 @@ const BLOB_DATA_PREFIXES = [
   "data:audio/",
   "data:video/",
   "data:font/",
-];
+]
 
 export function quickClassify(content: A2AContent): QuickClassify {
-  if (!content.parts || content.parts.length === 0) return "noop";
+  if (!content.parts || content.parts.length === 0) return "noop"
 
   // Aggregate size across all parts.
-  let totalBytes = 0;
-  let textBytes = 0;
+  let totalBytes = 0
+  let textBytes = 0
   for (const part of content.parts) {
-    totalBytes += partByteSize(part);
-    if (part.kind === "text") textBytes += part.text.length;
+    totalBytes += partByteSize(part)
+    if (part.kind === "text") textBytes += part.text.length
   }
 
-  if (totalBytes === 0) return "noop";
+  if (totalBytes === 0) return "noop"
 
   // Binary content: a single data part whose mimeType starts with image/ etc.
   if (content.parts.length === 1) {
-    const part = content.parts[0]!;
+    const part = content.parts[0]!
     if (part.kind === "data") {
-      const mime = part.mimeType;
+      const mime = part.mimeType
       if (BLOB_DATA_PREFIXES.some((p) => mime.startsWith(p.replace("data:", "")))) {
-        return "binary";
+        return "binary"
       }
       // Inline data: URI base64.
       if (typeof part.value === "object" && part.value !== null) {
-        const uri = (part.value as Record<string, unknown>).uri;
+        const uri = (part.value as Record<string, unknown>).uri
         if (typeof uri === "string" && BLOB_DATA_PREFIXES.some((p) => uri.startsWith(p))) {
-          return "binary";
+          return "binary"
         }
       }
     }
@@ -114,9 +108,9 @@ export function quickClassify(content: A2AContent): QuickClassify {
 
   // Noop: a single short text part whose value is an acknowledgement token.
   if (content.parts.length === 1) {
-    const part = content.parts[0]!;
+    const part = content.parts[0]!
     if (part.kind === "text" && NOOP_TOKENS.has(part.text.trim().toLowerCase())) {
-      return "noop";
+      return "noop"
     }
   }
 
@@ -124,14 +118,14 @@ export function quickClassify(content: A2AContent): QuickClassify {
   for (const part of content.parts) {
     if (part.kind === "text") {
       if (SENSITIVE_PATTERNS.some((p) => p.test(part.text))) {
-        return "sensitive";
+        return "sensitive"
       }
     } else if (part.kind === "data") {
       // For structured data parts, recurse on string-valued fields.
-      const flat = flattenStrings(part.value);
+      const flat = flattenStrings(part.value)
       for (const s of flat) {
         if (SENSITIVE_PATTERNS.some((p) => p.test(s))) {
-          return "sensitive";
+          return "sensitive"
         }
       }
     }
@@ -143,54 +137,54 @@ export function quickClassify(content: A2AContent): QuickClassify {
     content.parts[0]!.kind === "text" &&
     textBytes <= PASSTHROUGH_MAX_BYTES
   ) {
-    return "passthrough";
+    return "passthrough"
   }
 
   // Otherwise: full processing required.
-  if (totalBytes <= PASSTHROUGH_MAX_BYTES) return "passthrough";
-  return "complex";
+  if (totalBytes <= PASSTHROUGH_MAX_BYTES) return "passthrough"
+  return "complex"
 }
 
 function partByteSize(part: A2APart): number {
-  if (part.kind === "text") return part.text.length;
+  if (part.kind === "text") return part.text.length
   // For data parts, estimate via JSON length. We don't want to actually
   // serialise to avoid double-work; use a cheap heuristic instead.
-  return estimateObjectBytes(part.value);
+  return estimateObjectBytes(part.value)
 }
 
 function estimateObjectBytes(v: unknown): number {
-  if (v === null || v === undefined) return 4;
-  if (typeof v === "string") return v.length + 2;
-  if (typeof v === "number") return 12;
-  if (typeof v === "boolean") return 5;
+  if (v === null || v === undefined) return 4
+  if (typeof v === "string") return v.length + 2
+  if (typeof v === "number") return 12
+  if (typeof v === "boolean") return 5
   if (Array.isArray(v)) {
-    let total = 2; // for []
-    for (const item of v) total += estimateObjectBytes(item) + 1;
-    return total;
+    let total = 2 // for []
+    for (const item of v) total += estimateObjectBytes(item) + 1
+    return total
   }
   if (typeof v === "object") {
-    let total = 2;
+    let total = 2
     for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      total += k.length + 3 + estimateObjectBytes(val) + 1;
+      total += k.length + 3 + estimateObjectBytes(val) + 1
     }
-    return total;
+    return total
   }
-  return 8;
+  return 8
 }
 
 function flattenStrings(v: unknown, out: string[] = []): string[] {
   if (typeof v === "string") {
-    out.push(v);
-    return out;
+    out.push(v)
+    return out
   }
   if (Array.isArray(v)) {
-    for (const item of v) flattenStrings(item, out);
-    return out;
+    for (const item of v) flattenStrings(item, out)
+    return out
   }
   if (v && typeof v === "object") {
     for (const val of Object.values(v as Record<string, unknown>)) {
-      flattenStrings(val, out);
+      flattenStrings(val, out)
     }
   }
-  return out;
+  return out
 }

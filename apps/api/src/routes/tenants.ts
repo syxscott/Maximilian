@@ -11,14 +11,14 @@
  * `createRoute` definition so the full set shows up in the OpenAPI doc.
  */
 
-import { createRoute } from "@hono/zod-openapi";
-import type { Context } from "hono";
-import { z } from "zod";
-import { eq } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { tenants } from "@max/database";
-import { randomUUID } from "node:crypto";
-import { getLogger } from "@max/telemetry";
+import { createRoute } from "@hono/zod-openapi"
+import type { Context } from "hono"
+import { z } from "zod"
+import { eq } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { tenants } from "@max/database"
+import { randomUUID } from "node:crypto"
+import { getLogger } from "@max/telemetry"
 import {
   ErrorSchema,
   IdParamsSchema,
@@ -26,17 +26,17 @@ import {
   CreateTenantSchema,
   UpdateTenantSchema,
   TenantListResponseSchema,
-} from "../schemas.js";
+} from "../schemas.js"
 
-const log = getLogger("tenants");
+const log = getLogger("tenants")
 
 interface TenantRouteDeps {
-  db: PostgresJsDatabase;
+  db: PostgresJsDatabase
 }
 
 // ── OpenAPI route definitions ─────────────────────────────────────────────
 
-const OkResponseSchema = z.object({ ok: z.boolean() });
+const OkResponseSchema = z.object({ ok: z.boolean() })
 
 export const tenantCreateRoute = createRoute({
   method: "post",
@@ -44,20 +44,29 @@ export const tenantCreateRoute = createRoute({
   tags: ["tenants"],
   request: { body: { content: { "application/json": { schema: CreateTenantSchema } } } },
   responses: {
-    201: { content: { "application/json": { schema: TenantSchema } }, description: "Tenant created" },
+    201: {
+      content: { "application/json": { schema: TenantSchema } },
+      description: "Tenant created",
+    },
     400: { content: { "application/json": { schema: ErrorSchema } }, description: "Invalid body" },
-    409: { content: { "application/json": { schema: ErrorSchema } }, description: "Slug already exists" },
+    409: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Slug already exists",
+    },
   },
-});
+})
 
 export const tenantListRoute = createRoute({
   method: "get",
   path: "/tenants",
   tags: ["tenants"],
   responses: {
-    200: { content: { "application/json": { schema: TenantListResponseSchema } }, description: "List of tenants" },
+    200: {
+      content: { "application/json": { schema: TenantListResponseSchema } },
+      description: "List of tenants",
+    },
   },
-});
+})
 
 export const tenantGetRoute = createRoute({
   method: "get",
@@ -66,9 +75,12 @@ export const tenantGetRoute = createRoute({
   request: { params: IdParamsSchema },
   responses: {
     200: { content: { "application/json": { schema: TenantSchema } }, description: "Tenant" },
-    404: { content: { "application/json": { schema: ErrorSchema } }, description: "Tenant not found" },
+    404: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Tenant not found",
+    },
   },
-});
+})
 
 export const tenantUpdateRoute = createRoute({
   method: "put",
@@ -81,9 +93,12 @@ export const tenantUpdateRoute = createRoute({
   responses: {
     200: { content: { "application/json": { schema: OkResponseSchema } }, description: "Updated" },
     400: { content: { "application/json": { schema: ErrorSchema } }, description: "Invalid body" },
-    404: { content: { "application/json": { schema: ErrorSchema } }, description: "Tenant not found" },
+    404: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Tenant not found",
+    },
   },
-});
+})
 
 export const tenantDeleteRoute = createRoute({
   method: "delete",
@@ -92,36 +107,47 @@ export const tenantDeleteRoute = createRoute({
   request: { params: IdParamsSchema },
   responses: {
     200: { content: { "application/json": { schema: OkResponseSchema } }, description: "Deleted" },
-    404: { content: { "application/json": { schema: ErrorSchema } }, description: "Tenant not found" },
+    404: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Tenant not found",
+    },
   },
-});
+})
 
 export function tenantRoutes(deps: TenantRouteDeps) {
-  const { db } = deps;
+  const { db } = deps
 
   return {
     create: async (c: Context) => {
-      const body = c.req.valid("json" as never) as { name: string; slug: string; plan: "free" | "pro" | "enterprise" };
-      const { name, slug, plan } = body;
+      const body = c.req.valid("json" as never) as {
+        name: string
+        slug: string
+        plan: "free" | "pro" | "enterprise"
+      }
+      const { name, slug, plan } = body
 
       // Check slug uniqueness
-      const existing = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
+      const existing = await db
+        .select({ id: tenants.id })
+        .from(tenants)
+        .where(eq(tenants.slug, slug))
+        .limit(1)
       if (existing.length > 0) {
-        return c.json({ error: "Slug already exists" }, 409);
+        return c.json({ error: "Slug already exists" }, 409)
       }
 
-      const id = `ten-${randomUUID()}`;
-      const now = new Date();
+      const id = `ten-${randomUUID()}`
+      const now = new Date()
 
-      await db.insert(tenants).values({ id, name, slug, plan, createdAt: now, updatedAt: now });
+      await db.insert(tenants).values({ id, name, slug, plan, createdAt: now, updatedAt: now })
 
-      log.info({ tenantId: id, name, slug }, "tenant created");
+      log.info({ tenantId: id, name, slug }, "tenant created")
 
-      return c.json({ id, name, slug, plan }, 201);
+      return c.json({ id, name, slug, plan }, 201)
     },
 
     list: async (c: Context) => {
-      const rows = await db.select().from(tenants);
+      const rows = await db.select().from(tenants)
       return c.json({
         items: rows.map((r) => ({
           id: r.id,
@@ -131,16 +157,16 @@ export function tenantRoutes(deps: TenantRouteDeps) {
           createdAt: r.createdAt.toISOString(),
           updatedAt: r.updatedAt.toISOString(),
         })),
-      });
+      })
     },
 
     get: async (c: Context) => {
-      const id = c.req.param("id")!;
-      const rows = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
+      const id = c.req.param("id")!
+      const rows = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1)
       if (rows.length === 0) {
-        return c.json({ error: "Tenant not found" }, 404);
+        return c.json({ error: "Tenant not found" }, 404)
       }
-      const r = rows[0];
+      const r = rows[0]
       return c.json({
         id: r.id,
         name: r.name,
@@ -148,43 +174,50 @@ export function tenantRoutes(deps: TenantRouteDeps) {
         plan: r.plan,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
-      });
+      })
     },
 
     update: async (c: Context) => {
-      const id = c.req.param("id")!;
-      const body = c.req.valid("json" as never) as { name?: string; plan?: "free" | "pro" | "enterprise" };
-
-      const existing = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
-      if (existing.length === 0) {
-        return c.json({ error: "Tenant not found" }, 404);
+      const id = c.req.param("id")!
+      const body = c.req.valid("json" as never) as {
+        name?: string
+        plan?: "free" | "pro" | "enterprise"
       }
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
-      if (body.name !== undefined) updates.name = body.name;
-      if (body.plan !== undefined) updates.plan = body.plan;
+      const existing = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1)
+      if (existing.length === 0) {
+        return c.json({ error: "Tenant not found" }, 404)
+      }
 
-      await db.update(tenants).set(updates).where(eq(tenants.id, id));
+      const updates: Record<string, unknown> = { updatedAt: new Date() }
+      if (body.name !== undefined) updates.name = body.name
+      if (body.plan !== undefined) updates.plan = body.plan
 
-      log.info({ tenantId: id, updates: body }, "tenant updated");
+      await db.update(tenants).set(updates).where(eq(tenants.id, id))
 
-      return c.json({ ok: true });
+      log.info({ tenantId: id, updates: body }, "tenant updated")
+
+      return c.json({ ok: true })
     },
 
     remove: async (c: Context) => {
-      const id = c.req.param("id")!;
+      const id = c.req.param("id")!
 
-      const existing = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, id)).limit(1);
+      const existing = await db
+        .select({ id: tenants.id })
+        .from(tenants)
+        .where(eq(tenants.id, id))
+        .limit(1)
       if (existing.length === 0) {
-        return c.json({ error: "Tenant not found" }, 404);
+        return c.json({ error: "Tenant not found" }, 404)
       }
 
       // CASCADE will delete all tenant data
-      await db.delete(tenants).where(eq(tenants.id, id));
+      await db.delete(tenants).where(eq(tenants.id, id))
 
-      log.info({ tenantId: id }, "tenant deleted");
+      log.info({ tenantId: id }, "tenant deleted")
 
-      return c.json({ ok: true });
+      return c.json({ ok: true })
     },
-  };
+  }
 }

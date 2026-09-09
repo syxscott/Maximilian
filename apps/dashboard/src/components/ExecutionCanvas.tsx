@@ -103,8 +103,8 @@ function GraphCanvas({ graph }: { graph: UIGraph }) {
       nodes.map((n) => ({ id: n.id, width: NODE_W, height: NODE_H })),
       edges.map((e) => ({ source: e.source, target: e.target })),
       { gapX: GAP_X, gapY: GAP_Y, padding: PAD },
-    );
-    return { positions: r.positions, totalW: r.width, totalH: r.height };
+    )
+    return { positions: r.positions, totalW: r.width, totalH: r.height }
   }, [nodes, edges])
 
   return (

@@ -42,7 +42,14 @@ function Install(props: { api: TuiPluginApi }) {
 
   useBindings(() => ({
     enabled: !busy,
-    bindings: [{ key: "tab", desc: "Toggle install scope", group: "Plugins", cmd: () => setGlobal((value) => !value) }],
+    bindings: [
+      {
+        key: "tab",
+        desc: "Toggle install scope",
+        group: "Plugins",
+        cmd: () => setGlobal((value) => !value),
+      },
+    ],
   }))
 
   return (
@@ -107,7 +114,8 @@ function Install(props: { api: TuiPluginApi }) {
               if (!ok) {
                 props.api.ui.toast({
                   variant: "warning",
-                  message: "Installed plugin, but runtime load failed. See console/logs; restart TUI to retry.",
+                  message:
+                    "Installed plugin, but runtime load failed. See console/logs; restart TUI to retry.",
                 })
                 show(props.api)
                 return

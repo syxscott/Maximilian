@@ -22,7 +22,9 @@ export interface NotificationOptions {
   dismissible?: boolean
 }
 
-interface InternalNotification extends Required<Omit<NotificationOptions, "action" | "description">> {
+interface InternalNotification extends Required<
+  Omit<NotificationOptions, "action" | "description">
+> {
   description?: React.ReactNode
   action?: NotificationAction
 }
@@ -81,7 +83,11 @@ class NotificationStore {
 const store = new NotificationStore()
 
 function useNotifications() {
-  return React.useSyncExternalStore(store.subscribe.bind(store), store.getSnapshot, store.getServerSnapshot)
+  return React.useSyncExternalStore(
+    store.subscribe.bind(store),
+    store.getSnapshot,
+    store.getServerSnapshot,
+  )
 }
 
 const toneStyles: Record<NotificationTone, string> = {
@@ -163,9 +169,12 @@ const NotificationItem: React.FC<{
   )
 }
 
-export interface NotificationViewportProps
-  extends Omit<React.ComponentPropsWithoutRef<typeof ToastPrimitive.Viewport>, "children"> {
-  position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center"
+export interface NotificationViewportProps extends Omit<
+  React.ComponentPropsWithoutRef<typeof ToastPrimitive.Viewport>,
+  "children"
+> {
+  position?:
+    "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center"
 }
 
 const positionClasses: Record<NonNullable<NotificationViewportProps["position"]>, string> = {
@@ -209,9 +218,11 @@ export const NotificationViewport: React.FC<NotificationViewportProps> = ({
  */
 export const notify = {
   push: (options: NotificationOptions) => store.push(options),
-  success: (options: Omit<NotificationOptions, "tone">) => store.push({ ...options, tone: "success" }),
+  success: (options: Omit<NotificationOptions, "tone">) =>
+    store.push({ ...options, tone: "success" }),
   info: (options: Omit<NotificationOptions, "tone">) => store.push({ ...options, tone: "info" }),
-  warning: (options: Omit<NotificationOptions, "tone">) => store.push({ ...options, tone: "warning" }),
+  warning: (options: Omit<NotificationOptions, "tone">) =>
+    store.push({ ...options, tone: "warning" }),
   error: (options: Omit<NotificationOptions, "tone">) => store.push({ ...options, tone: "error" }),
   dismiss: (id: string) => store.dismiss(id),
   clear: () => store.clear(),

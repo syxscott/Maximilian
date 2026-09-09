@@ -13,9 +13,9 @@
  * downstream decision logic.
  */
 
-import { describe, it, expect } from "vitest";
-import { ReplayEngine } from "../src/replay-engine.js";
-import type { Execution, ReplayInput, Proposal } from "../src/types.js";
+import { describe, it, expect } from "vitest"
+import { ReplayEngine } from "../src/replay-engine.js"
+import type { Execution, ReplayInput, Proposal } from "../src/types.js"
 
 function makeProposal(): Proposal {
   return {
@@ -27,37 +27,37 @@ function makeProposal(): Proposal {
     utility: 0.5,
     createdAt: new Date().toISOString(),
     status: "pending",
-  };
+  }
 }
 
 describe("ReplayEngine — M8 zero-affected short-circuit", () => {
   it("returns affectedExecutions: 0 when no executions match the subject or target", async () => {
     const engine = new ReplayEngine({
       getExecutions: async () => [] as Execution[],
-    });
-    const input: ReplayInput = { proposal: makeProposal() };
-    const out = await engine.replay(input);
-    expect(out.affectedExecutions).toBe(0);
-    expect(out.baselineQuality).toBe(0);
-    expect(out.simulatedQuality).toBe(0);
-    expect(out.qualityDelta).toBe(0);
-  });
+    })
+    const input: ReplayInput = { proposal: makeProposal() }
+    const out = await engine.replay(input)
+    expect(out.affectedExecutions).toBe(0)
+    expect(out.baselineQuality).toBe(0)
+    expect(out.simulatedQuality).toBe(0)
+    expect(out.qualityDelta).toBe(0)
+  })
 
   it("does not invoke simulation when affected.length === 0", async () => {
-    let simCalls = 0;
+    let simCalls = 0
     const engine = new ReplayEngine({
       getExecutions: async () => [] as Execution[],
       simulation: {
         async simulateDelta() {
-          simCalls++;
-          return { qualityDelta: 0.5 };
+          simCalls++
+          return { qualityDelta: 0.5 }
         },
       },
       captureSimulation: async () => ({ before: {} as never, after: {} as never }),
-    });
-    await engine.replay({ proposal: makeProposal() });
-    expect(simCalls).toBe(0);
-  });
+    })
+    await engine.replay({ proposal: makeProposal() })
+    expect(simCalls).toBe(0)
+  })
 
   it("computes baseline from matching executions when present", async () => {
     const execs: Execution[] = [
@@ -83,15 +83,15 @@ describe("ReplayEngine — M8 zero-affected short-circuit", () => {
           blueprintId: "bp-3",
           review: { score: 0.0 },
           createdAt: new Date().toISOString(),
-        };
-        return e;
+        }
+        return e
       })(),
-    ];
-    const engine = new ReplayEngine({ getExecutions: async () => execs });
-    const out = await engine.replay({ proposal: makeProposal(), scoreDelta: 0.1 });
-    expect(out.affectedExecutions).toBe(2);
-    expect(out.baselineQuality).toBeCloseTo(0.7);
-    expect(out.simulatedQuality).toBeCloseTo(0.8);
-    expect(out.qualityDelta).toBeCloseTo(0.1);
-  });
-});
+    ]
+    const engine = new ReplayEngine({ getExecutions: async () => execs })
+    const out = await engine.replay({ proposal: makeProposal(), scoreDelta: 0.1 })
+    expect(out.affectedExecutions).toBe(2)
+    expect(out.baselineQuality).toBeCloseTo(0.7)
+    expect(out.simulatedQuality).toBeCloseTo(0.8)
+    expect(out.qualityDelta).toBeCloseTo(0.1)
+  })
+})

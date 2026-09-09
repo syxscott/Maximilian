@@ -2,8 +2,10 @@ import * as React from "react"
 import { Copy } from "lucide-react"
 import { cn } from "../../lib/utils.js"
 
-export interface TextInputV2Props
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
+export interface TextInputV2Props extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "type"
+> {
   showCopyButton?: boolean
   copyLabel?: string
   onCopyClick?: (event: React.MouseEvent<HTMLButtonElement>) => void

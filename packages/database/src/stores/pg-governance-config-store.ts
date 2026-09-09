@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { governanceConfig } from "../schema.js";
+import { eq } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { governanceConfig } from "../schema.js"
 
-const SINGLETON_ID = "singleton";
+const SINGLETON_ID = "singleton"
 
 /**
  * PostgreSQL-backed governance config store.
@@ -19,9 +19,9 @@ export class PgGovernanceConfigStore {
       .select()
       .from(governanceConfig)
       .where(eq(governanceConfig.id, SINGLETON_ID))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToConfig(rows[0]);
+      .limit(1)
+    if (rows.length === 0) return undefined
+    return rowToConfig(rows[0])
   }
 
   async save(cfg: GovernanceConfigRow): Promise<void> {
@@ -49,18 +49,18 @@ export class PgGovernanceConfigStore {
           hitlAlwaysForActions: cfg.hitlAlwaysForActions,
           updatedAt: new Date(),
         },
-      });
+      })
   }
 }
 
 export interface GovernanceConfigRow {
-  maxAgents: number;
-  maxCapabilities: number;
-  maxDepth: number;
-  requireReviewForBirth: boolean;
-  minUsageForBirth: number;
-  hitlRiskThreshold: number;
-  hitlAlwaysForActions: string[];
+  maxAgents: number
+  maxCapabilities: number
+  maxDepth: number
+  requireReviewForBirth: boolean
+  minUsageForBirth: number
+  hitlRiskThreshold: number
+  hitlAlwaysForActions: string[]
 }
 
 function rowToConfig(row: typeof governanceConfig.$inferSelect): GovernanceConfigRow {
@@ -72,7 +72,7 @@ function rowToConfig(row: typeof governanceConfig.$inferSelect): GovernanceConfi
     minUsageForBirth: row.minUsageForBirth,
     hitlRiskThreshold: row.hitlRiskThreshold,
     hitlAlwaysForActions: (row.hitlAlwaysForActions as string[]) ?? ["retire"],
-  };
+  }
 }
 
 // PgGovernanceConfigStore: PostgreSQL-backed governance configuration persistence.

@@ -439,10 +439,7 @@ export interface PresetValidationError {
   readonly message: string
 }
 
-export function validatePreset(
-  provider: string,
-  preset: ModelPreset,
-): PresetValidationError[] {
+export function validatePreset(provider: string, preset: ModelPreset): PresetValidationError[] {
   const errors: PresetValidationError[] = []
   if (!preset.id || preset.id.length === 0) {
     errors.push({ provider, modelId: preset.id, message: "model id must be non-empty" })
@@ -451,24 +448,30 @@ export function validatePreset(
     errors.push({ provider, modelId: preset.id, message: "model name must be non-empty" })
   }
   if (preset.limits) {
-    if (preset.limits.context !== undefined
-      && (!Number.isInteger(preset.limits.context) || preset.limits.context <= 0)) {
+    if (
+      preset.limits.context !== undefined &&
+      (!Number.isInteger(preset.limits.context) || preset.limits.context <= 0)
+    ) {
       errors.push({
         provider,
         modelId: preset.id,
         message: `context window must be a positive integer (got ${preset.limits.context})`,
       })
     }
-    if (preset.limits.output !== undefined
-      && (!Number.isInteger(preset.limits.output) || preset.limits.output <= 0)) {
+    if (
+      preset.limits.output !== undefined &&
+      (!Number.isInteger(preset.limits.output) || preset.limits.output <= 0)
+    ) {
       errors.push({
         provider,
         modelId: preset.id,
         message: `output limit must be a positive integer (got ${preset.limits.output})`,
       })
     }
-    if (preset.limits.input !== undefined
-      && (!Number.isInteger(preset.limits.input) || preset.limits.input <= 0)) {
+    if (
+      preset.limits.input !== undefined &&
+      (!Number.isInteger(preset.limits.input) || preset.limits.input <= 0)
+    ) {
       errors.push({
         provider,
         modelId: preset.id,
@@ -477,24 +480,30 @@ export function validatePreset(
     }
   }
   if (preset.cost) {
-    if (preset.cost.input !== undefined
-      && (typeof preset.cost.input !== "number" || preset.cost.input < 0)) {
+    if (
+      preset.cost.input !== undefined &&
+      (typeof preset.cost.input !== "number" || preset.cost.input < 0)
+    ) {
       errors.push({
         provider,
         modelId: preset.id,
         message: `input cost must be non-negative (got ${preset.cost.input})`,
       })
     }
-    if (preset.cost.output !== undefined
-      && (typeof preset.cost.output !== "number" || preset.cost.output < 0)) {
+    if (
+      preset.cost.output !== undefined &&
+      (typeof preset.cost.output !== "number" || preset.cost.output < 0)
+    ) {
       errors.push({
         provider,
         modelId: preset.id,
         message: `output cost must be non-negative (got ${preset.cost.output})`,
       })
     }
-    if (preset.cost.cache !== undefined
-      && (typeof preset.cost.cache !== "number" || preset.cost.cache < 0)) {
+    if (
+      preset.cost.cache !== undefined &&
+      (typeof preset.cost.cache !== "number" || preset.cost.cache < 0)
+    ) {
       errors.push({
         provider,
         modelId: preset.id,
@@ -601,7 +610,7 @@ export function resolvePreset(input: {
         id,
         name: id,
         baseURL: input.baseURL,
-        apiKeyEnv: input.apiKeyEnv ? [input.apiKeyEnv] : envVars ?? [],
+        apiKeyEnv: input.apiKeyEnv ? [input.apiKeyEnv] : (envVars ?? []),
         capabilities: undefined,
         limits: undefined,
         cost: undefined,
@@ -630,7 +639,7 @@ export function resolvePreset(input: {
         id,
         name: id,
         baseURL: input.baseURL ?? defaultBaseURL ?? "",
-        apiKeyEnv: input.apiKeyEnv ? [input.apiKeyEnv] : envVars ?? [],
+        apiKeyEnv: input.apiKeyEnv ? [input.apiKeyEnv] : (envVars ?? []),
         capabilities: undefined,
         limits: undefined,
         cost: undefined,
@@ -645,7 +654,7 @@ export function resolvePreset(input: {
       id: hit.id,
       name: hit.name,
       baseURL: input.baseURL ?? defaultBaseURL ?? "",
-      apiKeyEnv: input.apiKeyEnv ? [input.apiKeyEnv] : envVars ?? [],
+      apiKeyEnv: input.apiKeyEnv ? [input.apiKeyEnv] : (envVars ?? []),
       capabilities: hit.capabilities,
       limits: hit.limits,
       cost: hit.cost,

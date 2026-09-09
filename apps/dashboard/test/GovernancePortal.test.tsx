@@ -1,22 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { GovernancePortal } from "../src/components/GovernancePortal";
-import type { PendingProposal } from "../src/api";
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { GovernancePortal } from "../src/components/GovernancePortal"
+import type { PendingProposal } from "../src/api"
 
 vi.mock("../src/api", async () => {
-  const actual = await vi.importActual<typeof import("../src/api")>("../src/api");
+  const actual = await vi.importActual<typeof import("../src/api")>("../src/api")
   return {
     ...actual,
     govApi: {
       listPending: vi.fn(),
       resolveProposal: vi.fn(),
     },
-  };
-});
+  }
+})
 
-import { govApi } from "../src/api";
+import { govApi } from "../src/api"
 
 const mockProposal: PendingProposal = {
   proposalId: "prop-1",
@@ -40,7 +40,7 @@ const mockProposal: PendingProposal = {
     riskPenalty: 0.0,
     utility: 0.15,
   },
-};
+}
 
 function renderWithQuery(ui: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -48,97 +48,112 @@ function renderWithQuery(ui: React.ReactElement) {
       queries: { retry: false, gcTime: 0 },
       mutations: { retry: false },
     },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
-  );
+  })
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 }
 
 describe("GovernancePortal", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-  });
+    vi.clearAllMocks()
+  })
 
   it("renders empty state when no proposals", async () => {
-    (govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0, proposals: [] });
-    renderWithQuery(<GovernancePortal />);
-    expect(await screen.findByText(/No proposals awaiting human review/i)).toBeInTheDocument();
-  });
+    ;(govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0, proposals: [] })
+    renderWithQuery(<GovernancePortal />)
+    expect(await screen.findByText(/No proposals awaiting human review/i)).toBeInTheDocument()
+  })
 
   it("renders a proposal card with all deltas", async () => {
-    (govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, proposals: [mockProposal] });
-    renderWithQuery(<GovernancePortal />);
-    expect(await screen.findByText(/backend\/agent-x/)).toBeInTheDocument();
-    expect(screen.getByText("promote")).toBeInTheDocument();
-    expect(screen.getByText(/Consistently high quality scores/)).toBeInTheDocument();
-    expect(screen.getByText(/Cost.*\+0\.05/)).toBeInTheDocument();
-    expect(screen.getByText(/Latency.*\+100ms/)).toBeInTheDocument();
-  });
+    ;(govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+      proposals: [mockProposal],
+    })
+    renderWithQuery(<GovernancePortal />)
+    expect(await screen.findByText(/backend\/agent-x/)).toBeInTheDocument()
+    expect(screen.getByText("promote")).toBeInTheDocument()
+    expect(screen.getByText(/Consistently high quality scores/)).toBeInTheDocument()
+    expect(screen.getByText(/Cost.*\+0\.05/)).toBeInTheDocument()
+    expect(screen.getByText(/Latency.*\+100ms/)).toBeInTheDocument()
+  })
 
   it("shows list error when API fails", async () => {
-    (govApi.listPending as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Network error"));
-    renderWithQuery(<GovernancePortal />);
-    expect(await screen.findByText(/Failed to load pending proposals/i)).toBeInTheDocument();
-  });
+    ;(govApi.listPending as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Network error"))
+    renderWithQuery(<GovernancePortal />)
+    expect(await screen.findByText(/Failed to load pending proposals/i)).toBeInTheDocument()
+  })
 
   it("opens approve modal and submits with reason + user", async () => {
-    (govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, proposals: [mockProposal] });
-    (govApi.resolveProposal as ReturnType<typeof vi.fn>).mockResolvedValue({
+    ;(govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+      proposals: [mockProposal],
+    })
+    ;(govApi.resolveProposal as ReturnType<typeof vi.fn>).mockResolvedValue({
       proposalId: "prop-1",
       status: "approved",
       resolvedBy: "admin",
-    });
-    const user = userEvent.setup();
-    renderWithQuery(<GovernancePortal />);
-    await screen.findByText(/backend\/agent-x/);
+    })
+    const user = userEvent.setup()
+    renderWithQuery(<GovernancePortal />)
+    await screen.findByText(/backend\/agent-x/)
 
-    await user.click(screen.getByRole("button", { name: /Approve Mutation/i }));
+    await user.click(screen.getByRole("button", { name: /Approve Mutation/i }))
 
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText(/Approve Proposal/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByText(/Approve Proposal/)).toBeInTheDocument()
 
-    await user.type(screen.getByPlaceholderText(/Why are you approving/i), "Looks good");
-    const submitBtn = screen.getByRole("button", { name: /^Approve$/i });
-    await user.click(submitBtn);
+    await user.type(screen.getByPlaceholderText(/Why are you approving/i), "Looks good")
+    const submitBtn = screen.getByRole("button", { name: /^Approve$/i })
+    await user.click(submitBtn)
 
     await waitFor(() => {
-      expect(govApi.resolveProposal).toHaveBeenCalledWith("prop-1", "approve", "Looks good", "admin");
-    });
-  });
+      expect(govApi.resolveProposal).toHaveBeenCalledWith(
+        "prop-1",
+        "approve",
+        "Looks good",
+        "admin",
+      )
+    })
+  })
 
   it("Escape closes the modal without submitting", async () => {
-    (govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, proposals: [mockProposal] });
-    const user = userEvent.setup();
-    renderWithQuery(<GovernancePortal />);
-    await screen.findByText(/backend\/agent-x/);
-    await user.click(screen.getByRole("button", { name: /Deny Mutation/i }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    ;(govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+      proposals: [mockProposal],
+    })
+    const user = userEvent.setup()
+    renderWithQuery(<GovernancePortal />)
+    await screen.findByText(/backend\/agent-x/)
+    await user.click(screen.getByRole("button", { name: /Deny Mutation/i }))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
 
-    await user.keyboard("{Escape}");
+    await user.keyboard("{Escape}")
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-    expect(govApi.resolveProposal).not.toHaveBeenCalled();
-  });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    })
+    expect(govApi.resolveProposal).not.toHaveBeenCalled()
+  })
 
   it("rejects with reject action when Deny clicked", async () => {
-    (govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, proposals: [mockProposal] });
-    (govApi.resolveProposal as ReturnType<typeof vi.fn>).mockResolvedValue({
+    ;(govApi.listPending as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+      proposals: [mockProposal],
+    })
+    ;(govApi.resolveProposal as ReturnType<typeof vi.fn>).mockResolvedValue({
       proposalId: "prop-1",
       status: "rejected",
       resolvedBy: "admin",
-    });
-    const user = userEvent.setup();
-    renderWithQuery(<GovernancePortal />);
-    await screen.findByText(/backend\/agent-x/);
+    })
+    const user = userEvent.setup()
+    renderWithQuery(<GovernancePortal />)
+    await screen.findByText(/backend\/agent-x/)
 
-    await user.click(screen.getByRole("button", { name: /Deny Mutation/i }));
-    await user.type(screen.getByPlaceholderText(/Why are you approving/i), "Not now");
-    await user.click(screen.getByRole("button", { name: /^Reject$/i }));
+    await user.click(screen.getByRole("button", { name: /Deny Mutation/i }))
+    await user.type(screen.getByPlaceholderText(/Why are you approving/i), "Not now")
+    await user.click(screen.getByRole("button", { name: /^Reject$/i }))
 
     await waitFor(() => {
-      expect(govApi.resolveProposal).toHaveBeenCalledWith("prop-1", "reject", "Not now", "admin");
-    });
-  });
-});
+      expect(govApi.resolveProposal).toHaveBeenCalledWith("prop-1", "reject", "Not now", "admin")
+    })
+  })
+})

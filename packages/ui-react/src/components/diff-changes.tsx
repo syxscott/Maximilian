@@ -11,18 +11,25 @@ export interface DiffChangesProps extends Omit<HTMLAttributes<HTMLDivElement>, "
   variant?: "default" | "bars"
 }
 
-export function DiffChanges({ changes, variant = "default", className, ...rest }: DiffChangesProps) {
-  const additions = useMemo(() =>
-    Array.isArray(changes)
-      ? changes.reduce((acc, diff) => acc + (diff.additions ?? 0), 0)
-      : changes.additions,
+export function DiffChanges({
+  changes,
+  variant = "default",
+  className,
+  ...rest
+}: DiffChangesProps) {
+  const additions = useMemo(
+    () =>
+      Array.isArray(changes)
+        ? changes.reduce((acc, diff) => acc + (diff.additions ?? 0), 0)
+        : changes.additions,
     [changes],
   )
 
-  const deletions = useMemo(() =>
-    Array.isArray(changes)
-      ? changes.reduce((acc, diff) => acc + (diff.deletions ?? 0), 0)
-      : changes.deletions,
+  const deletions = useMemo(
+    () =>
+      Array.isArray(changes)
+        ? changes.reduce((acc, diff) => acc + (diff.deletions ?? 0), 0)
+        : changes.deletions,
     [changes],
   )
 

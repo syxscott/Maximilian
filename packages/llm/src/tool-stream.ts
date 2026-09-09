@@ -67,17 +67,14 @@ export interface ToolTerminal<Success = unknown, Error = string> {
  * 必须是 Progress（0个或多个）后跟 1 个 Terminal。
  */
 export type ToolStreamItem<Success = unknown, Error = string> =
-  | ToolProgress<Success>
-  | ToolTerminal<Success, Error>
+  ToolProgress<Success> | ToolTerminal<Success, Error>
 
 // ── Type Guards ───────────────────────────────────────────────────────────────
 
 /**
  * 判断是否为 Progress 项
  */
-export function isProgress<Item>(
-  item: ToolStreamItem<Item>,
-): item is ToolProgress<Item> {
+export function isProgress<Item>(item: ToolStreamItem<Item>): item is ToolProgress<Item> {
   return item.type === "progress"
 }
 
@@ -181,10 +178,10 @@ export async function* fromPromise<Success>(
   } catch (error) {
     // Cast needed because terminalError returns ToolTerminal<unknown, Error>
     // which isn't directly assignable to ToolTerminal<Success, Error> due to invariance
-    ;(yield terminalError(
+    yield terminalError(
       error instanceof Error ? error.message : String(error),
       Date.now() - start,
-    ) as ToolStreamItem<Success>)
+    ) as ToolStreamItem<Success>
   }
 }
 
@@ -229,9 +226,7 @@ export function progressToContent(item: ToolProgress): ToolContent[] {
 /**
  * 将 ToolTerminal 转换为 ToolContent 数组。
  */
-export function terminalToContent<Success>(
-  item: ToolTerminal<Success>,
-): ToolContent[] {
+export function terminalToContent<Success>(item: ToolTerminal<Success>): ToolContent[] {
   if (item.ok) {
     if (item.result === undefined) return []
     if (typeof item.result === "string") return [{ type: "text", text: item.result }]
@@ -260,10 +255,7 @@ export interface StreamingTool<Params = unknown, Success = unknown> {
    * 执行工具并返回流式输出。
    * 必须产出 [Progress*; Terminal] 结构。
    */
-  execute(
-    input: Params,
-    context: ToolExecuteContext,
-  ): AsyncIterable<ToolStreamItem<Success>>
+  execute(input: Params, context: ToolExecuteContext): AsyncIterable<ToolStreamItem<Success>>
 }
 
 // ── Tool Output 转换 ────────────────────────────────────────────────────────────
@@ -275,9 +267,7 @@ import type { ToolOutput } from "./messages.js"
  *
  * 用于流式执行完成后，将所有项汇总为单一的 ToolOutput。
  */
-export function streamToToolOutput<Success>(
-  items: ToolStreamItem<Success>[],
-): ToolOutput {
+export function streamToToolOutput<Success>(items: ToolStreamItem<Success>[]): ToolOutput {
   let finalResult: Success | undefined
   let finalError: string | undefined
   const content: ToolContent[] = []
@@ -293,9 +283,8 @@ export function streamToToolOutput<Success>(
   }
 
   return {
-    structured: finalError !== undefined
-      ? { error: finalError }
-      : (finalResult ?? { error: "unknown" }),
+    structured:
+      finalError !== undefined ? { error: finalError } : (finalResult ?? { error: "unknown" }),
     content,
   }
 }
@@ -308,16 +297,14 @@ export function streamToToolOutput<Success>(
  * @param tool 普通工具（execute 返回 Promise）
  * @returns 包装后的流式工具
  */
-export function toStreamingTool<Params, Success>(
-  tool: {
-    name: string
-    description: string
-    kind?: import("./tool-kind.js").ToolKind
-    inputSchema: Record<string, unknown>
-    outputSchema?: Record<string, unknown>
-    execute: (input: Params, context: ToolExecuteContext) => Promise<Success>
-  },
-): StreamingTool<Params, Success> {
+export function toStreamingTool<Params, Success>(tool: {
+  name: string
+  description: string
+  kind?: import("./tool-kind.js").ToolKind
+  inputSchema: Record<string, unknown>
+  outputSchema?: Record<string, unknown>
+  execute: (input: Params, context: ToolExecuteContext) => Promise<Success>
+}): StreamingTool<Params, Success> {
   return {
     name: tool.name,
     description: tool.description,
@@ -331,10 +318,10 @@ export function toStreamingTool<Params, Success>(
         yield terminalSuccess(result, Date.now() - start)
       } catch (error) {
         // Cast needed because terminalError returns ToolTerminal<unknown, Error>
-        ;(yield terminalError(
+        yield terminalError(
           error instanceof Error ? error.message : String(error),
           Date.now() - start,
-        ) as ToolStreamItem<Success>)
+        ) as ToolStreamItem<Success>
       }
     },
   }

@@ -14,7 +14,7 @@
  * Reference: https://stryker-mutator.io/docs/mutation-testing-elements/mutators/
  */
 
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   test: {
@@ -28,10 +28,7 @@ export default defineConfig({
     // directory by default in some versions). To be safe we list the
     // include glob as both the package-root relative path AND the
     // full repo-root path. Vitest deduplicates.
-    include: [
-      "test/**/*.test.ts",
-      "packages/meta-system/test/**/*.test.ts",
-    ],
+    include: ["test/**/*.test.ts", "packages/meta-system/test/**/*.test.ts"],
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
@@ -53,4 +50,4 @@ export default defineConfig({
       },
     },
   },
-});
+})

@@ -65,7 +65,10 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const { theme } = useTheme()
 
   const questions = useMemo(() => props.request.questions, [props.request.questions])
-  const single = useMemo(() => questions.length === 1 && questions[0]?.multiple !== true, [questions])
+  const single = useMemo(
+    () => questions.length === 1 && questions[0]?.multiple !== true,
+    [questions],
+  )
   const tabs = useMemo(() => (single ? 1 : questions.length + 1), [single, questions])
 
   const [tab, setTab] = useState(0)
@@ -76,10 +79,16 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const [editValue, setEditValue] = useState("")
 
   const question = useMemo(() => questions[tab], [questions, tab])
-  const isConfirm = useMemo(() => !single && tab === questions.length, [single, tab, questions.length])
+  const isConfirm = useMemo(
+    () => !single && tab === questions.length,
+    [single, tab, questions.length],
+  )
   const options = useMemo(() => question?.options ?? [], [question])
   const allowCustom = useMemo(() => question?.custom !== false, [question])
-  const isOther = useMemo(() => allowCustom && selected === options.length, [allowCustom, selected, options.length])
+  const isOther = useMemo(
+    () => allowCustom && selected === options.length,
+    [allowCustom, selected, options.length],
+  )
   const customValue = useMemo(() => customInputs[tab] ?? "", [customInputs, tab])
   const multi = useMemo(() => question?.multiple === true, [question])
   const customPicked = useMemo(() => {
@@ -169,20 +178,14 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     pick(opt.label)
   }, [isOther, multi, customValue, customPicked, options, selected, pick, toggle])
 
-  const moveTo = useCallback(
-    (index: number) => {
-      setSelected(index)
-    },
-    [],
-  )
+  const moveTo = useCallback((index: number) => {
+    setSelected(index)
+  }, [])
 
-  const selectTab = useCallback(
-    (index: number) => {
-      setTab(index)
-      setSelected(0)
-    },
-    [],
-  )
+  const selectTab = useCallback((index: number) => {
+    setTab(index)
+    setSelected(0)
+  }, [])
 
   // Handle editing mode input
   useInput(
@@ -338,13 +341,15 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
             const isActive = index === tab
             const isAnswered = (answers[index]?.length ?? 0) > 0
             return (
-              <Box
-                key={index}
-                paddingLeft={1}
-                paddingRight={1}
-              >
+              <Box key={index} paddingLeft={1} paddingRight={1}>
                 <Text
-                  color={isActive ? selectedForeground(theme, theme.accent) : isAnswered ? theme.text : undefined}
+                  color={
+                    isActive
+                      ? selectedForeground(theme, theme.accent)
+                      : isAnswered
+                        ? theme.text
+                        : undefined
+                  }
                   dimColor={!isActive && !isAnswered}
                 >
                   {q.header}
@@ -380,7 +385,10 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                 <Box key={i} flexDirection="column">
                   <Box flexDirection="row">
                     <Box paddingRight={1}>
-                      <Text color={active ? tint(theme.textMuted, theme.secondary, 0.6) : undefined} dimColor={!active}>
+                      <Text
+                        color={active ? tint(theme.textMuted, theme.secondary, 0.6) : undefined}
+                        dimColor={!active}
+                      >
                         {`${i + 1}.`}
                       </Text>
                     </Box>
@@ -389,9 +397,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                         {multi ? `[${picked ? "x" : " "}] ${opt.label}` : opt.label}
                       </Text>
                     </Box>
-                    {!multi ? (
-                      <Text color={theme.success}>{picked ? " v" : ""}</Text>
-                    ) : null}
+                    {!multi ? <Text color={theme.success}>{picked ? " v" : ""}</Text> : null}
                   </Box>
                   {opt.description ? (
                     <Box paddingLeft={3}>
@@ -407,24 +413,30 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
               <Box flexDirection="column">
                 <Box flexDirection="row">
                   <Box paddingRight={1}>
-                    <Text color={isOther ? tint(theme.textMuted, theme.secondary, 0.6) : undefined} dimColor={!isOther}>
+                    <Text
+                      color={isOther ? tint(theme.textMuted, theme.secondary, 0.6) : undefined}
+                      dimColor={!isOther}
+                    >
                       {`${options.length + 1}.`}
                     </Text>
                   </Box>
                   <Box>
-                    <Text color={isOther ? theme.secondary : customPicked ? theme.success : theme.text}>
-                      {multi ? `[${customPicked ? "x" : " "}] Type your own answer` : "Type your own answer"}
+                    <Text
+                      color={isOther ? theme.secondary : customPicked ? theme.success : theme.text}
+                    >
+                      {multi
+                        ? `[${customPicked ? "x" : " "}] Type your own answer`
+                        : "Type your own answer"}
                     </Text>
                   </Box>
-                  {!multi ? (
-                    <Text color={theme.success}>{customPicked ? " v" : ""}</Text>
-                  ) : null}
+                  {!multi ? <Text color={theme.success}>{customPicked ? " v" : ""}</Text> : null}
                 </Box>
 
                 {editing ? (
                   <Box paddingLeft={3}>
                     <Text color={theme.text}>
-                      {editValue}<Text color={theme.primary}>_</Text>
+                      {editValue}
+                      <Text color={theme.primary}>_</Text>
                     </Text>
                   </Box>
                 ) : null}

@@ -32,35 +32,35 @@ import {
   type TruthReport,
   type TruthVerdict,
   type ProposalAction,
-} from "./types.js";
-import { truthAuditVerdictsTotal } from "@max/telemetry";
+} from "./types.js"
+import { truthAuditVerdictsTotal } from "@max/telemetry"
 
 export interface TruthAuditDeps {
   /** Source of historical measurements (e.g. orchestrator's outcome store). */
-  getMeasurements?: () => Promise<TruthMeasurement[]> | TruthMeasurement[];
+  getMeasurements?: () => Promise<TruthMeasurement[]> | TruthMeasurement[]
   /**
    * Persistence hooks. When provided, every recordMeasurement() and
    * verify() call is mirrored to durable storage (e.g. PgTruthStore).
    * Survives restarts so calibration drift is visible across cycles.
    */
-  saveMeasurement?: (m: TruthMeasurement) => Promise<void> | void;
-  saveVerification?: (v: TruthVerification) => Promise<void> | void;
+  saveMeasurement?: (m: TruthMeasurement) => Promise<void> | void
+  saveVerification?: (v: TruthVerification) => Promise<void> | void
   /** Override tolerance / thresholds (mostly for testing). */
-  config?: Partial<typeof TRUTH_AUDIT_CONFIG>;
+  config?: Partial<typeof TRUTH_AUDIT_CONFIG>
   /** Override the current time (for deterministic tests). */
-  now?: () => Date;
+  now?: () => Date
   /** Source of id generator (defaults to randomUUID). */
-  idGenerator?: () => string;
+  idGenerator?: () => string
 }
 
 export class TruthAudit {
-  private readonly measurements: TruthMeasurement[] = [];
-  private readonly config: typeof TRUTH_AUDIT_CONFIG;
-  private readonly now: () => Date;
+  private readonly measurements: TruthMeasurement[] = []
+  private readonly config: typeof TRUTH_AUDIT_CONFIG
+  private readonly now: () => Date
 
   constructor(private deps: TruthAuditDeps = {}) {
-    this.config = { ...TRUTH_AUDIT_CONFIG, ...(deps.config ?? {}) };
-    this.now = deps.now ?? (() => new Date());
+    this.config = { ...TRUTH_AUDIT_CONFIG, ...(deps.config ?? {}) }
+    this.now = deps.now ?? (() => new Date())
     // H9-fix: callers should use `await TruthAudit.create(...)` instead of
     // constructing directly when historical persistence is wired — otherwise
     // the first verify()/report() may run before loadHistoricalMeasurements
@@ -77,18 +77,18 @@ export class TruthAudit {
    *   const truthAudit = await TruthAudit.create({ getMeasurements, saveMeasurement })
    */
   static async create(deps: TruthAuditDeps = {}): Promise<TruthAudit> {
-    const instance = new TruthAudit(deps);
-    await instance.loadHistoricalMeasurements();
-    return instance;
+    const instance = new TruthAudit(deps)
+    await instance.loadHistoricalMeasurements()
+    return instance
   }
 
   /** Load measurements from the persistence layer into memory. Public so
    *  `create()` can await it. Idempotent. */
   async loadHistoricalMeasurements(): Promise<void> {
-    if (!this.deps.getMeasurements) return;
-    const historical = await this.deps.getMeasurements();
+    if (!this.deps.getMeasurements) return
+    const historical = await this.deps.getMeasurements()
     for (const m of historical) {
-      this.measurements.push(m);
+      this.measurements.push(m)
     }
   }
 
@@ -106,16 +106,16 @@ export class TruthAudit {
     const m = TruthMeasurementSchema.parse({
       ...input,
       recordedAt: this.now().toISOString(),
-    });
-    this.measurements.push(m);
+    })
+    this.measurements.push(m)
     if (this.deps.saveMeasurement) {
       Promise.resolve(this.deps.saveMeasurement(m)).catch((err) => {
         // Use console.warn — telemetry may not be initialized at this layer.
         // Production should monitor this via the persistence layer's own metrics.
-        console.warn(`[TruthAudit] saveMeasurement failed: ${(err as Error).message}`);
-      });
+        console.warn(`[TruthAudit] saveMeasurement failed: ${(err as Error).message}`)
+      })
     }
-    return m;
+    return m
   }
 
   /**
@@ -123,37 +123,37 @@ export class TruthAudit {
    * for it. Returns null if no measurement exists yet (insufficient data).
    */
   verify(proposalId: string): TruthVerification | null {
-    const samples = this.measurements.filter((m) => m.proposalId === proposalId);
-    if (samples.length === 0) return null;
+    const samples = this.measurements.filter((m) => m.proposalId === proposalId)
+    if (samples.length === 0) return null
 
-    const totalSamples = samples.reduce((s, m) => s + m.sampleSize, 0);
-    const meanActual = average(samples.map((s) => s.actual.costDelta));
-    const meanPredCost = average(samples.map((s) => s.predicted.costDelta));
-    const meanPredLatency = average(samples.map((s) => s.predicted.latencyDeltaMs));
-    const meanPredQuality = average(samples.map((s) => s.predicted.qualityDelta));
-    const meanPredRisk = average(samples.map((s) => s.predicted.riskDelta));
+    const totalSamples = samples.reduce((s, m) => s + m.sampleSize, 0)
+    const meanActual = average(samples.map((s) => s.actual.costDelta))
+    const meanPredCost = average(samples.map((s) => s.predicted.costDelta))
+    const meanPredLatency = average(samples.map((s) => s.predicted.latencyDeltaMs))
+    const meanPredQuality = average(samples.map((s) => s.predicted.qualityDelta))
+    const meanPredRisk = average(samples.map((s) => s.predicted.riskDelta))
 
-    const meanActualLat = average(samples.map((s) => s.actual.latencyDeltaMs));
-    const meanActualQual = average(samples.map((s) => s.actual.qualityDelta));
-    const meanActualRisk = average(samples.map((s) => s.actual.riskDelta));
+    const meanActualLat = average(samples.map((s) => s.actual.latencyDeltaMs))
+    const meanActualQual = average(samples.map((s) => s.actual.qualityDelta))
+    const meanActualRisk = average(samples.map((s) => s.actual.riskDelta))
 
-    const driftCost = meanActual - meanPredCost;
-    const driftLat = meanActualLat - meanPredLatency;
-    const driftQual = meanActualQual - meanPredQuality;
-    const driftRisk = meanActualRisk - meanPredRisk;
+    const driftCost = meanActual - meanPredCost
+    const driftLat = meanActualLat - meanPredLatency
+    const driftQual = meanActualQual - meanPredQuality
+    const driftRisk = meanActualRisk - meanPredRisk
 
-    const absCost = Math.abs(driftCost);
-    const absLat = Math.abs(driftLat);
-    const absQual = Math.abs(driftQual);
-    const absRisk = Math.abs(driftRisk);
+    const absCost = Math.abs(driftCost)
+    const absLat = Math.abs(driftLat)
+    const absQual = Math.abs(driftQual)
+    const absRisk = Math.abs(driftRisk)
 
-    const maxAbsError = Math.max(absCost, absLat, absQual, absRisk);
+    const maxAbsError = Math.max(absCost, absLat, absQual, absRisk)
 
-    const relCost = safeRelativeError(driftCost, meanPredCost);
-    const relLat = safeRelativeError(driftLat, meanPredLatency);
-    const relQual = safeRelativeError(driftQual, meanPredQuality);
-    const relRisk = safeRelativeError(driftRisk, meanPredRisk);
-    const maxRelError = Math.max(relCost, relLat, relQual, relRisk);
+    const relCost = safeRelativeError(driftCost, meanPredCost)
+    const relLat = safeRelativeError(driftLat, meanPredLatency)
+    const relQual = safeRelativeError(driftQual, meanPredQuality)
+    const relRisk = safeRelativeError(driftRisk, meanPredRisk)
+    const maxRelError = Math.max(relCost, relLat, relQual, relRisk)
 
     const verdict = this.computeVerdict({
       absCost,
@@ -163,11 +163,10 @@ export class TruthAudit {
       sampleSize: totalSamples,
       actualQualityDelta: meanActualQual,
       predictedQualityDelta: meanPredQuality,
-    });
+    })
 
-    const needsRecalibration = verdict === "over_predicted" || verdict === "under_predicted"
-      ? maxRelError >= 1.0
-      : false;
+    const needsRecalibration =
+      verdict === "over_predicted" || verdict === "under_predicted" ? maxRelError >= 1.0 : false
 
     const verification = TruthVerificationSchema.parse({
       proposalId,
@@ -183,15 +182,15 @@ export class TruthAudit {
       sampleSize: totalSamples,
       needsRecalibration,
       verifiedAt: this.now().toISOString(),
-    });
+    })
 
     if (this.deps.saveVerification) {
       Promise.resolve(this.deps.saveVerification(verification)).catch((err) => {
-        console.warn(`[TruthAudit] saveVerification failed: ${(err as Error).message}`);
-      });
+        console.warn(`[TruthAudit] saveVerification failed: ${(err as Error).message}`)
+      })
     }
 
-    return verification;
+    return verification
   }
 
   /**
@@ -200,28 +199,29 @@ export class TruthAudit {
    * store and the external source (deduped by proposalId+recordedAt).
    */
   async report(): Promise<TruthReport> {
-    const external = this.deps.getMeasurements
-      ? await this.deps.getMeasurements()
-      : [];
-    const merged = mergeMeasurements(this.measurements, external);
-    return this.buildReport(merged);
+    const external = this.deps.getMeasurements ? await this.deps.getMeasurements() : []
+    const merged = mergeMeasurements(this.measurements, external)
+    return this.buildReport(merged)
   }
 
   /**
    * Find the proposals with the largest drift, useful for surfacing
    * the worst-calibrated simulations.
    */
-  async findDrift(limit = this.config.driftLeaderCount): Promise<
-    Array<{ proposalId: string; maxAbsoluteError: number; verdict: TruthVerdict }>
-  > {
-    const external = this.deps.getMeasurements
-      ? await this.deps.getMeasurements()
-      : [];
-    const merged = mergeMeasurements(this.measurements, external);
-    const ids = unique(merged.map((m) => m.proposalId));
+  async findDrift(
+    limit = this.config.driftLeaderCount,
+  ): Promise<Array<{ proposalId: string; maxAbsoluteError: number; verdict: TruthVerdict }>> {
+    const external = this.deps.getMeasurements ? await this.deps.getMeasurements() : []
+    const merged = mergeMeasurements(this.measurements, external)
+    const ids = unique(merged.map((m) => m.proposalId))
 
     const leaders = ids
-      .map((id) => this.verifyFromSamples(id, merged.filter((m) => m.proposalId === id)))
+      .map((id) =>
+        this.verifyFromSamples(
+          id,
+          merged.filter((m) => m.proposalId === id),
+        ),
+      )
       .filter((v): v is TruthVerification => v !== null)
       .sort((a, b) => b.maxAbsoluteError - a.maxAbsoluteError)
       .slice(0, limit)
@@ -229,98 +229,111 @@ export class TruthAudit {
         proposalId: v.proposalId,
         maxAbsoluteError: v.maxAbsoluteError,
         verdict: v.verdict,
-      }));
+      }))
 
-    return leaders;
+    return leaders
   }
 
   /** Reset in-memory store (does NOT touch the external source). */
   clear(): void {
-    this.measurements.length = 0;
+    this.measurements.length = 0
   }
 
   /** Total measurements currently held (in-memory only). */
   size(): number {
-    return this.measurements.length;
+    return this.measurements.length
   }
 
   /** Verify a proposal using an explicit sample set (no in-memory lookup). */
-  private verifyFromSamples(proposalId: string, samples: TruthMeasurement[]): TruthVerification | null {
-    if (samples.length === 0) return null;
-    const prev = this.measurements;
-    this.measurements.length = 0;
-    this.measurements.push(...samples);
+  private verifyFromSamples(
+    proposalId: string,
+    samples: TruthMeasurement[],
+  ): TruthVerification | null {
+    if (samples.length === 0) return null
+    const prev = this.measurements
+    this.measurements.length = 0
+    this.measurements.push(...samples)
     try {
-      return this.verify(proposalId);
+      return this.verify(proposalId)
     } finally {
-      this.measurements.length = 0;
-      this.measurements.push(...prev);
+      this.measurements.length = 0
+      this.measurements.push(...prev)
     }
   }
 
   private computeVerdict(d: {
-    absCost: number;
-    absLat: number;
-    absQual: number;
-    absRisk: number;
-    sampleSize: number;
-    actualQualityDelta: number;
-    predictedQualityDelta: number;
+    absCost: number
+    absLat: number
+    absQual: number
+    absRisk: number
+    sampleSize: number
+    actualQualityDelta: number
+    predictedQualityDelta: number
   }): TruthVerdict {
-    if (d.sampleSize < this.config.minSampleSize) return "insufficient_data";
-    const tol = this.config.tolerance;
-    const within = d.absCost <= tol.costDelta
-      && d.absLat <= tol.latencyDeltaMs
-      && d.absQual <= tol.qualityDelta
-      && d.absRisk <= tol.riskDelta;
-    if (within) return "accurate";
+    if (d.sampleSize < this.config.minSampleSize) return "insufficient_data"
+    const tol = this.config.tolerance
+    const within =
+      d.absCost <= tol.costDelta &&
+      d.absLat <= tol.latencyDeltaMs &&
+      d.absQual <= tol.qualityDelta &&
+      d.absRisk <= tol.riskDelta
+    if (within) return "accurate"
     // Quality drift direction is the load-bearing signal: if predicted
     // qualityDelta was positive but actual was worse, that's over-predicting
     // (a real-world disappointment). Conversely if actual quality was
     // *better* than predicted, that's under-predicting (a missed opportunity).
-    if (d.actualQualityDelta < d.predictedQualityDelta) return "over_predicted";
-    return "under_predicted";
+    if (d.actualQualityDelta < d.predictedQualityDelta) return "over_predicted"
+    return "under_predicted"
   }
 
   private buildReport(samples: TruthMeasurement[]): TruthReport {
-    const ids = unique(samples.map((s) => s.proposalId));
+    const ids = unique(samples.map((s) => s.proposalId))
     const verdicts: Record<TruthVerdict, number> = {
       accurate: 0,
       under_predicted: 0,
       over_predicted: 0,
       insufficient_data: 0,
-    };
+    }
 
-    let maeCost = 0, maeLat = 0, maeQual = 0, maeRisk = 0;
-    let mseCost = 0, mseLat = 0, mseQual = 0, mseRisk = 0;
-    let count = 0;
+    let maeCost = 0,
+      maeLat = 0,
+      maeQual = 0,
+      maeRisk = 0
+    let mseCost = 0,
+      mseLat = 0,
+      mseQual = 0,
+      mseRisk = 0
+    let count = 0
 
     for (const id of ids) {
-      const v = this.verifyFromSamples(id, samples.filter((s) => s.proposalId === id));
-      if (!v) continue;
-      verdicts[v.verdict] += 1;
+      const v = this.verifyFromSamples(
+        id,
+        samples.filter((s) => s.proposalId === id),
+      )
+      if (!v) continue
+      verdicts[v.verdict] += 1
       // Phase 9 — SLO-3: increment the per-verdict counter so the
       // `truthAuditCalibration` dashboard chart has data. We use the
       // `verdict` label directly so consumers can graph
       // `verdict="accurate" / total_verdicts` for accuracy.
-      truthAuditVerdictsTotal.inc({ verdict: v.verdict });
+      truthAuditVerdictsTotal.inc({ verdict: v.verdict })
       if (v.verdict !== "insufficient_data") {
         // Use the verification's per-dimension drifts (which are already
         // mean-across-samples) for MAE/MSE accounting.
-        maeCost += Math.abs(v.drifts.costDelta);
-        maeLat += Math.abs(v.drifts.latencyDeltaMs);
-        maeQual += Math.abs(v.drifts.qualityDelta);
-        maeRisk += Math.abs(v.drifts.riskDelta);
-        mseCost += v.drifts.costDelta;
-        mseLat += v.drifts.latencyDeltaMs;
-        mseQual += v.drifts.qualityDelta;
-        mseRisk += v.drifts.riskDelta;
-        count += 1;
+        maeCost += Math.abs(v.drifts.costDelta)
+        maeLat += Math.abs(v.drifts.latencyDeltaMs)
+        maeQual += Math.abs(v.drifts.qualityDelta)
+        maeRisk += Math.abs(v.drifts.riskDelta)
+        mseCost += v.drifts.costDelta
+        mseLat += v.drifts.latencyDeltaMs
+        mseQual += v.drifts.qualityDelta
+        mseRisk += v.drifts.riskDelta
+        count += 1
       }
     }
 
-    const meanAbs = (s: number) => (count > 0 ? s / count : 0);
-    const meanSigned = (s: number) => (count > 0 ? s / count : 0);
+    const meanAbs = (s: number) => (count > 0 ? s / count : 0)
+    const meanSigned = (s: number) => (count > 0 ? s / count : 0)
 
     return TruthReportSchema.parse({
       windowStart: samples[0]?.recordedAt ?? this.now().toISOString(),
@@ -342,7 +355,7 @@ export class TruthAudit {
       driftLeaders: [],
       recalibrationRecommended: meanAbs(maeQual) > this.config.recalibrationThreshold,
       generatedAt: this.now().toISOString(),
-    });
+    })
   }
 }
 
@@ -351,35 +364,35 @@ export class TruthAudit {
 // ---------------------------------------------------------------------------
 
 function average(xs: number[]): number {
-  if (xs.length === 0) return 0;
-  return xs.reduce((a, b) => a + b, 0) / xs.length;
+  if (xs.length === 0) return 0
+  return xs.reduce((a, b) => a + b, 0) / xs.length
 }
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return Math.round(n * 100) / 100
 }
 
 function safeRelativeError(actualMinusPredicted: number, predicted: number): number {
   if (predicted === 0) {
-    return actualMinusPredicted === 0 ? 0 : 1;
+    return actualMinusPredicted === 0 ? 0 : 1
   }
-  return Math.abs(actualMinusPredicted) / Math.max(Math.abs(predicted), 1e-9);
+  return Math.abs(actualMinusPredicted) / Math.max(Math.abs(predicted), 1e-9)
 }
 
 function unique<T>(xs: T[]): T[] {
-  return Array.from(new Set(xs));
+  return Array.from(new Set(xs))
 }
 
 function mergeMeasurements(a: TruthMeasurement[], b: TruthMeasurement[]): TruthMeasurement[] {
-  const seen = new Set<string>();
-  const out: TruthMeasurement[] = [];
+  const seen = new Set<string>()
+  const out: TruthMeasurement[] = []
   for (const m of [...a, ...b]) {
-    const key = `${m.proposalId}::${m.recordedAt}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(m);
+    const key = `${m.proposalId}::${m.recordedAt}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(m)
   }
-  return out;
+  return out
 }
 
 /**
@@ -387,12 +400,12 @@ function mergeMeasurements(a: TruthMeasurement[], b: TruthMeasurement[]): TruthM
  * and a set of observed post-rollout executions.
  */
 export function buildMeasurement(input: {
-  proposalId: string;
-  proposalAction: ProposalAction;
-  predicted: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number };
-  actual: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number };
-  sampleSize?: number;
-  recordedAt?: string;
+  proposalId: string
+  proposalAction: ProposalAction
+  predicted: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number }
+  actual: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number }
+  sampleSize?: number
+  recordedAt?: string
 }): TruthMeasurement {
   return TruthMeasurementSchema.parse({
     proposalId: input.proposalId,
@@ -401,7 +414,7 @@ export function buildMeasurement(input: {
     actual: input.actual,
     sampleSize: input.sampleSize ?? 1,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
-  });
+  })
 }
 
 /**
@@ -413,19 +426,19 @@ export function buildMeasurement(input: {
  * `truthAudit` is undefined (the wiring is optional).
  */
 export function recordProposalOutcome(input: {
-  truthAudit: TruthAudit | undefined;
-  proposalId: string;
-  proposalAction: ProposalAction;
-  simulation: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number };
-  actual: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number };
-  sampleSize?: number;
+  truthAudit: TruthAudit | undefined
+  proposalId: string
+  proposalAction: ProposalAction
+  simulation: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number }
+  actual: { costDelta: number; latencyDeltaMs: number; qualityDelta: number; riskDelta: number }
+  sampleSize?: number
 }): TruthMeasurement | null {
-  if (!input.truthAudit) return null;
+  if (!input.truthAudit) return null
   return input.truthAudit.recordMeasurement({
     proposalId: input.proposalId,
     proposalAction: input.proposalAction,
     predicted: input.simulation,
     actual: input.actual,
     sampleSize: input.sampleSize ?? 1,
-  });
+  })
 }

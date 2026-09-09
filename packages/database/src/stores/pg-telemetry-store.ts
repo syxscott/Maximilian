@@ -1,6 +1,6 @@
-import { eq, desc } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { telemetryExecutionTraces, telemetryEvolutionTraces } from "../schema.js";
+import { eq, desc } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { telemetryExecutionTraces, telemetryEvolutionTraces } from "../schema.js"
 
 /**
  * PostgreSQL-backed telemetry store.
@@ -42,15 +42,15 @@ export class PgTelemetryStore {
           completedAt: trace.completedAt ?? null,
           error: trace.error ?? null,
         },
-      });
+      })
   }
 
   async listExecutionTraces(): Promise<ExecutionTraceRow[]> {
     const rows = await this.db
       .select()
       .from(telemetryExecutionTraces)
-      .orderBy(desc(telemetryExecutionTraces.startedAt));
-    return rows.map(rowToExecutionTrace);
+      .orderBy(desc(telemetryExecutionTraces.startedAt))
+    return rows.map(rowToExecutionTrace)
   }
 
   async getExecutionTrace(id: string): Promise<ExecutionTraceRow | undefined> {
@@ -58,9 +58,9 @@ export class PgTelemetryStore {
       .select()
       .from(telemetryExecutionTraces)
       .where(eq(telemetryExecutionTraces.id, id))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToExecutionTrace(rows[0]);
+      .limit(1)
+    if (rows.length === 0) return undefined
+    return rowToExecutionTrace(rows[0])
   }
 
   // ---- Evolution Traces -----------------------------------------------------
@@ -92,15 +92,15 @@ export class PgTelemetryStore {
           rolloutStatus: trace.rolloutStatus,
           approved: trace.approved,
         },
-      });
+      })
   }
 
   async listEvolutionTraces(): Promise<EvolutionTraceRow[]> {
     const rows = await this.db
       .select()
       .from(telemetryEvolutionTraces)
-      .orderBy(desc(telemetryEvolutionTraces.recordedAt));
-    return rows.map(rowToEvolutionTrace);
+      .orderBy(desc(telemetryEvolutionTraces.recordedAt))
+    return rows.map(rowToEvolutionTrace)
   }
 
   async getEvolutionTrace(id: string): Promise<EvolutionTraceRow | undefined> {
@@ -108,36 +108,36 @@ export class PgTelemetryStore {
       .select()
       .from(telemetryEvolutionTraces)
       .where(eq(telemetryEvolutionTraces.id, id))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToEvolutionTrace(rows[0]);
+      .limit(1)
+    if (rows.length === 0) return undefined
+    return rowToEvolutionTrace(rows[0])
   }
 }
 
 export interface ExecutionTraceRow {
-  id: string;
-  workspaceId: string;
-  taskId: string;
-  userPrompt: string;
-  assignedTeamGraph: unknown;
-  steps: unknown[];
-  status: string;
-  startedAt: string;
-  completedAt?: string;
-  error?: string;
+  id: string
+  workspaceId: string
+  taskId: string
+  userPrompt: string
+  assignedTeamGraph: unknown
+  steps: unknown[]
+  status: string
+  startedAt: string
+  completedAt?: string
+  error?: string
 }
 
 export interface EvolutionTraceRow {
-  id: string;
-  proposalId: string;
-  proposalType: string;
-  subject: string;
-  snapshotId?: string;
-  simulatedScores: unknown;
-  governanceVerdict: unknown;
-  rolloutStatus: string;
-  approved: boolean;
-  recordedAt: string;
+  id: string
+  proposalId: string
+  proposalType: string
+  subject: string
+  snapshotId?: string
+  simulatedScores: unknown
+  governanceVerdict: unknown
+  rolloutStatus: string
+  approved: boolean
+  recordedAt: string
 }
 
 function rowToExecutionTrace(row: typeof telemetryExecutionTraces.$inferSelect): ExecutionTraceRow {
@@ -152,7 +152,7 @@ function rowToExecutionTrace(row: typeof telemetryExecutionTraces.$inferSelect):
     startedAt: row.startedAt,
     completedAt: row.completedAt ?? undefined,
     error: row.error ?? undefined,
-  };
+  }
 }
 
 function rowToEvolutionTrace(row: typeof telemetryEvolutionTraces.$inferSelect): EvolutionTraceRow {
@@ -167,7 +167,7 @@ function rowToEvolutionTrace(row: typeof telemetryEvolutionTraces.$inferSelect):
     rolloutStatus: row.rolloutStatus,
     approved: row.approved,
     recordedAt: row.recordedAt,
-  };
+  }
 }
 
 // PgTelemetryStore: PostgreSQL-backed telemetry trace persistence.

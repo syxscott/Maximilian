@@ -16,13 +16,14 @@ const SegmentedControlContext = React.createContext<SegmentedControlContextValue
 
 function useSegmentedControlContext() {
   const ctx = React.useContext(SegmentedControlContext)
-  if (!ctx)
-    throw new Error("SegmentedControlItemV2 must be used inside SegmentedControlV2")
+  if (!ctx) throw new Error("SegmentedControlItemV2 must be used inside SegmentedControlV2")
   return ctx
 }
 
-export interface SegmentedControlV2Props
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange" | "defaultValue"> {
+export interface SegmentedControlV2Props extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "onChange" | "defaultValue"
+> {
   value?: string | null
   defaultValue?: string
   onChange?: OnChange
@@ -46,7 +47,7 @@ export const SegmentedControlV2 = React.forwardRef<HTMLDivElement, SegmentedCont
   ) => {
     const isControlled = value !== undefined
     const [internal, setInternal] = React.useState<string | null>(defaultValue ?? null)
-    const selected = isControlled ? value ?? null : internal
+    const selected = isControlled ? (value ?? null) : internal
 
     const setSelected = React.useCallback(
       (next: string | null) => {
@@ -56,10 +57,7 @@ export const SegmentedControlV2 = React.forwardRef<HTMLDivElement, SegmentedCont
       [isControlled, onChange],
     )
 
-    const select = React.useCallback(
-      (v: string) => setSelected(v),
-      [setSelected],
-    )
+    const select = React.useCallback((v: string) => setSelected(v), [setSelected])
 
     const clearIfAllowed = React.useCallback(
       (v: string) => {
@@ -69,21 +67,16 @@ export const SegmentedControlV2 = React.forwardRef<HTMLDivElement, SegmentedCont
       [allowDeselect, selected, setSelected],
     )
 
-    const focusNext = React.useCallback(
-      (from: HTMLButtonElement, direction: 1 | -1) => {
-        const root = from.closest(`[data-slot="segmented-control-v2"]`)
-        if (!root) return
-        const buttons = Array.from(
-          root.querySelectorAll<HTMLButtonElement>(
-            `button[data-slot="segmented-control-v2-item"]`,
-          ),
-        ).filter((b) => !b.disabled)
-        const i = buttons.indexOf(from)
-        const next = buttons[i + direction]
-        next?.focus()
-      },
-      [],
-    )
+    const focusNext = React.useCallback((from: HTMLButtonElement, direction: 1 | -1) => {
+      const root = from.closest(`[data-slot="segmented-control-v2"]`)
+      if (!root) return
+      const buttons = Array.from(
+        root.querySelectorAll<HTMLButtonElement>(`button[data-slot="segmented-control-v2-item"]`),
+      ).filter((b) => !b.disabled)
+      const i = buttons.indexOf(from)
+      const next = buttons[i + direction]
+      next?.focus()
+    }, [])
 
     const ctx = React.useMemo<SegmentedControlContextValue>(
       () => ({
@@ -115,8 +108,10 @@ export const SegmentedControlV2 = React.forwardRef<HTMLDivElement, SegmentedCont
 )
 SegmentedControlV2.displayName = "SegmentedControlV2"
 
-export interface SegmentedControlItemV2Props
-  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "value"> {
+export interface SegmentedControlItemV2Props extends Omit<
+  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  "type" | "value"
+> {
   value: string
 }
 

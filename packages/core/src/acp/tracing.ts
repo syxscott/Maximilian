@@ -18,32 +18,32 @@
  * that publishes events for the A2A mesh to observe.
  */
 
-import { performance } from "node:perf_hooks";
-import { randomUUID } from "node:crypto";
-import type { EventBus } from "../event-bus.js";
-import type { AcpEvent } from "./index.js";
+import { performance } from "node:perf_hooks"
+import { randomUUID } from "node:crypto"
+import type { EventBus } from "../event-bus.js"
+import type { AcpEvent } from "./index.js"
 
 export interface SpanAttributes {
-  [key: string]: string | number | boolean | undefined;
+  [key: string]: string | number | boolean | undefined
 }
 
 export interface SpanContext {
-  traceId: string;
-  spanId: string;
+  traceId: string
+  spanId: string
   /** Wall-clock time the span opened (ms since epoch). */
-  startMs: number;
+  startMs: number
   /** perf_hooks-relative start (for duration math). */
-  startPerf: number;
-  attributes: SpanAttributes;
+  startPerf: number
+  attributes: SpanAttributes
 }
 
 export interface SpanOptions {
   /** Reuse an existing trace (for nested spans). */
-  parent?: SpanContext;
-  attributes?: SpanAttributes;
+  parent?: SpanContext
+  attributes?: SpanAttributes
 }
 
-export type SpanHandler = (ctx: SpanContext) => Promise<void> | void;
+export type SpanHandler = (ctx: SpanContext) => Promise<void> | void
 
 /**
  * Run `fn` inside a span. The span opens, the bus gets an `agent/a2a/span`
@@ -58,11 +58,11 @@ export async function withSpan<T>(
   opts: SpanOptions,
   fn: (ctx: SpanContext) => Promise<T>,
 ): Promise<T> {
-  const traceId = opts.parent?.traceId ?? randomUUID();
-  const spanId = randomUUID();
-  const startMs = Date.now();
-  const startPerf = performance.now();
-  const attributes: SpanAttributes = { ...(opts.attributes ?? {}) };
+  const traceId = opts.parent?.traceId ?? randomUUID()
+  const spanId = randomUUID()
+  const startMs = Date.now()
+  const startPerf = performance.now()
+  const attributes: SpanAttributes = { ...(opts.attributes ?? {}) }
 
   const ctx: SpanContext = {
     traceId,
@@ -70,7 +70,7 @@ export async function withSpan<T>(
     startMs,
     startPerf,
     attributes,
-  };
+  }
 
   bus?.publish({
     type: "agent/a2a/span",
@@ -78,22 +78,22 @@ export async function withSpan<T>(
     timestamp: startMs,
     traceId,
     spanId,
-  });
+  })
 
   try {
-    const result = await fn(ctx);
-    const durationMs = performance.now() - startPerf;
+    const result = await fn(ctx)
+    const durationMs = performance.now() - startPerf
     bus?.publish({
       type: "agent/a2a/span",
       payload: { name, status: "ok", durationMs, ...attributes },
       timestamp: Date.now(),
       traceId,
       spanId,
-    });
-    return result;
+    })
+    return result
   } catch (err) {
-    const durationMs = performance.now() - startPerf;
-    const message = err instanceof Error ? err.message : String(err);
+    const durationMs = performance.now() - startPerf
+    const message = err instanceof Error ? err.message : String(err)
     bus?.publish({
       type: "agent/a2a/span",
       payload: {
@@ -106,8 +106,8 @@ export async function withSpan<T>(
       timestamp: Date.now(),
       traceId,
       spanId,
-    });
-    throw err;
+    })
+    throw err
   }
 }
 
@@ -119,5 +119,5 @@ export function makeNoopSpan(name: string): SpanContext {
     startMs: Date.now(),
     startPerf: performance.now(),
     attributes: { name },
-  };
+  }
 }

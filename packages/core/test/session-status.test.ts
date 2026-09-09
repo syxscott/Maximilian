@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest"
-import {
-  SessionStatusTracker,
-  canTransition,
-  type RetryAction,
-} from "../src/session-status.js"
+import { SessionStatusTracker, canTransition, type RetryAction } from "../src/session-status.js"
 
 describe("SessionStatus FSM (借鉴 opencode)", () => {
   it("starts idle", () => {

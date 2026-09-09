@@ -7,7 +7,9 @@ import { describe, it, expect, beforeEach } from "vitest"
 import { MemoryCheckpointSaver } from "../../src/checkpoint/memory-saver.js"
 import type { Checkpoint } from "../../src/checkpoint/saver.js"
 
-function makeCheckpoint(overrides: Partial<Checkpoint> & { id: string; parentId: string | null }): Checkpoint {
+function makeCheckpoint(
+  overrides: Partial<Checkpoint> & { id: string; parentId: string | null },
+): Checkpoint {
   return {
     channelValues: {},
     channelVersions: {},
@@ -138,12 +140,14 @@ describe("MemoryCheckpointSaver", () => {
 
   it("throws when thread_id is missing", async () => {
     await expect(saver.get({})).rejects.toThrow("thread_id")
-    await expect(saver.put({}, makeCheckpoint({ id: "x", parentId: null }))).rejects.toThrow("thread_id")
+    await expect(saver.put({}, makeCheckpoint({ id: "x", parentId: null }))).rejects.toThrow(
+      "thread_id",
+    )
   })
 
   it("copyThread throws when src === dst", async () => {
-    await expect(
-      saver.copyThread({ thread_id: "t1" }, { thread_id: "t1" }),
-    ).rejects.toThrow("must differ")
+    await expect(saver.copyThread({ thread_id: "t1" }, { thread_id: "t1" })).rejects.toThrow(
+      "must differ",
+    )
   })
 })

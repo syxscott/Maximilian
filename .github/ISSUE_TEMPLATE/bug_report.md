@@ -1,9 +1,9 @@
 ---
 name: 🐛 Bug report
 about: Something is broken — help me reproduce and fix it
-title: '[BUG] '
+title: "[BUG] "
 labels: bug
-assignees: ''
+assignees: ""
 ---
 
 ## What happened

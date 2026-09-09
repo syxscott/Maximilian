@@ -15,7 +15,17 @@ export interface HoverCardProps {
 }
 
 export function HoverCard(props: HoverCardProps) {
-  const { trigger, mount, className, children, open, defaultOpen, onOpenChange, openDelay, closeDelay } = props
+  const {
+    trigger,
+    mount,
+    className,
+    children,
+    open,
+    defaultOpen,
+    onOpenChange,
+    openDelay,
+    closeDelay,
+  } = props
 
   return (
     <HoverCardPrimitive.Root

@@ -7,8 +7,8 @@ changes. Always read the relevant upgrade guide before bumping.
 
 ## Available guides
 
-| From | To | Guide | Severity |
-|---|---|---|---|
+| From   | To     | Guide                              | Severity                       |
+| ------ | ------ | ---------------------------------- | ------------------------------ |
 | v0.1.x | v0.2.0 | [v0.1-to-v0.2.md](v0.1-to-v0.2.md) | ⚠️ Breaking (env vars renamed) |
 | v0.2.x | v0.3.0 | [v0.2-to-v0.3.md](v0.2-to-v0.3.md) | ⚠️ Breaking (DB schema change) |
 

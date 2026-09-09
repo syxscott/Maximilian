@@ -15,20 +15,9 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { AgentRuntime, type RuntimeEvent } from "../src/runtime.js"
 import { Agent, type AgentContext } from "../src/agent.js"
-import {
-  ToolEnabledProvider,
-  createToolRegistry,
-} from "../src/tool-integration.js"
-import {
-  withPermission,
-  type Materialization,
-  readTool,
-  type ExecuteInput,
-} from "@max/tools"
-import {
-  DEFAULT_PERMISSIONS,
-  type Permissions,
-} from "@max/tools/permission"
+import { ToolEnabledProvider, createToolRegistry } from "../src/tool-integration.js"
+import { withPermission, type Materialization, readTool, type ExecuteInput } from "@max/tools"
+import { DEFAULT_PERMISSIONS, type Permissions } from "@max/tools/permission"
 import type { AgentManifest, Plan, Result, Task, Workspace } from "../src/types.js"
 import type { Provider, ChatMessage, ChatResponse } from "@max/providers"
 
@@ -43,15 +32,19 @@ class ToolIssuingReadProvider implements Provider {
   id = "stub"
   name = "stub"
   defaultModel = "stub"
-  isConfigured(): boolean { return true }
+  isConfigured(): boolean {
+    return true
+  }
   async chat(_messages: ChatMessage[]): Promise<ChatResponse> {
     return {
-      content: "```tool\n{\"name\":\"read\",\"input\":{\"path\":\"REPLACE\"}}\n```",
+      content: '```tool\n{"name":"read","input":{"path":"REPLACE"}}\n```',
       model: "stub",
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
     }
   }
-  async *stream() { /* noop */ }
+  async *stream() {
+    /* noop */
+  }
 }
 
 class GatedAgent extends Agent {
@@ -88,8 +81,12 @@ function makeWorkspace(id: string): Workspace {
 function makeSink() {
   return {
     workspaces: new Map<string, Workspace>(),
-    async saveWorkspace(w: Workspace) { this.workspaces.set(w.id, w) },
-    async loadWorkspace(id: string) { return this.workspaces.get(id) },
+    async saveWorkspace(w: Workspace) {
+      this.workspaces.set(w.id, w)
+    },
+    async loadWorkspace(id: string) {
+      return this.workspaces.get(id)
+    },
   }
 }
 
@@ -150,11 +147,10 @@ describe("Tool loop with permission gate (read tool)", () => {
       }
     })(new ToolIssuingReadProvider(), createToolRegistry())
 
-    const runtime = new AgentRuntime(
-      () => new GatedAgent(gated),
-      makeSink(),
-      { enableToolLoop: true, maxConcurrency: 1 },
-    )
+    const runtime = new AgentRuntime(() => new GatedAgent(gated), makeSink(), {
+      enableToolLoop: true,
+      maxConcurrency: 1,
+    })
     const events: RuntimeEvent[] = []
     runtime.on((e) => events.push(e))
 
@@ -178,7 +174,14 @@ describe("Tool loop with permission gate (read tool)", () => {
     // Flip config to allow, then resolve.
     config = {
       ...DEFAULT_PERMISSIONS,
-      defaults: { bash: "allow", write: "allow", edit: "allow", read: "allow", glob: "allow", grep: "allow" },
+      defaults: {
+        bash: "allow",
+        write: "allow",
+        edit: "allow",
+        read: "allow",
+        glob: "allow",
+        grep: "allow",
+      },
       patterns: {},
     }
     expect(runtime.resolvePermission(reqEvent.requestId, "allow")).toBe(true)
@@ -190,15 +193,15 @@ describe("Tool loop with permission gate (read tool)", () => {
 
     // Audit log: an `ask` row paired with a matching `allow` row sharing
     // the same requestId, workspaceId, taskId, tool, target.
-    const audit = runtime.getPermissionAudit();
-    expect(audit.length).toBe(2);
-    const askRow = audit.find((e) => e.decision === "ask");
-    const allowRow = audit.find((e) => e.decision === "allow");
-    expect(askRow).toBeDefined();
-    expect(allowRow).toBeDefined();
-    expect(askRow!.requestId).toBe(allowRow!.requestId);
-    expect(allowRow!.promptedAt).toBe(askRow!.at);
-    expect(askRow!.workspaceId).toBe("ws-park");
-    expect(askRow!.tool).toBe("read");
+    const audit = runtime.getPermissionAudit()
+    expect(audit.length).toBe(2)
+    const askRow = audit.find((e) => e.decision === "ask")
+    const allowRow = audit.find((e) => e.decision === "allow")
+    expect(askRow).toBeDefined()
+    expect(allowRow).toBeDefined()
+    expect(askRow!.requestId).toBe(allowRow!.requestId)
+    expect(allowRow!.promptedAt).toBe(askRow!.at)
+    expect(askRow!.workspaceId).toBe("ws-park")
+    expect(askRow!.tool).toBe("read")
   })
 })

@@ -30,15 +30,15 @@
  *     Commander class stays unchanged and existing tests stay green.
  */
 
-import { z } from "zod";
-import type { Provider, ChatMessage } from "@max/providers";
-import type { OpencodeExecutor, Task, AgentRole } from "@max/core";
-import { getLogger } from "@max/telemetry";
+import { z } from "zod"
+import type { Provider, ChatMessage } from "@max/providers"
+import type { OpencodeExecutor, Task, AgentRole } from "@max/core"
+import { getLogger } from "@max/telemetry"
 
-const log = getLogger("commander:opencode-decomposer");
+const log = getLogger("commander:opencode-decomposer")
 
 /** Timeout for planner LLM calls in milliseconds. */
-const LLM_TIMEOUT_MS = 60_000;
+const LLM_TIMEOUT_MS = 60_000
 
 /**
  * Planner system prompt.
@@ -109,14 +109,14 @@ Rules:
 5. The "estimatedComplexity" guides model selection — be honest about task difficulty.
 6. For a typical "build a Todo web app" request: 1 backend + 1 frontend + 1 review.
 7. For pure-doc requests: 1 general + 1 review.
-`;
+`
 
 // ============================================================================
 // Preflight Issue (借鉴 opencode - server preflight validation)
 // ============================================================================
 
-export const PreflightSeveritySchema = z.enum(["error", "warning"]);
-export type PreflightSeverity = z.infer<typeof PreflightSeveritySchema>;
+export const PreflightSeveritySchema = z.enum(["error", "warning"])
+export type PreflightSeverity = z.infer<typeof PreflightSeveritySchema>
 
 export const PreflightIssueSchema = z.object({
   severity: PreflightSeveritySchema,
@@ -126,15 +126,15 @@ export const PreflightIssueSchema = z.object({
   code: z.string(),
   /** Human-readable message. */
   message: z.string(),
-});
-export type PreflightIssue = z.infer<typeof PreflightIssueSchema>;
+})
+export type PreflightIssue = z.infer<typeof PreflightIssueSchema>
 
 export const PreflightReportSchema = z.object({
   /** True iff no `error`-severity issues were raised. */
   passed: z.boolean(),
   issues: z.array(PreflightIssueSchema),
-});
-export type PreflightReport = z.infer<typeof PreflightReportSchema>;
+})
+export type PreflightReport = z.infer<typeof PreflightReportSchema>
 
 // ============================================================================
 // OpencodePlannerOutput — PlannerOutput + preflight (借鉴 opencode - plan validation payload)
@@ -167,8 +167,8 @@ export const OpencodePlannerOutputSchema = z.object({
     .optional(),
   /** (借鉴 opencode) Preflight report populated from opencode executor runs. */
   preflight: PreflightReportSchema,
-});
-export type OpencodePlannerOutput = z.infer<typeof OpencodePlannerOutputSchema>;
+})
+export type OpencodePlannerOutput = z.infer<typeof OpencodePlannerOutputSchema>
 
 // ============================================================================
 // OpencodeDecomposer
@@ -181,8 +181,8 @@ export type OpencodePlannerOutput = z.infer<typeof OpencodePlannerOutputSchema>;
  * fallback path).
  */
 export interface OpencodeDecomposerOptions {
-  executor: OpencodeExecutor;
-  plannerLlm: Provider;
+  executor: OpencodeExecutor
+  plannerLlm: Provider
 }
 
 /**
@@ -204,23 +204,20 @@ export class OpencodeDecomposer {
    * @param workspaceId Used by the executor to bucket opencode sessions.
    * @returns PlannerOutput-shaped object plus a populated `preflight` block.
    */
-  async decompose(
-    userRequest: string,
-    workspaceId: string,
-  ): Promise<OpencodePlannerOutput> {
-    const planner = await this.callPlanner(userRequest);
+  async decompose(userRequest: string, workspaceId: string): Promise<OpencodePlannerOutput> {
+    const planner = await this.callPlanner(userRequest)
 
     // Materialise tasks with deterministic sequential ids (`task-1`, `task-2`, ...).
     const materialised: Task[] = planner.tasks.map((raw, i) => {
-      const meta: Record<string, unknown> = {};
-      if (raw.estimatedComplexity) meta.estimatedComplexity = raw.estimatedComplexity;
+      const meta: Record<string, unknown> = {}
+      if (raw.estimatedComplexity) meta.estimatedComplexity = raw.estimatedComplexity
       if (raw.preferredCapabilities && raw.preferredCapabilities.length > 0) {
-        meta.preferredCapabilities = raw.preferredCapabilities;
+        meta.preferredCapabilities = raw.preferredCapabilities
       }
       if (raw.ownedFiles && raw.ownedFiles.length > 0) {
-        meta.ownedFiles = raw.ownedFiles;
+        meta.ownedFiles = raw.ownedFiles
       }
-      if (raw.condition) meta.condition = raw.condition;
+      if (raw.condition) meta.condition = raw.condition
       return {
         id: `task-${i + 1}`,
         agentRole: raw.agentRole as AgentRole,
@@ -228,28 +225,28 @@ export class OpencodeDecomposer {
         status: "pending" as const,
         dependsOn: raw.dependsOn,
         ...(Object.keys(meta).length > 0 ? { metadata: meta } : {}),
-      };
-    });
+      }
+    })
 
     // 借鉴 opencode - run each task through the executor and aggregate findings.
-    const issues: PreflightIssue[] = [];
+    const issues: PreflightIssue[] = []
     for (const task of materialised) {
       try {
         const { result, sessionId, durationMs } = await this.opts.executor.executeTask(
           task,
           workspaceId,
-        );
+        )
 
         // Cache the preflight result on the task metadata. Trim the output
         // so the plan object doesn't bloat with multi-KB strings.
-        const baseMeta = (task.metadata ?? {}) as Record<string, unknown>;
+        const baseMeta = (task.metadata ?? {}) as Record<string, unknown>
         baseMeta.preflightResult = {
           sessionId,
           executor: "opencode",
           durationMs,
           outputPreview: result.output.slice(0, 500),
-        };
-        task.metadata = baseMeta;
+        }
+        task.metadata = baseMeta
 
         // Warn (not error) on empty output — empty doesn't necessarily
         // mean failure (e.g. a pure-critique task may legitimately have
@@ -260,17 +257,17 @@ export class OpencodeDecomposer {
             taskId: task.id,
             code: "EMPTY_OUTPUT",
             message: `Task "${task.id}" returned an empty output from opencode.`,
-          });
+          })
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        log.warn({ taskId: task.id, err: message }, "preflight executor failure");
+        const message = err instanceof Error ? err.message : String(err)
+        log.warn({ taskId: task.id, err: message }, "preflight executor failure")
         issues.push({
           severity: "error",
           taskId: task.id,
           code: "EXECUTOR_FAILURE",
           message: `Task "${task.id}" failed in opencode preflight: ${message}`,
-        });
+        })
       }
     }
 
@@ -283,7 +280,10 @@ export class OpencodeDecomposer {
         description: t.description,
         dependsOn: t.dependsOn,
         ...(t.metadata?.estimatedComplexity
-          ? { estimatedComplexity: t.metadata.estimatedComplexity as "simple" | "medium" | "complex" }
+          ? {
+              estimatedComplexity: t.metadata.estimatedComplexity as
+                "simple" | "medium" | "complex",
+            }
           : {}),
         ...(Array.isArray(t.metadata?.preferredCapabilities)
           ? { preferredCapabilities: t.metadata.preferredCapabilities as string[] }
@@ -291,13 +291,11 @@ export class OpencodeDecomposer {
         ...(Array.isArray(t.metadata?.ownedFiles)
           ? { ownedFiles: t.metadata.ownedFiles as string[] }
           : {}),
-        ...(typeof t.metadata?.condition === "string"
-          ? { condition: t.metadata.condition }
-          : {}),
+        ...(typeof t.metadata?.condition === "string" ? { condition: t.metadata.condition } : {}),
         ...(t.metadata ? { metadata: t.metadata } : {}),
-      };
-      return out;
-    });
+      }
+      return out
+    })
 
     return {
       rationale: planner.rationale,
@@ -309,7 +307,7 @@ export class OpencodeDecomposer {
         passed: issues.every((i) => i.severity !== "error"),
         issues,
       },
-    };
+    }
   }
 
   /**
@@ -317,20 +315,18 @@ export class OpencodeDecomposer {
    * `Commander.callPlanner` semantics (jsonMode + 60s timeout + auto-append
    * review task). Self-contained so this module doesn't pull in `Commander`.
    */
-  private async callPlanner(
-    userRequest: string,
-  ): Promise<{
-    rationale: string;
+  private async callPlanner(userRequest: string): Promise<{
+    rationale: string
     tasks: Array<{
-      agentRole: AgentRole;
-      description: string;
-      dependsOn: string[];
-      estimatedComplexity?: "simple" | "medium" | "complex";
-      preferredCapabilities?: string[];
-      ownedFiles?: string[];
-      condition?: string;
-    }>;
-    tracks?: Array<{ id: string; name: string; description: string; phases: string[] }>;
+      agentRole: AgentRole
+      description: string
+      dependsOn: string[]
+      estimatedComplexity?: "simple" | "medium" | "complex"
+      preferredCapabilities?: string[]
+      ownedFiles?: string[]
+      condition?: string
+    }>
+    tracks?: Array<{ id: string; name: string; description: string; phases: string[] }>
   }> {
     // Sanitise: strip CRs, escape backticks + ${} to keep prompt formatting
     // intact (matches Commander.sanitizeUserInput).
@@ -338,12 +334,12 @@ export class OpencodeDecomposer {
       .replace(/\r\n/g, "\n")
       .replace(/`/g, "\\`")
       .replace(/\${/g, "\\${")
-      .slice(0, 10_000);
+      .slice(0, 10_000)
 
     const messages: ChatMessage[] = [
       { role: "system", content: PLANNER_SYSTEM_PROMPT },
       { role: "user", content: sanitized },
-    ];
+    ]
 
     const response = await Promise.race([
       this.opts.plannerLlm.chat(messages, {
@@ -352,51 +348,48 @@ export class OpencodeDecomposer {
         jsonMode: true,
       }),
       new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Planner LLM call timed out")),
-          LLM_TIMEOUT_MS,
-        ),
+        setTimeout(() => reject(new Error("Planner LLM call timed out")), LLM_TIMEOUT_MS),
       ),
-    ]);
+    ])
 
-    const raw = response.content;
-    const json = extractJson(raw);
-    if (!json) throw new Error("Planner produced no JSON");
+    const raw = response.content
+    const json = extractJson(raw)
+    if (!json) throw new Error("Planner produced no JSON")
 
     const parsed = JSON.parse(json) as {
-      rationale?: string;
+      rationale?: string
       tasks: Array<{
-        agentRole: AgentRole;
-        description: string;
-        dependsOn: string[];
-        estimatedComplexity?: "simple" | "medium" | "complex";
-        preferredCapabilities?: string[];
-        ownedFiles?: string[];
-        condition?: string;
-      }>;
-      tracks?: Array<{ id: string; name: string; description: string; phases: string[] }>;
-    };
+        agentRole: AgentRole
+        description: string
+        dependsOn: string[]
+        estimatedComplexity?: "simple" | "medium" | "complex"
+        preferredCapabilities?: string[]
+        ownedFiles?: string[]
+        condition?: string
+      }>
+      tracks?: Array<{ id: string; name: string; description: string; phases: string[] }>
+    }
 
     if (!parsed.tasks || !Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
-      throw new Error("Planner JSON missing 'tasks'");
+      throw new Error("Planner JSON missing 'tasks'")
     }
 
     // Auto-append a review task if the LLM forgot one (matches Commander).
-    const last = parsed.tasks[parsed.tasks.length - 1];
+    const last = parsed.tasks[parsed.tasks.length - 1]
     if (!last || last.agentRole !== "review") {
-      const reviewDependsOn = parsed.tasks.map((_, i) => `task-${i + 1}`);
+      const reviewDependsOn = parsed.tasks.map((_, i) => `task-${i + 1}`)
       parsed.tasks.push({
         agentRole: "review",
         description: "Review all generated artifacts",
         dependsOn: reviewDependsOn,
-      });
+      })
     }
 
     return {
       rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
       tasks: parsed.tasks,
       tracks: parsed.tracks,
-    };
+    }
   }
 }
 
@@ -407,47 +400,47 @@ export class OpencodeDecomposer {
  */
 function extractJson(text: string): string | null {
   try {
-    JSON.parse(text);
-    return text;
+    JSON.parse(text)
+    return text
   } catch {
-    const firstBrace = text.indexOf("{");
-    if (firstBrace === -1) return null;
+    const firstBrace = text.indexOf("{")
+    if (firstBrace === -1) return null
 
-    let depth = 0;
-    let endBrace = -1;
-    let inString = false;
-    let escaped = false;
+    let depth = 0
+    let endBrace = -1
+    let inString = false
+    let escaped = false
     for (let i = firstBrace; i < text.length; i++) {
-      const c = text[i]!;
+      const c = text[i]!
       if (escaped) {
-        escaped = false;
-        continue;
+        escaped = false
+        continue
       }
       if (c === "\\") {
-        escaped = true;
-        continue;
+        escaped = true
+        continue
       }
       if (c === '"') {
-        inString = !inString;
-        continue;
+        inString = !inString
+        continue
       }
-      if (inString) continue;
-      if (c === "{") depth++;
+      if (inString) continue
+      if (c === "{") depth++
       if (c === "}") {
-        depth--;
+        depth--
         if (depth === 0) {
-          endBrace = i;
-          break;
+          endBrace = i
+          break
         }
       }
     }
-    if (endBrace === -1) return null;
-    const jsonStr = text.slice(firstBrace, endBrace + 1);
+    if (endBrace === -1) return null
+    const jsonStr = text.slice(firstBrace, endBrace + 1)
     try {
-      JSON.parse(jsonStr);
-      return jsonStr;
+      JSON.parse(jsonStr)
+      return jsonStr
     } catch {
-      return null;
+      return null
     }
   }
 }

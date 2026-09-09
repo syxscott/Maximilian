@@ -141,7 +141,6 @@ export class ProfileRegistry {
     const items = Array.isArray(parsed) ? parsed : [parsed]
     for (const item of items as AgentProfile[]) {
       if (!item.id) {
-         
         console.warn(`[ProfileRegistry] skipping profile with missing id in ${filePath}`)
         continue
       }

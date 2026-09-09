@@ -104,9 +104,19 @@ export interface AssistantMessage {
 }
 
 export type Message = UserMessage | AssistantMessage
-export type Part = ToolPart | TextPart | ReasoningPart | FilePart | AgentPart | CompactionPart | { id: string; type: string; [key: string]: unknown }
+export type Part =
+  | ToolPart
+  | TextPart
+  | ReasoningPart
+  | FilePart
+  | AgentPart
+  | CompactionPart
+  | { id: string; type: string; [key: string]: unknown }
 
-export type SessionAction = (input: { sessionID: string; messageID: string }) => Promise<void> | void
+export type SessionAction = (input: {
+  sessionID: string
+  messageID: string
+}) => Promise<void> | void
 
 export type UserActions = {
   fork?: SessionAction
@@ -272,7 +282,12 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ value, children }) =
 interface DataStore {
   agent?: { name: string; color?: string }[]
   provider?: { all?: Map<string, { models?: Record<string, { name?: string }> }> }
-  session?: { id: string; parentID?: string; title: string; time: { created?: number; archived?: number } }[]
+  session?: {
+    id: string
+    parentID?: string
+    title: string
+    time: { created?: number; archived?: number }
+  }[]
   session_status?: Record<string, { type: string }>
   part?: Record<string, Part[]>
   part_text_accum_delta?: Record<string, string>
@@ -303,13 +318,23 @@ const useDialog = (): DialogApi => {
   return ctx ?? { show: () => undefined }
 }
 
-const FileContext = React.createContext<React.ComponentType<{ mode?: string; [key: string]: unknown }> | null>(null)
+const FileContext = React.createContext<React.ComponentType<{
+  mode?: string
+  [key: string]: unknown
+}> | null>(null)
 const useFileComponent = (): React.ComponentType<{ mode?: string; [key: string]: unknown }> => {
-  return React.useContext(FileContext) ?? ((props: { mode?: string; [key: string]: unknown }) => (
-    <div data-component="file-fallback" data-mode={props.mode} className="rounded border border-border-weak-base bg-background-base p-4 text-12-regular text-text-weak">
-      File viewer unavailable
-    </div>
-  ))
+  return (
+    React.useContext(FileContext) ??
+    ((props: { mode?: string; [key: string]: unknown }) => (
+      <div
+        data-component="file-fallback"
+        data-mode={props.mode}
+        className="rounded border border-border-weak-base bg-background-base p-4 text-12-regular text-text-weak"
+      >
+        File viewer unavailable
+      </div>
+    ))
+  )
 }
 
 // -----------------------------------------------------------------------------
@@ -348,7 +373,9 @@ function inline(file: FilePart): boolean {
 }
 function kind(file: FilePart): "image" | "file" {
   if (!file.filename) return "file"
-  return /\.(png|jpe?g|gif|webp|avif|bmp|ico|heic|heif|svg)$/i.test(file.filename) ? "image" : "file"
+  return /\.(png|jpe?g|gif|webp|avif|bmp|ico|heic|heif|svg)$/i.test(file.filename)
+    ? "image"
+    : "file"
 }
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -428,39 +455,78 @@ interface ToolInfo {
   subtitle?: string
 }
 
-function getToolInfo(tool: string, input: Record<string, unknown> = {}, metadata?: Record<string, unknown>): ToolInfo {
+function getToolInfo(
+  tool: string,
+  input: Record<string, unknown> = {},
+  metadata?: Record<string, unknown>,
+): ToolInfo {
   const t = useI18n().t
   switch (tool) {
     case "read":
-      return { icon: "glasses", title: t("ui.tool.read"), subtitle: input.filePath ? getFilename(String(input.filePath)) : undefined }
+      return {
+        icon: "glasses",
+        title: t("ui.tool.read"),
+        subtitle: input.filePath ? getFilename(String(input.filePath)) : undefined,
+      }
     case "list":
-      return { icon: "bullet-list", title: t("ui.tool.list"), subtitle: input.path ? getFilename(String(input.path)) : undefined }
+      return {
+        icon: "bullet-list",
+        title: t("ui.tool.list"),
+        subtitle: input.path ? getFilename(String(input.path)) : undefined,
+      }
     case "glob":
-      return { icon: "magnifying-glass-menu", title: t("ui.tool.glob"), subtitle: input.pattern as string }
+      return {
+        icon: "magnifying-glass-menu",
+        title: t("ui.tool.glob"),
+        subtitle: input.pattern as string,
+      }
     case "grep":
-      return { icon: "magnifying-glass-menu", title: t("ui.tool.grep"), subtitle: input.pattern as string }
+      return {
+        icon: "magnifying-glass-menu",
+        title: t("ui.tool.grep"),
+        subtitle: input.pattern as string,
+      }
     case "webfetch":
       return { icon: "window-cursor", title: t("ui.tool.webfetch"), subtitle: input.url as string }
     case "websearch":
-      return { icon: "window-cursor", title: webSearchProviderLabel(metadata?.provider), subtitle: input.query as string }
+      return {
+        icon: "window-cursor",
+        title: webSearchProviderLabel(metadata?.provider),
+        subtitle: input.query as string,
+      }
     case "task": {
-      const type = typeof input.subagent_type === "string" && input.subagent_type
-        ? input.subagent_type[0]!.toUpperCase() + (input.subagent_type as string).slice(1)
-        : undefined
-      return { icon: "task", title: type ? t("ui.tool.agent", { type }) : t("ui.tool.agent.default"), subtitle: input.description as string }
+      const type =
+        typeof input.subagent_type === "string" && input.subagent_type
+          ? input.subagent_type[0]!.toUpperCase() + (input.subagent_type as string).slice(1)
+          : undefined
+      return {
+        icon: "task",
+        title: type ? t("ui.tool.agent", { type }) : t("ui.tool.agent.default"),
+        subtitle: input.description as string,
+      }
     }
     case "bash":
       return { icon: "console", title: t("ui.tool.shell"), subtitle: input.description as string }
     case "edit":
-      return { icon: "code-lines", title: t("ui.messagePart.title.edit"), subtitle: input.filePath ? getFilename(String(input.filePath)) : undefined }
+      return {
+        icon: "code-lines",
+        title: t("ui.messagePart.title.edit"),
+        subtitle: input.filePath ? getFilename(String(input.filePath)) : undefined,
+      }
     case "write":
-      return { icon: "code-lines", title: t("ui.messagePart.title.write"), subtitle: input.filePath ? getFilename(String(input.filePath)) : undefined }
+      return {
+        icon: "code-lines",
+        title: t("ui.messagePart.title.write"),
+        subtitle: input.filePath ? getFilename(String(input.filePath)) : undefined,
+      }
     case "apply_patch": {
       const files = (input.files as unknown[] | undefined)?.length ?? 0
       return {
         icon: "code-lines",
         title: t("ui.tool.patch"),
-        subtitle: files ? `${files} ${t(files > 1 ? "ui.common.file.other" : "ui.common.file.one")}` : undefined,
+        subtitle: files
+          ? `${files} ${t(files > 1 ? "ui.common.file.other" : "ui.common.file.one")}`
+          : undefined,
       }
     }
     case "todowrite":
@@ -517,12 +583,20 @@ function getTool(name: string): ToolRenderer | undefined {
 
 type HighlightSegment = { text: string; type?: "file" | "agent" }
 
-const HighlightedText: React.FC<{ text: string; references: FilePart[]; agents: AgentPart[] }> = ({ text, references, agents }) => {
+const HighlightedText: React.FC<{ text: string; references: FilePart[]; agents: AgentPart[] }> = ({
+  text,
+  references,
+  agents,
+}) => {
   const segments = React.useMemo<HighlightSegment[]>(() => {
     const allRefs: { start: number; end: number; type: "file" | "agent" }[] = [
       ...references
         .filter((r) => r.source?.text?.start !== undefined && r.source?.text?.end !== undefined)
-        .map((r) => ({ start: r.source!.text!.start!, end: r.source!.text!.end!, type: "file" as const })),
+        .map((r) => ({
+          start: r.source!.text!.start!,
+          end: r.source!.text!.end!,
+          type: "file" as const,
+        })),
       ...agents
         .filter((a) => a.source?.start !== undefined && a.source?.end !== undefined)
         .map((a) => ({ start: a.source!.start!, end: a.source!.end!, type: "agent" as const })),
@@ -582,7 +656,10 @@ const DiagnosticsDisplay: React.FC<{ diagnostics: Diagnostic[] }> = ({ diagnosti
   )
 }
 
-function getDiagnostics(diagnosticsByFile: Record<string, Diagnostic[]> | undefined, filePath: string | undefined): Diagnostic[] {
+function getDiagnostics(
+  diagnosticsByFile: Record<string, Diagnostic[]> | undefined,
+  filePath: string | undefined,
+): Diagnostic[] {
   if (!diagnosticsByFile || !filePath) return []
   return (diagnosticsByFile[filePath] ?? []).filter((d) => d.severity === 1).slice(0, 3)
 }
@@ -668,7 +745,8 @@ const ShellSubmessage: React.FC<{ text: string; animate?: boolean }> = ({ text, 
       if (valueRef.current) {
         valueRef.current.style.opacity = "1"
         valueRef.current.style.filter = "blur(0px)"
-        valueRef.current.style.transition = "opacity 0.32s cubic-bezier(0.16, 1, 0.3, 1), filter 0.32s cubic-bezier(0.16, 1, 0.3, 1)"
+        valueRef.current.style.transition =
+          "opacity 0.32s cubic-bezier(0.16, 1, 0.3, 1), filter 0.32s cubic-bezier(0.16, 1, 0.3, 1)"
       }
     })
     return () => cancelAnimationFrame(raf)
@@ -725,7 +803,17 @@ const IconButton: React.FC<{
   "aria-label"?: string
   className?: string
   children?: React.ReactNode
-}> = ({ icon, size = "normal", variant = "ghost", onClick, onMouseDown, disabled, className, children, ...rest }) => {
+}> = ({
+  icon,
+  size = "normal",
+  variant = "ghost",
+  onClick,
+  onMouseDown,
+  disabled,
+  className,
+  children,
+  ...rest
+}) => {
   return (
     <button
       type="button"
@@ -737,7 +825,10 @@ const IconButton: React.FC<{
       onMouseDown={onMouseDown}
       disabled={disabled}
       aria-label={rest["aria-label"]}
-      className={cn("inline-flex items-center justify-center rounded p-1 hover:bg-background-stronger disabled:opacity-50", className)}
+      className={cn(
+        "inline-flex items-center justify-center rounded p-1 hover:bg-background-stronger disabled:opacity-50",
+        className,
+      )}
     >
       <IconPlaceholder name={icon} />
       {children}
@@ -745,16 +836,27 @@ const IconButton: React.FC<{
   )
 }
 
-const IconPlaceholder: React.FC<{ name: IconName; size?: "small" | "normal" }> = ({ name, size = "normal" }) => (
+const IconPlaceholder: React.FC<{ name: IconName; size?: "small" | "normal" }> = ({
+  name,
+  size = "normal",
+}) => (
   <span data-slot="icon" data-icon={name} data-size={size} className="inline-block">
-    <svg width={size === "small" ? 12 : 16} height={size === "small" ? 12 : 16} viewBox="0 0 16 16" aria-hidden="true">
+    <svg
+      width={size === "small" ? 12 : 16}
+      height={size === "small" ? 12 : 16}
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
       <circle cx="8" cy="8" r="6" fill="currentColor" opacity="0.2" />
     </svg>
   </span>
 )
 
 const Spinner: React.FC = () => (
-  <span data-component="spinner" className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+  <span
+    data-component="spinner"
+    className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
+  />
 )
 
 const Markdown: React.FC<{ text: string; cacheKey?: string; streaming?: boolean }> = ({ text }) => (
@@ -764,7 +866,11 @@ const Markdown: React.FC<{ text: string; cacheKey?: string; streaming?: boolean 
 )
 
 const FileIcon: React.FC<{ node?: { path?: string; type?: string } }> = ({ node }) => (
-  <span data-slot="file-icon" data-name={node?.path?.split(".").pop()} className="inline-block h-4 w-4 rounded bg-background-stronger" />
+  <span
+    data-slot="file-icon"
+    data-name={node?.path?.split(".").pop()}
+    className="inline-block h-4 w-4 rounded bg-background-stronger"
+  />
 )
 
 const ImagePreview: React.FC<{ src: string; alt?: string }> = ({ src, alt }) => (
@@ -783,7 +889,11 @@ const TooltipWrapper: React.FC<{
     <Tooltip.Root>
       <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content side={placement} sideOffset={gutter} className="rounded bg-background-stronger px-2 py-1 text-12-regular text-text-base shadow-md">
+        <Tooltip.Content
+          side={placement}
+          sideOffset={gutter}
+          className="rounded bg-background-stronger px-2 py-1 text-12-regular text-text-base shadow-md"
+        >
           {value}
         </Tooltip.Content>
       </Tooltip.Portal>
@@ -849,18 +959,24 @@ function isContextGroupTool(part: Part): part is ToolPart {
 function renderable(part: Part, showReasoningSummaries = true): boolean {
   if (part.type === "tool") {
     if (HIDDEN_TOOLS.has((part as ToolPart).tool)) return false
-    if ((part as ToolPart).tool === "question") return (part as ToolPart).state.status !== "pending" && (part as ToolPart).state.status !== "running"
+    if ((part as ToolPart).tool === "question")
+      return (
+        (part as ToolPart).state.status !== "pending" &&
+        (part as ToolPart).state.status !== "running"
+      )
     return true
   }
   if (part.type === "text") return !!(part as TextPart).text?.trim()
-  if (part.type === "reasoning") return showReasoningSummaries && !!(part as ReasoningPart).text?.trim()
+  if (part.type === "reasoning")
+    return showReasoningSummaries && !!(part as ReasoningPart).text?.trim()
   return !!PART_MAPPING[part.type]
 }
 
 const ContextToolGroup: React.FC<{ parts: ToolPart[]; busy?: boolean }> = ({ parts, busy }) => {
   const i18n = useI18n()
   const [open, setOpen] = React.useState(false)
-  const pending = !!busy || parts.some((p) => p.state.status === "pending" || p.state.status === "running")
+  const pending =
+    !!busy || parts.some((p) => p.state.status === "pending" || p.state.status === "running")
   const summary = React.useMemo(() => {
     const read = parts.filter((p) => p.tool === "read").length
     const search = parts.filter((p) => p.tool === "glob" || p.tool === "grep").length
@@ -869,10 +985,18 @@ const ContextToolGroup: React.FC<{ parts: ToolPart[]; busy?: boolean }> = ({ par
   }, [parts])
 
   return (
-    <Collapsible.Root open={open} onOpenChange={setOpen} className="tool-collapsible" data-timeline-part-ids={parts.map((p) => p.id).join(",")}>
+    <Collapsible.Root
+      open={open}
+      onOpenChange={setOpen}
+      className="tool-collapsible"
+      data-timeline-part-ids={parts.map((p) => p.id).join(",")}
+    >
       <Collapsible.Trigger asChild>
         <div data-component="context-tool-group-trigger" className="cursor-pointer">
-          <span data-slot="context-tool-group-title" className="min-w-0 flex items-center gap-2 text-14-medium text-text-strong">
+          <span
+            data-slot="context-tool-group-title"
+            className="min-w-0 flex items-center gap-2 text-14-medium text-text-strong"
+          >
             <span data-slot="context-tool-group-label" className="shrink-0">
               <ToolStatusTitle
                 active={pending}
@@ -887,21 +1011,42 @@ const ContextToolGroup: React.FC<{ parts: ToolPart[]; busy?: boolean }> = ({ par
             >
               <AnimatedCountList
                 items={[
-                  { key: "read", count: summary.read, one: i18n.t("ui.messagePart.context.read.one"), other: i18n.t("ui.messagePart.context.read.other") },
-                  { key: "search", count: summary.search, one: i18n.t("ui.messagePart.context.search.one"), other: i18n.t("ui.messagePart.context.search.other") },
-                  { key: "list", count: summary.list, one: i18n.t("ui.messagePart.context.list.one"), other: i18n.t("ui.messagePart.context.list.other") },
+                  {
+                    key: "read",
+                    count: summary.read,
+                    one: i18n.t("ui.messagePart.context.read.one"),
+                    other: i18n.t("ui.messagePart.context.read.other"),
+                  },
+                  {
+                    key: "search",
+                    count: summary.search,
+                    one: i18n.t("ui.messagePart.context.search.one"),
+                    other: i18n.t("ui.messagePart.context.search.other"),
+                  },
+                  {
+                    key: "list",
+                    count: summary.list,
+                    one: i18n.t("ui.messagePart.context.list.one"),
+                    other: i18n.t("ui.messagePart.context.list.other"),
+                  },
                 ]}
                 fallback=""
               />
             </span>
           </span>
-          <span data-slot="collapsible-arrow" className="ml-2">▾</span>
+          <span data-slot="collapsible-arrow" className="ml-2">
+            ▾
+          </span>
         </div>
       </Collapsible.Trigger>
       <Collapsible.Content>
         <div data-component="context-tool-group-list">
           {parts.map((part) => {
-            const info = getToolInfo(part.tool, part.state.input ?? {}, "metadata" in part.state ? part.state.metadata : undefined)
+            const info = getToolInfo(
+              part.tool,
+              part.state.input ?? {},
+              "metadata" in part.state ? part.state.metadata : undefined,
+            )
             const running = part.state.status === "pending" || part.state.status === "running"
             return (
               <div key={part.id} data-slot="context-tool-group-item">
@@ -936,8 +1081,7 @@ const ContextToolGroup: React.FC<{ parts: ToolPart[]; busy?: boolean }> = ({ par
 
 type PartRef = { messageID: string; partID: string }
 type PartGroup =
-  | { key: string; type: "part"; ref: PartRef }
-  | { key: string; type: "context"; refs: PartRef[] }
+  { key: string; type: "part"; ref: PartRef } | { key: string; type: "context"; refs: PartRef[] }
 
 function groupParts(parts: { messageID: string; part: Part }[]): PartGroup[] {
   const result: PartGroup[] = []
@@ -953,7 +1097,9 @@ function groupParts(parts: { messageID: string; part: Part }[]): PartGroup[] {
     result.push({
       key: `context:${first.part.id}`,
       type: "context",
-      refs: parts.slice(start, end + 1).map((item) => ({ messageID: item.messageID, partID: item.part.id })),
+      refs: parts
+        .slice(start, end + 1)
+        .map((item) => ({ messageID: item.messageID, partID: item.part.id })),
     })
     start = -1
   }
@@ -1021,7 +1167,11 @@ export const AssistantParts: React.FC<AssistantPartsProps> = (props) => {
         if (!message || !part) return null
         const defaultOpen =
           part.type === "tool" &&
-          ((part as ToolPart).tool === "bash" ? props.shellToolDefaultOpen : ["edit", "write", "apply_patch"].includes((part as ToolPart).tool) ? props.editToolDefaultOpen : undefined)
+          ((part as ToolPart).tool === "bash"
+            ? props.shellToolDefaultOpen
+            : ["edit", "write", "apply_patch"].includes((part as ToolPart).tool)
+              ? props.editToolDefaultOpen
+              : undefined)
         return (
           <PartDisplay
             key={entry.key}
@@ -1043,7 +1193,13 @@ export const AssistantParts: React.FC<AssistantPartsProps> = (props) => {
 
 export const Message: React.FC<MessageProps> = (props) => {
   if (props.message.role === "user") {
-    return <UserMessageDisplay message={props.message as UserMessage} parts={props.parts} actions={props.actions} />
+    return (
+      <UserMessageDisplay
+        message={props.message as UserMessage}
+        parts={props.parts}
+        actions={props.actions}
+      />
+    )
   }
   if (props.message.role === "assistant") {
     return (
@@ -1088,7 +1244,8 @@ const UserMessageDisplay: React.FC<{
   const [copied, setCopied] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
 
-  const textPart = parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined
+  const textPart = parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as
+    TextPart | undefined
   const text = textPart?.text || ""
   const files = (parts.filter((p) => p.type === "file") as FilePart[]) ?? []
   const attachments = files.filter(attached)
@@ -1112,7 +1269,10 @@ const UserMessageDisplay: React.FC<{
       .finally(() => setBusy(false))
   }
 
-  const metaHead = [message.agent ? message.agent[0]!.toUpperCase() + message.agent.slice(1) : "", ""]
+  const metaHead = [
+    message.agent ? message.agent[0]!.toUpperCase() + message.agent.slice(1) : "",
+    "",
+  ]
     .filter((x) => !!x)
     .join(" · ")
 
@@ -1136,7 +1296,12 @@ const UserMessageDisplay: React.FC<{
                 className="flex items-center gap-2 rounded border border-border-weak-base bg-background-stronger p-2"
               >
                 {type === "image" ? (
-                  <img data-slot="user-message-attachment-image" src={file.url} alt={name} className="h-12 w-12 rounded object-cover" />
+                  <img
+                    data-slot="user-message-attachment-image"
+                    src={file.url}
+                    alt={name}
+                    className="h-12 w-12 rounded object-cover"
+                  />
                 ) : (
                   <div data-slot="user-message-attachment-file" className="flex items-center gap-2">
                     <FileIcon node={{ path: name, type: "file" }} />
@@ -1155,9 +1320,15 @@ const UserMessageDisplay: React.FC<{
               <HighlightedText text={text} references={files} agents={agents} />
             </div>
           </div>
-          <div data-slot="user-message-copy-wrapper" className="mt-1 flex items-center justify-end gap-2">
-            {(metaHead) && (
-              <span data-slot="user-message-meta" className="text-12-regular text-text-weak cursor-default">
+          <div
+            data-slot="user-message-copy-wrapper"
+            className="mt-1 flex items-center justify-end gap-2"
+          >
+            {metaHead && (
+              <span
+                data-slot="user-message-meta"
+                className="text-12-regular text-text-weak cursor-default"
+              >
                 {metaHead}
               </span>
             )}
@@ -1226,7 +1397,10 @@ PART_MAPPING["compaction"] = function CompactionPartDisplay() {
   return <MessageDivider label={i18n.t("ui.messagePart.compaction")} />
 }
 
-function readPartText(_delta: Record<string, string> | undefined, part: TextPart | ReasoningPart): string {
+function readPartText(
+  _delta: Record<string, string> | undefined,
+  part: TextPart | ReasoningPart,
+): string {
   return part.text ?? ""
 }
 
@@ -1234,20 +1408,26 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
   const i18n = useI18n()
   const part = props.part as TextPart
-  const interrupted = props.message.role === "assistant" && (props.message as AssistantMessage).error?.name === "MessageAbortedError"
+  const interrupted =
+    props.message.role === "assistant" &&
+    (props.message as AssistantMessage).error?.name === "MessageAbortedError"
   const numfmt = new Intl.NumberFormat(i18n.locale())
 
-  const model = props.message.role === "assistant"
-    ? data.store.provider?.all?.get((props.message as AssistantMessage).providerID)?.models?.[(props.message as AssistantMessage).modelID]?.name ?? (props.message as AssistantMessage).modelID
-    : ""
+  const model =
+    props.message.role === "assistant"
+      ? (data.store.provider?.all?.get((props.message as AssistantMessage).providerID)?.models?.[
+          (props.message as AssistantMessage).modelID
+        ]?.name ?? (props.message as AssistantMessage).modelID)
+      : ""
 
   const message = props.message.role === "assistant" ? (props.message as AssistantMessage) : null
   const completed = message?.time?.completed
-  const ms = typeof props.turnDurationMs === "number"
-    ? props.turnDurationMs
-    : typeof completed === "number" && message
-      ? completed - (message.time?.created ?? 0)
-      : -1
+  const ms =
+    typeof props.turnDurationMs === "number"
+      ? props.turnDurationMs
+      : typeof completed === "number" && message
+        ? completed - (message.time?.created ?? 0)
+        : -1
   let duration = ""
   if (ms >= 0) {
     const total = Math.round(ms / 1000)
@@ -1256,12 +1436,22 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     } else {
       const minutes = Math.floor(total / 60)
       const seconds = total % 60
-      duration = i18n.t("ui.message.duration.minutesSeconds", { minutes: numfmt.format(minutes), seconds: numfmt.format(seconds) })
+      duration = i18n.t("ui.message.duration.minutesSeconds", {
+        minutes: numfmt.format(minutes),
+        seconds: numfmt.format(seconds),
+      })
     }
   }
 
   const meta = message
-    ? [message.agent ? message.agent[0]!.toUpperCase() + message.agent.slice(1) : "", model, duration, interrupted ? i18n.t("ui.message.interrupted") : ""].filter((x) => !!x).join(" · ")
+    ? [
+        message.agent ? message.agent[0]!.toUpperCase() + message.agent.slice(1) : "",
+        model,
+        duration,
+        interrupted ? i18n.t("ui.message.interrupted") : "",
+      ]
+        .filter((x) => !!x)
+        .join(" · ")
     : ""
 
   const streaming = !!message && typeof message.time?.completed !== "number"
@@ -1281,7 +1471,11 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
       <div data-slot="text-part-body">
         <Markdown text={text} cacheKey={part.id} streaming={streaming} />
       </div>
-      <div data-slot="text-part-copy-wrapper" data-interrupted={interrupted ? "" : undefined} className="mt-1 flex justify-end gap-2">
+      <div
+        data-slot="text-part-copy-wrapper"
+        data-interrupted={interrupted ? "" : undefined}
+        className="mt-1 flex justify-end gap-2"
+      >
         <TooltipWrapper
           value={copied ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponse")}
           placement="top"
@@ -1297,7 +1491,10 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
           />
         </TooltipWrapper>
         {meta && (
-          <span data-slot="text-part-meta" className="text-12-regular text-text-weak cursor-default">
+          <span
+            data-slot="text-part-meta"
+            className="text-12-regular text-text-weak cursor-default"
+          >
             {meta}
           </span>
         )}
@@ -1309,7 +1506,9 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const data = useData()
   const part = props.part as ReasoningPart
-  const streaming = props.message.role === "assistant" && typeof (props.message as AssistantMessage).time?.completed !== "number"
+  const streaming =
+    props.message.role === "assistant" &&
+    typeof (props.message as AssistantMessage).time?.completed !== "number"
   const text = readPartText(data.store.part_text_accum_delta, part)
   if (!text) return null
   return (
@@ -1328,12 +1527,17 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const i18n = useI18n()
 
   if (part.tool === "todowrite") return null
-  if (part.tool === "question" && (part.state.status === "pending" || part.state.status === "running")) return null
+  if (
+    part.tool === "question" &&
+    (part.state.status === "pending" || part.state.status === "running")
+  )
+    return null
 
   const input = part.state.input ?? {}
   const metadata = part.state.metadata ?? {}
   const taskId = typeof metadata.sessionId === "string" ? metadata.sessionId : undefined
-  const taskSubtitle = typeof input.description === "string" && input.description ? input.description : taskId
+  const taskSubtitle =
+    typeof input.description === "string" && input.description ? input.description : taskId
 
   if (part.state.status === "error" && part.state.error) {
     const cleaned = part.state.error.replace("Error: ", "")
@@ -1409,7 +1613,10 @@ ToolRegistry.register("list", (props) => {
     <BasicTool
       {...props}
       icon="bullet-list"
-      trigger={{ title: i18n.t("ui.tool.list"), subtitle: getDirectory(String(props.input.path || "/")) }}
+      trigger={{
+        title: i18n.t("ui.tool.list"),
+        subtitle: getDirectory(String(props.input.path || "/")),
+      }}
     >
       {props.output ? (
         <div data-component="tool-output" data-scrollable>
@@ -1501,7 +1708,11 @@ ToolRegistry.register("bash", (props) => {
           </pre>
         </div>
         <div data-slot="bash-copy" className="flex justify-end">
-          <TooltipWrapper value={copied ? i18n.t("ui.message.copied") : i18n.t("ui.message.copy")} placement="top" gutter={4}>
+          <TooltipWrapper
+            value={copied ? i18n.t("ui.message.copied") : i18n.t("ui.message.copy")}
+            placement="top"
+            gutter={4}
+          >
             <IconButton
               icon={copied ? "check" : "copy"}
               size="small"
@@ -1519,7 +1730,10 @@ ToolRegistry.register("bash", (props) => {
 
 ToolRegistry.register("edit", (props) => {
   const i18n = useI18n()
-  const diagnostics = getDiagnostics(props.metadata.diagnostics as Record<string, Diagnostic[]> | undefined, props.input.filePath as string | undefined)
+  const diagnostics = getDiagnostics(
+    props.metadata.diagnostics as Record<string, Diagnostic[]> | undefined,
+    props.input.filePath as string | undefined,
+  )
   const pending = props.status === "pending" || props.status === "running"
   const filename = getFilename(String(props.input.filePath ?? ""))
   return (
@@ -1539,7 +1753,9 @@ ToolRegistry.register("edit", (props) => {
               </div>
               {!pending && String(props.input.filePath ?? "").includes("/") && (
                 <div data-slot="message-part-path">
-                  <span data-slot="message-part-directory">{getDirectory(String(props.input.filePath))}</span>
+                  <span data-slot="message-part-directory">
+                    {getDirectory(String(props.input.filePath))}
+                  </span>
                 </div>
               )}
             </div>
@@ -1554,7 +1770,10 @@ ToolRegistry.register("edit", (props) => {
 
 ToolRegistry.register("write", (props) => {
   const i18n = useI18n()
-  const diagnostics = getDiagnostics(props.metadata.diagnostics as Record<string, Diagnostic[]> | undefined, props.input.filePath as string | undefined)
+  const diagnostics = getDiagnostics(
+    props.metadata.diagnostics as Record<string, Diagnostic[]> | undefined,
+    props.input.filePath as string | undefined,
+  )
   const pending = props.status === "pending" || props.status === "running"
   const filename = getFilename(String(props.input.filePath ?? ""))
   return (
@@ -1574,7 +1793,9 @@ ToolRegistry.register("write", (props) => {
               </div>
               {!pending && String(props.input.filePath ?? "").includes("/") && (
                 <div data-slot="message-part-path">
-                  <span data-slot="message-part-directory">{getDirectory(String(props.input.filePath))}</span>
+                  <span data-slot="message-part-directory">
+                    {getDirectory(String(props.input.filePath))}
+                  </span>
                 </div>
               )}
             </div>
@@ -1604,8 +1825,12 @@ ToolRegistry.register("apply_patch", (props) => {
 
 ToolRegistry.register("todowrite", (props) => {
   const i18n = useI18n()
-  const todos = (props.metadata.todos as Todo[] | undefined) ?? (props.input.todos as Todo[] | undefined) ?? []
-  const subtitle = todos.length === 0 ? "" : `${todos.filter((t) => t.status === "completed").length}/${todos.length}`
+  const todos =
+    (props.metadata.todos as Todo[] | undefined) ?? (props.input.todos as Todo[] | undefined) ?? []
+  const subtitle =
+    todos.length === 0
+      ? ""
+      : `${todos.filter((t) => t.status === "completed").length}/${todos.length}`
   return (
     <BasicTool
       {...props}
@@ -1624,7 +1849,10 @@ ToolRegistry.register("todowrite", (props) => {
               <Checkbox.Indicator>
                 <span>{todo.status === "completed" ? "✓" : ""}</span>
               </Checkbox.Indicator>
-              <span data-slot="message-part-todo-content" data-completed={todo.status === "completed" ? "completed" : undefined}>
+              <span
+                data-slot="message-part-todo-content"
+                data-completed={todo.status === "completed" ? "completed" : undefined}
+              >
                 {todo.content}
               </span>
             </Checkbox.Root>
@@ -1639,10 +1867,19 @@ ToolRegistry.register("question", (props) => {
   const i18n = useI18n()
   const questions = (props.input.questions as QuestionInfo[] | undefined) ?? []
   const rawAnswers = (props.metadata.answers as unknown) ?? []
-  const answerList: string[] = Array.isArray(rawAnswers) ? rawAnswers.map((a) => (typeof a === "string" ? a : String((a as { answer?: string })?.answer ?? ""))) : []
+  const answerList: string[] = Array.isArray(rawAnswers)
+    ? rawAnswers.map((a) =>
+        typeof a === "string" ? a : String((a as { answer?: string })?.answer ?? ""),
+      )
+    : []
   const completed = answerList.length > 0
   const count = questions.length
-  const subtitle = count === 0 ? "" : completed ? i18n.t("ui.question.subtitle.answered", { count }) : `${count} ${i18n.t(count > 1 ? "ui.common.question.other" : "ui.common.question.one")}`
+  const subtitle =
+    count === 0
+      ? ""
+      : completed
+        ? i18n.t("ui.question.subtitle.answered", { count })
+        : `${count} ${i18n.t(count > 1 ? "ui.common.question.other" : "ui.common.question.one")}`
   return (
     <BasicTool
       {...props}
@@ -1654,7 +1891,9 @@ ToolRegistry.register("question", (props) => {
         <div data-component="question-answers" className="flex flex-col gap-2">
           {questions.map((q, i) => (
             <div key={i} data-slot="question-answer-item">
-              <div data-slot="question-text" className="text-13-medium text-text-base">{q.question}</div>
+              <div data-slot="question-text" className="text-13-medium text-text-base">
+                {q.question}
+              </div>
               <div data-slot="answer-text" className="text-13-regular text-text-weak">
                 {answerList[i] || i18n.t("ui.question.answer.none")}
               </div>
@@ -1753,11 +1992,17 @@ ToolRegistry.register("task", (props) => {
           <div data-slot="basic-tool-tool-info-structured">
             <div data-slot="basic-tool-tool-info-main">
               {running && (
-                <span data-component="task-tool-spinner" style={{ color: agent.color ?? "var(--icon-interactive-base)" }}>
+                <span
+                  data-component="task-tool-spinner"
+                  style={{ color: agent.color ?? "var(--icon-interactive-base)" }}
+                >
                   <Spinner />
                 </span>
               )}
-              <span data-component="task-tool-title" style={{ color: agent.color ?? "var(--text-strong)" }}>
+              <span
+                data-component="task-tool-title"
+                style={{ color: agent.color ?? "var(--text-strong)" }}
+              >
                 {title}
               </span>
             </div>

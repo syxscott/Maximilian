@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { pendingProposals } from "../schema.js";
+import { eq } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { pendingProposals } from "../schema.js"
 
 /**
  * PostgreSQL-backed pending proposal store.
@@ -38,7 +38,7 @@ export class PgPendingProposalStore {
           resolvedBy: input.resolvedBy ?? null,
           resolutionReason: input.resolutionReason ?? null,
         },
-      });
+      })
   }
 
   async get(proposalId: string): Promise<PendingProposalRow | undefined> {
@@ -46,22 +46,22 @@ export class PgPendingProposalStore {
       .select()
       .from(pendingProposals)
       .where(eq(pendingProposals.proposalId, proposalId))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToPendingProposal(rows[0]);
+      .limit(1)
+    if (rows.length === 0) return undefined
+    return rowToPendingProposal(rows[0])
   }
 
   async listPending(): Promise<PendingProposalRow[]> {
     const rows = await this.db
       .select()
       .from(pendingProposals)
-      .where(eq(pendingProposals.status, "pending_human"));
-    return rows.map(rowToPendingProposal);
+      .where(eq(pendingProposals.status, "pending_human"))
+    return rows.map(rowToPendingProposal)
   }
 
   async listAll(): Promise<PendingProposalRow[]> {
-    const rows = await this.db.select().from(pendingProposals);
-    return rows.map(rowToPendingProposal);
+    const rows = await this.db.select().from(pendingProposals)
+    return rows.map(rowToPendingProposal)
   }
 
   async resolve(
@@ -78,21 +78,21 @@ export class PgPendingProposalStore {
         resolvedBy,
         resolutionReason: reason,
       })
-      .where(eq(pendingProposals.proposalId, proposalId));
+      .where(eq(pendingProposals.proposalId, proposalId))
   }
 }
 
 export interface PendingProposalRow {
-  proposalId: string;
-  proposal: unknown;
-  simulation: unknown;
-  score: unknown;
-  snapshotId?: string;
-  status: string;               // pending_human | approved | rejected
-  requestedAt: string;
-  resolvedAt?: string;
-  resolvedBy?: string;
-  resolutionReason?: string;
+  proposalId: string
+  proposal: unknown
+  simulation: unknown
+  score: unknown
+  snapshotId?: string
+  status: string // pending_human | approved | rejected
+  requestedAt: string
+  resolvedAt?: string
+  resolvedBy?: string
+  resolutionReason?: string
 }
 
 function rowToPendingProposal(row: typeof pendingProposals.$inferSelect): PendingProposalRow {
@@ -107,7 +107,7 @@ function rowToPendingProposal(row: typeof pendingProposals.$inferSelect): Pendin
     resolvedAt: row.resolvedAt ?? undefined,
     resolvedBy: row.resolvedBy ?? undefined,
     resolutionReason: row.resolutionReason ?? undefined,
-  };
+  }
 }
 
 // PgPendingProposalStore: PostgreSQL-backed HITL pending proposal persistence.

@@ -151,10 +151,13 @@ describe("OpencodePhaseRunner (Phase 3d)", () => {
     const order: string[] = []
     const events: OpencodePhaseEvent[] = []
     const bus = new EventBus<OpencodePhaseEvent>()
-    bus.subscribe((e) => {
-      events.push(e)
-      if (e.type === "task:complete") order.push(e.taskId)
-    }, { types: ["task:complete"] })
+    bus.subscribe(
+      (e) => {
+        events.push(e)
+        if (e.type === "task:complete") order.push(e.taskId)
+      },
+      { types: ["task:complete"] },
+    )
 
     // t2 depends on t1; t3 depends on t2 → must run sequentially.
     const tasks = [
@@ -186,9 +189,12 @@ describe("OpencodePhaseRunner (Phase 3d)", () => {
     const executor = new OpencodeExecutor({ baseUrl: "http://oc.test", poolSessions: false })
     const idleEvents: OpencodePhaseEvent[] = []
     const bus = new EventBus<OpencodePhaseEvent>()
-    bus.subscribe((e) => {
-      if (e.type === "session:idle") idleEvents.push(e)
-    }, { types: ["session:idle"] })
+    bus.subscribe(
+      (e) => {
+        if (e.type === "session:idle") idleEvents.push(e)
+      },
+      { types: ["session:idle"] },
+    )
 
     const runner = new OpencodePhaseRunner()
     await runner.runPhase({

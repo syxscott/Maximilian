@@ -311,9 +311,7 @@ const key = (directory: string, payload: ServerEvent): string | undefined => {
   return undefined
 }
 
-function coalesceServerEvents(
-  events: QueuedServerEvent[],
-): QueuedServerEvent[] {
+function coalesceServerEvents(events: QueuedServerEvent[]): QueuedServerEvent[] {
   const out: QueuedServerEvent[] = []
   const indexByKey = new Map<string, number>()
   for (const event of events) {
@@ -322,7 +320,10 @@ function coalesceServerEvents(
       const existing = indexByKey.get(k)
       if (existing !== undefined) {
         const prev = out[existing]!
-        if (prev.payload.type === "message.part.delta" && event.payload.type === "message.part.delta") {
+        if (
+          prev.payload.type === "message.part.delta" &&
+          event.payload.type === "message.part.delta"
+        ) {
           const prevDelta = (prev.payload.properties?.delta as string) ?? ""
           const nextDelta = (event.payload.properties?.delta as string) ?? ""
           prev.payload = {
@@ -388,19 +389,22 @@ function makeChangeTracker<T extends Record<string, unknown>>(): {
 type DirectoryStoreApi = ReturnType<typeof createDirectoryStore>
 
 function createDirectoryStore(directory: string) {
-  return createStore<DirectoryStoreShape>()((set, get) => ({
-    ready: false,
-    session: [],
-    session_status: {},
-    message: {},
-    part: {},
-    part_text_accum_delta: {},
-    mcp: {},
-    command: [],
-    limit: 0,
-    sessionTotal: 0,
-    _directory: directory,
-  } as DirectoryStoreShape & { _directory: string }))
+  return createStore<DirectoryStoreShape>()(
+    (set, get) =>
+      ({
+        ready: false,
+        session: [],
+        session_status: {},
+        message: {},
+        part: {},
+        part_text_accum_delta: {},
+        mcp: {},
+        command: [],
+        limit: 0,
+        sessionTotal: 0,
+        _directory: directory,
+      }) as DirectoryStoreShape & { _directory: string },
+  )
 }
 
 function applyGlobalEvent(input: {
@@ -441,7 +445,8 @@ function applyGlobalEvent(input: {
       set((draft) => {
         tracker.snapshot(draft)
         if (!todos) delete draft.session_todo[sessionID]
-        else draft.session_todo[sessionID] = reconcileArray(draft.session_todo[sessionID], todos, "id")
+        else
+          draft.session_todo[sessionID] = reconcileArray(draft.session_todo[sessionID], todos, "id")
         return guard(draft)
       })
       return
@@ -680,21 +685,23 @@ export function createSyncStore(options: SyncStoreOptions): SyncStore {
         }),
         queryClient.fetchQuery({
           queryKey: [scope, "global", "providers"] as const,
-          queryFn: async () => (await api.request("GET", "/config/providers", {})).data ?? {
-            all: {},
-            default: {},
-            connected: [],
-          },
+          queryFn: async () =>
+            (await api.request("GET", "/config/providers", {})).data ?? {
+              all: {},
+              default: {},
+              connected: [],
+            },
         }),
         queryClient.fetchQuery({
           queryKey: [scope, "global", "path"] as const,
-          queryFn: async () => (await api.request("GET", "/path", {})).data ?? {
-            state: "",
-            config: "",
-            worktree: "",
-            directory: "",
-            home: "",
-          },
+          queryFn: async () =>
+            (await api.request("GET", "/path", {})).data ?? {
+              state: "",
+              config: "",
+              worktree: "",
+              directory: "",
+              home: "",
+            },
         }),
       ])
       const normalized: NormalizedProviderListResponse = {
@@ -852,15 +859,12 @@ export function useDirectorySlice<T>(
   return useStoreSelector(ref.current, selector)
 }
 
-function useStoreSelector<T, S>(store: { subscribe: (cb: () => void) => () => void; getState: () => T }, selector: (state: T) => S): S {
-  const subscribe = useMemo(
-    () => (cb: () => void) => store.subscribe(cb),
-    [store],
-  )
-  const getSnapshot = useMemo(
-    () => () => selector(store.getState()),
-    [store, selector],
-  )
+function useStoreSelector<T, S>(
+  store: { subscribe: (cb: () => void) => () => void; getState: () => T },
+  selector: (state: T) => S,
+): S {
+  const subscribe = useMemo(() => (cb: () => void) => store.subscribe(cb), [store])
+  const getSnapshot = useMemo(() => () => selector(store.getState()), [store, selector])
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 

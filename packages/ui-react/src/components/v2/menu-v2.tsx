@@ -50,8 +50,9 @@ const ItemBody: React.FC<{
   </>
 )
 
-export interface MenuV2ItemProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> {
+export interface MenuV2ItemProps extends React.ComponentPropsWithoutRef<
+  typeof DropdownMenuPrimitive.Item
+> {
   shortcut?: React.ReactNode
   badge?: React.ReactNode
 }
@@ -73,8 +74,9 @@ export const MenuV2Item = React.forwardRef<
 ))
 MenuV2Item.displayName = "MenuV2Item"
 
-export interface MenuV2CheckboxItemProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem> {
+export interface MenuV2CheckboxItemProps extends React.ComponentPropsWithoutRef<
+  typeof DropdownMenuPrimitive.CheckboxItem
+> {
   shortcut?: React.ReactNode
   badge?: React.ReactNode
 }
@@ -93,10 +95,7 @@ export const MenuV2CheckboxItem = React.forwardRef<
       shortcut={shortcut}
       badge={badge}
       trailing={
-        <DropdownMenuPrimitive.ItemIndicator
-          data-slot="menu-v2-item-indicator"
-          forceMount
-        >
+        <DropdownMenuPrimitive.ItemIndicator data-slot="menu-v2-item-indicator" forceMount>
           <CheckMark />
         </DropdownMenuPrimitive.ItemIndicator>
       }
@@ -107,8 +106,9 @@ export const MenuV2CheckboxItem = React.forwardRef<
 ))
 MenuV2CheckboxItem.displayName = "MenuV2CheckboxItem"
 
-export interface MenuV2RadioItemProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem> {
+export interface MenuV2RadioItemProps extends React.ComponentPropsWithoutRef<
+  typeof DropdownMenuPrimitive.RadioItem
+> {
   shortcut?: React.ReactNode
   badge?: React.ReactNode
 }
@@ -127,10 +127,7 @@ export const MenuV2RadioItem = React.forwardRef<
       shortcut={shortcut}
       badge={badge}
       trailing={
-        <DropdownMenuPrimitive.ItemIndicator
-          data-slot="menu-v2-item-indicator"
-          forceMount
-        >
+        <DropdownMenuPrimitive.ItemIndicator data-slot="menu-v2-item-indicator" forceMount>
           <CheckMark />
         </DropdownMenuPrimitive.ItemIndicator>
       }
@@ -141,8 +138,9 @@ export const MenuV2RadioItem = React.forwardRef<
 ))
 MenuV2RadioItem.displayName = "MenuV2RadioItem"
 
-export interface MenuV2SubTriggerProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> {
+export interface MenuV2SubTriggerProps extends React.ComponentPropsWithoutRef<
+  typeof DropdownMenuPrimitive.SubTrigger
+> {
   shortcut?: React.ReactNode
   badge?: React.ReactNode
 }

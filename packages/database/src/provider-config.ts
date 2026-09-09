@@ -7,14 +7,14 @@
  * persisted here. API keys remain in environment variables only —
  * never in the database.
  */
-import { type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
-import type { ProviderConfig } from "@max/providers";
-import { providerConfigs } from "./schema.js";
+import { type PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { eq } from "drizzle-orm"
+import type { ProviderConfig } from "@max/providers"
+import { providerConfigs } from "./schema.js"
 
 export interface ProviderConfigRow extends ProviderConfig {
   /** True when this row is the system-wide default provider. */
-  defaultProvider: boolean;
+  defaultProvider: boolean
 }
 
 /**
@@ -22,18 +22,18 @@ export interface ProviderConfigRow extends ProviderConfig {
  * Returns a Map from provider id → config override.
  */
 export async function getProviderConfigsFromDb(
-  db: PostgresJsDatabase
+  db: PostgresJsDatabase,
 ): Promise<Map<string, ProviderConfigRow>> {
-  const rows = await db.select().from(providerConfigs);
-  const map = new Map<string, ProviderConfigRow>();
+  const rows = await db.select().from(providerConfigs)
+  const map = new Map<string, ProviderConfigRow>()
   for (const row of rows) {
     map.set(row.providerId, {
       defaultModel: row.defaultModel,
       enabled: row.enabled,
       defaultProvider: row.defaultProvider,
-    });
+    })
   }
-  return map;
+  return map
 }
 
 /**
@@ -52,15 +52,15 @@ export async function setDefaultProviderInDb(
   defaultModel: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.update(providerConfigs).set({ defaultProvider: false });
+    await tx.update(providerConfigs).set({ defaultProvider: false })
     await tx
       .insert(providerConfigs)
       .values({ providerId, defaultModel, enabled: true, defaultProvider: true })
       .onConflictDoUpdate({
         target: providerConfigs.providerId,
         set: { defaultProvider: true, defaultModel, updatedAt: new Date() },
-      });
-  });
+      })
+  })
 }
 
 /**
@@ -77,6 +77,6 @@ export async function setProviderModelInDb(
     .update(providerConfigs)
     .set({ defaultModel: model, updatedAt: new Date() })
     .where(eq(providerConfigs.providerId, providerId))
-    .returning({ providerId: providerConfigs.providerId });
-  return result.length > 0;
+    .returning({ providerId: providerConfigs.providerId })
+  return result.length > 0
 }

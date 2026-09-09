@@ -49,10 +49,7 @@ export const DEFAULT_SKILL_CACHE_DIR = join(homedir(), ".maximilian", "skills")
  * 拉取 URL 的 SKILL.md 索引,返回成功下载的 skill 名称列表。
  * 索引拉取失败返回 [];不抛异常。
  */
-export async function pullSkillIndex(
-  url: string,
-  opts: PullOptions = {},
-): Promise<string[]> {
+export async function pullSkillIndex(url: string, opts: PullOptions = {}): Promise<string[]> {
   const base = url.endsWith("/") ? url : `${url}/`
   const cacheRoot = opts.cacheDir ?? DEFAULT_SKILL_CACHE_DIR
   mkdirSync(cacheRoot, { recursive: true })
@@ -77,10 +74,7 @@ export async function pullSkillIndex(
     const skillDir = join(cacheRoot, entry.name)
     let ok = true
     for (const f of entry.files) {
-      const downloaded = await downloadFile(
-        `${base}${entry.name}/${f}`,
-        join(skillDir, f),
-      )
+      const downloaded = await downloadFile(`${base}${entry.name}/${f}`, join(skillDir, f))
       if (!downloaded) ok = false
     }
     if (ok) results.push(entry.name)

@@ -9,10 +9,10 @@
 
 ## Decision Rules
 
-| Reason | Condition |
-|--------|-----------|
+| Reason    | Condition                     |
+| --------- | ----------------------------- |
 | low_usage | usageCount < 2 (lookback 100) |
-| low_score | avgScore < 4.0 |
+| low_score | avgScore < 4.0                |
 
 ## Tests
 

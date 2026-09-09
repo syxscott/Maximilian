@@ -24,12 +24,12 @@ executable **Plan of Tasks**. It does not run the plan itself — that's
 
 The actual **planning algorithm** lives elsewhere:
 
-| Concern | Where |
-|---|---|
-| Per-step self-refinement after each wave | `@max/core/src/planner-observer.ts` |
-| Wave-based parallel execution + semaphore | `@max/core/src/runtime.ts` |
-| Stall detection (idle / loop / progress) | `@max/core/src/stall-detection.ts` |
-| Plan validator (5-dim quality gate) | `@max/core/src/validation/plan-reviewer.ts` |
+| Concern                                   | Where                                       |
+| ----------------------------------------- | ------------------------------------------- |
+| Per-step self-refinement after each wave  | `@max/core/src/planner-observer.ts`         |
+| Wave-based parallel execution + semaphore | `@max/core/src/runtime.ts`                  |
+| Stall detection (idle / loop / progress)  | `@max/core/src/stall-detection.ts`          |
+| Plan validator (5-dim quality gate)       | `@max/core/src/validation/plan-reviewer.ts` |
 
 So Commander is the **shell**: it calls the LLM, parses JSON, falls back
 to a default. The **deep planning logic** (observing progress, refining

@@ -15,19 +15,13 @@
  *   6. Compute parallel layers.
  */
 
-import { randomUUID } from "node:crypto";
-import type {
-  AgentBlueprint,
-  TeamEdge,
-  TeamGraph,
-  TeamLayer,
-  TeamNode,
-} from "./types.js";
+import { randomUUID } from "node:crypto"
+import type { AgentBlueprint, TeamEdge, TeamGraph, TeamLayer, TeamNode } from "./types.js"
 
 export class TeamGraphBuilder {
   build(blueprints: AgentBlueprint[], userRequest: string, capabilities: string[]): TeamGraph {
     if (blueprints.length === 0) {
-      throw new Error("Cannot build team graph from zero blueprints");
+      throw new Error("Cannot build team graph from zero blueprints")
     }
 
     // Step 1: nodes.
@@ -38,40 +32,43 @@ export class TeamGraphBuilder {
       role: bp.role,
       displayName: bp.displayName,
       dependsOn: [],
-    }));
+    }))
 
-    const byNodeId = new Map(nodes.map((n) => [n.id, n]));
-    const byRole = new Map(nodes.map((n) => [n.role, n]));
-    const byBlueprintId = new Map(blueprints.map((b) => [b.id, b]));
+    const byNodeId = new Map(nodes.map((n) => [n.id, n]))
+    const byRole = new Map(nodes.map((n) => [n.role, n]))
+    const byBlueprintId = new Map(blueprints.map((b) => [b.id, b]))
     const reviewerNodes = nodes.filter((node) => {
-      const bp = node.blueprintId ? byBlueprintId.get(node.blueprintId) : undefined;
-      return bp?.capabilities.includes("review") ?? false;
-    });
-    const implementationNodes = nodes.filter((node) => !reviewerNodes.some((reviewer) => reviewer.id === node.id));
-    const approvalNode: TeamNode | undefined = implementationNodes.length > 0 && reviewerNodes.length > 0
-      ? {
-          id: `approval-${randomUUID().slice(0, 8)}`,
-          kind: "approval",
-          role: "approval",
-          displayName: "Human approval checkpoint",
-          dependsOn: implementationNodes.map((node) => node.id),
-          approvalConfig: {
-            prompt: "Review generated feature outputs before final review continues.",
-            requireComment: false,
-            reason: "Key feature annotation completed",
-          },
-        }
-      : undefined;
+      const bp = node.blueprintId ? byBlueprintId.get(node.blueprintId) : undefined
+      return bp?.capabilities.includes("review") ?? false
+    })
+    const implementationNodes = nodes.filter(
+      (node) => !reviewerNodes.some((reviewer) => reviewer.id === node.id),
+    )
+    const approvalNode: TeamNode | undefined =
+      implementationNodes.length > 0 && reviewerNodes.length > 0
+        ? {
+            id: `approval-${randomUUID().slice(0, 8)}`,
+            kind: "approval",
+            role: "approval",
+            displayName: "Human approval checkpoint",
+            dependsOn: implementationNodes.map((node) => node.id),
+            approvalConfig: {
+              prompt: "Review generated feature outputs before final review continues.",
+              requireComment: false,
+              reason: "Key feature annotation completed",
+            },
+          }
+        : undefined
     if (approvalNode) {
-      nodes.push(approvalNode);
-      byNodeId.set(approvalNode.id, approvalNode);
+      nodes.push(approvalNode)
+      byNodeId.set(approvalNode.id, approvalNode)
     }
 
     // Step 2: dependsOn.
-    const edges: TeamEdge[] = [];
+    const edges: TeamEdge[] = []
     for (const node of nodes) {
-      const bp = node.blueprintId ? byBlueprintId.get(node.blueprintId) : undefined;
-      if (!bp) continue;
+      const bp = node.blueprintId ? byBlueprintId.get(node.blueprintId) : undefined
+      if (!bp) continue
 
       // 2a. Capability dependencies: for each capability the blueprint
       // covers, find any other node that is the "source" of that
@@ -82,17 +79,21 @@ export class TeamGraphBuilder {
         // category, the downstream depends on the producer.
         // The capability library declares these (e.g. "frontend" depends
         // on "backend"). We resolve them via the node's role.
-        const producerRoles = producerFor(node.role);
+        const producerRoles = producerFor(node.role)
         for (const producer of producerRoles) {
-          const producerNode = byRole.get(producer);
-          if (producerNode && producerNode.id !== node.id && !node.dependsOn.includes(producerNode.id)) {
-            node.dependsOn.push(producerNode.id);
+          const producerNode = byRole.get(producer)
+          if (
+            producerNode &&
+            producerNode.id !== node.id &&
+            !node.dependsOn.includes(producerNode.id)
+          ) {
+            node.dependsOn.push(producerNode.id)
             edges.push({
               from: producerNode.id,
               to: node.id,
               type: "data_flow",
               description: `${producerNode.displayName} → ${node.displayName}`,
-            });
+            })
           }
         }
       }
@@ -101,27 +102,27 @@ export class TeamGraphBuilder {
       // otherwise it depends on all non-reviewer nodes.
       if (bp.capabilities.includes("review")) {
         if (approvalNode && !node.dependsOn.includes(approvalNode.id)) {
-          node.dependsOn.push(approvalNode.id);
+          node.dependsOn.push(approvalNode.id)
           edges.push({
             from: approvalNode.id,
             to: node.id,
             type: "validation",
             description: `${approvalNode.displayName} → ${node.displayName}`,
-          });
-          continue;
+          })
+          continue
         }
         for (const other of nodes) {
-          if (other.id === node.id || other.kind === "approval") continue;
-          const otherBp = other.blueprintId ? byBlueprintId.get(other.blueprintId) : undefined;
-          if (!otherBp || otherBp.capabilities.includes("review")) continue;
+          if (other.id === node.id || other.kind === "approval") continue
+          const otherBp = other.blueprintId ? byBlueprintId.get(other.blueprintId) : undefined
+          if (!otherBp || otherBp.capabilities.includes("review")) continue
           if (!node.dependsOn.includes(other.id)) {
-            node.dependsOn.push(other.id);
+            node.dependsOn.push(other.id)
             edges.push({
               from: other.id,
               to: node.id,
               type: "review",
               description: `${other.displayName} → ${node.displayName} (review)`,
-            });
+            })
           }
         }
       }
@@ -129,28 +130,30 @@ export class TeamGraphBuilder {
 
     if (approvalNode) {
       for (const dep of approvalNode.dependsOn) {
-        const from = byNodeId.get(dep);
-        if (!from) continue;
+        const from = byNodeId.get(dep)
+        if (!from) continue
         edges.push({
           from: from.id,
           to: approvalNode.id,
           type: "validation",
           description: `${from.displayName} → ${approvalNode.displayName}`,
-        });
+        })
       }
     }
 
     // Step 3: validate.
     for (const n of nodes) {
-      if (!byNodeId.has(n.id)) throw new Error(`Node ${n.id} references unknown node`);
+      if (!byNodeId.has(n.id)) throw new Error(`Node ${n.id} references unknown node`)
     }
 
     // Step 4: topological sort with cycle detection.
-    const layers = topoLayers(nodes);
-    const visited = new Set(layers.flatMap((l) => l.nodeIds));
-    const stuck = nodes.filter((n) => !visited.has(n.id));
+    const layers = topoLayers(nodes)
+    const visited = new Set(layers.flatMap((l) => l.nodeIds))
+    const stuck = nodes.filter((n) => !visited.has(n.id))
     if (stuck.length > 0) {
-      throw new Error(`Cycle detected in team graph; stuck nodes: ${stuck.map((s) => s.role).join(", ")}`);
+      throw new Error(
+        `Cycle detected in team graph; stuck nodes: ${stuck.map((s) => s.role).join(", ")}`,
+      )
     }
 
     return {
@@ -162,7 +165,7 @@ export class TeamGraphBuilder {
       layers,
       createdAt: new Date().toISOString(),
       status: "ready",
-    };
+    }
   }
 }
 
@@ -172,53 +175,63 @@ export class TeamGraphBuilder {
  */
 function producerFor(role: string): string[] {
   switch (role) {
-    case "frontend":        return ["backend", "product_designer"];
-    case "data_engineer":   return ["product_designer"];
-    case "devops":          return ["backend"];
-    case "tester":          return ["backend", "frontend"];
-    case "writer":          return ["backend", "frontend"];
-    case "reviewer":        return []; // reviewer depends on all (handled separately)
-    case "researcher":      return [];
-    case "product_designer":return [];
-    case "backend":         return ["product_designer"];
-    default:                return [];
+    case "frontend":
+      return ["backend", "product_designer"]
+    case "data_engineer":
+      return ["product_designer"]
+    case "devops":
+      return ["backend"]
+    case "tester":
+      return ["backend", "frontend"]
+    case "writer":
+      return ["backend", "frontend"]
+    case "reviewer":
+      return [] // reviewer depends on all (handled separately)
+    case "researcher":
+      return []
+    case "product_designer":
+      return []
+    case "backend":
+      return ["product_designer"]
+    default:
+      return []
   }
 }
 
 function topoLayers(nodes: TeamNode[]): TeamLayer[] {
-  const indeg = new Map<string, number>();
-  const out = new Map<string, string[]>();
+  const indeg = new Map<string, number>()
+  const out = new Map<string, string[]>()
   for (const n of nodes) {
-    indeg.set(n.id, n.dependsOn.length);
-    out.set(n.id, []);
+    indeg.set(n.id, n.dependsOn.length)
+    out.set(n.id, [])
   }
   for (const n of nodes) {
     for (const dep of n.dependsOn) {
-      const arr = out.get(dep) ?? [];
-      arr.push(n.id);
-      out.set(dep, arr);
+      const arr = out.get(dep) ?? []
+      arr.push(n.id)
+      out.set(dep, arr)
     }
   }
-  const layers: TeamLayer[] = [];
-  let frontier = nodes.filter((n) => indeg.get(n.id) === 0).map((n) => n.id);
-  let idx = 0;
-  const visited = new Set<string>();
+  const layers: TeamLayer[] = []
+  let frontier = nodes.filter((n) => indeg.get(n.id) === 0).map((n) => n.id)
+  let idx = 0
+  const visited = new Set<string>()
   while (frontier.length > 0) {
-    layers.push({ index: idx++, nodeIds: [...frontier] });
-    const next: string[] = [];
+    layers.push({ index: idx++, nodeIds: [...frontier] })
+    const next: string[] = []
     for (const id of frontier) {
-      visited.add(id);
+      visited.add(id)
       for (const child of out.get(id) ?? []) {
-        const d = (indeg.get(child) ?? 0) - 1;
-        indeg.set(child, d);
-        if (d === 0) next.push(child);
+        const d = (indeg.get(child) ?? 0) - 1
+        indeg.set(child, d)
+        if (d === 0) next.push(child)
       }
     }
-    frontier = next;
+    frontier = next
   }
   if (visited.size !== nodes.length) {
     // Cycle. Return partial layers; caller detects and throws.
-    return layers;
+    return layers
   }
-  return layers;
+  return layers
 }

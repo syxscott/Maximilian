@@ -29,7 +29,10 @@ export interface ListProps<T> {
   current?: T
   groupBy?: (x: T) => string
   sortBy?: (a: T, b: T) => number
-  sortGroupsBy?: (a: { category: string; items: T[] }, b: { category: string; items: T[] }) => number
+  sortGroupsBy?: (
+    a: { category: string; items: T[] },
+    b: { category: string; items: T[] },
+  ) => number
   skipFilter?: (item: T) => boolean
   onSelect?: (value: T | undefined, index: number) => void
   noInitialSelection?: boolean
@@ -78,10 +81,7 @@ function defaultFilter<T>(items: T[], query: string, filterKeys?: string[]): T[]
   })
 }
 
-function ListInner<T>(
-  props: ListComponentProps<T>,
-  ref: React.Ref<ListRef>,
-): React.ReactElement {
+function ListInner<T>(props: ListComponentProps<T>, ref: React.Ref<ListRef>): React.ReactElement {
   const {
     items,
     key,
@@ -114,9 +114,7 @@ function ListInner<T>(
   const [mouseActive, setMouseActive] = React.useState(false)
   const [internalFilter, setInternalFilter] = React.useState("")
   const [activeKey, setActiveKey] = React.useState<string>("")
-  const [groupedItems, setGroupedItems] = React.useState<
-    { category: string; items: T[] }[]
-  >([])
+  const [groupedItems, setGroupedItems] = React.useState<{ category: string; items: T[] }[]>([])
   const [loading, setLoading] = React.useState(false)
 
   // Resolve filter
@@ -158,10 +156,7 @@ function ListInner<T>(
     }
   }, [items, filter, filterKeys, groupBy, sortBy, sortGroupsBy, skipFilter])
 
-  const flat: T[] = React.useMemo(
-    () => groupedItems.flatMap((g) => g.items),
-    [groupedItems],
-  )
+  const flat: T[] = React.useMemo(() => groupedItems.flatMap((g) => g.items), [groupedItems])
 
   // Set initial active
   const lastItemsRef = React.useRef(flat)
@@ -235,11 +230,7 @@ function ListInner<T>(
     const viewTop = scroll.scrollTop
     const viewBottom = viewTop + scroll.clientHeight
     const target =
-      top < viewTop
-        ? top
-        : bottom > viewBottom
-          ? bottom - scroll.clientHeight
-          : viewTop
+      top < viewTop ? top : bottom > viewBottom ? bottom - scroll.clientHeight : viewTop
     const max = Math.max(0, scroll.scrollHeight - scroll.clientHeight)
     scroll.scrollTop = Math.max(0, Math.min(target, max))
   }, [activeKey, flat, mouseActive, key])
@@ -251,10 +242,13 @@ function ListInner<T>(
     [onSelect],
   )
 
-  const setFilter = React.useCallback((value: string) => {
-    setInternalFilter(value)
-    onFilter?.(value)
-  }, [onFilter])
+  const setFilter = React.useCallback(
+    (value: string) => {
+      setInternalFilter(value)
+      onFilter?.(value)
+    },
+    [onFilter],
+  )
 
   const setScrollRef = React.useCallback((el: HTMLDivElement | null) => {
     scrollRef.current = el
@@ -286,7 +280,11 @@ function ListInner<T>(
           e.preventDefault()
           const direction = e.key === "n" ? 1 : -1
           const newIdx =
-            index === -1 ? (direction > 0 ? 0 : all.length - 1) : (index + direction + all.length) % all.length
+            index === -1
+              ? direction > 0
+                ? 0
+                : all.length - 1
+              : (index + direction + all.length) % all.length
           if (all[newIdx]) setActiveKey(key(all[newIdx]))
           return
         }
@@ -294,7 +292,11 @@ function ListInner<T>(
           e.preventDefault()
           const direction = e.key === "ArrowDown" ? 1 : -1
           const newIdx =
-            index === -1 ? (direction > 0 ? 0 : all.length - 1) : (index + direction + all.length) % all.length
+            index === -1
+              ? direction > 0
+                ? 0
+                : all.length - 1
+              : (index + direction + all.length) % all.length
           if (all[newIdx]) setActiveKey(key(all[newIdx]))
         }
       } else {
@@ -302,7 +304,11 @@ function ListInner<T>(
           e.preventDefault()
           const direction = e.key === "ArrowDown" ? 1 : -1
           const newIdx =
-            index === -1 ? (direction > 0 ? 0 : all.length - 1) : (index + direction + all.length) % all.length
+            index === -1
+              ? direction > 0
+                ? 0
+                : all.length - 1
+              : (index + direction + all.length) % all.length
           if (all[newIdx]) setActiveKey(key(all[newIdx]))
         }
       }
@@ -320,11 +326,9 @@ function ListInner<T>(
     [handleKey, setScrollRef, setFilter],
   )
 
-  const moved = (event: MouseEvent): boolean =>
-    event.movementX !== 0 || event.movementY !== 0
+  const moved = (event: MouseEvent): boolean => event.movementX !== 0 || event.movementY !== 0
 
-  const searchProps: ListSearchProps =
-    typeof search === "object" ? search : {}
+  const searchProps: ListSearchProps = typeof search === "object" ? search : {}
   const searchAction = searchProps.action
   const showAdd = !!add
 
@@ -369,13 +373,11 @@ function ListInner<T>(
               event.stopPropagation()
             }}
           >
-            <div data-slot="list-search-container" className="flex flex-1 items-center gap-2 rounded-md border px-2">
-              {!searchProps.hideIcon && (
-                <span aria-hidden="true">
-                  {/* Icon placeholder */}
-                  ⌕
-                </span>
-              )}
+            <div
+              data-slot="list-search-container"
+              className="flex flex-1 items-center gap-2 rounded-md border px-2"
+            >
+              {!searchProps.hideIcon && <span aria-hidden="true">{/* Icon placeholder */}⌕</span>}
               <input
                 ref={inputRef}
                 autoFocus={searchProps.autofocus}
@@ -409,22 +411,18 @@ function ListInner<T>(
           {searchAction}
         </div>
       )}
-      <div
-        ref={setScrollRef}
-        data-slot="list-scroll"
-        className="flex-1 overflow-auto"
-      >
+      <div ref={setScrollRef} data-slot="list-scroll" className="flex-1 overflow-auto">
         {flat.length > 0 || showAdd ? (
           groupedItems.map((group, groupIndex) => {
             const isLastGroup = groupIndex === groupedItems.length - 1
             return (
-              <div key={group.category || "_default"} data-slot="list-group" className="flex flex-col">
+              <div
+                key={group.category || "_default"}
+                data-slot="list-group"
+                className="flex flex-col"
+              >
                 {group.category && (
-                  <GroupHeader
-                    scrollRef={scrollRef}
-                    group={group}
-                    renderHeader={groupHeader}
-                  />
+                  <GroupHeader scrollRef={scrollRef} group={group} renderHeader={groupHeader} />
                 )}
                 <div data-slot="list-items" className="flex flex-col">
                   {group.items.map((item, i) => {
@@ -484,7 +482,10 @@ function ListInner<T>(
             )
           })
         ) : (
-          <div data-slot="list-empty-state" className="flex items-center justify-center p-8 text-sm text-muted-foreground">
+          <div
+            data-slot="list-empty-state"
+            className="flex items-center justify-center p-8 text-sm text-muted-foreground"
+          >
             <div data-slot="list-message">{emptyMessageText()}</div>
           </div>
         )}
@@ -506,7 +507,11 @@ interface GroupHeaderProps<T> {
   renderHeader?: (group: { category: string; items: T[] }) => React.ReactNode
 }
 
-function GroupHeader<T>({ scrollRef, group, renderHeader }: GroupHeaderProps<T>): React.ReactElement {
+function GroupHeader<T>({
+  scrollRef,
+  group,
+  renderHeader,
+}: GroupHeaderProps<T>): React.ReactElement {
   const [stuck, setStuck] = React.useState(false)
   const headerRef = React.useRef<HTMLDivElement | null>(null)
 

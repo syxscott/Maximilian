@@ -64,9 +64,7 @@ export class SessionStatusTracker {
    */
   transition(to: SessionStatusState, info?: Omit<SessionStatus, "type">): SessionStatus {
     if (!canTransition(this.state, to)) {
-      throw new Error(
-        `Invalid transition ${this.state} -> ${to} (借鉴 opencode FSM)`,
-      )
+      throw new Error(`Invalid transition ${this.state} -> ${to} (借鉴 opencode FSM)`)
     }
     this.state = to
     if (to === "idle") return { type: "idle" }

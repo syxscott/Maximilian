@@ -13,7 +13,8 @@ export const dict: Record<string, string> = {
   "ui.sessionReview.image.loading": "Loading...",
   "ui.sessionReview.image.placeholder": "Image",
   "ui.sessionReview.largeDiff.title": "Diff too large to render",
-  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
+  "ui.sessionReview.largeDiff.meta":
+    "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.renderAnyway": "Render anyway",
   "ui.sessionReview.openFile": "Open file",
   "ui.sessionReview.selection.line": "line {{line}}",

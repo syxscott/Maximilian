@@ -12,34 +12,34 @@
  * Usage:
  *   REDIS_URL=redis://redis:6379 node apps/worker/dist/healthcheck.js
  */
-import { Redis } from "ioredis";
-import { HEARTBEAT_KEY } from "@max/queue";
+import { Redis } from "ioredis"
+import { HEARTBEAT_KEY } from "@max/queue"
 
 async function main() {
-  const url = process.env.REDIS_URL;
+  const url = process.env.REDIS_URL
   if (!url) {
-    console.error("REDIS_URL not set");
-    process.exit(1);
+    console.error("REDIS_URL not set")
+    process.exit(1)
   }
   const redis = new Redis(url, {
     lazyConnect: true,
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
-  });
+  })
   try {
-    await redis.connect();
-    const v = await redis.get(HEARTBEAT_KEY);
+    await redis.connect()
+    const v = await redis.get(HEARTBEAT_KEY)
     if (!v) {
-      console.error("heartbeat key missing");
-      process.exit(1);
+      console.error("heartbeat key missing")
+      process.exit(1)
     }
-    process.exit(0);
+    process.exit(0)
   } catch (err) {
-    console.error("redis error:", err);
-    process.exit(1);
+    console.error("redis error:", err)
+    process.exit(1)
   } finally {
-    redis.disconnect();
+    redis.disconnect()
   }
 }
 
-main();
+main()

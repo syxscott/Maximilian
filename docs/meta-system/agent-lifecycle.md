@@ -1,6 +1,6 @@
 # Agent Lifecycle
 
-An **agent** is the *who* of the organization — a blueprint with a role, capabilities, system prompt, and constraints. Agents are born from capabilities and retired when they no longer serve traffic.
+An **agent** is the _who_ of the organization — a blueprint with a role, capabilities, system prompt, and constraints. Agents are born from capabilities and retired when they no longer serve traffic.
 
 ## Lifecycle States
 
@@ -87,13 +87,13 @@ Active blueprints are picked up by `DAGS.compose()` based on capability match. E
 
 `AgentRetirementEngine.evaluate(blueprintId, role, executions)` checks:
 
-| Reason | Condition |
-|--------|-----------|
-| `low_usage` | `usageCount < 2` (lookback 100) |
-| `low_score` | `avgScore < 4.0` |
-| `capability_retired` | parent capability status === `retired` |
-| `replaced_by_newer` | a higher-version blueprint exists for same role |
-| `manual` | (future: human override) |
+| Reason               | Condition                                       |
+| -------------------- | ----------------------------------------------- |
+| `low_usage`          | `usageCount < 2` (lookback 100)                 |
+| `low_score`          | `avgScore < 4.0`                                |
+| `capability_retired` | parent capability status === `retired`          |
+| `replaced_by_newer`  | a higher-version blueprint exists for same role |
+| `manual`             | (future: human override)                        |
 
 When retired:
 

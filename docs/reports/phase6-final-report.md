@@ -21,20 +21,20 @@ Phase 6 closed the **organization-level loop**. The meta-system observes the org
 
 ## Sub-Phase Completion Matrix
 
-| Sub | Component | Tests | Status |
-|-----|-----------|-------|--------|
-| 6.0 | Package skeleton | type-check | ✅ |
-| 6.1 | CapabilityDiscoveryEngine | 8 unit | ✅ |
-| 6.2 | CapabilityRegistry (lifecycle) | 11 unit | ✅ |
-| 6.3 | MetaAgent (create/delete/merge/split) | 8 unit | ✅ |
-| 6.4 | TeamOptimizer | 6 unit | ✅ |
-| 6.5 | AgentBirthEngine | 5 unit | ✅ |
-| 6.6 | AgentRetirementEngine | 6 unit | ✅ |
-| 6.7 | OrganizationMemory | 6 unit | ✅ |
-| 6.8 | SimulationEngine | 6 unit | ✅ |
-| 6.9 | GovernanceEngine | 7 unit | ✅ |
-| 6.X | MetaOrchestrator (8-step cycle) | 8 unit | ✅ |
-| 6.X | API routes (`META_AGENT_ENABLED`) | 10 int + 7 E2E | ✅ |
+| Sub | Component                             | Tests          | Status |
+| --- | ------------------------------------- | -------------- | ------ |
+| 6.0 | Package skeleton                      | type-check     | ✅     |
+| 6.1 | CapabilityDiscoveryEngine             | 8 unit         | ✅     |
+| 6.2 | CapabilityRegistry (lifecycle)        | 11 unit        | ✅     |
+| 6.3 | MetaAgent (create/delete/merge/split) | 8 unit         | ✅     |
+| 6.4 | TeamOptimizer                         | 6 unit         | ✅     |
+| 6.5 | AgentBirthEngine                      | 5 unit         | ✅     |
+| 6.6 | AgentRetirementEngine                 | 6 unit         | ✅     |
+| 6.7 | OrganizationMemory                    | 6 unit         | ✅     |
+| 6.8 | SimulationEngine                      | 6 unit         | ✅     |
+| 6.9 | GovernanceEngine                      | 7 unit         | ✅     |
+| 6.X | MetaOrchestrator (8-step cycle)       | 8 unit         | ✅     |
+| 6.X | API routes (`META_AGENT_ENABLED`)     | 10 int + 7 E2E | ✅     |
 
 **Phase 6 total: 71 unit + 10 integration + 7 E2E = 88 tests**
 
@@ -203,17 +203,17 @@ Type-check across monorepo
 
 ## Bugs Found & Fixed
 
-| Bug | Location | Fix |
-|-----|----------|-----|
-| Syntax error in for-of destructuring | capability-discovery.ts:165 | Removed extra `]` |
-| `mobile_app_development` in both KNOWN and GAP | capability-discovery.ts | Removed from KNOWN |
-| `maxDepth` returned 1 instead of 4 (visited set bug) | governance.ts | Replaced with memoized DFS |
-| `>= limit` semantics | governance.ts | Changed to `> limit` |
-| Orchestrator's activation step had stale `c` reference | orchestrator.ts | Use `transition()` return value |
-| `Hono Context` typing for `getCapability` | routes/meta.ts | Use `c.req.param("id") ?? ""` |
-| Orchestrator variables used before declaration | index.ts | Moved `let` block before routes |
-| `pnpm` workspace missing `@max/meta-system` link | pnpm-lock.yaml | Clean reinstall |
-| `Evidence.length` < threshold for "create" | meta-integration.test.ts | Use 3 signals |
+| Bug                                                    | Location                    | Fix                             |
+| ------------------------------------------------------ | --------------------------- | ------------------------------- |
+| Syntax error in for-of destructuring                   | capability-discovery.ts:165 | Removed extra `]`               |
+| `mobile_app_development` in both KNOWN and GAP         | capability-discovery.ts     | Removed from KNOWN              |
+| `maxDepth` returned 1 instead of 4 (visited set bug)   | governance.ts               | Replaced with memoized DFS      |
+| `>= limit` semantics                                   | governance.ts               | Changed to `> limit`            |
+| Orchestrator's activation step had stale `c` reference | orchestrator.ts             | Use `transition()` return value |
+| `Hono Context` typing for `getCapability`              | routes/meta.ts              | Use `c.req.param("id") ?? ""`   |
+| Orchestrator variables used before declaration         | index.ts                    | Moved `let` block before routes |
+| `pnpm` workspace missing `@max/meta-system` link       | pnpm-lock.yaml              | Clean reinstall                 |
+| `Evidence.length` < threshold for "create"             | meta-integration.test.ts    | Use 3 signals                   |
 
 ---
 
@@ -224,11 +224,11 @@ Type-check across monorepo
 META_AGENT_ENABLED=true   # default false
 ```
 
-| Setting | Behavior |
-|---------|----------|
-| `META_AGENT_ENABLED=false` (default) | All `/api/meta/*` endpoints **not mounted**. Zero runtime cost. |
-| `META_AGENT_ENABLED=true` | Boots `MetaOrchestrator` + 9 dependencies. 11 endpoints exposed. |
-| Missing `.env` key | Treated as `false` (opt-in). |
+| Setting                              | Behavior                                                         |
+| ------------------------------------ | ---------------------------------------------------------------- |
+| `META_AGENT_ENABLED=false` (default) | All `/api/meta/*` endpoints **not mounted**. Zero runtime cost.  |
+| `META_AGENT_ENABLED=true`            | Boots `MetaOrchestrator` + 9 dependencies. 11 endpoints exposed. |
+| Missing `.env` key                   | Treated as `false` (opt-in).                                     |
 
 The flag is checked at boot, **not per-request** — there's no hot-toggle in v1.
 
@@ -236,13 +236,13 @@ The flag is checked at boot, **not per-request** — there's no hot-toggle in v1
 
 ## Performance
 
-| Operation | Time |
-|-----------|------|
-| `meta-system` 71 unit tests | 45ms |
-| 10 integration tests | 25ms |
-| 7 E2E tests | 35ms |
-| One full cycle (empty input) | ~5ms |
-| One full cycle (5 signals) | ~15ms |
+| Operation                    | Time  |
+| ---------------------------- | ----- |
+| `meta-system` 71 unit tests  | 45ms  |
+| 10 integration tests         | 25ms  |
+| 7 E2E tests                  | 35ms  |
+| One full cycle (empty input) | ~5ms  |
+| One full cycle (5 signals)   | ~15ms |
 
 ---
 
@@ -267,9 +267,9 @@ runtime.on(async (event) => {
       blueprints: await evolution.listAgents(),
       graphs: [/* last completed team graph */],
       discoverySignals: extractSignals(event.workspace),
-    });
+    })
   }
-});
+})
 ```
 
 (Phase 7 candidate — not implemented in Phase 6.)
@@ -290,17 +290,17 @@ These are all candidates for Phase 7.
 
 ## Decisions Catalog (Phase 6)
 
-| ADR | Title |
-|-----|-------|
-| 019 | Dedicated `meta-system` package |
-| 020 | Capability lifecycle state machine |
+| ADR | Title                                                 |
+| --- | ----------------------------------------------------- |
+| 019 | Dedicated `meta-system` package                       |
+| 020 | Capability lifecycle state machine                    |
 | 021 | MetaAgent decisions = create / delete / merge / split |
-| 022 | TeamOptimizer returns hints, not mutations |
+| 022 | TeamOptimizer returns hints, not mutations            |
 | 023 | AgentBirth writes audit + optional blueprint callback |
-| 024 | Retirement = lookback window + two thresholds |
-| 025 | OrganizationMemory is append-only |
-| 026 | Simulation = offline cost / latency / quality / risk |
-| 027 | Governance enforces hard limits before any mutation |
+| 024 | Retirement = lookback window + two thresholds         |
+| 025 | OrganizationMemory is append-only                     |
+| 026 | Simulation = offline cost / latency / quality / risk  |
+| 027 | Governance enforces hard limits before any mutation   |
 
 ---
 

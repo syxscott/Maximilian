@@ -22,7 +22,7 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `packages/autonomy/src/learning-api.ts` | 117 |
-| `apps/api/src/routes/learning.ts` | 60 |
+| 文件                                    | 行数 |
+| --------------------------------------- | ---- |
+| `packages/autonomy/src/learning-api.ts` | 117  |
+| `apps/api/src/routes/learning.ts`       | 60   |

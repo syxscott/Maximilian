@@ -206,7 +206,10 @@ export class ToolExecuteContextBuilder {
    * 设置模型覆盖扩展
    */
   withModelOverride(model?: string, provider?: string): this {
-    this._extensions.set(ExtensionKeys.modelOverride, { model, provider } satisfies ModelOverrideExtension)
+    this._extensions.set(ExtensionKeys.modelOverride, {
+      model,
+      provider,
+    } satisfies ModelOverrideExtension)
     return this
   }
 
@@ -214,7 +217,9 @@ export class ToolExecuteContextBuilder {
    * 设置行为版本扩展
    */
   withBehaviorVersion(version: number): this {
-    this._extensions.set(ExtensionKeys.behaviorVersion, { version } satisfies BehaviorVersionExtension)
+    this._extensions.set(ExtensionKeys.behaviorVersion, {
+      version,
+    } satisfies BehaviorVersionExtension)
     return this
   }
 

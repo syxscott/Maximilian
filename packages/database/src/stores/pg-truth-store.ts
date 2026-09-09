@@ -1,6 +1,6 @@
-import { eq, desc } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { truthMeasurements, truthVerifications } from "../schema.js";
+import { eq, desc } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { truthMeasurements, truthVerifications } from "../schema.js"
 
 /**
  * PostgreSQL-backed persistence for TruthAudit measurements and
@@ -16,34 +16,34 @@ import { truthMeasurements, truthVerifications } from "../schema.js";
  */
 
 export interface TruthMeasurementRow {
-  id: string;
-  proposalId: string;
-  action: string;
+  id: string
+  proposalId: string
+  action: string
   predicted: {
-    costDelta: number;
-    latencyDeltaMs: number;
-    qualityDelta: number;
-    riskDelta: number;
-  };
+    costDelta: number
+    latencyDeltaMs: number
+    qualityDelta: number
+    riskDelta: number
+  }
   actual: {
-    costDelta: number;
-    latencyDeltaMs: number;
-    qualityDelta: number;
-    riskDelta: number;
-  };
-  sampleSize: number;
-  recordedAt: string;
+    costDelta: number
+    latencyDeltaMs: number
+    qualityDelta: number
+    riskDelta: number
+  }
+  sampleSize: number
+  recordedAt: string
 }
 
 export interface TruthVerificationRow {
-  id: string;
-  proposalId: string;
-  verdict: string;
-  totalSamples: number;
-  meanPredicted: TruthMeasurementRow["predicted"];
-  meanActual: TruthMeasurementRow["actual"];
-  calibrationError: number;
-  generatedAt: string;
+  id: string
+  proposalId: string
+  verdict: string
+  totalSamples: number
+  meanPredicted: TruthMeasurementRow["predicted"]
+  meanActual: TruthMeasurementRow["actual"]
+  calibrationError: number
+  generatedAt: string
 }
 
 function rowToMeasurement(row: typeof truthMeasurements.$inferSelect): TruthMeasurementRow {
@@ -55,7 +55,7 @@ function rowToMeasurement(row: typeof truthMeasurements.$inferSelect): TruthMeas
     actual: row.actual as TruthMeasurementRow["actual"],
     sampleSize: row.sampleSize,
     recordedAt: row.recordedAt,
-  };
+  }
 }
 
 function rowToVerification(row: typeof truthVerifications.$inferSelect): TruthVerificationRow {
@@ -68,7 +68,7 @@ function rowToVerification(row: typeof truthVerifications.$inferSelect): TruthVe
     meanActual: row.meanActual as TruthMeasurementRow["actual"],
     calibrationError: row.calibrationError,
     generatedAt: row.generatedAt,
-  };
+  }
 }
 
 export class PgTruthStore {
@@ -92,26 +92,26 @@ export class PgTruthStore {
           actual: m.actual,
           sampleSize: m.sampleSize,
         },
-      });
+      })
   }
 
   async listMeasurements(proposalId?: string): Promise<TruthMeasurementRow[]> {
     const query = this.db
       .select()
       .from(truthMeasurements)
-      .orderBy(desc(truthMeasurements.recordedAt));
+      .orderBy(desc(truthMeasurements.recordedAt))
     const rows = proposalId
       ? await query.where(eq(truthMeasurements.proposalId, proposalId))
-      : await query;
-    return rows.map(rowToMeasurement);
+      : await query
+    return rows.map(rowToMeasurement)
   }
 
   async listAllMeasurements(): Promise<TruthMeasurementRow[]> {
     const rows = await this.db
       .select()
       .from(truthMeasurements)
-      .orderBy(desc(truthMeasurements.recordedAt));
-    return rows.map(rowToMeasurement);
+      .orderBy(desc(truthMeasurements.recordedAt))
+    return rows.map(rowToMeasurement)
   }
 
   async saveVerification(v: TruthVerificationRow): Promise<void> {
@@ -137,29 +137,29 @@ export class PgTruthStore {
           calibrationError: v.calibrationError,
           generatedAt: v.generatedAt,
         },
-      });
+      })
   }
 
   async listVerifications(proposalId?: string): Promise<TruthVerificationRow[]> {
     const query = this.db
       .select()
       .from(truthVerifications)
-      .orderBy(desc(truthVerifications.generatedAt));
+      .orderBy(desc(truthVerifications.generatedAt))
     const rows = proposalId
       ? await query.where(eq(truthVerifications.proposalId, proposalId))
-      : await query;
-    return rows.map(rowToVerification);
+      : await query
+    return rows.map(rowToVerification)
   }
 
   async getLatestVerification(proposalId: string): Promise<TruthVerificationRow | undefined> {
-    const rows = await this.listVerifications(proposalId);
-    return rows[0];
+    const rows = await this.listVerifications(proposalId)
+    return rows[0]
   }
 
   async deleteMeasurementsForProposal(proposalId: string): Promise<number> {
     const result = await this.db
       .delete(truthMeasurements)
-      .where(eq(truthMeasurements.proposalId, proposalId));
-    return (result as unknown as { rowCount?: number }).rowCount ?? 0;
+      .where(eq(truthMeasurements.proposalId, proposalId))
+    return (result as unknown as { rowCount?: number }).rowCount ?? 0
   }
 }

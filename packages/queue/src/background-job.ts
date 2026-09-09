@@ -130,9 +130,7 @@ export class BackgroundJobRegistry {
     if (timeoutMs === undefined) return done
     return Promise.race([
       done,
-      new Promise<JobInfo | undefined>((res) =>
-        setTimeout(() => res(undefined), timeoutMs),
-      ),
+      new Promise<JobInfo | undefined>((res) => setTimeout(() => res(undefined), timeoutMs)),
     ])
   }
 

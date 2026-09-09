@@ -64,13 +64,13 @@ curl http://localhost:3001/api/health
 
 ### Architecture
 
-| Component | Replicas | HPA | Notes |
-|-----------|----------|-----|-------|
-| api       | 2 (min)  | 2-10 | CPU 70%, Memory 80% |
-| worker    | 1 (min)  | 1-5  | CPU 75%, Memory 80% |
+| Component | Replicas | HPA  | Notes                        |
+| --------- | -------- | ---- | ---------------------------- |
+| api       | 2 (min)  | 2-10 | CPU 70%, Memory 80%          |
+| worker    | 1 (min)  | 1-5  | CPU 75%, Memory 80%          |
 | dashboard | 2        | none | Static SPA, no need to scale |
-| postgres  | 1        | none | StatefulSet, 20Gi PVC |
-| redis     | 1        | none | StatefulSet, 5Gi PVC  |
+| postgres  | 1        | none | StatefulSet, 20Gi PVC        |
+| redis     | 1        | none | StatefulSet, 5Gi PVC         |
 
 For HA Postgres / Redis, replace the StatefulSets with managed
 services (RDS, ElastiCache, Cloud SQL, etc.) and adjust

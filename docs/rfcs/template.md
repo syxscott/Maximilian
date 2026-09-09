@@ -68,12 +68,12 @@
 
 ## Timeline
 
-| Phase | Date |
-|---|---|
-| RFC review ends | YYYY-MM-DD |
+| Phase                | Date       |
+| -------------------- | ---------- |
+| RFC review ends      | YYYY-MM-DD |
 | Implementation start | YYYY-MM-DD |
-| Behind feature flag | YYYY-MM-DD |
-| GA | YYYY-MM-DD |
+| Behind feature flag  | YYYY-MM-DD |
+| GA                   | YYYY-MM-DD |
 
 ## References
 

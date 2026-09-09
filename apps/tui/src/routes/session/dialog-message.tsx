@@ -20,7 +20,9 @@ export type PromptInfo = {
   parts: Array<{ type: string; [k: string]: unknown }>
 }
 
-function stripPromptPartIDs<T extends { id?: unknown; messageID?: unknown; sessionID?: unknown }>(part: T): Omit<T, "id" | "messageID" | "sessionID"> {
+function stripPromptPartIDs<T extends { id?: unknown; messageID?: unknown; sessionID?: unknown }>(
+  part: T,
+): Omit<T, "id" | "messageID" | "sessionID"> {
   const { id: _id, messageID: _mid, sessionID: _sid, ...rest } = part as Record<string, unknown>
   return rest as Omit<T, "id" | "messageID" | "sessionID">
 }
@@ -44,7 +46,9 @@ export function DialogMessage(props: {
   const [selected, setSelected] = React.useState(0)
 
   const message = useMemo(() => {
-    const messages = (sync.data.message as Record<string, Array<{ id: string; [k: string]: unknown }>>)?.[props.sessionID]
+    const messages = (
+      sync.data.message as Record<string, Array<{ id: string; [k: string]: unknown }>>
+    )?.[props.sessionID]
     return messages?.find((x) => x.id === props.messageID)
   }, [sync.data.message, props.sessionID, props.messageID])
 
@@ -63,7 +67,8 @@ export function DialogMessage(props: {
           })
 
           if (props.setPrompt) {
-            const parts = ((sync.data.part as Record<string, unknown[]>)?.[message.id as string] ?? []) as Array<Record<string, unknown>>
+            const parts = ((sync.data.part as Record<string, unknown[]>)?.[message.id as string] ??
+              []) as Array<Record<string, unknown>>
             const promptInfo = parts.reduce(
               (agg: PromptInfo, part: Record<string, unknown>) => {
                 if (part.type === "text") {
@@ -87,7 +92,8 @@ export function DialogMessage(props: {
         onSelect: async () => {
           if (!message) return
 
-          const parts = ((sync.data.part as Record<string, unknown[]>)?.[message.id as string] ?? []) as Array<Record<string, unknown>>
+          const parts = ((sync.data.part as Record<string, unknown[]>)?.[message.id as string] ??
+            []) as Array<Record<string, unknown>>
           const text = parts.reduce((agg: string, part: Record<string, unknown>) => {
             if (part.type === "text" && !part.synthetic && typeof part.text === "string") {
               agg += part.text
@@ -108,7 +114,8 @@ export function DialogMessage(props: {
             messageID: props.messageID,
           })
           if (!message) return
-          const parts = ((sync.data.part as Record<string, unknown[]>)?.[message.id as string] ?? []) as Array<Record<string, unknown>>
+          const parts = ((sync.data.part as Record<string, unknown[]>)?.[message.id as string] ??
+            []) as Array<Record<string, unknown>>
           const prompt = parts.reduce(
             (agg: PromptInfo, part: Record<string, unknown>) => {
               if (part.type === "text") {

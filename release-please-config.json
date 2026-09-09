@@ -19,7 +19,5 @@
       "prerelease": false
     }
   },
-  "extra-files": [
-    "package.json"
-  ]
+  "extra-files": ["package.json"]
 }

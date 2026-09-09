@@ -85,7 +85,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       () => syncData.agent.filter((agent) => agent.mode !== "subagent" && !agent.hidden),
       [syncData.agent],
     )
-    const visibleAgents = useMemo(() => syncData.agent.filter((agent) => !agent.hidden), [syncData.agent])
+    const visibleAgents = useMemo(
+      () => syncData.agent.filter((agent) => !agent.hidden),
+      [syncData.agent],
+    )
     const [currentAgent, setCurrentAgent] = useState<string | undefined>(agents[0]?.name)
     const colors = useMemo<LocalTheme>(
       () => ({
@@ -150,7 +153,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const currentModel = useMemo<ModelRef | undefined>(() => {
       const a = agent.current()
-      return a ? modelByAgent[a.name] ?? a.model ?? fallbackModel : undefined
+      return a ? (modelByAgent[a.name] ?? a.model ?? fallbackModel) : undefined
     }, [agent, modelByAgent, fallbackModel])
 
     const model = {
@@ -161,11 +164,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       recent: () => recent,
       favorite: () => favorite,
       parsed: () => {
-        if (!currentModel) return { provider: "Connect a provider", model: "No provider selected", reasoning: false }
+        if (!currentModel)
+          return { provider: "Connect a provider", model: "No provider selected", reasoning: false }
         const provider = syncData.provider.find((item) => item.id === currentModel.providerID)
         const info = provider?.models[currentModel.modelID] as
-          | { name?: string; capabilities?: { reasoning?: boolean } }
-          | undefined
+          { name?: string; capabilities?: { reasoning?: boolean } } | undefined
         return {
           provider: provider?.id ?? currentModel.providerID,
           model: info?.name ?? currentModel.modelID,
@@ -175,7 +178,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       cycle: (direction: 1 | -1) => {
         const current = currentModel
         if (!current) return
-        const idx = recent.findIndex((x) => x.providerID === current.providerID && x.modelID === current.modelID)
+        const idx = recent.findIndex(
+          (x) => x.providerID === current.providerID && x.modelID === current.modelID,
+        )
         if (idx === -1) return
         let next = idx + direction
         if (next < 0) next = recent.length - 1
@@ -206,7 +211,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
         setFavorite((prev) =>
           prev.some((x) => x.providerID === modelRef.providerID && x.modelID === modelRef.modelID)
-            ? prev.filter((x) => !(x.providerID === modelRef.providerID && x.modelID === modelRef.modelID))
+            ? prev.filter(
+                (x) => !(x.providerID === modelRef.providerID && x.modelID === modelRef.modelID),
+              )
             : [modelRef, ...prev],
         )
       },
@@ -222,7 +229,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         list: () => [] as string[],
         set: (value: string | undefined) => {
           if (!currentModel) return
-          setVariant((prev) => ({ ...prev, [`${currentModel.providerID}/${currentModel.modelID}`]: value }))
+          setVariant((prev) => ({
+            ...prev,
+            [`${currentModel.providerID}/${currentModel.modelID}`]: value,
+          }))
         },
         cycle: () => {},
       },
@@ -239,7 +249,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     // ---- Session pinning --------------------------------------------------
     const [pinned, setPinned] = useState<string[]>([])
     const slots = useMemo(() => {
-      const existing = new Set(syncData.session.filter((x) => x.parentID === undefined).map((x) => x.id))
+      const existing = new Set(
+        syncData.session.filter((x) => x.parentID === undefined).map((x) => x.id),
+      )
       return pinned.filter((id) => existing.has(id)).slice(0, 9)
     }, [pinned, syncData.session])
 
@@ -251,7 +263,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       slots,
       isPinned: (sessionID: string) => pinned.includes(sessionID),
       togglePin: (sessionID: string) =>
-        setPinned((prev) => (prev.includes(sessionID) ? prev.filter((x) => x !== sessionID) : [...prev, sessionID])),
+        setPinned((prev) =>
+          prev.includes(sessionID) ? prev.filter((x) => x !== sessionID) : [...prev, sessionID],
+        ),
       quickSwitch: (slot: number) => {
         const target = slots[slot - 1]
         if (!target) return

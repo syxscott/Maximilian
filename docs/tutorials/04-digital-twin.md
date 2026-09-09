@@ -134,7 +134,7 @@ Show `config/digital-twin.json`:
 ```json
 {
   "autoRollback": {
-    "errorRateDelta": 0.10,
+    "errorRateDelta": 0.1,
     "latencyDeltaMs": 500,
     "calibrationDelta": 0.05
   },

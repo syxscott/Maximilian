@@ -14,7 +14,9 @@ export interface TextStrikethroughProps extends React.HTMLAttributes<HTMLSpanEle
 
 const useSpring = (
   target: () => number,
-  options?: { visualDuration?: number; bounce?: number } | (() => { visualDuration?: number; bounce?: number }),
+  options?:
+    | { visualDuration?: number; bounce?: number }
+    | (() => { visualDuration?: number; bounce?: number }),
 ) => {
   const opts = typeof options === "function" ? options : () => options
   const [value, setValue] = React.useState(target())
@@ -25,7 +27,7 @@ const useSpring = (
     let cancelled = false
     const start = sourceRef.current
     const end = target()
-    const duration = ((opts()?.visualDuration ?? 0.35) * 1000) || 350
+    const duration = (opts()?.visualDuration ?? 0.35) * 1000 || 350
     if (start === end) {
       setValue(end)
       return
@@ -100,10 +102,13 @@ export const TextStrikethrough = React.forwardRef<HTMLSpanElement, TextStrikethr
       return `inset(0 0 0 ${px}px)`
     }
 
-    const setContainerRef = React.useCallback((el: HTMLSpanElement | null) => {
-      containerRef.current = el
-      if (el) measure()
-    }, [measure])
+    const setContainerRef = React.useCallback(
+      (el: HTMLSpanElement | null) => {
+        containerRef.current = el
+        if (el) measure()
+      },
+      [measure],
+    )
 
     return (
       <span
@@ -117,10 +122,7 @@ export const TextStrikethrough = React.forwardRef<HTMLSpanElement, TextStrikethr
         style={{ display: "grid", ...style }}
         {...rest}
       >
-        <span
-          ref={baseRef}
-          style={{ gridArea: "1 / 1", clipPath: baseClip() }}
-        >
+        <span ref={baseRef} style={{ gridArea: "1 / 1", clipPath: baseClip() }}>
           {text}
         </span>
         <span

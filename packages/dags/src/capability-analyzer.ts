@@ -14,56 +14,56 @@
  * The blueprint generator (Stage 2) is the one that materializes full objects.
  */
 
-import { CapabilityLibrary } from "./capability-library.js";
+import { CapabilityLibrary } from "./capability-library.js"
 
 export interface AnalyzerOptions {
   /** Force-include these capabilities regardless of detection. */
-  alwaysInclude?: string[];
+  alwaysInclude?: string[]
   /** Force-exclude (e.g. don't auto-add review). */
-  neverInclude?: string[];
+  neverInclude?: string[]
   /** When true, also expand transitive dependencies. */
-  expandDependencies?: boolean;
+  expandDependencies?: boolean
 }
 
 export class CapabilityAnalyzer {
   constructor(
     private library: CapabilityLibrary = new CapabilityLibrary(),
-    private options: AnalyzerOptions = {}
+    private options: AnalyzerOptions = {},
   ) {}
 
   analyze(userRequest: string): string[] {
-    const opts = this.options;
-    const detected = this.library.detectByKeywords(userRequest);
-    const initial = new Set<string>(detected);
+    const opts = this.options
+    const detected = this.library.detectByKeywords(userRequest)
+    const initial = new Set<string>(detected)
 
     if (opts.alwaysInclude) {
-      for (const id of opts.alwaysInclude) initial.add(id);
+      for (const id of opts.alwaysInclude) initial.add(id)
     }
     if (opts.neverInclude) {
-      for (const id of opts.neverInclude) initial.delete(id);
+      for (const id of opts.neverInclude) initial.delete(id)
     } else {
       // Default: always include review.
-      initial.add("review");
+      initial.add("review")
     }
 
     if (opts.expandDependencies !== false) {
       // Expand transitive capability dependencies.
-      const queue = Array.from(initial);
-      const seen = new Set<string>(initial);
+      const queue = Array.from(initial)
+      const seen = new Set<string>(initial)
       while (queue.length > 0) {
-        const id = queue.shift()!;
-        const cap = this.library.get(id);
-        if (!cap) continue;
+        const id = queue.shift()!
+        const cap = this.library.get(id)
+        if (!cap) continue
         for (const dep of cap.dependsOn) {
           if (!seen.has(dep)) {
-            seen.add(dep);
-            queue.push(dep);
+            seen.add(dep)
+            queue.push(dep)
           }
         }
       }
-      return Array.from(seen);
+      return Array.from(seen)
     }
 
-    return Array.from(initial);
+    return Array.from(initial)
   }
 }

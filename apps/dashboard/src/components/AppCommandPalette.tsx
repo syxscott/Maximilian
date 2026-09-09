@@ -11,7 +11,10 @@ import { useLocale, t } from "@max/i18n"
 export interface AppCommandPaletteProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onNavigate: (tab: "workspace" | "executions" | "governance" | "evolution" | "providers" | "usage" | "settings") => void
+  onNavigate: (
+    tab:
+      "workspace" | "executions" | "governance" | "evolution" | "providers" | "usage" | "settings",
+  ) => void
   onToggleTheme: () => void
   onOpenUsage: () => void
 }
@@ -26,13 +29,51 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
         id: "navigation",
         heading: "Navigation",
         items: [
-          { id: "nav.workspace", label: t("nav.workspace"), onSelect: () => props.onNavigate("workspace"), shortcut: "G W" },
-          { id: "nav.executions", label: t("nav.executions"), onSelect: () => props.onNavigate("executions"), shortcut: "G E" },
-          { id: "nav.governance", label: t("nav.governance"), onSelect: () => props.onNavigate("governance"), shortcut: "G G" },
-          { id: "nav.evolution", label: t("nav.evolution"), onSelect: () => props.onNavigate("evolution"), shortcut: "G V" },
-          { id: "nav.usage", label: t("nav.usage"), onSelect: () => { props.onNavigate("usage"); props.onOpenUsage() }, shortcut: "G U" },
-          { id: "nav.providers", label: t("nav.providers"), onSelect: () => props.onNavigate("providers"), shortcut: "G P" },
-          { id: "nav.settings", label: t("nav.settings"), onSelect: () => props.onNavigate("settings"), shortcut: "G S" },
+          {
+            id: "nav.workspace",
+            label: t("nav.workspace"),
+            onSelect: () => props.onNavigate("workspace"),
+            shortcut: "G W",
+          },
+          {
+            id: "nav.executions",
+            label: t("nav.executions"),
+            onSelect: () => props.onNavigate("executions"),
+            shortcut: "G E",
+          },
+          {
+            id: "nav.governance",
+            label: t("nav.governance"),
+            onSelect: () => props.onNavigate("governance"),
+            shortcut: "G G",
+          },
+          {
+            id: "nav.evolution",
+            label: t("nav.evolution"),
+            onSelect: () => props.onNavigate("evolution"),
+            shortcut: "G V",
+          },
+          {
+            id: "nav.usage",
+            label: t("nav.usage"),
+            onSelect: () => {
+              props.onNavigate("usage")
+              props.onOpenUsage()
+            },
+            shortcut: "G U",
+          },
+          {
+            id: "nav.providers",
+            label: t("nav.providers"),
+            onSelect: () => props.onNavigate("providers"),
+            shortcut: "G P",
+          },
+          {
+            id: "nav.settings",
+            label: t("nav.settings"),
+            onSelect: () => props.onNavigate("settings"),
+            shortcut: "G S",
+          },
         ],
       },
       {
@@ -43,8 +84,20 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           // once the palette is open — Esc is bound by CommandPalette's
           // own keyboard handler, the toggle-theme hint was misleading
           // (no "T" key inside the palette actually runs it).
-          { id: "act.toggleTheme", label: "Toggle theme", onSelect: () => { props.onToggleTheme(); props.onOpenChange(false) } },
-          { id: "act.closePalette", label: "Close palette", onSelect: () => props.onOpenChange(false), shortcut: "Esc" },
+          {
+            id: "act.toggleTheme",
+            label: "Toggle theme",
+            onSelect: () => {
+              props.onToggleTheme()
+              props.onOpenChange(false)
+            },
+          },
+          {
+            id: "act.closePalette",
+            label: "Close palette",
+            onSelect: () => props.onOpenChange(false),
+            shortcut: "Esc",
+          },
         ],
       },
     ],

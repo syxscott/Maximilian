@@ -44,12 +44,7 @@ export function DialogWorkspaceFileChanges(props: DialogWorkspaceFileChangesProp
   const [active, setActive] = useState<WorkspaceFileChangesChoice>("yes")
   const visibleCount = Math.min(props.files.length, 8)
   const fileNameWidth = useMemo(
-    () =>
-      48 -
-      Math.max(
-        Math.max(7, ...props.files.map(changeCountWidth)) - 7,
-        0,
-      ),
+    () => 48 - Math.max(Math.max(7, ...props.files.map(changeCountWidth)) - 7, 0),
     [props.files],
   )
 

@@ -1,6 +1,6 @@
-import { eq, and, isNull } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { blueprints, teamGraphs } from "../schema.js";
+import { eq, and, isNull } from "drizzle-orm"
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js"
+import { blueprints, teamGraphs } from "../schema.js"
 
 /**
  * PostgreSQL-backed blueprint store.
@@ -53,41 +53,35 @@ export class PgBlueprintStore {
           stats: blueprint.stats,
           metadata: blueprint.metadata,
         },
-      });
+      })
   }
 
   async get(id: string): Promise<BlueprintRow | undefined> {
-    const rows = await this.db
-      .select()
-      .from(blueprints)
-      .where(eq(blueprints.id, id))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToBlueprint(rows[0]);
+    const rows = await this.db.select().from(blueprints).where(eq(blueprints.id, id)).limit(1)
+    if (rows.length === 0) return undefined
+    return rowToBlueprint(rows[0])
   }
 
   async listAll(): Promise<BlueprintRow[]> {
-    const rows = await this.db.select().from(blueprints);
-    return rows.map(rowToBlueprint);
+    const rows = await this.db.select().from(blueprints)
+    return rows.map(rowToBlueprint)
   }
 
   async findByRole(role: string): Promise<BlueprintRow[]> {
     const rows = await this.db
       .select()
       .from(blueprints)
-      .where(and(eq(blueprints.role, role), isNull(blueprints.retiredAt)));
-    return rows
-      .map(rowToBlueprint)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      .where(and(eq(blueprints.role, role), isNull(blueprints.retiredAt)))
+    return rows.map(rowToBlueprint).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   }
 
   async retire(id: string): Promise<void> {
-    const existing = await this.get(id);
-    if (!existing) return;
+    const existing = await this.get(id)
+    if (!existing) return
     await this.db
       .update(blueprints)
       .set({ retiredAt: new Date().toISOString() })
-      .where(eq(blueprints.id, id));
+      .where(eq(blueprints.id, id))
   }
 
   // ---- Graphs ---------------------------------------------------------------
@@ -115,53 +109,49 @@ export class PgBlueprintStore {
           layers: graph.layers,
           status: graph.status,
         },
-      });
+      })
   }
 
   async getGraph(id: string): Promise<TeamGraphRow | undefined> {
-    const rows = await this.db
-      .select()
-      .from(teamGraphs)
-      .where(eq(teamGraphs.id, id))
-      .limit(1);
-    if (rows.length === 0) return undefined;
-    return rowToGraph(rows[0]);
+    const rows = await this.db.select().from(teamGraphs).where(eq(teamGraphs.id, id)).limit(1)
+    if (rows.length === 0) return undefined
+    return rowToGraph(rows[0])
   }
 
   async listGraphs(): Promise<TeamGraphRow[]> {
-    const rows = await this.db.select().from(teamGraphs);
-    return rows.map(rowToGraph);
+    const rows = await this.db.select().from(teamGraphs)
+    return rows.map(rowToGraph)
   }
 }
 
 export interface BlueprintRow {
-  id: string;
-  role: string;
-  displayName: string;
-  goal: string;
-  systemPrompt: string;
-  capabilities: string[];
-  tools: unknown[];
-  preferredModels: unknown[];
-  constraints: Record<string, unknown>;
-  version: string;
-  parentId?: string;
-  createdAt: string;
-  updatedAt: string;
-  retiredAt?: string;
-  stats: Record<string, unknown>;
-  metadata: Record<string, unknown>;
+  id: string
+  role: string
+  displayName: string
+  goal: string
+  systemPrompt: string
+  capabilities: string[]
+  tools: unknown[]
+  preferredModels: unknown[]
+  constraints: Record<string, unknown>
+  version: string
+  parentId?: string
+  createdAt: string
+  updatedAt: string
+  retiredAt?: string
+  stats: Record<string, unknown>
+  metadata: Record<string, unknown>
 }
 
 export interface TeamGraphRow {
-  id: string;
-  userRequest: string;
-  capabilities: string[];
-  nodes: unknown[];
-  edges: unknown[];
-  layers: unknown[];
-  createdAt: string;
-  status: string;
+  id: string
+  userRequest: string
+  capabilities: string[]
+  nodes: unknown[]
+  edges: unknown[]
+  layers: unknown[]
+  createdAt: string
+  status: string
 }
 
 function rowToBlueprint(row: typeof blueprints.$inferSelect): BlueprintRow {
@@ -182,7 +172,7 @@ function rowToBlueprint(row: typeof blueprints.$inferSelect): BlueprintRow {
     retiredAt: row.retiredAt ?? undefined,
     stats: (row.stats as Record<string, unknown>) ?? {},
     metadata: (row.metadata as Record<string, unknown>) ?? {},
-  };
+  }
 }
 
 function rowToGraph(row: typeof teamGraphs.$inferSelect): TeamGraphRow {
@@ -195,7 +185,7 @@ function rowToGraph(row: typeof teamGraphs.$inferSelect): TeamGraphRow {
     layers: (row.layers as unknown[]) ?? [],
     createdAt: row.createdAt,
     status: row.status,
-  };
+  }
 }
 
 // PgBlueprintStore: PostgreSQL-backed blueprint and team graph persistence.

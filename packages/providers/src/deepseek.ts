@@ -5,15 +5,12 @@
  * imports still work and to lock in the DeepSeek-specific defaults.
  */
 
-import {
-  OpenAIChatProvider,
-  type OpenAIChatConfig,
-} from "./formats/openai-chat.js";
+import { OpenAIChatProvider, type OpenAIChatConfig } from "./formats/openai-chat.js"
 
 export interface DeepSeekConfig {
-  apiKey: string;
-  baseURL?: string;
-  defaultModel?: string;
+  apiKey: string
+  baseURL?: string
+  defaultModel?: string
 }
 
 export class DeepSeekProvider extends OpenAIChatProvider {
@@ -24,6 +21,6 @@ export class DeepSeekProvider extends OpenAIChatProvider {
       apiKey: config.apiKey,
       baseURL: config.baseURL ?? "https://api.deepseek.com/v1",
       defaultModel: config.defaultModel ?? "deepseek-chat",
-    } satisfies OpenAIChatConfig);
+    } satisfies OpenAIChatConfig)
   }
 }

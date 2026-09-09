@@ -9,12 +9,12 @@
 
 ## Decision Triggers
 
-| Action | Trigger |
-|--------|---------|
-| create | proposal evidence ≥ 3 |
-| delete | retirement decision (always) |
-| merge | 2 roles with avg score < 5.0 and usage ≥ 5 |
-| split | role avg duration > 60s and usage ≥ 5 |
+| Action | Trigger                                    |
+| ------ | ------------------------------------------ |
+| create | proposal evidence ≥ 3                      |
+| delete | retirement decision (always)               |
+| merge  | 2 roles with avg score < 5.0 and usage ≥ 5 |
+| split  | role avg duration > 60s and usage ≥ 5      |
 
 ## Tests
 

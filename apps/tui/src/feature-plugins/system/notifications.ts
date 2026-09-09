@@ -7,7 +7,12 @@ const id = "internal:notifications"
 
 type SessionError = Extract<Event, { type: "session.error" }>["properties"]["error"]
 
-function notify(api: TuiPluginApi, sessionID: string | undefined, message: string, sound: TuiAttentionSoundName) {
+function notify(
+  api: TuiPluginApi,
+  sessionID: string | undefined,
+  message: string,
+  sound: TuiAttentionSoundName,
+) {
   const session = sessionID ? api.state.session.get(sessionID) : undefined
   const isSubagent = session?.parentID !== undefined
   void api.attention.notify({
@@ -21,7 +26,12 @@ function notify(api: TuiPluginApi, sessionID: string | undefined, message: strin
 function sessionErrorMessage(error: SessionError) {
   if (error?.name === "MessageAbortedError") return "Session aborted"
   const data = error?.data
-  if (data && typeof data === "object" && "message" in data && data.message === "SSE read timed out") {
+  if (
+    data &&
+    typeof data === "object" &&
+    "message" in data &&
+    data.message === "SSE read timed out"
+  ) {
     return "Model stopped responding"
   }
   return "Session error"

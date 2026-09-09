@@ -4,18 +4,18 @@ The meta-system is the self-organizing layer that sits **above** the agent runti
 
 ## What Phase 6 Delivers
 
-| Sub-phase | Component | Responsibility |
-|-----------|-----------|----------------|
-| 6.1 | `CapabilityDiscoveryEngine` | Mine signals (user requests, failures, reviews) for missing capabilities |
-| 6.2 | `CapabilityRegistry` | Lifecycle: proposed → experimental → active → deprecated → retired |
-| 6.3 | `MetaAgent` | Decide create / delete / merge / split for agents |
-| 6.4 | `TeamOptimizer` | Suggest team adjustments (add review, parallelize, grow, etc.) |
-| 6.5 | `AgentBirthEngine` | Materialize blueprints for newly active capabilities |
-| 6.6 | `AgentRetirementEngine` | Retire agents with low usage / low score |
-| 6.7 | `OrganizationMemory` | Append-only event log of all org changes |
-| 6.8 | `SimulationEngine` | Offline cost / latency / quality / risk prediction |
-| 6.9 | `GovernanceEngine` | Hard limits (max agents, capabilities, depth) |
-| 6.X | `MetaOrchestrator` | One full cycle = discover → activate → birth → retire → decide → optimize → govern |
+| Sub-phase | Component                   | Responsibility                                                                     |
+| --------- | --------------------------- | ---------------------------------------------------------------------------------- |
+| 6.1       | `CapabilityDiscoveryEngine` | Mine signals (user requests, failures, reviews) for missing capabilities           |
+| 6.2       | `CapabilityRegistry`        | Lifecycle: proposed → experimental → active → deprecated → retired                 |
+| 6.3       | `MetaAgent`                 | Decide create / delete / merge / split for agents                                  |
+| 6.4       | `TeamOptimizer`             | Suggest team adjustments (add review, parallelize, grow, etc.)                     |
+| 6.5       | `AgentBirthEngine`          | Materialize blueprints for newly active capabilities                               |
+| 6.6       | `AgentRetirementEngine`     | Retire agents with low usage / low score                                           |
+| 6.7       | `OrganizationMemory`        | Append-only event log of all org changes                                           |
+| 6.8       | `SimulationEngine`          | Offline cost / latency / quality / risk prediction                                 |
+| 6.9       | `GovernanceEngine`          | Hard limits (max agents, capabilities, depth)                                      |
+| 6.X       | `MetaOrchestrator`          | One full cycle = discover → activate → birth → retire → decide → optimize → govern |
 
 ## Activation
 

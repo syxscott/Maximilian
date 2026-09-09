@@ -93,7 +93,10 @@ export abstract class Agent {
    *
    * Returns the previous override, if any.
    */
-  setModelOverride(provider: string, model: string): { provider: string; model: string } | undefined {
+  setModelOverride(
+    provider: string,
+    model: string,
+  ): { provider: string; model: string } | undefined {
     const prev = this.modelOverride
     this.modelOverride = { provider, model }
     return prev
@@ -206,9 +209,11 @@ export abstract class Agent {
       systemContent = `${systemContent}\n${truncate(tail, DEFAULT_MAX_TEXT_LENGTH)}`
     }
 
-    const memoryText = this.memory.map((m) => {
-      return `[${m.role}] ${truncate(m.content, DEFAULT_MAX_TEXT_LENGTH)}`
-    }).join("\n")
+    const memoryText = this.memory
+      .map((m) => {
+        return `[${m.role}] ${truncate(m.content, DEFAULT_MAX_TEXT_LENGTH)}`
+      })
+      .join("\n")
 
     const messages: ChatMessage[] = [
       { role: "system", content: systemContent },

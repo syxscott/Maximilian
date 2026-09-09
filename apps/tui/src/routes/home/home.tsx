@@ -22,7 +22,11 @@ import { useArgs } from "../../context/args"
 import { HomeSessionDestinationProvider } from "./session-destination"
 
 const placeholder = {
-  normal: ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"],
+  normal: [
+    "Fix a TODO in the codebase",
+    "What is the tech stack of this project?",
+    "Fix broken tests",
+  ],
   shell: ["ls -la", "git status", "pwd"],
 }
 

@@ -19,6 +19,6 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `packages/autonomy/src/promotion-engine.ts` | 172 |
+| 文件                                        | 行数 |
+| ------------------------------------------- | ---- |
+| `packages/autonomy/src/promotion-engine.ts` | 172  |
