@@ -320,7 +320,13 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     category: "china",
   },
   {
-    id: "minimaxi",
+    // L1-fix: provider id was `minimaxi` (typo from the upstream "MiniMax"
+    // branding where the `i` got duplicated). Now normalized to `minimax`,
+    // matching `MODEL_PRESETS.minimax` in `@max/llm`. Env keys are also
+    // unified: `MINIMAXI_2_API_KEY` → `MINIMAX_API_KEY_2` and
+    // `MINIMAXI_V_API_KEY` → `MINIMAX_API_KEY_V` so callers can address
+    // each MiniMax variant without colliding on a shared var.
+    id: "minimax",
     name: "MiniMax",
     envKey: "MINIMAX_API_KEY",
     apiFormat: "anthropic",
@@ -329,18 +335,18 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     category: "china",
   },
   {
-    id: "minimaxi-2",
+    id: "minimax-2",
     name: "MiniMax",
-    envKey: "MINIMAXI_2_API_KEY",
+    envKey: "MINIMAX_API_KEY_2",
     apiFormat: "openai_chat",
     baseUrl: "https://platform.minimaxi.com",
     defaultModel: "gpt-4o",
     category: "china",
   },
   {
-    id: "minimaxi-v",
+    id: "minimax-v",
     name: "MiniMax",
-    envKey: "MINIMAXI_V_API_KEY",
+    envKey: "MINIMAX_API_KEY_V",
     apiFormat: "openai_chat",
     baseUrl: "https://api.minimaxi.com/v1",
     defaultModel: "gpt-4o",

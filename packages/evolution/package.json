@@ -15,6 +15,7 @@
   "dependencies": {
     "@max/agents": "workspace:*",
     "@max/core": "workspace:*",
+    "@max/core-thin-sdk": "workspace:*",
     "@max/providers": "workspace:*",
     "zod": "^3.23.8"
   },

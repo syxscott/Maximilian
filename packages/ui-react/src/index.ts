@@ -9,6 +9,9 @@ export { Avatar, type AvatarProps } from "./components/avatar.js"
 export { Collapsible } from "./components/collapsible.js"
 export { Keybind, type KeybindProps } from "./components/keybind.js"
 export { cn } from "./lib/utils.js"
+export { CommandPalette, type CommandPaletteProps, type CommandItem, type CommandGroup } from "./components/command-palette.js"
+export { DiffViewer, type DiffViewerProps, type DiffLine } from "./components/diff-viewer.js"
+export { ColorPicker, type ColorPickerProps } from "./components/color-picker.js"
 
 // Additional ports from OpenCode
 export { ImagePreview, type ImagePreviewProps } from "./components/image-preview.js"

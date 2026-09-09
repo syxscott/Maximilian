@@ -12,39 +12,48 @@
  *   3. Speed tiebreak — prefer faster models when other signals are equal.
  */
 
-import type { AgentRole } from "./types.js";
+import type { AgentRole } from "./types.js"
 
 // ---------------------------------------------------------------------------
 // Public interfaces
 // ---------------------------------------------------------------------------
 
-export type CostTier = "low" | "mid" | "high";
-export type SpeedTier = "fast" | "medium" | "slow";
-export type TaskType = "code" | "reasoning" | "creative" | "general" | "data";
-export type TaskComplexity = "simple" | "medium" | "complex";
+export type CostTier = "low" | "mid" | "high"
+export type SpeedTier = "fast" | "medium" | "slow"
+export type TaskType = "code" | "reasoning" | "creative" | "general" | "data"
+export type TaskComplexity = "simple" | "medium" | "complex"
+
+/**
+ * Model Status (借鉴 opencode - ModelStatus).
+ * 模型在目录中的生命周期状态。`deprecated` 模型会被 ModelRouter 自动跳过;
+ * `alpha`/`beta` 仍参与路由打分(operator 自行决定是否启用)。
+ */
+export type ModelStatus = "alpha" | "beta" | "deprecated" | "active"
 
 export interface ModelProfile {
   /** Provider id, e.g. "anthropic", "openai". */
-  provider: string;
+  provider: string
   /** Model name, e.g. "claude-3-haiku-20240307". */
-  model: string;
+  model: string
   /** Task types this model excels at. */
-  strengths: TaskType[];
+  strengths: TaskType[]
   /** Cost classification. */
-  costTier: CostTier;
+  costTier: CostTier
   /** Speed classification. */
-  speedTier: SpeedTier;
+  speedTier: SpeedTier
+  /** 借鉴 opencode - 默认 "active";deprecated 会被路由器自动跳过 */
+  status?: ModelStatus
 }
 
 export interface TaskCharacteristics {
-  complexity: TaskComplexity;
-  type: TaskType;
-  agentRole: AgentRole;
+  complexity: TaskComplexity
+  type: TaskType
+  agentRole: AgentRole
 }
 
 export interface ModelSelection {
-  provider: string;
-  model: string;
+  provider: string
+  model: string
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +103,7 @@ const DEFAULT_PROFILES: ModelProfile[] = [
     costTier: "mid",
     speedTier: "medium",
   },
-];
+]
 
 // ---------------------------------------------------------------------------
 // Scoring helpers
@@ -102,11 +111,11 @@ const DEFAULT_PROFILES: ModelProfile[] = [
 
 /** Score: does the profile's strengths cover the task type? 0-12. */
 function strengthScore(profile: ModelProfile, taskType: TaskType): number {
-  if (!profile.strengths.includes(taskType)) return 0;
+  if (!profile.strengths.includes(taskType)) return 0
   // Small bonus when the task type is the profile's primary strength (first
   // in the array). This breaks ties between models that both cover the type
   // but where one specialises in it (e.g. o1 for reasoning vs opus for code).
-  return profile.strengths[0] === taskType ? 12 : 10;
+  return profile.strengths[0] === taskType ? 12 : 10
 }
 
 /**
@@ -117,11 +126,11 @@ function strengthScore(profile: ModelProfile, taskType: TaskType): number {
  */
 function costScore(profile: ModelProfile, complexity: TaskComplexity): number {
   const matrix: Record<TaskComplexity, Record<CostTier, number>> = {
-    simple:  { low: 10, mid: 5, high: 1 },
-    medium:  { low: 5,  mid: 10, high: 5 },
-    complex: { low: 1,  mid: 5, high: 10 },
-  };
-  return matrix[complexity][profile.costTier];
+    simple: { low: 10, mid: 5, high: 1 },
+    medium: { low: 5, mid: 10, high: 5 },
+    complex: { low: 1, mid: 5, high: 10 },
+  }
+  return matrix[complexity][profile.costTier]
 }
 
 /**
@@ -130,11 +139,11 @@ function costScore(profile: ModelProfile, complexity: TaskComplexity): number {
  */
 function speedBonus(profile: ModelProfile, complexity: TaskComplexity): number {
   const matrix: Record<TaskComplexity, Record<SpeedTier, number>> = {
-    simple:  { fast: 3, medium: 1, slow: 0 },
-    medium:  { fast: 1, medium: 3, slow: 1 },
+    simple: { fast: 3, medium: 1, slow: 0 },
+    medium: { fast: 1, medium: 3, slow: 1 },
     complex: { fast: 0, medium: 1, slow: 3 },
-  };
-  return matrix[complexity][profile.speedTier];
+  }
+  return matrix[complexity][profile.speedTier]
 }
 
 // ---------------------------------------------------------------------------
@@ -142,11 +151,24 @@ function speedBonus(profile: ModelProfile, complexity: TaskComplexity): number {
 // ---------------------------------------------------------------------------
 
 export class ModelRouter {
-  private profiles: ModelProfile[] = [];
+  private profiles: ModelProfile[] = []
+  /**
+   * M4-fix: rolling success/failure counters keyed by `${provider}/${model}`.
+   * Each call to `selectModel()` increments `attempts`; `recordOutcome()`
+   * adjusts `successes` based on whether the agent's run was ok or failed.
+   * After enough observations (≥ HEALTH_MIN_SAMPLES) a model with a
+   * sustained failure rate above `HEALTH_FAILURE_THRESHOLD` is auto-…
+   * "alpha" (treated as a warning state) so it's downweighted in subsequent
+   * selections without being permanently removed. Callers who want a hard
+   * block can switch on `profile.health === "alpha"` themselves.
+   */
+  private health: Map<string, { attempts: number; successes: number }> = new Map()
+  /** Last time `maybeRecoverDemoted` ran (ms epoch). Throttles the scan. */
+  private lastRecoveryMs = 0
 
   constructor(profiles?: ModelProfile[]) {
     if (profiles) {
-      this.profiles = [...profiles];
+      this.profiles = [...profiles]
     }
   }
 
@@ -154,17 +176,95 @@ export class ModelRouter {
   registerProfile(profile: ModelProfile): void {
     const idx = this.profiles.findIndex(
       (p) => p.provider === profile.provider && p.model === profile.model,
-    );
+    )
     if (idx >= 0) {
-      this.profiles[idx] = profile;
+      this.profiles[idx] = profile
     } else {
-      this.profiles.push(profile);
+      this.profiles.push(profile)
     }
   }
 
   /** Return all registered profiles (defensive copy). */
   getProfiles(): ModelProfile[] {
-    return [...this.profiles];
+    return [...this.profiles]
+  }
+
+  /**
+   * Record the outcome of a `selectModel` → agent.execute cycle so the
+   * router can downweight models that are observed to be failing in
+   * practice. Callers should invoke this from their post-task hook.
+   *
+   * @param key    `${provider}/${model}` string (the `ModelSelection` shape)
+   * @param ok     whether the agent's run succeeded
+   *
+   * M4-fix: previously the router was a pure scorer with no notion of
+   * "this model is failing 80% of the time right now". A regression in
+   * upstream quality would silently keep getting routed to the broken
+   * model. Now sustained failures (>50% over ≥10 samples) flip the
+   * profile's `status` to "alpha" so `selectModel` downweights it via
+   * the existing `status` filter.
+   */
+  recordOutcome(key: string, ok: boolean): void {
+    const entry = this.health.get(key) ?? { attempts: 0, successes: 0 }
+    entry.attempts += 1
+    if (ok) entry.successes += 1
+    this.health.set(key, entry)
+    if (entry.attempts < HEALTH_MIN_SAMPLES) return
+    const failureRate = 1 - entry.successes / entry.attempts
+    if (failureRate < HEALTH_FAILURE_THRESHOLD) return
+    // Demote: flip status to alpha so `selectModel` keeps the profile
+    // eligible (vs `deprecated`, which is filtered out entirely) but
+    // signals "treat with caution" via the existing strengthScore logic.
+    const [provider, model] = key.split("/", 2) as [string, string]
+    const profile = this.profiles.find((p) => p.provider === provider && p.model === model)
+    if (profile && profile.status !== "deprecated") {
+      profile.status = "alpha"
+    }
+  }
+
+  /**
+   * Recovery check — promote an `alpha` profile back to `active` once
+   * health has stabilised. Without this, a transient 5-minute outage
+   * would demote a model permanently (the previous one-way demote).
+   * Called from `selectModel` on a budget so the cost is amortised —
+   * we don't need to scan every call.
+   */
+  private maybeRecoverDemoted(): void {
+    const now = Date.now()
+    if (now - this.lastRecoveryMs < RECOVERY_CHECK_INTERVAL_MS) return
+    this.lastRecoveryMs = now
+    for (const [key, entry] of this.health) {
+      if (entry.attempts < RECOVERY_MIN_SAMPLES) continue
+      const failureRate = 1 - entry.successes / entry.attempts
+      if (failureRate > RECOVERY_FAILURE_THRESHOLD) continue
+      const [provider, model] = key.split("/", 2) as [string, string]
+      const profile = this.profiles.find((p) => p.provider === provider && p.model === model)
+      if (profile && profile.status === "alpha") {
+        profile.status = "active"
+      }
+    }
+  }
+
+  /**
+   * Read-only health snapshot. Useful for debugging the router from the
+   * dashboard or for tests that need to assert outcomes were recorded.
+   */
+  getHealthSnapshot(): Array<{
+    key: string
+    attempts: number
+    successes: number
+    failureRate: number
+  }> {
+    const out: Array<{ key: string; attempts: number; successes: number; failureRate: number }> = []
+    for (const [key, entry] of this.health) {
+      out.push({
+        key,
+        attempts: entry.attempts,
+        successes: entry.successes,
+        failureRate: entry.attempts === 0 ? 0 : 1 - entry.successes / entry.attempts,
+      })
+    }
+    return out
   }
 
   /**
@@ -177,27 +277,52 @@ export class ModelRouter {
   selectModel(task: TaskCharacteristics): ModelSelection {
     if (this.profiles.length === 0) {
       // Absolute fallback — no profiles registered.
-      return { provider: "anthropic", model: "claude-3-haiku-20240307" };
+      return { provider: "anthropic", model: "claude-3-haiku-20240307" }
     }
 
-    let bestProfile = this.profiles[0];
-    let bestScore = -1;
+    // Periodic recovery check: promote any "alpha" model that has
+    // stabilised. Throttled to once per RECOVERY_CHECK_INTERVAL_MS so
+    // the per-call cost is bounded.
+    this.maybeRecoverDemoted()
 
-    for (const profile of this.profiles) {
+    // 借鉴 opencode - 跳过 deprecated 模型,它们不应进入打分池
+    const eligible = this.profiles.filter((p) => (p.status ?? "active") !== "deprecated")
+
+    if (eligible.length === 0) {
+      // 所有候选都被 deprecated 标记 — 退回硬编码 fallback
+      return { provider: "anthropic", model: "claude-3-haiku-20240307" }
+    }
+
+    let bestProfile = eligible[0]
+    let bestScore = -1
+
+    for (const profile of eligible) {
       const score =
         strengthScore(profile, task.type) +
         costScore(profile, task.complexity) +
-        speedBonus(profile, task.complexity);
+        speedBonus(profile, task.complexity)
 
       if (score > bestScore) {
-        bestScore = score;
-        bestProfile = profile;
+        bestScore = score
+        bestProfile = profile
       }
     }
 
-    return { provider: bestProfile!.provider, model: bestProfile!.model };
+    return { provider: bestProfile!.provider, model: bestProfile!.model }
   }
 }
+
+/** Minimum samples before the health feedback can flip a model's status. */
+const HEALTH_MIN_SAMPLES = 10
+/** Above this failure rate (over HEALTH_MIN_SAMPLES), the model is "alpha". */
+const HEALTH_FAILURE_THRESHOLD = 0.5
+
+// Recovery: once a model is "alpha" we re-check health periodically. After
+// it accumulates RECOVERY_MIN_SAMPLES with failure rate below
+// RECOVERY_FAILURE_THRESHOLD, we promote it back to "active".
+const RECOVERY_MIN_SAMPLES = 20
+const RECOVERY_FAILURE_THRESHOLD = 0.1
+const RECOVERY_CHECK_INTERVAL_MS = 60_000
 
 // ---------------------------------------------------------------------------
 // TaskCharacteristics derivation
@@ -208,12 +333,12 @@ function roleToTaskType(role: AgentRole): TaskType {
   switch (role) {
     case "frontend":
     case "backend":
-      return "code";
+      return "code"
     case "review":
-      return "reasoning";
+      return "reasoning"
     case "general":
     default:
-      return "general";
+      return "general"
   }
 }
 
@@ -229,38 +354,52 @@ function roleToTaskType(role: AgentRole): TaskType {
  *      didn't provide an estimate (e.g. legacy plans, untrusted input).
  */
 export function deriveTaskCharacteristics(task: {
-  agentRole: AgentRole;
-  description: string;
-  metadata?: Record<string, unknown>;
+  agentRole: AgentRole
+  description: string
+  metadata?: Record<string, unknown>
 }): TaskCharacteristics {
   // Trust the planner-provided complexity when it's a valid value.
-  const declared = task.metadata?.estimatedComplexity;
-  let complexity: TaskComplexity;
+  const declared = task.metadata?.estimatedComplexity
+  let complexity: TaskComplexity
   if (declared === "simple" || declared === "medium" || declared === "complex") {
-    complexity = declared;
+    complexity = declared
   } else {
     // Keyword + length fallback.
-    const desc = task.description.toLowerCase();
+    const desc = task.description.toLowerCase()
     const complexKeywords = [
-      "refactor", "architect", "design system", "migration",
-      "performance", "security", "distributed", "scale",
-      "complex", "multi-step", "end-to-end",
-    ];
+      "refactor",
+      "architect",
+      "design system",
+      "migration",
+      "performance",
+      "security",
+      "distributed",
+      "scale",
+      "complex",
+      "multi-step",
+      "end-to-end",
+    ]
     const simpleKeywords = [
-      "fix typo", "rename", "update readme", "change color",
-      "simple", "quick", "trivial", "bump version",
-    ];
+      "fix typo",
+      "rename",
+      "update readme",
+      "change color",
+      "simple",
+      "quick",
+      "trivial",
+      "bump version",
+    ]
 
     if (complexKeywords.some((kw) => desc.includes(kw))) {
-      complexity = "complex";
+      complexity = "complex"
     } else if (simpleKeywords.some((kw) => desc.includes(kw))) {
-      complexity = "simple";
+      complexity = "simple"
     } else if (task.description.length > 500) {
-      complexity = "complex";
+      complexity = "complex"
     } else if (task.description.length < 80) {
-      complexity = "simple";
+      complexity = "simple"
     } else {
-      complexity = "medium";
+      complexity = "medium"
     }
   }
 
@@ -268,7 +407,7 @@ export function deriveTaskCharacteristics(task: {
     complexity,
     type: roleToTaskType(task.agentRole),
     agentRole: task.agentRole,
-  };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -277,5 +416,5 @@ export function deriveTaskCharacteristics(task: {
 
 /** Create a ModelRouter pre-loaded with sensible default profiles. */
 export function createDefaultModelRouter(): ModelRouter {
-  return new ModelRouter(DEFAULT_PROFILES);
+  return new ModelRouter(DEFAULT_PROFILES)
 }

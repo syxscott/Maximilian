@@ -19,6 +19,8 @@ import {
   ModelAssigner,
   DynamicAgentFactory,
   DAGS,
+  defaultPersonality,
+  defaultVoice,
   type AgentBlueprint,
 } from "../src/index.js";
 
@@ -179,6 +181,8 @@ describe("Stage 3 — DynamicAgentFactory", () => {
       systemPrompt: "You are a frontend engineer.",
       capabilities: ["frontend"],
       tools: [],
+      personality: defaultPersonality(),
+      voice: defaultVoice(),
       preferredModels: [],
       constraints: { outputFormat: "code" },
       version: "v1",
@@ -261,6 +265,8 @@ function mkBp(role: string, capabilities: string[]): AgentBlueprint {
     tools: [],
     preferredModels: [],
     constraints: { outputFormat: "free" },
+    personality: defaultPersonality(),
+    voice: defaultVoice(),
     version: "v1",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

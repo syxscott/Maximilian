@@ -2,7 +2,7 @@
 // Derived from OpenCode packages/core/src/tool/write.ts
 // Plain TypeScript, no Effect-TS
 
-import { makeTool, type ToolContent } from "@max/llm"
+import { makeTool, type ToolContent, ToolKind } from "@max/llm"
 import { writeFile, stat, mkdir } from "node:fs/promises"
 import { resolve, dirname } from "node:path"
 
@@ -20,6 +20,7 @@ export interface WriteOutput {
 export const writeTool = makeTool<WriteInput, WriteOutput>({
   name: "write",
   description: "Write content to a file. Creates parent directories if needed.",
+  kind: ToolKind.Edit,
   inputSchema: {
     type: "object",
     properties: {
