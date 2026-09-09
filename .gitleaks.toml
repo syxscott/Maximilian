@@ -1,0 +1,21 @@
+# Gitleaks configuration.
+#
+# Extends the DEFAULT gitleaks rule set (do not remove [extend]) with an
+# allowlist for test fixtures that exist to exercise the repo's own
+# secret-detection / scrubbing logic. Each entry pins the exact fake
+# value, so a genuine secret in these files is still reported.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "fake secrets in test fixtures exercising secret-detection logic"
+regexes = [
+  # apps/api/test/multi-tenant.test.ts — middleware auth fixture
+  '''test-secret-for-middleware-2''',
+  # packages/core/test/production-hardening.test.ts + evolution/test/borrowed-patterns.test.ts
+  # — fixtures for containsSecret() / log-scrubbing (fake sk-proj PAT shape)
+  '''sk-proj-abc123def456ghi789jkl012mno345pqr678''',
+  # evolution/test/borrowed-patterns.test.ts — fake ghp_ PAT shape
+  '''ghp_abc123def456ghi789jkl012mno345pqr678''',
+]
