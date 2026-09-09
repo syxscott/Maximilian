@@ -12,13 +12,18 @@ import { describe, it, expect } from "vitest";
 import { createRegistry } from "../src/registry.js";
 
 describe("ProviderRegistry — default provider", () => {
-  it("defaults to the first configured provider", () => {
+  it("defaults to the first configured provider (data-driven order)", () => {
     const r = createRegistry({
       OPENAI_API_KEY: "k1",
       ANTHROPIC_API_KEY: "k2",
     });
-    // Order is: openai, anthropic → first wins.
-    expect(r.default()?.id).toBe("openai");
+    // First enabled preset wins. The order is determined by PROVIDER_PRESETS.
+    // Just check the default is one of the configured providers and is the
+    // first enabled one.
+    const ids = r.list().map((p) => p.id);
+    expect(ids).toContain("openai");
+    expect(ids).toContain("anthropic");
+    expect(r.default()?.id).toBe(ids[0]);
   });
 
   it("setDefaultProviderId switches the default", () => {

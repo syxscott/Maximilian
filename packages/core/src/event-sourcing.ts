@@ -16,6 +16,8 @@
  *   const state = store.project("ws-1", workspaceReducer)
  */
 
+import { randomUUID } from "node:crypto";
+
 export interface StoredEvent<T = unknown> {
   /** Unique event id. */
   id: string
@@ -54,7 +56,7 @@ export class EventStore {
     this.seqCounters.set(aggregateId, seq)
 
     const event: StoredEvent<T> = {
-      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: randomUUID(),
       type,
       aggregateId,
       data,

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 const TRACK = Array.from({ length: 30 }, (_, index) => index % 10)
 const DURATION = 600
@@ -36,7 +36,6 @@ const Digit: React.FC<DigitProps> = ({ value, direction }) => {
     }
     setAnimating(true)
     setStep((s) => s + delta)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
 
   const handleTransitionEnd = () => {
@@ -81,7 +80,6 @@ export const AnimatedNumber: React.FC<AnimatedNumberProps> = ({ value, className
     const current = state.value
     if (target === current) return
     setState({ value: target, direction: target > current ? 1 : -1 })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target])
 
   const label = state.value.toString()

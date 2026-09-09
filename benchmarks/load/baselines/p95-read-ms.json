@@ -1,0 +1,9 @@
+{
+  "_comment": "Phase 12 baseline. Provisional — replace after first nightly load.yml run on main.",
+  "p95_ms": 200,
+  "endpoint": "GET /api/workspaces",
+  "v_us": 20,
+  "duration_s": 30,
+  "measured_at": "2026-08-18",
+  "commit": "ed68f05"
+}

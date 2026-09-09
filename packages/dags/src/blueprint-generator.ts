@@ -14,7 +14,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AgentBlueprint, Capability, ModelHint } from "./types.js";
-import { emptyStats } from "./types.js";
+import { emptyStats, defaultPersonality, defaultVoice } from "./types.js";
 import { CapabilityLibrary } from "./capability-library.js";
 import { BlueprintStore, newBlueprintId } from "./blueprint-store.js";
 
@@ -116,6 +116,8 @@ function synthesize(
     tools,
     preferredModels: options.modelHints ?? [],
     constraints,
+    personality: defaultPersonality(),
+    voice: defaultVoice(),
     version: "v1",
     createdAt: now,
     updatedAt: now,

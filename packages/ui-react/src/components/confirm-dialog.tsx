@@ -1,7 +1,7 @@
 import * as React from "react"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "./dialog"
-import { Button } from "./button"
-import { cn } from "../lib/utils"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "./dialog.js"
+import { Button } from "./button.js"
+import { cn } from "../lib/utils.js"
 
 export interface ConfirmDialogProps {
   open?: boolean

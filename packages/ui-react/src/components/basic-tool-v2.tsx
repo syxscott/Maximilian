@@ -5,9 +5,9 @@ import {
   useCallback,
 } from "react"
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
-import { cn } from "../lib/utils"
-import { DiffChanges, type DiffChangesSingle } from "./diff-changes-v2"
-import { TextShimmerV2 } from "./text-shimmer-v2"
+import { cn } from "../lib/utils.js"
+import { DiffChanges, type DiffChangesSingle } from "./diff-changes-v2.js"
+import { TextShimmerV2 } from "./text-shimmer-v2.js"
 
 function ChevronIcon() {
   return (

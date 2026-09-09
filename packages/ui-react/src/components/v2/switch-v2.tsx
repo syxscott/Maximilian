@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as SwitchPrimitive from "@radix-ui/react-switch"
 import * as LabelPrimitive from "@radix-ui/react-label"
-import { cn } from "../../lib/utils"
+import { cn } from "../../lib/utils.js"
 
 export interface SwitchProps
   extends React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root> {

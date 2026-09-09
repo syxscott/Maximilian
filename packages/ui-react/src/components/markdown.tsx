@@ -1,5 +1,5 @@
 import { useEffect, useRef, type HTMLAttributes } from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export interface MarkdownProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
   text: string

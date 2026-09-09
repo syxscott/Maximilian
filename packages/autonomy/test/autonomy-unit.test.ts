@@ -12,6 +12,7 @@ import os from "node:os";
 import type { Provider } from "@max/providers";
 import type { Workspace, Result, Task, Plan } from "@max/core";
 import { DAGS } from "@max/dags";
+import type { AgentBlueprint } from "@max/dags";
 import { EvolutionFacade } from "@max/evolution";
 import {
   ExecutionStore,
@@ -344,15 +345,15 @@ describe("5.5 — CandidateGenerator", () => {
       goal: "Build UI",
       systemPrompt: "You are a frontend engineer.",
       capabilities: ["frontend"],
-      tools: [],
-      preferredModels: [],
+      tools: [] as never[],
+      preferredModels: [] as never[],
       constraints: { outputFormat: "code" as const },
       version: "v1",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       stats: { totalTasks: 0, totalSuccesses: 0, avgScore: 0, avgExecutionTimeMs: 0 },
       metadata: {},
-    };
+    } as unknown as AgentBlueprint;
     const candidate = await gen.generate(plan, parent);
     expect(candidate.version).toBe("v2");
     expect(candidate.parentBlueprintId).toBe("bp-frontend-parent");
@@ -380,15 +381,17 @@ function makeParent(role: string, version: string) {
     goal: "g",
     systemPrompt: "You are " + role,
     capabilities: [role],
-    tools: [],
-    preferredModels: [],
+    tools: [] as never[],
+    preferredModels: [] as never[],
     constraints: { outputFormat: "free" as const },
+    personality: {},
+    voice: {},
     version,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     stats: { totalTasks: 0, totalSuccesses: 0, avgScore: 0, avgExecutionTimeMs: 0 },
     metadata: {},
-  };
+  } as unknown as AgentBlueprint;
 }
 
 // ============================================================================

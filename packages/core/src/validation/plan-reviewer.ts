@@ -25,7 +25,7 @@ export type PlanReviewDimension = (typeof PLAN_REVIEW_DIMENSIONS)[number]
 export const DEFAULT_PLAN_WEIGHTS: Record<PlanReviewDimension, number> = {
   specificity: 0.25,
   relevance: 0.25,
-  novelty: 0.20,
+  novelty: 0.2,
   coverage: 0.15,
   feasibility: 0.15,
 }
@@ -100,12 +100,16 @@ export function reviewPlan(plan: PlanLike, options?: PlanReviewOptions): PlanRev
   }
   for (const dim of PLAN_REVIEW_DIMENSIONS) {
     if (scores[dim] < thresholds.minDimension) {
-      requiredChanges.push(`${dim} score ${scores[dim].toFixed(2)} below minimum ${thresholds.minDimension}`)
+      requiredChanges.push(
+        `${dim} score ${scores[dim].toFixed(2)} below minimum ${thresholds.minDimension}`,
+      )
     }
   }
 
   if (plan.tasks && plan.tasks.length > 0 && plan.tasks.length < thresholds.minTaskCount) {
-    suggestions.push(`Plan has ${plan.tasks.length} tasks — consider adding more for better coverage.`)
+    suggestions.push(
+      `Plan has ${plan.tasks.length} tasks — consider adding more for better coverage.`,
+    )
   }
   if (plan.objective && plan.objective.length < 20) {
     suggestions.push("Objective is short — expand with success criteria or scope boundaries.")
@@ -141,7 +145,9 @@ const heuristicScorers: Record<PlanReviewDimension, DimensionScorer> = {
     const concrete = tasks.filter((t) => {
       const desc = (t.description ?? "").toLowerCase()
       // Has a verb + concrete noun? Look for action verbs.
-      return /\b(analyze|compute|design|implement|extract|generate|review|test|write|run|fetch|parse|build)\b/.test(desc)
+      return /\b(analyze|compute|design|implement|extract|generate|review|test|write|run|fetch|parse|build)\b/.test(
+        desc,
+      )
     })
     const ratio = concrete.length / tasks.length
     // Penalize very short descriptions.
@@ -188,20 +194,69 @@ const heuristicScorers: Record<PlanReviewDimension, DimensionScorer> = {
   feasibility: (plan) => {
     const tasks = plan.tasks ?? []
     if (tasks.length === 0) return 0
-    // No deps cycle check: shallow BFS over dependsOn.
-    const ids = new Set(tasks.map((_, i) => String(i)))
+    // Kahn's algorithm cycle detection: build adjacency from dependsOn edges,
+    // topologically sort, and report a cycle iff not every node is processed.
+    // Deps may reference task indices (`"0"`, `"1"`, ...) or arbitrary ids —
+    // we resolve each dep to the latest matching task index (matches how
+    // Commander.ts materializes task ids as `task-1`, `task-2`, etc.).
     const dependents = tasks.map((t) => (t as { dependsOn?: string[] }).dependsOn ?? [])
-    let hasCycle = false
-    // Naive: just check no task depends on itself, and all deps reference valid ids.
-    for (let i = 0; i < tasks.length; i++) {
-      for (const dep of dependents[i]) {
-        if (dep === String(i) || dep === tasks[i].agentRole) {
-          hasCycle = true
-          break
-        }
+    const ids = new Set(tasks.map((_, i) => String(i)))
+    // Indexed BY task index — never .filter() this array: dropping id-less
+    // tasks would shift every later id's index and silently misresolve deps.
+    const taskIdByIndex = tasks.map((t) => {
+      const id = (t as { id?: string }).id
+      return typeof id === "string" ? id : undefined
+    })
+    const inDegree = new Array(tasks.length).fill(0) as number[]
+    // Resolve a dep string to the index of the producing task. Returns -1 if
+    // the dep references an unknown task (treated as ignored, like the
+    // Commander.preflight() warning behavior).
+    const resolveDep = (dep: string): number => {
+      if (ids.has(dep)) return Number(dep)
+      // Latest matching id wins (backward scan); ids are expected unique.
+      for (let i = taskIdByIndex.length - 1; i >= 0; i--) {
+        if (taskIdByIndex[i] === dep) return i
       }
-      if (hasCycle) break
+      // Fall back to agentRole match (latest wins) — handles plans where
+      // dependsOn references the role name (the previous bug was checking
+      // this only for self-dependency).
+      for (let i = tasks.length - 1; i >= 0; i--) {
+        if (tasks[i]!.agentRole === dep) return i
+      }
+      return -1
     }
+    // Build adjacency: dep -> dependent (dep must run first).
+    // Only count edges where the dep resolves to a known task — invalid
+    // deps would otherwise inflate in-degree and falsely flag a cycle.
+    const adjacency: number[][] = tasks.map(() => [])
+    for (let i = 0; i < tasks.length; i++) {
+      for (const dep of dependents[i]!) {
+        const depIdx = resolveDep(dep)
+        if (depIdx < 0 || depIdx === i) continue // unknown dep or self-loop ignored
+        adjacency[depIdx]!.push(i)
+      }
+    }
+    for (let i = 0; i < tasks.length; i++) {
+      inDegree[i] = dependents[i]!.filter((dep) => {
+        const depIdx = resolveDep(dep)
+        return depIdx >= 0 && depIdx !== i
+      }).length
+    }
+    // Kahn's BFS.
+    const queue: number[] = []
+    for (let i = 0; i < inDegree.length; i++) {
+      if (inDegree[i] === 0) queue.push(i)
+    }
+    let processed = 0
+    while (queue.length > 0) {
+      const node = queue.shift()!
+      processed++
+      for (const next of adjacency[node]!) {
+        inDegree[next]!--
+        if (inDegree[next] === 0) queue.push(next)
+      }
+    }
+    const hasCycle = processed < tasks.length
     const baseScore = tasks.length <= 12 ? 8 : 6 // too many tasks = suspect
     return clampScore(hasCycle ? Math.min(baseScore, 5) : baseScore)
   },
@@ -231,7 +286,27 @@ function clampScore(x: number): number {
 }
 
 const STOPWORDS = new Set([
-  "the", "this", "that", "with", "from", "into", "have", "been",
-  "they", "their", "them", "where", "when", "what", "which", "while",
-  "about", "would", "could", "should", "there", "these", "those",
+  "the",
+  "this",
+  "that",
+  "with",
+  "from",
+  "into",
+  "have",
+  "been",
+  "they",
+  "their",
+  "them",
+  "where",
+  "when",
+  "what",
+  "which",
+  "while",
+  "about",
+  "would",
+  "could",
+  "should",
+  "there",
+  "these",
+  "those",
 ])

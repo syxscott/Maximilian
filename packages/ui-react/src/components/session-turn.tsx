@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import * as Accordion from "@radix-ui/react-accordion"
-import { cn } from "../lib/utils"
-import { AssistantParts, Message, MessageDivider, PART_MAPPING, type UserActions, type Part } from "./message-part"
+import { cn } from "../lib/utils.js"
+import { AssistantParts, Message, MessageDivider, PART_MAPPING, type UserActions, type Part } from "./message-part.js"
 
 interface SessionStatus {
   type: string

@@ -58,7 +58,7 @@ export const LANGUAGE_EXTENSIONS: Record<string, string> = {
   ".less": "less",
   ".lua": "lua",
   ".makefile": "makefile",
-  makefile: "makefile",
+  ".mk": "makefile",
   ".md": "markdown",
   ".markdown": "markdown",
   ".m": "objective-c",
@@ -122,9 +122,19 @@ export const LANGUAGE_EXTENSIONS: Record<string, string> = {
   ".typc": "typst",
 }
 
+// Extensionless files must be matched by basename: path.extname() returns ""
+// for EVERY extensionless file (Dockerfile, LICENSE, .gitignore, …), so an
+// extension-map entry keyed on "" would misclassify them all.
+const LANGUAGE_BASENAMES: Record<string, string> = {
+  makefile: "makefile",
+  gnumakefile: "makefile",
+}
+
 export function filetype(input?: string) {
   if (!input) return "none"
-  const language = LANGUAGE_EXTENSIONS[path.extname(input)]
+  const language =
+    LANGUAGE_EXTENSIONS[path.extname(input)] ??
+    LANGUAGE_BASENAMES[path.basename(input).toLowerCase()]
   if (["typescriptreact", "javascriptreact", "javascript"].includes(language)) return "typescript"
   return language
 }

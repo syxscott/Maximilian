@@ -9,7 +9,7 @@ WORKDIR /app
 
 # ─── deps ──────────────────────────────────────────────────────────────
 FROM base AS deps
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig*.json ./
 COPY apps/worker/package.json ./apps/worker/
 COPY packages ./packages
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
@@ -18,9 +18,15 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # ─── build ─────────────────────────────────────────────────────────────
 FROM deps AS build
 COPY apps/worker ./apps/worker
-COPY tsconfig.base.json ./
+COPY tsconfig*.json ./
 RUN pnpm --filter @max/worker run type-check
-RUN pnpm --recursive --filter @max/* run build
+# Build only the worker and its workspace deps. The workspace also
+# contains "optional" packages like @max/compat-shims (peer-only shims
+# for ink / hono / drizzle that the consumer must install separately).
+# Building them inside the worker image tries to tsc packages whose
+# devDeps aren't installed by the deps stage's `--filter=@max/worker...`
+# and fails on missing type defs. Scope to worker's closure.
+RUN pnpm --recursive --filter @max/worker... run build
 
 # ─── runtime ──────────────────────────────────────────────────────────
 FROM base AS runtime

@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as ToastPrimitive from "@radix-ui/react-toast"
-import { cn } from "../../lib/utils"
-import { ButtonV2 } from "./button-v2"
+import { cn } from "../../lib/utils.js"
+import { ButtonV2 } from "./button-v2.js"
 
 export interface ToastV2RegionProps
   extends React.ComponentPropsWithoutRef<typeof ToastPrimitive.Provider> {}

@@ -1,5 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react"
-import { Icon, type IconProps } from "./icon"
+import { Icon, type IconProps } from "./icon.js"
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: IconProps["name"]

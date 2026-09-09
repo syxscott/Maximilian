@@ -119,7 +119,6 @@ export function useSpring(target: number, options?: Opt | (() => Opt)): number {
       springRef.current.destroy()
       sourceRef.current.destroy()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

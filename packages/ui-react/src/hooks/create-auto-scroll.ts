@@ -208,7 +208,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
     }, 300)
     // We intentionally do NOT depend on `options.working` identity to match the
     // imperative intent of the original; consumers can call `resume` / `scrollToBottom` directly.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Update overflow anchor when scrollRef or userScrolled changes
@@ -227,7 +226,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
     return () => {
       el.removeEventListener("wheel", wheelListener)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Cleanup on unmount

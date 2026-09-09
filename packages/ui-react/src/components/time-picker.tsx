@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Clock } from "lucide-react"
-import { Popover, PopoverContent, PopoverTrigger } from "./popover"
-import { cn } from "../lib/utils"
+import { Popover, PopoverContent, PopoverTrigger } from "./popover.js"
+import { cn } from "../lib/utils.js"
 
 export interface TimeValue {
   hours: number

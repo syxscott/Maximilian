@@ -48,6 +48,14 @@ export const FailoverReason = {
   FormatError: "format_error",
   /** Tool-level error (tool threw). */
   ToolError: "tool_error",
+  /** Permission denied by user or config - don't retry. */
+  PermissionDenied: "permission_denied",
+  /**
+   * Governance rejection (crewAI deny≠failure borrowing): a deliberate
+   * policy outcome — permission rules, capability gates, budget caps.
+   * Structurally non-retryable AND excluded from failure learning.
+   */
+  PolicyDenied: "policy_denied",
   /** Unknown/unexpected error. */
   Unknown: "unknown",
 } as const
@@ -100,6 +108,18 @@ const AUTH_PERMANENT_PATTERNS = [
   /permission.denied.permanently/i,
 ]
 
+/**
+ * Permission-denied patterns. When the user (or the config) denies a
+ * tool call, retrying won't change the outcome - the runtime would
+ * just re-run the LLM, hit the same deny, and burn tokens. These must
+ * NOT be classified as retryable. Two producers:
+ *   - `PermissionDeniedError` in `@max/tools/with-permission`:
+ *       "Permission denied: <tool> -> <target>"
+ *   - the interactive-deny path in `tool-integration.ts`:
+ *       "Permission denied for tool \"<tool>\"" (no colon)
+ */
+const PERMISSION_DENIED_PATTERNS = [/^permission denied\b/i, /permission required:/i]
+
 /** Known billing exhaustion patterns. */
 const BILLING_PATTERNS = [
   /billing/i,
@@ -119,12 +139,7 @@ const CONTEXT_OVERFLOW_PATTERNS = [
 ]
 
 /** Known timeout patterns. */
-const TIMEOUT_PATTERNS = [
-  /timeout/i,
-  /timed out/i,
-  /deadline.exceeded/i,
-  /504/i,
-]
+const TIMEOUT_PATTERNS = [/timeout/i, /timed out/i, /deadline.exceeded/i, /504/i]
 
 /** Known server error patterns. */
 const SERVER_ERROR_PATTERNS = [
@@ -151,6 +166,8 @@ const OVERLOADED_PATTERNS = [
   /try.again.later/i,
 ]
 
+import { PolicyDeniedError, isPolicyDeniedMessage } from "./policy-error.js"
+
 /**
  * Classify a task error into a structured ClassifiedError.
  * Priority-ordered: permanent auth → tool errors → status-code-like patterns
@@ -164,9 +181,24 @@ export function classifyTaskError(error: unknown): ClassifiedError {
   const message = error instanceof Error ? error.message : String(error)
   const msg = message.slice(0, 500) // bound
 
+  // 0. Governance rejection (deny≠failure, crewAI borrowing) — structural
+  //    check first, then the serialized prefix for errors that crossed a
+  //    process/message boundary. Never retried, never re-learned.
+  if (error instanceof PolicyDeniedError || isPolicyDeniedMessage(message)) {
+    return mkClassification("policy_denied", msg, false, false, false, false)
+  }
+
   // 1. Permanent auth — these are NEVER retryable.
   if (matchAny(msg, AUTH_PERMANENT_PATTERNS)) {
     return mkClassification("auth_permanent", msg, false, false, true, true)
+  }
+
+  // 1b. Permission denied by user or config - NOT retryable. Retrying
+  //     would just re-run the LLM and hit the same deny, burning tokens
+  //     for no benefit. The user must change the config (or answer the
+  //     prompt differently) before this can succeed.
+  if (matchAny(msg, PERMISSION_DENIED_PATTERNS)) {
+    return mkClassification("permission_denied", msg, false, false, false, false)
   }
 
   // 2. Auth failures — retryable with credential rotation.
@@ -196,7 +228,11 @@ export function classifyTaskError(error: unknown): ClassifiedError {
 
   // 7. Tool-specific error prefixes — check BEFORE "not found" patterns
   //    since "ToolError: file not found" should NOT match model_not_found.
-  if (msg.startsWith("[Tool Result:") || msg.includes("tool execution failed") || msg.includes("ToolError")) {
+  if (
+    msg.startsWith("[Tool Result:") ||
+    msg.includes("tool execution failed") ||
+    msg.includes("ToolError")
+  ) {
     return mkClassification("tool_error", msg, false, false, false, false)
   }
 

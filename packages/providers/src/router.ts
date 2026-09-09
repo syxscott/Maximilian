@@ -82,9 +82,35 @@ export class ProviderRouter implements Provider {
     messages: ChatMessage[],
     options?: ChatOptions,
   ): AsyncIterable<ChatChunk> {
-    const provider = this.selectProvider();
-    const wrapped = this.wrappedProviders.get(provider.id) ?? provider;
-    yield* wrapped.stream(messages, options);
+    const ordered = this.getOrderedEntries();
+    const errors: Error[] = [];
+
+    for (const entry of ordered) {
+      if (!entry.provider.isConfigured()) continue;
+
+      const wrapped = this.wrappedProviders.get(entry.provider.id) ?? entry.provider;
+      try {
+        yield* wrapped.stream(messages, options);
+        return;
+      } catch (err) {
+        errors.push(err as Error);
+        if (errors.length >= this.maxTotalAttempts) break;
+      }
+    }
+
+    if (errors.length === 0) {
+      throw new ProviderError(
+        "router",
+        undefined,
+        "No providers are configured",
+      );
+    }
+    const messages_ = errors.map((e) => e.message).join("; ");
+    throw new ProviderError(
+      "router",
+      undefined,
+      `All providers failed (${errors.length} attempts): ${messages_}`,
+    );
   }
 
   async embeddings(
@@ -127,6 +153,15 @@ export class ProviderRouter implements Provider {
       }
     }
 
+    if (errors.length === 0) {
+      // Every entry was skipped via `!isConfigured()` — surface that as a
+      // distinct error rather than the misleading "0 attempts" message.
+      throw new ProviderError(
+        "router",
+        undefined,
+        "No providers are configured (set the relevant API keys / enable flags)",
+      );
+    }
     const messages = errors.map((e) => e.message).join("; ");
     throw new ProviderError(
       "router",

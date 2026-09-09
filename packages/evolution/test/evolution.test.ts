@@ -158,8 +158,8 @@ describe("Phase 4 — ModelSelector", () => {
 
   it("returns the highest composite score", () => {
     const entries = [
-      { agentRole: "frontend" as AgentRole, provider: "openai", model: "gpt-4o", avgScore: 9, avgExecutionTime: 1000, avgCostUSD: 0.01, userSatisfaction: 1, sampleSize: 10, lastUpdated: "" },
-      { agentRole: "frontend" as AgentRole, provider: "anthropic", model: "claude-sonnet", avgScore: 7, avgExecutionTime: 500, avgCostUSD: 0.02, userSatisfaction: 0.9, sampleSize: 10, lastUpdated: "" },
+      { agentRole: "frontend" as AgentRole, provider: "openai", model: "gpt-4o", avgScore: 9, avgExecutionTime: 1000, avgCostUSD: 0.01, userSatisfaction: 1, sampleSize: 10, lastUpdated: "", versionHistory: [] },
+      { agentRole: "frontend" as AgentRole, provider: "anthropic", model: "claude-sonnet", avgScore: 7, avgExecutionTime: 500, avgCostUSD: 0.02, userSatisfaction: 0.9, sampleSize: 10, lastUpdated: "", versionHistory: [] },
     ];
     const board = Leaderboard.fromEntries(entries);
     const sel = new ModelSelector(cfg, []);
@@ -180,8 +180,8 @@ describe("Phase 4 — ModelSelector", () => {
 
   it("applies uncertainty penalty for low sample size", () => {
     const entries = [
-      { agentRole: "frontend" as AgentRole, provider: "openai", model: "gpt-4o", avgScore: 8, avgExecutionTime: 1000, avgCostUSD: 0.01, userSatisfaction: 1, sampleSize: 1, lastUpdated: "" },
-      { agentRole: "frontend" as AgentRole, provider: "anthropic", model: "claude-sonnet", avgScore: 7, avgExecutionTime: 1000, avgCostUSD: 0.01, userSatisfaction: 1, sampleSize: 20, lastUpdated: "" },
+      { agentRole: "frontend" as AgentRole, provider: "openai", model: "gpt-4o", avgScore: 8, avgExecutionTime: 1000, avgCostUSD: 0.01, userSatisfaction: 1, sampleSize: 1, lastUpdated: "", versionHistory: [] },
+      { agentRole: "frontend" as AgentRole, provider: "anthropic", model: "claude-sonnet", avgScore: 7, avgExecutionTime: 1000, avgCostUSD: 0.01, userSatisfaction: 1, sampleSize: 20, lastUpdated: "", versionHistory: [] },
     ];
     const board = Leaderboard.fromEntries(entries);
     const sel = new ModelSelector({ ...cfg, minSamples: 5 }, []);
@@ -194,7 +194,7 @@ describe("Phase 4 — ModelSelector", () => {
 
 describe("Phase 5 — AgentMemory", () => {
   it("appends feedback to the right bucket", () => {
-    let mem = AgentMemoryStore.recordFeedback(AgentMemoryStore.recordSuccess(
+    const mem = AgentMemoryStore.recordFeedback(AgentMemoryStore.recordSuccess(
       AgentMemoryStore.recordFeedback(makeEmptyMemory(), "first"),
       makeRecord({ taskId: "t1", agentRole: "frontend", provider: "openai", model: "gpt-4o" }),
       "snippet"

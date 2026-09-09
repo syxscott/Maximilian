@@ -105,15 +105,12 @@ export class PgProfileStore {
       const mergedMemory = mergeMemory(existingMemory, profile.memory);
       const mergedVersions = mergeVersions(existingVersions, profile.versions);
 
-      // For aggregates: the caller's snapshot reflects the latest known
-      // metrics, so its value is fine. If two callers raced and both
-      // computed aggregates from different metric windows, taking the
-      // larger totalTasks keeps the row's stats monotonic — losing the
-      // smaller window is the lesser evil vs. going backwards.
-      const mergedTotalTasks = Math.max(
-        existingRows[0]?.totalTasks ?? 0,
-        profile.totalTasks,
-      );
+      // For aggregates: totalTasks is an increment (增量), so we sum them.
+      // If two callers raced and both computed aggregates from different
+      // metric windows, taking the sum gives the correct total count.
+      const mergedTotalTasks = (
+        existingRows[0]?.totalTasks ?? 0
+      ) + profile.totalTasks;
 
       await tx
         .insert(agentProfiles)

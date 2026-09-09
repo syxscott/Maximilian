@@ -11,7 +11,7 @@
  * deferred until Maximilian ships its own command bus.
  */
 
-import { forwardRef, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react"
 import { Box, Text } from "ink"
 import SelectInput from "ink-select-input"
 import { useLocale, t } from "@max/i18n"
@@ -32,10 +32,27 @@ type Registry = {
   append: (commands: CommandDescriptor[]) => void
 }
 
-const registry: Registry = {
+// We keep the *handlers* on the module-level registry but bind them to
+// component state via `useEffect` (NOT inline in the function body).
+// The previous implementation mutated `registry.set = ...` directly
+// during render — in Strict Mode or HMR re-mounts, the registry kept
+// a stale setState reference and dispatched updates into a dead
+// component, causing "state update on an unmounted component" warnings
+// and dropped command registrations.
+type RegistryState = {
+  list: () => CommandDescriptor[]
+  set: (commands: CommandDescriptor[]) => void
+  append: (commands: CommandDescriptor[]) => void
+}
+let registryState: RegistryState = {
   list: () => [],
   set: () => {},
   append: () => {},
+}
+const registry: Registry = {
+  list: () => registryState.list(),
+  set: (commands) => registryState.set(commands),
+  append: (commands) => registryState.append(commands),
 }
 
 export function setCommandPaletteCommands(commands: CommandDescriptor[]): void {
@@ -60,10 +77,27 @@ export const CommandPaletteDialog = forwardRef<CommandPaletteRef | undefined, ob
   const [open, setOpen] = useState(false)
   const [commands, setCommandsState] = useState<CommandDescriptor[]>([])
   const filterRef = useRef<string | undefined>(undefined)
+  // Capture the current setState in a ref so the registry's `set` always
+  // sees the LATEST reference, even across Strict-Mode double-invocation.
+  const setCommandsRef = useRef(setCommandsState)
+  setCommandsRef.current = setCommandsState
+  // Same idea for `commands` so `registry.list()` returns fresh data.
+  const commandsRef = useRef(commands)
+  commandsRef.current = commands
 
-  registry.set = setCommandsState
-  registry.list = () => commands
-  registry.append = (more) => setCommandsState((prev) => [...prev, ...more])
+  useEffect(() => {
+    // Bind once on mount; unbind on unmount to a no-op so a stale caller
+    // doesn't accidentally re-populate state on an unmounted component.
+    const previous = registryState
+    registryState = {
+      list: () => commandsRef.current,
+      set: (commands) => setCommandsRef.current(commands),
+      append: (more) => setCommandsRef.current((prev) => [...prev, ...more]),
+    }
+    return () => {
+      registryState = previous
+    }
+  }, [])
 
   const visibleCommands = useMemo(() => commands.filter((c) => !c.hidden), [commands])
   const options = useMemo(
@@ -110,7 +144,7 @@ export const CommandPaletteDialog = forwardRef<CommandPaletteRef | undefined, ob
       <Box marginTop={1}>
         {visibleCommands.find((c) => c.suggested) ? (
           <Text dimColor>suggested commands are highlighted first</Text>
-        ) : null as unknown as ReactNode}
+        ) : null}
       </Box>
     </Box>
   )

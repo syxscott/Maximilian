@@ -7,6 +7,7 @@
 ## Pre-roll (10s)
 
 Voice-over:
+
 > "Maximilian is a meta-agent OS — agents that build, evaluate, and
 > retire other agents. In three minutes, we'll go from zero to a
 > running meta-agent decision."
@@ -82,7 +83,7 @@ If the LLM key is missing, show:
 
 ```
 Error: ANTHROPIC_API_KEY is required
-  See docs/getting-started.md#api-keys
+  See .env.example (LLM Provider API Keys section)
 ```
 
 And the fix. Authenticity > polish.

@@ -1,5 +1,5 @@
 import { forwardRef, type InputHTMLAttributes, type CSSProperties } from "react"
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils.js"
 
 export interface InlineInputProps extends InputHTMLAttributes<HTMLInputElement> {
   width?: string
