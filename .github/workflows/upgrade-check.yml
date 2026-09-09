@@ -51,7 +51,11 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
     steps:
+      # fetch-depth: 0 — the upgrade report diffs pnpm-lock.yaml against
+      # origin/main; a depth-1 clone has no origin/main ref to diff against.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -94,17 +98,24 @@ jobs:
       - name: Summarize lockfile diff
         if: always()
         run: |
-          echo "### Upgrade summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Package | Old | New | Affects compat-shims? |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f "pnpm-lock.yaml" ]; then
-            # Naive: just list packages whose version changed in the lockfile.
-            # We rely on git diff for the actual list.
-            git diff origin/main -- pnpm-lock.yaml | grep -E '^\+.*version' | head -20 || true
-          fi
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "If any shimmed package (\`ink\`, \`hono\`, \`drizzle-orm\`, \`openai\`, \`@anthropic-ai/sdk\`) bumped a major, request review on \`packages/compat-shims/\`." >> "$GITHUB_STEP_SUMMARY"
+          # Write the report once, publish it twice: GitHub step summary AND
+          # .upgrade-report.md, which the "Comment on PR" step below posts.
+          # (The comment step previously read a report file that no step
+          # ever created, so it failed on every Dependabot PR.)
+          REPORT="$PWD/.upgrade-report.md"
+          {
+            echo "### Upgrade summary"
+            echo ""
+            echo "| Package | Old | New | Affects compat-shims? |"
+            echo "|---|---|---|---|"
+            if [ -f "pnpm-lock.yaml" ]; then
+              # Naive: just list packages whose version changed in the lockfile.
+              # We rely on git diff for the actual list.
+              git diff origin/main -- pnpm-lock.yaml | grep -E '^\+.*version' | head -20 || true
+            fi
+            echo ""
+            echo "If any shimmed package (\`ink\`, \`hono\`, \`drizzle-orm\`, \`openai\`, \`@anthropic-ai/sdk\`) bumped a major, request review on \`packages/compat-shims/\`."
+          } | tee "$REPORT" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment on PR with upgrade report
         if: always()
