@@ -55,7 +55,10 @@ const MessageNavContent: React.FC<{
               onClick={handleClick(message)}
               onKeyDown={handleKeyPress(message)}
             >
-              <DiffChangesPlaceholder changes={(message.summary?.diffs ?? []) as never} variant="bars" />
+              <DiffChangesPlaceholder
+                changes={(message.summary?.diffs ?? []) as never}
+                variant="bars"
+              />
               <div
                 data-slot="message-nav-title-preview"
                 data-active={message.id === current?.id || undefined}
@@ -91,12 +94,7 @@ export const MessageNav: React.FC<MessageNavProps> = ({
 
   if (size === "compact") {
     return (
-      <HoverCard.Root
-        open={open}
-        onOpenChange={setOpen}
-        openDelay={0}
-        closeDelay={120}
-      >
+      <HoverCard.Root open={open} onOpenChange={setOpen} openDelay={0} closeDelay={120}>
         <HoverCard.Trigger asChild>
           <div data-component="message-nav-hovercard" className={cn(className)}>
             <MessageNavContent
@@ -109,11 +107,7 @@ export const MessageNav: React.FC<MessageNavProps> = ({
           </div>
         </HoverCard.Trigger>
         <HoverCard.Portal>
-          <HoverCard.Content
-            data-slot="message-nav-hovercard-content"
-            side="right"
-            sideOffset={8}
-          >
+          <HoverCard.Content data-slot="message-nav-hovercard-content" side="right" sideOffset={8}>
             <MessageNavContent
               messages={messages}
               current={current}

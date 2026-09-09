@@ -17,7 +17,10 @@ export interface DialogProps {
   children?: React.ReactNode
 }
 
-export const DialogFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ children, ...props }) => (
+export const DialogFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
+  children,
+  ...props
+}) => (
   <div data-slot="dialog-footer" {...props}>
     {children}
   </div>
@@ -108,10 +111,7 @@ export const Dialog: React.FC<DialogProps> = ({
           data-size={size}
         >
           <div data-slot="dialog-container">
-            <DialogContent
-              data-no-header={!hasHeader ? "" : undefined}
-              className={cn(className)}
-            >
+            <DialogContent data-no-header={!hasHeader ? "" : undefined} className={cn(className)}>
               {hasHeader ? (
                 <div data-slot="dialog-header">
                   <div data-slot="dialog-title-group">
@@ -128,10 +128,7 @@ export const Dialog: React.FC<DialogProps> = ({
                   </div>
                   {action}
                   {!action ? (
-                    <DialogPrimitive.Close
-                      data-slot="dialog-close-button"
-                      aria-label="Close"
-                    >
+                    <DialogPrimitive.Close data-slot="dialog-close-button" aria-label="Close">
                       <CloseIcon />
                     </DialogPrimitive.Close>
                   ) : null}

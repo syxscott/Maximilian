@@ -93,12 +93,13 @@ const birth = new AgentBirthEngine({ rootDir: metaRoot });
 ```typescript
 // packages/meta-system/src/agent-birth.ts:59
 if (this.deps.saveBlueprint) {
-  await this.deps.saveBlueprint(blueprint);
+  await this.deps.saveBlueprint(blueprint)
 }
-await this.audit(result);  // 仅写 <rootDir>/agent-births/<id>.json
+await this.audit(result) // 仅写 <rootDir>/agent-births/<id>.json
 ```
 
 **实际发生**：
+
 - `agent-births/bp-mobile_app_development_agent-v1-xxx.json` 写入 ✅
 - `BlueprintStore`（`packages/dags/src/blueprint-store.ts`）**永不被写入** ❌
 - `BlueprintGenerator` 看不到这个蓝图 ❌
@@ -130,6 +131,7 @@ if (d) {
 ```
 
 **实际发生**：
+
 - `RetirementDecision` 写入 `MetaCycleResult` ✅
 - `orgMemory.record("agent_retired", ...)` 写入 ✅
 - `blueprint.retiredAt` **永远不被设置** ❌
@@ -194,10 +196,10 @@ await this.deps.orgMemory.record("team_optimized", ...);
 
 ### 3.1 两套 capability 系统并存
 
-| 来源 | 模块 | 影响范围 |
-|------|------|---------|
-| `CAPABILITY_LIBRARY`（packages/dags/src/capability-library.ts） | DAGS.compose → CapabilityAnalyzer.analyze | **TRUE CORE** |
-| `CapabilityRegistry`（packages/meta-system/src/capability-registry.ts） | MetaOrchestrator.cycle → CapabilityDiscoveryEngine | **SHADOW** |
+| 来源                                                                    | 模块                                               | 影响范围      |
+| ----------------------------------------------------------------------- | -------------------------------------------------- | ------------- |
+| `CAPABILITY_LIBRARY`（packages/dags/src/capability-library.ts）         | DAGS.compose → CapabilityAnalyzer.analyze          | **TRUE CORE** |
+| `CapabilityRegistry`（packages/meta-system/src/capability-registry.ts） | MetaOrchestrator.cycle → CapabilityDiscoveryEngine | **SHADOW**    |
 
 ### 3.2 实际依赖图
 
@@ -404,52 +406,52 @@ override async receiveTask(task: Task, _ctx: AgentContext): Promise<void> {
 
 ### 6.1 TRUE CORE SYSTEM（真实控制链路）
 
-| 模块 | 路径 | 真实影响 |
-|------|------|---------|
-| `AgentRuntime.execute()` | packages/core/src/ | 真正执行 task |
-| `Commander.plan()` | packages/commander/src/ | legacy 路径下产生 plan |
-| `DAGS.compose()` | packages/dags/src/dags.ts | TRUE：动态组团队 |
-| `CapabilityAnalyzer.analyze()` | packages/dags/src/capability-analyzer.ts | TRUE：决定需要哪些能力 |
-| `BlueprintGenerator.generate()` | packages/dags/src/blueprint-generator.ts | TRUE：产生蓝图 |
-| `ModelAssigner.assign()` | packages/dags/src/model-assigner.ts | TRUE：用 leaderboard 选 model |
-| `evolutionAwareFactory` | packages/evolution/src/factory.ts | TRUE：注入 memory prelude |
-| `EvolutionFacade.recordCompletion()` | packages/evolution/src/facade.ts | TRUE：更新 metrics/profile/leaderboard |
-| `ModelSelector.select()` | packages/evolution/src/selector.ts | TRUE：选 model/provider |
-| `MemoryAugmentedAgent.receiveTask()` | packages/evolution/src/factory.ts | TRUE：把 memory 注入 systemPrompt |
-| `ExecutionStore.record()` | packages/autonomy/src/execution-store.ts | TRUE：记录每次执行（被 leaderboard 消费） |
-| `ReviewIntelligence.review()` | packages/autonomy/src/review-intelligence.ts | TRUE：评分（被 leaderboard 消费） |
+| 模块                                 | 路径                                         | 真实影响                                  |
+| ------------------------------------ | -------------------------------------------- | ----------------------------------------- |
+| `AgentRuntime.execute()`             | packages/core/src/                           | 真正执行 task                             |
+| `Commander.plan()`                   | packages/commander/src/                      | legacy 路径下产生 plan                    |
+| `DAGS.compose()`                     | packages/dags/src/dags.ts                    | TRUE：动态组团队                          |
+| `CapabilityAnalyzer.analyze()`       | packages/dags/src/capability-analyzer.ts     | TRUE：决定需要哪些能力                    |
+| `BlueprintGenerator.generate()`      | packages/dags/src/blueprint-generator.ts     | TRUE：产生蓝图                            |
+| `ModelAssigner.assign()`             | packages/dags/src/model-assigner.ts          | TRUE：用 leaderboard 选 model             |
+| `evolutionAwareFactory`              | packages/evolution/src/factory.ts            | TRUE：注入 memory prelude                 |
+| `EvolutionFacade.recordCompletion()` | packages/evolution/src/facade.ts             | TRUE：更新 metrics/profile/leaderboard    |
+| `ModelSelector.select()`             | packages/evolution/src/selector.ts           | TRUE：选 model/provider                   |
+| `MemoryAugmentedAgent.receiveTask()` | packages/evolution/src/factory.ts            | TRUE：把 memory 注入 systemPrompt         |
+| `ExecutionStore.record()`            | packages/autonomy/src/execution-store.ts     | TRUE：记录每次执行（被 leaderboard 消费） |
+| `ReviewIntelligence.review()`        | packages/autonomy/src/review-intelligence.ts | TRUE：评分（被 leaderboard 消费）         |
 
 ### 6.2 SHADOW SYSTEM（仅日志/建议，不影响 runtime）
 
-| 模块 | 真实输出 | 影响 runtime？ |
-|------|---------|---------------|
-| `EvolutionPlanner.plan()` | EvolutionPlan JSON | ❌ 不写 live blueprint |
-| `CandidateGenerator.generate()` | Candidate JSON | ❌ 不写 live blueprint |
-| `PromotionEngine.evaluate()` | Decision JSON | ❌ 不替换旧 blueprint |
-| `AutonomyOrchestrator.observe()` | 触发上面三个 | ❌ 仅作为调度入口 |
-| `MetaAgent.decide()` | AgentChangePlan | ❌ 不创建/删除 agent |
-| `TeamOptimizer.suggest()` | TeamOptimizerHint | ❌ 不修改 graph |
-| `SimulationEngine.simulate()` | SimulationResult | ❌ 不应用到 live org |
-| `GovernanceEngine.check()` | GovernanceVerdict | ❌ 不阻止 cycle |
-| `MetaOrchestrator.cycle()` | 上面全部聚合 | ❌ 不挂任何事件源 |
-| `LearningAPI.*` | dashboards | ❌ 仅 GET 端点 |
-| `AgentBirthEngine.birth()` | agent-births/*.json | ❌ 不写 live BlueprintStore（缺回调） |
-| `AgentRetirementEngine.evaluate()` | RetirementDecision | ❌ 不设置 retiredAt（缺回调） |
-| `CapabilityDiscoveryEngine.discover()` | capability-proposals/*.json | ❌ DAGS 不读 |
-| `CapabilityRegistry.propose/transition` | capability-registry/*.json | ❌ DAGS 不读 |
-| `OrganizationMemory.record()` | org-events/*.json | ❌ 不被任何 runtime 组件消费 |
+| 模块                                    | 真实输出                    | 影响 runtime？                        |
+| --------------------------------------- | --------------------------- | ------------------------------------- |
+| `EvolutionPlanner.plan()`               | EvolutionPlan JSON          | ❌ 不写 live blueprint                |
+| `CandidateGenerator.generate()`         | Candidate JSON              | ❌ 不写 live blueprint                |
+| `PromotionEngine.evaluate()`            | Decision JSON               | ❌ 不替换旧 blueprint                 |
+| `AutonomyOrchestrator.observe()`        | 触发上面三个                | ❌ 仅作为调度入口                     |
+| `MetaAgent.decide()`                    | AgentChangePlan             | ❌ 不创建/删除 agent                  |
+| `TeamOptimizer.suggest()`               | TeamOptimizerHint           | ❌ 不修改 graph                       |
+| `SimulationEngine.simulate()`           | SimulationResult            | ❌ 不应用到 live org                  |
+| `GovernanceEngine.check()`              | GovernanceVerdict           | ❌ 不阻止 cycle                       |
+| `MetaOrchestrator.cycle()`              | 上面全部聚合                | ❌ 不挂任何事件源                     |
+| `LearningAPI.*`                         | dashboards                  | ❌ 仅 GET 端点                        |
+| `AgentBirthEngine.birth()`              | agent-births/*.json         | ❌ 不写 live BlueprintStore（缺回调） |
+| `AgentRetirementEngine.evaluate()`      | RetirementDecision          | ❌ 不设置 retiredAt（缺回调）         |
+| `CapabilityDiscoveryEngine.discover()`  | capability-proposals/*.json | ❌ DAGS 不读                          |
+| `CapabilityRegistry.propose/transition` | capability-registry/*.json  | ❌ DAGS 不读                          |
+| `OrganizationMemory.record()`           | org-events/*.json           | ❌ 不被任何 runtime 组件消费          |
 
 ### 6.3 DEAD SYSTEM（未使用 / 不可达）
 
-| 模块 / 端点 | 原因 |
-|------------|------|
-| `META_AGENT_ENABLED=true` 之外的 meta-system 路径 | 默认 false，所有 `/api/meta/*` 端点未挂载 |
-| `MetaOrchestrator.cycle()` 在 production 触发 | 没有任何 scheduler / runtime listener 调用 |
-| `SimulationEngine.compare()` | 端点存在但从未被 autonomy 或 DAGS 消费 |
-| `AgentBirthEngine.saveBlueprint` 回调 | API 层未提供，永远走 audit-only 分支 |
-| `AgentRetirementEngine.retireBlueprint` 回调 | API 层未提供 |
-| `GovernanceEngine.check()` 的 `allowed=false` 分支 | orchestrator 写入 violation event 后继续 cycle |
-| `apps/api/test/e2e-meta-mode.test.ts` 的 integration | 仅在测试中触发，production 无 trigger |
+| 模块 / 端点                                          | 原因                                           |
+| ---------------------------------------------------- | ---------------------------------------------- |
+| `META_AGENT_ENABLED=true` 之外的 meta-system 路径    | 默认 false，所有 `/api/meta/*` 端点未挂载      |
+| `MetaOrchestrator.cycle()` 在 production 触发        | 没有任何 scheduler / runtime listener 调用     |
+| `SimulationEngine.compare()`                         | 端点存在但从未被 autonomy 或 DAGS 消费         |
+| `AgentBirthEngine.saveBlueprint` 回调                | API 层未提供，永远走 audit-only 分支           |
+| `AgentRetirementEngine.retireBlueprint` 回调         | API 层未提供                                   |
+| `GovernanceEngine.check()` 的 `allowed=false` 分支   | orchestrator 写入 violation event 后继续 cycle |
+| `apps/api/test/e2e-meta-mode.test.ts` 的 integration | 仅在测试中触发，production 无 trigger          |
 
 ---
 
@@ -504,27 +506,27 @@ POST /api/meta/cycle  ←── 唯一调用 MetaOrchestrator.cycle()
 
 ### 7.3 设计路径 vs 实际路径
 
-| 设计意图 | 实际路径 | 偏差 |
-|---------|---------|------|
-| Meta-system 自动观察 → 调整 org | 需手动 `POST /api/meta/cycle` | **缺自动触发** |
-| Birth 创建可执行 blueprint | 只写 audit JSON | **缺 saveBlueprint 回调** |
-| Retire 阻止 agent 服务流量 | 只记录 decision | **缺 retireBlueprint 回调** |
-| TeamOptimizer 改善 graph | 只产出 hint | **缺 applyHint** |
-| CapabilityRegistry 影响 DAGS | DAGS 用静态 CAPABILITY_LIBRARY | **缺能力传播** |
-| Governance 阻止越界 | 写入 violation event 后继续 | **缺硬阻断** |
-| Model selection 用 leaderboard | ✅ 真实 | 符合 |
-| Memory injection 影响 systemPrompt | ✅ 真实 | 符合 |
+| 设计意图                           | 实际路径                       | 偏差                        |
+| ---------------------------------- | ------------------------------ | --------------------------- |
+| Meta-system 自动观察 → 调整 org    | 需手动 `POST /api/meta/cycle`  | **缺自动触发**              |
+| Birth 创建可执行 blueprint         | 只写 audit JSON                | **缺 saveBlueprint 回调**   |
+| Retire 阻止 agent 服务流量         | 只记录 decision                | **缺 retireBlueprint 回调** |
+| TeamOptimizer 改善 graph           | 只产出 hint                    | **缺 applyHint**            |
+| CapabilityRegistry 影响 DAGS       | DAGS 用静态 CAPABILITY_LIBRARY | **缺能力传播**              |
+| Governance 阻止越界                | 写入 violation event 后继续    | **缺硬阻断**                |
+| Model selection 用 leaderboard     | ✅ 真实                        | 符合                        |
+| Memory injection 影响 systemPrompt | ✅ 真实                        | 符合                        |
 
 ### 7.4 未被使用模块清单
 
-| 模块 | 类型 | 触发条件（缺失） |
-|------|------|-----------------|
-| AgentBirthEngine.saveBlueprint | 回调 | API 层未注入 |
-| AgentRetirementEngine.retireBlueprint | 回调 | API 层未注入 |
-| MetaOrchestrator.cycle | 自动调度 | 缺 scheduler / runtime listener |
-| SimulationEngine.compare | 应用 | 无 consumer |
-| GovernanceEngine.check 的阻断逻辑 | 决策 | orchestrator 总是 continue |
-| CapabilityRegistry → DAGS | 数据流 | DAGS 用静态 library，不读 registry |
+| 模块                                  | 类型     | 触发条件（缺失）                   |
+| ------------------------------------- | -------- | ---------------------------------- |
+| AgentBirthEngine.saveBlueprint        | 回调     | API 层未注入                       |
+| AgentRetirementEngine.retireBlueprint | 回调     | API 层未注入                       |
+| MetaOrchestrator.cycle                | 自动调度 | 缺 scheduler / runtime listener    |
+| SimulationEngine.compare              | 应用     | 无 consumer                        |
+| GovernanceEngine.check 的阻断逻辑     | 决策     | orchestrator 总是 continue         |
+| CapabilityRegistry → DAGS             | 数据流   | DAGS 用静态 library，不读 registry |
 
 ### 7.5 真正影响 production 的模块列表
 
@@ -636,9 +638,38 @@ apps/api/src/index.ts:374:if (metaOrchestrator && metaGovernance ...) {
     "autonomy_layer_role": "observation_and_logging"
   },
   "classification": {
-    "TRUE_CORE": ["DAGS.compose", "evolutionAwareFactory", "ModelAssigner", "ModelSelector", "MemoryAugmentedAgent", "AgentRuntime", "EvolutionFacade.recordCompletion"],
-    "SHADOW": ["EvolutionPlanner", "CandidateGenerator", "PromotionEngine", "MetaAgent", "TeamOptimizer", "SimulationEngine", "GovernanceEngine", "MetaOrchestrator", "LearningAPI", "AgentBirthEngine", "AgentRetirementEngine", "CapabilityDiscoveryEngine", "CapabilityRegistry", "OrganizationMemory"],
-    "DEAD": ["saveBlueprint callback (missing)", "retireBlueprint callback (missing)", "Meta-system auto-trigger", "SimulationEngine.compare consumer", "Governance hard-block"]
+    "TRUE_CORE": [
+      "DAGS.compose",
+      "evolutionAwareFactory",
+      "ModelAssigner",
+      "ModelSelector",
+      "MemoryAugmentedAgent",
+      "AgentRuntime",
+      "EvolutionFacade.recordCompletion"
+    ],
+    "SHADOW": [
+      "EvolutionPlanner",
+      "CandidateGenerator",
+      "PromotionEngine",
+      "MetaAgent",
+      "TeamOptimizer",
+      "SimulationEngine",
+      "GovernanceEngine",
+      "MetaOrchestrator",
+      "LearningAPI",
+      "AgentBirthEngine",
+      "AgentRetirementEngine",
+      "CapabilityDiscoveryEngine",
+      "CapabilityRegistry",
+      "OrganizationMemory"
+    ],
+    "DEAD": [
+      "saveBlueprint callback (missing)",
+      "retireBlueprint callback (missing)",
+      "Meta-system auto-trigger",
+      "SimulationEngine.compare consumer",
+      "Governance hard-block"
+    ]
   },
   "final_verdict": "This system is self-DESCRIBING, partially self-EVOLVING. Phase 4 model selection + memory injection are real. Phase 5/6 are audit-only."
 }

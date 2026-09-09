@@ -43,14 +43,14 @@ export interface Reminder {
  * 提醒类型
  */
 export type ReminderType =
-  | "tool-tip"           // 工具使用提示
-  | "verification"      // 验证提醒
-  | "performance"       // 性能提醒
-  | "best-practice"      // 最佳实践
-  | "security"           // 安全提醒
-  | "todo"               // 待办事项
-  | "warning"            // 警告
-  | "info"               // 信息
+  | "tool-tip" // 工具使用提示
+  | "verification" // 验证提醒
+  | "performance" // 性能提醒
+  | "best-practice" // 最佳实践
+  | "security" // 安全提醒
+  | "todo" // 待办事项
+  | "warning" // 警告
+  | "info" // 信息
 
 /**
  * 提醒优先级
@@ -134,10 +134,7 @@ export class ReminderCollector {
   /**
    * 注册一个工具的提醒收集器
    */
-  registerToolReminders(
-    toolName: string,
-    collector: ReminderCollector,
-  ): void {
+  registerToolReminders(toolName: string, collector: ReminderCollector): void {
     this.tools.set(toolName, collector)
   }
 
@@ -179,11 +176,7 @@ export class ReminderCollector {
   /**
    * 收集给定工具执行的提醒
    */
-  collect(
-    toolName: string,
-    input: unknown,
-    output: unknown,
-  ): Reminder[] {
+  collect(toolName: string, input: unknown, output: unknown): Reminder[] {
     if (!this.policy.enabled) return []
 
     const reminders: Reminder[] = []
@@ -205,10 +198,7 @@ export class ReminderCollector {
         const count = (this.counts.get(key) ?? 0) + 1
         this.counts.set(key, count)
 
-        if (
-          this.policy.throttleAfter &&
-          count <= this.policy.throttleAfter
-        ) {
+        if (this.policy.throttleAfter && count <= this.policy.throttleAfter) {
           reminders.push({
             type: systemReminder.type,
             content: result,
@@ -325,9 +315,19 @@ export function createFileEditVerificationReminder(): SystemReminder {
  */
 export function createSecurityReminder(): SystemReminder {
   const sensitivePatterns = [
-    { pattern: /password|secret|token|api[_-]?key/i, message: "Detected potential secret in input. Ensure it won't be committed to version control." },
-    { pattern: /curl\s+.*\s+--data|--data-raw|--data-binary/i, message: "curl with data flag detected. Be careful not to send sensitive data in plaintext." },
-    { pattern: /\|\s*bash|\|\s*sh|\|\s*python/i, message: "Pipe to shell detected. Verify the piped command is trusted." },
+    {
+      pattern: /password|secret|token|api[_-]?key/i,
+      message:
+        "Detected potential secret in input. Ensure it won't be committed to version control.",
+    },
+    {
+      pattern: /curl\s+.*\s+--data|--data-raw|--data-binary/i,
+      message: "curl with data flag detected. Be careful not to send sensitive data in plaintext.",
+    },
+    {
+      pattern: /\|\s*bash|\|\s*sh|\|\s*python/i,
+      message: "Pipe to shell detected. Verify the piped command is trusted.",
+    },
   ]
 
   return {
@@ -350,7 +350,14 @@ export function createSecurityReminder(): SystemReminder {
  * 构建命令后提醒测试
  */
 export function createBuildTestReminder(): SystemReminder {
-  const buildCommands = ["npm build", "pnpm build", "yarn build", "npm run build", "cargo build", "make build"]
+  const buildCommands = [
+    "npm build",
+    "pnpm build",
+    "yarn build",
+    "npm run build",
+    "cargo build",
+    "make build",
+  ]
 
   return {
     name: "build-test",

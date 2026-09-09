@@ -148,10 +148,10 @@ For concurrent cycle invocation, callers must serialize — the system does not 
 
 Measured on a single cycle with empty input:
 
-| Operation | Time |
-|-----------|------|
-| 71 unit tests | ~45ms |
+| Operation            | Time  |
+| -------------------- | ----- |
+| 71 unit tests        | ~45ms |
 | 10 integration tests | ~25ms |
-| 7 E2E tests | ~35ms |
+| 7 E2E tests          | ~35ms |
 
 The whole package (unit + integration + E2E) runs in ~300ms.

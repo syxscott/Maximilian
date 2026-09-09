@@ -23,8 +23,10 @@ const DialogOverlay = React.forwardRef<
 ))
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
-export interface DialogContentProps
-  extends Omit<React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>, "title"> {
+export interface DialogContentProps extends Omit<
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>,
+  "title"
+> {
   title?: React.ReactNode
   description?: React.ReactNode
   action?: React.ReactNode
@@ -68,7 +70,9 @@ const DialogContent = React.forwardRef<
             >
               {(title || action) && (
                 <div data-slot="dialog-header">
-                  {title && <DialogPrimitive.Title data-slot="dialog-title">{title}</DialogPrimitive.Title>}
+                  {title && (
+                    <DialogPrimitive.Title data-slot="dialog-title">{title}</DialogPrimitive.Title>
+                  )}
                   {action ? (
                     action
                   ) : (

@@ -29,7 +29,11 @@ const defaultClipboard: ClipboardService = {
 const ClipboardContext = createContext<ClipboardService>(defaultClipboard)
 
 export function ClipboardProvider(props: { value?: ClipboardService; children: ReactNode }) {
-  return createElement(ClipboardContext.Provider, { value: props.value ?? defaultClipboard }, props.children)
+  return createElement(
+    ClipboardContext.Provider,
+    { value: props.value ?? defaultClipboard },
+    props.children,
+  )
 }
 
 export function useClipboard(): ClipboardService {

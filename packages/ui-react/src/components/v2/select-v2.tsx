@@ -121,10 +121,7 @@ export function SelectV2<T extends SelectV2Option = SelectV2Option>(props: Selec
 
   React.useEffect(() => () => stop(), [stop])
 
-  const keyFor = React.useCallback(
-    (item: T) => (value ? value(item) : item.value),
-    [value],
-  )
+  const keyFor = React.useCallback((item: T) => (value ? value(item) : item.value), [value])
 
   const move = React.useCallback(
     (item: T | undefined) => {
@@ -142,25 +139,16 @@ export function SelectV2<T extends SelectV2Option = SelectV2Option>(props: Selec
     [onHighlight, stop, keyFor],
   )
 
-  const grouped = React.useMemo(
-    () => groupOptions(options, groupBy),
-    [options, groupBy],
-  )
+  const grouped = React.useMemo(() => groupOptions(options, groupBy), [options, groupBy])
 
-  const getOptionValue = React.useCallback(
-    (x: T) => (value ? value(x) : x.value),
-    [value],
-  )
+  const getOptionValue = React.useCallback((x: T) => (value ? value(x) : x.value), [value])
 
   const getOptionText = React.useCallback(
     (x: T) => (label ? String(label(x) ?? "") : x.value),
     [label],
   )
 
-  const getOptionCategory = React.useCallback(
-    (x: T) => (x.category ?? ""),
-    [],
-  )
+  const getOptionCategory = React.useCallback((x: T) => x.category ?? "", [])
 
   const currentValue = current ? getOptionValue(current) : undefined
   const defaultValueStr = defaultValue ? getOptionValue(defaultValue) : undefined
@@ -235,12 +223,10 @@ export function SelectV2<T extends SelectV2Option = SelectV2Option>(props: Selec
                             ? children(item)
                             : label
                               ? label(item)
-                              : item.label ?? item.value}
+                              : (item.label ?? item.value)}
                         </span>
                       </SelectPrimitive.ItemText>
-                      <SelectPrimitive.ItemIndicator
-                        data-slot="menu-v2-item-indicator"
-                      >
+                      <SelectPrimitive.ItemIndicator data-slot="menu-v2-item-indicator">
                         <CheckSmall />
                       </SelectPrimitive.ItemIndicator>
                     </SelectPrimitive.Item>

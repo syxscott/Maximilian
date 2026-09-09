@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { z } from "zod"
-import {
-  structuredOutputTool,
-  isStructuredOutputCall,
-} from "../src/tool.js"
+import { structuredOutputTool, isStructuredOutputCall } from "../src/tool.js"
 
 describe("StructuredOutput tool (借鉴 opencode)", () => {
   const Schema = z.object({
@@ -13,9 +10,10 @@ describe("StructuredOutput tool (借鉴 opencode)", () => {
 
   it("parses valid input via zod schema", async () => {
     const t = structuredOutputTool("final", Schema)
-    await expect(
-      t.execute({ answer: "ok", score: 0.9 }),
-    ).resolves.toEqual({ answer: "ok", score: 0.9 })
+    await expect(t.execute({ answer: "ok", score: 0.9 })).resolves.toEqual({
+      answer: "ok",
+      score: 0.9,
+    })
   })
 
   it("throws ZodError on invalid input", async () => {
@@ -25,9 +23,7 @@ describe("StructuredOutput tool (借鉴 opencode)", () => {
 
   it("throws on score out of range", async () => {
     const t = structuredOutputTool("final", Schema)
-    await expect(
-      t.execute({ answer: "ok", score: 1.5 }),
-    ).rejects.toThrow()
+    await expect(t.execute({ answer: "ok", score: 1.5 })).rejects.toThrow()
   })
 
   it("exposes zodSchema on the tool", () => {

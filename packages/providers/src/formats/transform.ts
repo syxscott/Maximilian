@@ -25,11 +25,7 @@ export interface Transformer {
   /** Provider id, e.g. "anthropic" | "openai" | "gemini" | ... */
   providerId: string
   /** 把统一消息翻译成 provider wire format */
-  toWire(
-    messages: ChatMessage[],
-    tools: ToolDefinition[],
-    system: string,
-  ): WireFormat
+  toWire(messages: ChatMessage[], tools: ToolDefinition[], system: string): WireFormat
 }
 
 const registry = new Map<string, Transformer>()
@@ -54,9 +50,7 @@ export const anthropicTransformer: Transformer = {
   providerId: "anthropic",
   toWire(messages, tools, system) {
     return {
-      systemBlocks: [
-        { type: "text", text: system, cache_control: { type: "ephemeral" } },
-      ],
+      systemBlocks: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,

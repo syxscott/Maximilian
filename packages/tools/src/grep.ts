@@ -23,7 +23,10 @@ export interface GrepOutput {
 
 const MAX_FILE_SIZE = 1024 * 1024 // 1MB
 
-async function searchFile(filePath: string, regex: RegExp): Promise<Array<{ line: number; text: string }>> {
+async function searchFile(
+  filePath: string,
+  regex: RegExp,
+): Promise<Array<{ line: number; text: string }>> {
   try {
     const fileStat = await stat(filePath)
     if (fileStat.size > MAX_FILE_SIZE) return []
@@ -70,13 +73,17 @@ async function walkDir(dir: string, maxFiles: number): Promise<string[]> {
 
 export const grepTool = makeTool<GrepInput, GrepOutput>({
   name: "grep",
-  description: "Search for a pattern in file contents. Returns matching lines with file paths and line numbers.",
+  description:
+    "Search for a pattern in file contents. Returns matching lines with file paths and line numbers.",
   kind: ToolKind.Search,
   inputSchema: {
     type: "object",
     properties: {
       pattern: { type: "string", description: "Regex pattern to search for" },
-      path: { type: "string", description: "File or directory to search in (default: current directory)" },
+      path: {
+        type: "string",
+        description: "File or directory to search in (default: current directory)",
+      },
       include: { type: "string", description: "Glob pattern to filter files (e.g. '*.ts')" },
       limit: { type: "number", description: "Maximum number of results (default: 100)" },
     },
@@ -96,7 +103,7 @@ export const grepTool = makeTool<GrepInput, GrepOutput>({
       files = await walkDir(target, 1000)
       if (input.include) {
         const includeRegex = new RegExp(
-          "^" + input.include.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$"
+          "^" + input.include.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
         )
         files = files.filter((f) => includeRegex.test(f.split("/").pop() ?? ""))
       }

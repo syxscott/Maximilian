@@ -21,65 +21,65 @@
 
 export interface BatchedPersisterOptions<T> {
   /** Items per flush. Default: 100. */
-  batchSize?: number;
+  batchSize?: number
   /** Max buffer before backpressure kicks in. Default: 4 × batchSize. */
-  maxBuffer?: number;
+  maxBuffer?: number
   /** Periodic flush interval. Default: 100ms. */
-  flushIntervalMs?: number;
+  flushIntervalMs?: number
   /** Custom flush function. Typically a batched SQL INSERT. */
-  flush: (items: T[]) => Promise<void> | void;
+  flush: (items: T[]) => Promise<void> | void
   /** Optional label for logging. */
-  label?: string;
+  label?: string
 }
 
 export interface BatchedPersisterStats {
-  label: string;
-  totalAdded: number;
-  totalFlushed: number;
-  totalDropped: number;
-  totalFlushCalls: number;
-  pending: number;
+  label: string
+  totalAdded: number
+  totalFlushed: number
+  totalDropped: number
+  totalFlushCalls: number
+  pending: number
 }
 
 export class BatchedPersister<T> {
-  private buffer: T[] = [];
-  private timer: ReturnType<typeof setInterval> | undefined;
-  private disposed = false;
-  private flushing = false;
+  private buffer: T[] = []
+  private timer: ReturnType<typeof setInterval> | undefined
+  private disposed = false
+  private flushing = false
 
-  private totalAdded = 0;
-  private totalFlushed = 0;
-  private totalDropped = 0;
-  private totalFlushCalls = 0;
+  private totalAdded = 0
+  private totalFlushed = 0
+  private totalDropped = 0
+  private totalFlushCalls = 0
 
-  private readonly batchSize: number;
-  private readonly maxBuffer: number;
-  private readonly flushIntervalMs: number;
-  readonly label: string;
+  private readonly batchSize: number
+  private readonly maxBuffer: number
+  private readonly flushIntervalMs: number
+  readonly label: string
 
   constructor(private opts: BatchedPersisterOptions<T>) {
-    this.batchSize = opts.batchSize ?? 100;
-    this.maxBuffer = opts.maxBuffer ?? this.batchSize * 4;
-    this.flushIntervalMs = opts.flushIntervalMs ?? 100;
-    this.label = opts.label ?? "default";
+    this.batchSize = opts.batchSize ?? 100
+    this.maxBuffer = opts.maxBuffer ?? this.batchSize * 4
+    this.flushIntervalMs = opts.flushIntervalMs ?? 100
+    this.label = opts.label ?? "default"
   }
 
   /** Start the periodic flusher. */
   start(): void {
-    if (this.timer) return;
+    if (this.timer) return
     this.timer = setInterval(() => {
-      void this.tick();
-    }, this.flushIntervalMs);
+      void this.tick()
+    }, this.flushIntervalMs)
   }
 
   /** Stop the flusher and flush any pending items. */
   async dispose(): Promise<void> {
-    this.disposed = true;
+    this.disposed = true
     if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
+      clearInterval(this.timer)
+      this.timer = undefined
     }
-    await this.flushNow();
+    await this.flushNow()
   }
 
   /**
@@ -88,26 +88,26 @@ export class BatchedPersister<T> {
    */
   add(item: T): boolean {
     if (this.disposed) {
-      this.totalDropped += 1;
-      return false;
+      this.totalDropped += 1
+      return false
     }
-    this.totalAdded += 1;
+    this.totalAdded += 1
     if (this.buffer.length >= this.maxBuffer) {
       // Backpressure: drop oldest, accept newest (most-recent-wins).
-      this.buffer.shift();
-      this.totalDropped += 1;
+      this.buffer.shift()
+      this.totalDropped += 1
     }
-    this.buffer.push(item);
+    this.buffer.push(item)
     if (this.buffer.length >= this.batchSize) {
-      void this.tick();
+      void this.tick()
     }
-    return true;
+    return true
   }
 
   /** Force an immediate flush (synchronously awaited). */
   async flushNow(): Promise<void> {
-    if (this.flushing) return;
-    await this.tick();
+    if (this.flushing) return
+    await this.tick()
   }
 
   stats(): BatchedPersisterStats {
@@ -118,26 +118,26 @@ export class BatchedPersister<T> {
       totalDropped: this.totalDropped,
       totalFlushCalls: this.totalFlushCalls,
       pending: this.buffer.length,
-    };
+    }
   }
 
   private async tick(): Promise<void> {
-    if (this.flushing) return;
-    if (this.buffer.length === 0) return;
-    this.flushing = true;
-    const items = this.buffer;
-    this.buffer = [];
+    if (this.flushing) return
+    if (this.buffer.length === 0) return
+    this.flushing = true
+    const items = this.buffer
+    this.buffer = []
     try {
-      await this.opts.flush(items);
-      this.totalFlushed += items.length;
+      await this.opts.flush(items)
+      this.totalFlushed += items.length
     } catch (err) {
       // Persist failed — count dropped so operators see the gap.
-      this.totalDropped += items.length;
-       
-      console.error(`[BatchedPersister:${this.label}] flush failed`, err);
+      this.totalDropped += items.length
+
+      console.error(`[BatchedPersister:${this.label}] flush failed`, err)
     } finally {
-      this.totalFlushCalls += 1;
-      this.flushing = false;
+      this.totalFlushCalls += 1
+      this.flushing = false
     }
   }
 }

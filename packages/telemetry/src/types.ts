@@ -6,7 +6,7 @@
  * Self-contained — no imports from other @max/ packages.
  */
 
-import { z } from "zod";
+import { z } from "zod"
 
 // ============================================================================
 // ExecutionTrace — 追踪单个用户请求流经 DAGS/AgentRuntime 的全生命周期
@@ -18,23 +18,23 @@ export const AgentMessageSchema = z.object({
   agentRole: z.string(),
   taskId: z.string(),
   timestamp: z.string(),
-});
-export type AgentMessage = z.infer<typeof AgentMessageSchema>;
+})
+export type AgentMessage = z.infer<typeof AgentMessageSchema>
 
 export const TeamGraphNodeSchema = z.object({
   id: z.string(),
   role: z.string(),
   displayName: z.string(),
   dependsOn: z.array(z.string()).default([]),
-});
-export type TeamGraphNode = z.infer<typeof TeamGraphNodeSchema>;
+})
+export type TeamGraphNode = z.infer<typeof TeamGraphNodeSchema>
 
 export const AssignedTeamGraphSchema = z.object({
   id: z.string(),
   nodes: z.array(TeamGraphNodeSchema),
   capabilities: z.array(z.string()),
-});
-export type AssignedTeamGraph = z.infer<typeof AssignedTeamGraphSchema>;
+})
+export type AssignedTeamGraph = z.infer<typeof AssignedTeamGraphSchema>
 
 export const ExecutionTraceSchema = z.object({
   id: z.string(),
@@ -47,8 +47,8 @@ export const ExecutionTraceSchema = z.object({
   startedAt: z.string(),
   completedAt: z.string().optional(),
   error: z.string().optional(),
-});
-export type ExecutionTrace = z.infer<typeof ExecutionTraceSchema>;
+})
+export type ExecutionTrace = z.infer<typeof ExecutionTraceSchema>
 
 // ============================================================================
 // EvolutionTrace — 追踪 Meta-System 自进化事件
@@ -62,8 +62,8 @@ export const ProposalTypeSchema = z.enum([
   "merge",
   "split",
   "rebalance_team",
-]);
-export type ProposalType = z.infer<typeof ProposalTypeSchema>;
+])
+export type ProposalType = z.infer<typeof ProposalTypeSchema>
 
 export const SimulatedScoresSchema = z.object({
   costDelta: z.number(),
@@ -71,23 +71,17 @@ export const SimulatedScoresSchema = z.object({
   qualityDelta: z.number(),
   riskDelta: z.number(),
   utility: z.number(),
-});
-export type SimulatedScores = z.infer<typeof SimulatedScoresSchema>;
+})
+export type SimulatedScores = z.infer<typeof SimulatedScoresSchema>
 
 export const GovernanceVerdictSchema = z.object({
   allowed: z.boolean(),
   reason: z.string(),
-});
-export type GovernanceVerdict = z.infer<typeof GovernanceVerdictSchema>;
+})
+export type GovernanceVerdict = z.infer<typeof GovernanceVerdictSchema>
 
-export const RolloutStatusSchema = z.enum([
-  "shadow",
-  "canary",
-  "full",
-  "applied",
-  "skipped",
-]);
-export type RolloutStatus = z.infer<typeof RolloutStatusSchema>;
+export const RolloutStatusSchema = z.enum(["shadow", "canary", "full", "applied", "skipped"])
+export type RolloutStatus = z.infer<typeof RolloutStatusSchema>
 
 export const EvolutionTraceSchema = z.object({
   id: z.string(),
@@ -100,8 +94,8 @@ export const EvolutionTraceSchema = z.object({
   rolloutStatus: RolloutStatusSchema,
   approved: z.boolean(),
   recordedAt: z.string(),
-});
-export type EvolutionTrace = z.infer<typeof EvolutionTraceSchema>;
+})
+export type EvolutionTrace = z.infer<typeof EvolutionTraceSchema>
 
 // ============================================================================
 // TelemetryConfig — Collector 配置
@@ -112,5 +106,5 @@ export const TelemetryConfigSchema = z.object({
   maxBufferSize: z.number().int().positive().default(1000),
   /** 可选：持久化到 JSONL 文件的路径 */
   persistPath: z.string().optional(),
-});
-export type TelemetryConfig = z.infer<typeof TelemetryConfigSchema>;
+})
+export type TelemetryConfig = z.infer<typeof TelemetryConfigSchema>

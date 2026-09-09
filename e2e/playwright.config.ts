@@ -1,4 +1,4 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test"
 
 /**
  * Playwright config for end-to-end tests.
@@ -42,4 +42,4 @@ export default defineConfig({
       animations: "disabled",
     },
   },
-});
+})

@@ -55,13 +55,16 @@ const LineRow = React.forwardRef<HTMLDivElement, { line: DiffLine; side?: "old" 
         ref={ref}
         data-slot="diff-line"
         data-type={line.type}
-        className={cn("grid grid-cols-[3.5rem_3.5rem_1fr] font-mono text-xs leading-5", lineClass(line.type))}
+        className={cn(
+          "grid grid-cols-[3.5rem_3.5rem_1fr] font-mono text-xs leading-5",
+          lineClass(line.type),
+        )}
       >
         <div className="select-none px-2 text-right text-muted-foreground/70">
-          {showOld ? line.oldNumber ?? "" : ""}
+          {showOld ? (line.oldNumber ?? "") : ""}
         </div>
         <div className="select-none px-2 text-right text-muted-foreground/70">
-          {showNew ? line.newNumber ?? "" : ""}
+          {showNew ? (line.newNumber ?? "") : ""}
         </div>
         <pre className="m-0 whitespace-pre-wrap break-words pl-2 pr-3">
           <span aria-hidden="true" className="select-none pr-1 opacity-70">
@@ -98,12 +101,20 @@ export const DiffViewer = React.forwardRef<HTMLDivElement, DiffViewerProps>(func
         <div className="grid grid-cols-2 divide-x divide-border">
           <div data-slot="diff-split-old">
             {lines.map((line, i) => (
-              <LineRow key={`old-${i}`} line={{ ...line, type: line.type === "add" ? "context" : line.type }} side="old" />
+              <LineRow
+                key={`old-${i}`}
+                line={{ ...line, type: line.type === "add" ? "context" : line.type }}
+                side="old"
+              />
             ))}
           </div>
           <div data-slot="diff-split-new">
             {lines.map((line, i) => (
-              <LineRow key={`new-${i}`} line={{ ...line, type: line.type === "del" ? "context" : line.type }} side="new" />
+              <LineRow
+                key={`new-${i}`}
+                line={{ ...line, type: line.type === "del" ? "context" : line.type }}
+                side="new"
+              />
             ))}
           </div>
         </div>

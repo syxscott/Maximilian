@@ -152,8 +152,8 @@ export function SettingsPanel() {
               Accent color
             </div>
             <p className="text-xs text-muted-foreground">
-              Override the dashboard accent. Applies to buttons, links, and
-              focus rings across the app.
+              Override the dashboard accent. Applies to buttons, links, and focus rings across the
+              app.
             </p>
             <div className="flex flex-wrap items-start gap-3">
               <ColorPicker

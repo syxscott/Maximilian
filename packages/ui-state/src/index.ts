@@ -25,8 +25,18 @@ export * from "./api"
 export * from "./sync"
 export * from "./utils"
 // Stub exports for compatibility
-export function useDialog() { return { show: () => {}, active: false } }
-export function useSDK() { return { event: { on: () => () => {} } } }
-export function useI18n() { return { t: (k: string) => k, locale: "en" } }
-export function useToast() { return { show: (msg: string) => {} } }
-export function usePlatform() { return { os: "linux" } }
+export function useDialog() {
+  return { show: () => {}, active: false }
+}
+export function useSDK() {
+  return { event: { on: () => () => {} } }
+}
+export function useI18n() {
+  return { t: (k: string) => k, locale: "en" }
+}
+export function useToast() {
+  return { show: (msg: string) => {} }
+}
+export function usePlatform() {
+  return { os: "linux" }
+}

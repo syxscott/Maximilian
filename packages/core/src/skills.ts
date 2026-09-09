@@ -63,7 +63,9 @@ const FRONTMATTER_RE = /^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/
  * with `-` prefix, numbers). For anything richer, callers can pre-process
  * the raw text and call `parseSkill` with the result.
  */
-export function parseFrontmatter(raw: string): { frontmatter: SkillFrontmatter; body: string } | null {
+export function parseFrontmatter(
+  raw: string,
+): { frontmatter: SkillFrontmatter; body: string } | null {
   const m = FRONTMATTER_RE.exec(raw)
   if (!m) return null
   const yamlBlock = m[1] ?? ""
@@ -76,7 +78,7 @@ export function parseFrontmatter(raw: string): { frontmatter: SkillFrontmatter; 
     const listMatch = /^\s*-\s*(.+?)\s*$/.exec(line)
     if (listMatch && currentListKey) {
       const value = stripQuotes((listMatch[1] ?? "").trim())
-      const arr = ((fm as unknown) as Record<string, unknown[]>)[currentListKey] as unknown[]
+      const arr = (fm as unknown as Record<string, unknown[]>)[currentListKey] as unknown[]
       arr.push(value)
       continue
     }
@@ -87,7 +89,7 @@ export function parseFrontmatter(raw: string): { frontmatter: SkillFrontmatter; 
     if (raw === "") {
       // Could be a list on the following lines.
       currentListKey = key
-      ;((fm as unknown) as Record<string, unknown[]>)[key] = []
+      ;(fm as unknown as Record<string, unknown[]>)[key] = []
       continue
     }
     currentListKey = null
@@ -97,16 +99,16 @@ export function parseFrontmatter(raw: string): { frontmatter: SkillFrontmatter; 
         .split(",")
         .map((s) => stripQuotes(s.trim()))
         .filter((s) => s.length > 0)
-      ;((fm as unknown) as Record<string, unknown[]>)[key] = items
+      ;(fm as unknown as Record<string, unknown[]>)[key] = items
       continue
     }
     const stripped = stripQuotes(raw)
     if (/^-?\d+(\.\d+)?$/.test(stripped)) {
-      ;((fm as unknown) as Record<string, unknown>)[key] = Number(stripped)
+      ;(fm as unknown as Record<string, unknown>)[key] = Number(stripped)
     } else if (stripped === "true" || stripped === "false") {
-      ;((fm as unknown) as Record<string, unknown>)[key] = stripped === "true"
+      ;(fm as unknown as Record<string, unknown>)[key] = stripped === "true"
     } else {
-      ;((fm as unknown) as Record<string, unknown>)[key] = stripped
+      ;(fm as unknown as Record<string, unknown>)[key] = stripped
     }
   }
   if (!fm.name) return null
@@ -209,9 +211,7 @@ export function matchSkillsByTrigger(skills: Skill[], prefix: string): Skill[] {
  * injected based on prompt content.
  */
 export function matchSkillsForModel(skills: Skill[], prefix: string): Skill[] {
-  return matchSkillsByTrigger(skills, prefix).filter(
-    (s) => !s.frontmatter.disableModelInvocation,
-  )
+  return matchSkillsByTrigger(skills, prefix).filter((s) => !s.frontmatter.disableModelInvocation)
 }
 
 /**

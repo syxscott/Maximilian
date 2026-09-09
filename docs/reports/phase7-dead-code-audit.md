@@ -8,13 +8,13 @@
 
 ## TL;DR
 
-| 类别 | 数量 | 严重度 |
-|---|---|---|
-| 完全无人调用的导出 | 5 | 中 |
-| 已声明但永不生成的枚举值 | 1 | 低 |
-| 重复抽象 | 2 | 低 |
-| 技术债(类型不安全 / 启发式错误) | 4 | 中 |
-| Stale 构建产物 | ~50 文件 | 低(已在 `.gitignore`) |
+| 类别                            | 数量     | 严重度                |
+| ------------------------------- | -------- | --------------------- |
+| 完全无人调用的导出              | 5        | 中                    |
+| 已声明但永不生成的枚举值        | 1        | 低                    |
+| 重复抽象                        | 2        | 低                    |
+| 技术债(类型不安全 / 启发式错误) | 4        | 中                    |
+| Stale 构建产物                  | ~50 文件 | 低(已在 `.gitignore`) |
 
 **可立即删除** ~120 行,**应当修复** 的 ~50 行。
 
@@ -33,6 +33,7 @@ async findByCapability(capabilityId: string): Promise<AgentBlueprint[]> {
 ```
 
 **Grep 证据**:
+
 ```
 $ grep -rn "findByCapability" packages apps --include="*.ts" | grep -v test
 (no results)
@@ -48,6 +49,7 @@ async getGraph(id: string): Promise<TeamGraph | undefined> { ... }
 ```
 
 **Grep 证据**:
+
 ```
 $ grep -rn "store.getGraph\|blueprintStore.getGraph" packages apps
 (no results outside tests)
@@ -76,6 +78,7 @@ async recordUsage(id: string, score: number, durationMs: number): Promise<Capabi
 ```
 
 **Grep 证据**:
+
 ```
 $ grep -rn "registry.recordUsage\|registry\\.recordUsage" packages apps
 (no results outside tests)
@@ -101,6 +104,7 @@ suggestions: z.array(z.object({
 ```
 
 **Grep 证据**:
+
 ```
 $ grep -rn "type: \"reorder\"" packages
 (no results)
@@ -115,6 +119,7 @@ $ grep -rn "type: \"reorder\"" packages
 ### 2.1 `applyHintToBlueprints` 与 `TeamOptimizer.applyHint`
 
 两个函数做类似的工作:
+
 - `TeamOptimizer.applyHint()` 调用 `applyToBlueprintStore` 回调
 - `applyHintToBlueprints()` 是独立导出函数
 
@@ -128,6 +133,7 @@ $ grep -rn "type: \"reorder\"" packages
 这是 lossy 转换 —— 丢失了 Plan 的 edges 和真正 graph structure。
 
 **删除计划**:
+
 - 短期:保留(完整重构超出 Phase 7 范围)
 - 长期(Phase 8):让 Plan 携带 `graphId` 字段,直接读 `BlueprintStore.getGraph()`
 
@@ -139,7 +145,7 @@ $ grep -rn "type: \"reorder\"" packages
 
 ```ts
 // packages/meta-system/src/team-optimizer.ts:81
-const estimatedCost = input.graph.nodes.length;
+const estimatedCost = input.graph.nodes.length
 ```
 
 这是把"节点数"当成本,但实际成本应该来自每节点的成本(providers, model, tokens)。
@@ -212,17 +218,17 @@ apps/api/dist/                     (~16 文件)
 
 ## 5. 删除计划汇总
 
-| 项 | 类型 | 行数 | 风险 | 优先级 |
-|---|---|---|---|---|
-| 删 `BlueprintStore.findByCapability` | 死代码 | -7 | 无 | 🟢 P3 |
-| 删 `BlueprintStore.getGraph` | 死代码 | -8 | 无 | 🟢 P3 |
-| 删 `BlueprintStore.listGraphs` | 死代码 | -13 | 无 | 🟢 P3 |
-| 删 `CapabilityRegistry.recordUsage` | 死代码 | -25 | 无(外部 0 引用) | 🟡 P2 |
-| 删 `reorder` 枚举 + 分支 | 死代码 | -3 | 类型更新 | 🟡 P2 |
-| `applyHintToBlueprints` 内部化 | 重复抽象 | -5 | API 调整 | 🟡 P2 |
-| 修 `TeamOptimizer.estimatedCost` | 技术债 | +5 | 行为变化 | 🔴 P1 |
-| `MetaAgent` merge/split 应用 | 技术债 | +30 | 大改 | 🔴 P1(Phase 8) |
-| 多 ProposalSource 信号源 | 技术债 | +20 | 测试扩展 | 🟡 P2 |
+| 项                                   | 类型     | 行数 | 风险            | 优先级         |
+| ------------------------------------ | -------- | ---- | --------------- | -------------- |
+| 删 `BlueprintStore.findByCapability` | 死代码   | -7   | 无              | 🟢 P3          |
+| 删 `BlueprintStore.getGraph`         | 死代码   | -8   | 无              | 🟢 P3          |
+| 删 `BlueprintStore.listGraphs`       | 死代码   | -13  | 无              | 🟢 P3          |
+| 删 `CapabilityRegistry.recordUsage`  | 死代码   | -25  | 无(外部 0 引用) | 🟡 P2          |
+| 删 `reorder` 枚举 + 分支             | 死代码   | -3   | 类型更新        | 🟡 P2          |
+| `applyHintToBlueprints` 内部化       | 重复抽象 | -5   | API 调整        | 🟡 P2          |
+| 修 `TeamOptimizer.estimatedCost`     | 技术债   | +5   | 行为变化        | 🔴 P1          |
+| `MetaAgent` merge/split 应用         | 技术债   | +30  | 大改            | 🔴 P1(Phase 8) |
+| 多 ProposalSource 信号源             | 技术债   | +20  | 测试扩展        | 🟡 P2          |
 
 **P1 (Phase 7 内完成)**:estimatedCost 修复 — 仅 5 行代码,但影响 SimulationEngine 准确性。
 

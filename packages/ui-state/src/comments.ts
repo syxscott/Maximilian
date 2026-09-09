@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { createStore } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
@@ -115,7 +123,9 @@ export const createCommentStore = (storageKey: string) =>
       }),
       {
         name: storageKey,
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         partialize: (state) => ({ comments: state.comments }),
         onRehydrateStorage: () => (state) => {
           if (state) state.ready = true
@@ -272,7 +282,9 @@ export interface CommentsProviderProps {
 }
 
 export function CommentsProvider({ children, storageKey }: CommentsProviderProps) {
-  const cacheRef = useRef(createLRU<CommentSession>({ maxEntries: MAX_COMMENT_SESSIONS, dispose: () => undefined }))
+  const cacheRef = useRef(
+    createLRU<CommentSession>({ maxEntries: MAX_COMMENT_SESSIONS, dispose: () => undefined }),
+  )
 
   useEffect(() => {
     return () => cacheRef.current.clear()
@@ -282,9 +294,7 @@ export function CommentsProvider({ children, storageKey }: CommentsProviderProps
     const key = sessionKey(dir, id)
     const cached = cacheRef.current.get(key)
     if (cached) return cached
-    const storage = storageKey
-      ? storageKey(dir, id)
-      : `${dir}/comments${id ? "/" + id : ""}.v1`
+    const storage = storageKey ? storageKey(dir, id) : `${dir}/comments${id ? "/" + id : ""}.v1`
     const session = createCommentSession(dir, id, storage)
     cacheRef.current.set(key, session)
     return session
@@ -311,7 +321,10 @@ export function useComments(): CommentsContextValue {
  * Convenience hook that picks a session based on the current directory and
  * optional session id. Returns null until the consumer provides a session.
  */
-export function useCommentSession(dir: string | undefined, id: string | undefined): CommentSession | null {
+export function useCommentSession(
+  dir: string | undefined,
+  id: string | undefined,
+): CommentSession | null {
   const { session } = useComments()
   const [snapshot, setSnapshot] = useState<CommentSession | null>(null)
 

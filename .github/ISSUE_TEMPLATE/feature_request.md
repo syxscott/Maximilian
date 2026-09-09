@@ -1,9 +1,9 @@
 ---
 name: ✨ Feature request
 about: Suggest a new capability or improvement
-title: '[FEAT] '
+title: "[FEAT] "
 labels: enhancement
-assignees: ''
+assignees: ""
 ---
 
 ## Problem

@@ -3,8 +3,9 @@ import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
 import * as LabelPrimitive from "@radix-ui/react-label"
 import { cn } from "../../lib/utils.js"
 
-export interface CheckboxV2Props
-  extends React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root> {
+export interface CheckboxV2Props extends React.ComponentPropsWithoutRef<
+  typeof CheckboxPrimitive.Root
+> {
   label: React.ReactNode
   description?: React.ReactNode
   hideLabel?: boolean
@@ -14,12 +15,7 @@ export const CheckboxV2 = React.forwardRef<
   React.ElementRef<typeof CheckboxPrimitive.Root>,
   CheckboxV2Props
 >(({ className, label, description, hideLabel, ...props }, ref) => (
-  <CheckboxPrimitive.Root
-    ref={ref}
-    data-slot="checkbox-v2"
-    className={cn(className)}
-    {...props}
-  >
+  <CheckboxPrimitive.Root ref={ref} data-slot="checkbox-v2" className={cn(className)} {...props}>
     <div data-slot="checkbox-v2-row">
       <input
         type="checkbox"
@@ -63,15 +59,10 @@ export const CheckboxV2 = React.forwardRef<
           </CheckboxPrimitive.Indicator>
         </span>
       </div>
-      <LabelPrimitive.Root
-        data-slot="checkbox-v2-label"
-        className={cn(hideLabel && "sr-only")}
-      >
+      <LabelPrimitive.Root data-slot="checkbox-v2-label" className={cn(hideLabel && "sr-only")}>
         <div data-slot="checkbox-v2-text">
           <span data-slot="checkbox-v2-label-text">{label}</span>
-          {description ? (
-            <span data-slot="checkbox-v2-description">{description}</span>
-          ) : null}
+          {description ? <span data-slot="checkbox-v2-description">{description}</span> : null}
         </div>
       </LabelPrimitive.Root>
     </div>

@@ -1,7 +1,9 @@
-import type { Context, Next } from "hono";
-import { verifyAccessToken } from "./jwt.js";
+import type { Context, Next } from "hono"
+import { verifyAccessToken } from "./jwt.js"
 
-type AppEnv = { Variables: { requestId: string; userId?: string; userRole?: string; tenantId?: string } };
+type AppEnv = {
+  Variables: { requestId: string; userId?: string; userRole?: string; tenantId?: string }
+}
 
 /**
  * JWT auth middleware for Hono.
@@ -15,25 +17,25 @@ type AppEnv = { Variables: { requestId: string; userId?: string; userRole?: stri
 export function authMiddleware(jwtSecret: string | undefined) {
   return async (c: Context<AppEnv>, next: Next) => {
     // No secret configured = dev mode, skip auth
-    if (!jwtSecret) return next();
+    if (!jwtSecret) return next()
 
-    const header = c.req.header("Authorization") ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    const header = c.req.header("Authorization") ?? ""
+    const token = header.startsWith("Bearer ") ? header.slice(7) : ""
     if (!token) {
-      return c.json({ error: "unauthorized", code: "MISSING_TOKEN" }, 401);
+      return c.json({ error: "unauthorized", code: "MISSING_TOKEN" }, 401)
     }
 
     try {
-      const payload = await verifyAccessToken(token, jwtSecret);
-      c.set("userId", payload.sub);
-      c.set("userRole", payload.role);
-      if (payload.tenantId) c.set("tenantId", payload.tenantId);
+      const payload = await verifyAccessToken(token, jwtSecret)
+      c.set("userId", payload.sub)
+      c.set("userRole", payload.role)
+      if (payload.tenantId) c.set("tenantId", payload.tenantId)
     } catch {
-      return c.json({ error: "unauthorized", code: "INVALID_TOKEN" }, 401);
+      return c.json({ error: "unauthorized", code: "INVALID_TOKEN" }, 401)
     }
 
-    return next();
-  };
+    return next()
+  }
 }
 
 /**
@@ -42,10 +44,10 @@ export function authMiddleware(jwtSecret: string | undefined) {
  */
 export function requireRole(...roles: string[]) {
   return async (c: Context<AppEnv>, next: Next) => {
-    const userRole = c.get("userRole");
+    const userRole = c.get("userRole")
     if (!userRole || !roles.includes(userRole)) {
-      return c.json({ error: "forbidden", code: "INSUFFICIENT_ROLE" }, 403);
+      return c.json({ error: "forbidden", code: "INSUFFICIENT_ROLE" }, 403)
     }
-    return next();
-  };
+    return next()
+  }
 }

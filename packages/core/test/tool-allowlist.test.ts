@@ -21,11 +21,19 @@ class StubProvider implements Provider {
   id = "stub"
   name = "stub"
   defaultModel = "stub-1"
-  isConfigured(): boolean { return true }
-  async chat(): Promise<ChatResponse> {
-    return { content: "", model: "stub-1", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
+  isConfigured(): boolean {
+    return true
   }
-  async *stream() { throw new Error("not used") }
+  async chat(): Promise<ChatResponse> {
+    return {
+      content: "",
+      model: "stub-1",
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    }
+  }
+  async *stream() {
+    throw new Error("not used")
+  }
 }
 
 function buildProvider(): ToolEnabledProvider {

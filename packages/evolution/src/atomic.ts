@@ -14,22 +14,22 @@
  * just for a few line of fs glue. If the helper grows new modes, copy
  * them here too.
  */
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs"
+import path from "node:path"
+import { randomUUID } from "node:crypto"
 
 export async function writeFileAtomic(target: string, content: string): Promise<void> {
-  const dir = path.dirname(target);
-  await fs.mkdir(dir, { recursive: true });
+  const dir = path.dirname(target)
+  await fs.mkdir(dir, { recursive: true })
   // Put the temp file in the same directory so the rename is on the
   // same filesystem (cross-device renames are not atomic on Linux).
-  const tmp = path.join(dir, `.${path.basename(target)}.${randomUUID()}.tmp`);
+  const tmp = path.join(dir, `.${path.basename(target)}.${randomUUID()}.tmp`)
   try {
-    await fs.writeFile(tmp, content, "utf-8");
-    await fs.rename(tmp, target);
+    await fs.writeFile(tmp, content, "utf-8")
+    await fs.rename(tmp, target)
   } catch (err) {
-    await fs.unlink(tmp).catch(() => {});
-    throw err;
+    await fs.unlink(tmp).catch(() => {})
+    throw err
   }
 }
 
@@ -54,25 +54,25 @@ export async function readModifyWriteAtomic<T>(
   defaultValue: T,
   transform: (current: T) => T,
 ): Promise<T> {
-  const dir = path.dirname(target);
-  await fs.mkdir(dir, { recursive: true });
+  const dir = path.dirname(target)
+  await fs.mkdir(dir, { recursive: true })
 
   return await withFileLock(target, async () => {
-    let current: T;
+    let current: T
     try {
-      const raw = await fs.readFile(target, "utf-8");
-      current = JSON.parse(raw) as T;
+      const raw = await fs.readFile(target, "utf-8")
+      current = JSON.parse(raw) as T
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        current = defaultValue;
+        current = defaultValue
       } else {
-        throw err;
+        throw err
       }
     }
-    const next = transform(current);
-    await writeFileAtomic(target, JSON.stringify(next, null, 2));
-    return next;
-  });
+    const next = transform(current)
+    await writeFileAtomic(target, JSON.stringify(next, null, 2))
+    return next
+  })
 }
 
 /**
@@ -85,22 +85,22 @@ export async function readModifyWriteAtomic<T>(
  * the timeout, but that's safer than letting two writers race.
  */
 async function withFileLock<T>(target: string, fn: () => Promise<T>): Promise<T> {
-  const lockDir = `${target}.lock`;
-  const MAX_ATTEMPTS = 200;
+  const lockDir = `${target}.lock`
+  const MAX_ATTEMPTS = 200
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      await fs.mkdir(lockDir);
+      await fs.mkdir(lockDir)
       try {
-        return await fn();
+        return await fn()
       } finally {
-        await fs.rmdir(lockDir).catch(() => {});
+        await fs.rmdir(lockDir).catch(() => {})
       }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
       // 5–25ms jittered backoff so concurrent waiters don't thunder
       // and re-collide on the same tick.
-      await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)));
+      await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)))
     }
   }
-  throw new Error(`readModifyWriteAtomic: could not acquire lock for ${target} (stale?)`);
+  throw new Error(`readModifyWriteAtomic: could not acquire lock for ${target} (stale?)`)
 }

@@ -1,13 +1,9 @@
-import {
-  useEffect,
-  useRef,
-  type ReactNode,
-  type KeyboardEvent,
-  type HTMLAttributes,
-} from "react"
+import { useEffect, useRef, type ReactNode, type KeyboardEvent, type HTMLAttributes } from "react"
 import { cn } from "../lib/utils.js"
 
-export function LineCommentV2OverflowIcon(props: HTMLAttributes<SVGSVGElement> & { width?: number; height?: number }) {
+export function LineCommentV2OverflowIcon(
+  props: HTMLAttributes<SVGSVGElement> & { width?: number; height?: number },
+) {
   const { width = 16, height = 16, ...rest } = props
   return (
     <svg
@@ -32,7 +28,13 @@ export interface LineCommentV2Props extends Omit<HTMLAttributes<HTMLDivElement>,
   actions?: ReactNode
 }
 
-export function LineCommentV2({ comment, selection, actions, className, ...rest }: LineCommentV2Props) {
+export function LineCommentV2({
+  comment,
+  selection,
+  actions,
+  className,
+  ...rest
+}: LineCommentV2Props) {
   return (
     <div
       data-component="line-comment-v2"
@@ -53,8 +55,10 @@ export function LineCommentV2({ comment, selection, actions, className, ...rest 
   )
 }
 
-export interface LineCommentEditorV2Props
-  extends Omit<HTMLAttributes<HTMLDivElement>, "children" | "onInput" | "onSubmit"> {
+export interface LineCommentEditorV2Props extends Omit<
+  HTMLAttributes<HTMLDivElement>,
+  "children" | "onInput" | "onSubmit"
+> {
   heading?: ReactNode | string
   value: string
   onInput: (value: string) => void
@@ -112,12 +116,7 @@ export function LineCommentEditorV2({
   }
 
   return (
-    <div
-      data-component="line-comment-v2"
-      data-variant="editor"
-      className={cn(className)}
-      {...rest}
-    >
+    <div data-component="line-comment-v2" data-variant="editor" className={cn(className)} {...rest}>
       <div data-slot="line-comment-v2-shell" className="flex flex-col gap-3">
         <div data-slot="line-comment-v2-field" className="flex flex-col gap-1">
           <div data-slot="line-comment-v2-label" className="text-xs font-medium">

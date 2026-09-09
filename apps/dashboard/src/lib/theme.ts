@@ -15,59 +15,59 @@
  * Effective scheme is derived: `mode === "system" ? (osLight ? light : dark) : mode`.
  */
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react"
 
-export type ThemeMode = "system" | "light" | "dark";
-export type EffectiveTheme = "light" | "dark";
+export type ThemeMode = "system" | "light" | "dark"
+export type EffectiveTheme = "light" | "dark"
 
-export const THEME_STORAGE_KEY = "maximilian-theme";
-const MODES: ReadonlyArray<ThemeMode> = ["system", "light", "dark"];
+export const THEME_STORAGE_KEY = "maximilian-theme"
+const MODES: ReadonlyArray<ThemeMode> = ["system", "light", "dark"]
 
 function isThemeMode(value: unknown): value is ThemeMode {
-  return typeof value === "string" && (MODES as ReadonlyArray<string>).includes(value);
+  return typeof value === "string" && (MODES as ReadonlyArray<string>).includes(value)
 }
 
 /** Read the persisted mode (always returns a valid ThemeMode). */
 export function getStoredTheme(): ThemeMode {
-  if (typeof localStorage === "undefined") return "system";
-  const raw = localStorage.getItem(THEME_STORAGE_KEY);
-  if (!raw) return "system";
+  if (typeof localStorage === "undefined") return "system"
+  const raw = localStorage.getItem(THEME_STORAGE_KEY)
+  if (!raw) return "system"
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return isThemeMode(parsed) ? parsed : "system";
+    const parsed: unknown = JSON.parse(raw)
+    return isThemeMode(parsed) ? parsed : "system"
   } catch {
-    return "system";
+    return "system"
   }
 }
 
 export function setStoredTheme(mode: ThemeMode): void {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(mode));
+  if (typeof localStorage === "undefined") return
+  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(mode))
 }
 
 /** Subscribe to OS light/dark preference changes. */
 function subscribeSystemPref(handler: () => void): () => void {
-  if (typeof window === "undefined" || !window.matchMedia) return () => {};
-  const mq = window.matchMedia("(prefers-color-scheme: light)");
-  const listener = () => handler();
+  if (typeof window === "undefined" || !window.matchMedia) return () => {}
+  const mq = window.matchMedia("(prefers-color-scheme: light)")
+  const listener = () => handler()
   if (typeof mq.addEventListener === "function") {
-    mq.addEventListener("change", listener);
-    return () => mq.removeEventListener("change", listener);
+    mq.addEventListener("change", listener)
+    return () => mq.removeEventListener("change", listener)
   }
   // Safari < 14 fallback
-  mq.addListener(listener);
-  return () => mq.removeListener(listener);
+  mq.addListener(listener)
+  return () => mq.removeListener(listener)
 }
 
 function readSystemPref(): boolean {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-color-scheme: light)").matches;
+  if (typeof window === "undefined" || !window.matchMedia) return false
+  return window.matchMedia("(prefers-color-scheme: light)").matches
 }
 
 export function getEffectiveTheme(mode: ThemeMode, systemLight: boolean): EffectiveTheme {
-  if (mode === "light") return "light";
-  if (mode === "dark") return "dark";
-  return systemLight ? "light" : "dark";
+  if (mode === "light") return "light"
+  if (mode === "dark") return "dark"
+  return systemLight ? "light" : "dark"
 }
 
 /**
@@ -75,17 +75,17 @@ export function getEffectiveTheme(mode: ThemeMode, systemLight: boolean): Effect
  * `color-scheme` style so native form controls (scrollbars, inputs) follow.
  */
 function applyTheme(effective: EffectiveTheme): void {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
-  root.classList.remove("light", "dark");
-  root.classList.add(effective);
-  root.style.colorScheme = effective;
+  if (typeof document === "undefined") return
+  const root = document.documentElement
+  root.classList.remove("light", "dark")
+  root.classList.add(effective)
+  root.style.colorScheme = effective
 }
 
 export interface ThemeController {
-  mode: ThemeMode;
-  effective: EffectiveTheme;
-  setMode: (mode: ThemeMode) => void;
+  mode: ThemeMode
+  effective: EffectiveTheme
+  setMode: (mode: ThemeMode) => void
 }
 
 /**
@@ -96,34 +96,30 @@ export interface ThemeController {
 export function useTheme(): ThemeController {
   const mode = useSyncExternalStore(
     (handler) => {
-      if (typeof window === "undefined") return () => {};
+      if (typeof window === "undefined") return () => {}
       const onStorage = (e: StorageEvent) => {
-        if (e.key === THEME_STORAGE_KEY) handler();
-      };
-      window.addEventListener("storage", onStorage);
-      return () => window.removeEventListener("storage", onStorage);
+        if (e.key === THEME_STORAGE_KEY) handler()
+      }
+      window.addEventListener("storage", onStorage)
+      return () => window.removeEventListener("storage", onStorage)
     },
     () => getStoredTheme(),
     () => "system" as ThemeMode,
-  );
+  )
 
-  const systemLight = useSyncExternalStore(
-    subscribeSystemPref,
-    readSystemPref,
-    () => false,
-  );
+  const systemLight = useSyncExternalStore(subscribeSystemPref, readSystemPref, () => false)
 
-  const effective = getEffectiveTheme(mode, systemLight);
+  const effective = getEffectiveTheme(mode, systemLight)
 
   useEffect(() => {
-    applyTheme(effective);
-  }, [effective]);
+    applyTheme(effective)
+  }, [effective])
 
   const setMode = useCallback((next: ThemeMode) => {
-    setStoredTheme(next);
+    setStoredTheme(next)
     // Notify same-tab listeners (storage event only fires across tabs).
-    window.dispatchEvent(new StorageEvent("storage", { key: THEME_STORAGE_KEY }));
-  }, []);
+    window.dispatchEvent(new StorageEvent("storage", { key: THEME_STORAGE_KEY }))
+  }, [])
 
-  return { mode, effective, setMode };
+  return { mode, effective, setMode }
 }

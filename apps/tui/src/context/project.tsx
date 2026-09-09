@@ -67,7 +67,10 @@ type ProjectContextValue = {
   sync: () => Promise<void>
 }
 
-export const { use: useProject, provider: ProjectProvider } = createSimpleContext<ProjectContextValue, Record<string, never>>({
+export const { use: useProject, provider: ProjectProvider } = createSimpleContext<
+  ProjectContextValue,
+  Record<string, never>
+>({
   name: "Project",
   init: () => {
     const sdk = useSDK() as any
@@ -112,8 +115,9 @@ export const { use: useProject, provider: ProjectProvider } = createSimpleContex
       setProject({
         id: projectRes.data?.id,
         worktree: projectRes.data?.worktree,
-        mainDir: directories?.data?.findLast?.((item: { strategy?: string }) => item.strategy === undefined)
-          ?.directory as string | undefined,
+        mainDir: directories?.data?.findLast?.(
+          (item: { strategy?: string }) => item.strategy === undefined,
+        )?.directory as string | undefined,
       })
     }, [sdk, workspaceCurrent])
 

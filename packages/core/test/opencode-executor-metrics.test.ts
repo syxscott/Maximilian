@@ -3,13 +3,14 @@ import { OpencodeExecutor } from "../src/opencode-executor.js"
 import { opencodeSessionsCreatedTotal } from "@max/telemetry"
 import type { Task } from "../src/types.js"
 
-const mkTask = (id: string): Task => ({
-  id,
-  description: `task ${id}`,
-  agentRole: "general",
-  dependsOn: [],
-  status: "pending",
-} as Task)
+const mkTask = (id: string): Task =>
+  ({
+    id,
+    description: `task ${id}`,
+    agentRole: "general",
+    dependsOn: [],
+    status: "pending",
+  }) as Task
 
 function makeOk<T>(body: T): Response {
   return new Response(JSON.stringify(body), {

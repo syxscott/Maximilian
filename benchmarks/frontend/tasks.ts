@@ -9,7 +9,7 @@
  * Each task requires structural code validation (no runtime rendering).
  */
 
-import type { BenchmarkTask, FrontendTaskContext } from "../../packages/benchmark-core/src/types.js";
+import type { BenchmarkTask, FrontendTaskContext } from "../../packages/benchmark-core/src/types.js"
 
 // ── Task 1: Multi-Step Form State Machine ───────────────────────────────────
 
@@ -24,16 +24,28 @@ const task1Context: FrontendTaskContext = {
     "Must render different form fields based on the current step",
   ],
   structuralQueries: [
-    { pattern: "useState.*step|step.*useState", required: true, label: "Tracks current step with useState" },
-    { pattern: "currentStep|activeStep|stepIndex", required: true, label: "Has a step index variable" },
+    {
+      pattern: "useState.*step|step.*useState",
+      required: true,
+      label: "Tracks current step with useState",
+    },
+    {
+      pattern: "currentStep|activeStep|stepIndex",
+      required: true,
+      label: "Has a step index variable",
+    },
     { pattern: "next|forward|proceed|handleNext", required: true, label: "Has forward navigation" },
     { pattern: "prev|back|handleBack|goBack", required: true, label: "Has backward navigation" },
     { pattern: "valid|error|validation|isValid", required: true, label: "Has validation logic" },
     { pattern: "onSubmit|handleSubmit|submit", required: true, label: "Has submit handler" },
     { pattern: "formData|formState|values|fields", required: false, label: "Tracks form data" },
-    { pattern: "step ===|step ===|currentStep ===|case", required: false, label: "Conditional step rendering" },
+    {
+      pattern: "step ===|step ===|currentStep ===|case",
+      required: false,
+      label: "Conditional step rendering",
+    },
   ],
-};
+}
 
 // ── Task 2: Virtualized Infinite Scroll ─────────────────────────────────────
 
@@ -48,14 +60,34 @@ const task2Context: FrontendTaskContext = {
     "Must not re-render the entire list on scroll",
   ],
   structuralQueries: [
-    { pattern: "useEffect.*scroll|IntersectionObserver|onScroll", required: true, label: "Has scroll handling" },
-    { pattern: "scrollTop|getBoundingClientRect|offsetHeight|innerHeight", required: true, label: "Measures scroll position" },
+    {
+      pattern: "useEffect.*scroll|IntersectionObserver|onScroll",
+      required: true,
+      label: "Has scroll handling",
+    },
+    {
+      pattern: "scrollTop|getBoundingClientRect|offsetHeight|innerHeight",
+      required: true,
+      label: "Measures scroll position",
+    },
     { pattern: "loading|isLoading|setLoading", required: true, label: "Has loading state" },
-    { pattern: "slice|renderItems|visibleItems|startIndex|endIndex", required: false, label: "Virtualizes visible items" },
-    { pattern: "useCallback|useMemo|React\\.memo", required: false, label: "Has performance optimizations" },
-    { pattern: "containerRef|listRef|scrollRef|useRef", required: false, label: "Uses refs for DOM measurement" },
+    {
+      pattern: "slice|renderItems|visibleItems|startIndex|endIndex",
+      required: false,
+      label: "Virtualizes visible items",
+    },
+    {
+      pattern: "useCallback|useMemo|React\\.memo",
+      required: false,
+      label: "Has performance optimizations",
+    },
+    {
+      pattern: "containerRef|listRef|scrollRef|useRef",
+      required: false,
+      label: "Uses refs for DOM measurement",
+    },
   ],
-};
+}
 
 // ── Task 3: Custom Reactive Hook ────────────────────────────────────────────
 
@@ -70,28 +102,44 @@ const task3Context: FrontendTaskContext = {
     "Must return a typed interface (value, loading, error, refetch)",
   ],
   structuralQueries: [
-    { pattern: "export\\s+(default\\s+)?function\\s+use[A-Z]|const\\s+use[A-Z].*=.*\\(", required: true, label: "Is a custom hook (useXxx)" },
+    {
+      pattern: "export\\s+(default\\s+)?function\\s+use[A-Z]|const\\s+use[A-Z].*=.*\\(",
+      required: true,
+      label: "Is a custom hook (useXxx)",
+    },
     { pattern: "useEffect\\s*\\(", required: true, label: "Uses useEffect" },
-    { pattern: "return\\s+\\(\\s*\\)|return\\s+()=>|cleanup|unmount", required: true, label: "Has cleanup function" },
+    {
+      pattern: "return\\s+\\(\\s*\\)|return\\s+()=>|cleanup|unmount",
+      required: true,
+      label: "Has cleanup function",
+    },
     { pattern: "catch|error|isError|setError", required: true, label: "Handles errors" },
-    { pattern: "\\[.*\\].*useEffect|useEffect.*\\[", required: true, label: "Has dependency array" },
+    {
+      pattern: "\\[.*\\].*useEffect|useEffect.*\\[",
+      required: true,
+      label: "Has dependency array",
+    },
     { pattern: "return\\s*\\{|return\\s*\\(", required: true, label: "Returns an object or value" },
-    { pattern: "useState|useReducer|useRef", required: false, label: "Uses internal state management" },
+    {
+      pattern: "useState|useReducer|useRef",
+      required: false,
+      label: "Uses internal state management",
+    },
   ],
-};
+}
 
 // ── Assertion Functions ──────────────────────────────────────────────────────
 
 async function assertFormStateMachine(output: string): Promise<boolean> {
-  return /step|form|state/i.test(output);
+  return /step|form|state/i.test(output)
 }
 
 async function assertInfiniteScroll(output: string): Promise<boolean> {
-  return /scroll|list|virtual/i.test(output);
+  return /scroll|list|virtual/i.test(output)
 }
 
 async function assertCustomHook(output: string): Promise<boolean> {
-  return /use[A-Z]|hook|effect/i.test(output);
+  return /use[A-Z]|hook|effect/i.test(output)
 }
 
 // ── Exported Tasks ───────────────────────────────────────────────────────────
@@ -150,4 +198,4 @@ export const FRONTEND_TASKS: BenchmarkTask[] = [
     context: task3Context as unknown as Record<string, unknown>,
     expectedOutputAssertion: assertCustomHook,
   },
-];
+]

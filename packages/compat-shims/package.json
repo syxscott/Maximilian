@@ -22,10 +22,18 @@
     "@opentui/core": "*"
   },
   "peerDependenciesMeta": {
-    "drizzle-orm": { "optional": true },
-    "hono": { "optional": true },
-    "ink": { "optional": true },
-    "@opentui/core": { "optional": true }
+    "drizzle-orm": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    },
+    "ink": {
+      "optional": true
+    },
+    "@opentui/core": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

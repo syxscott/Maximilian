@@ -87,18 +87,20 @@ function HealthDot({ status }: { status: string }) {
 /** Circuit breaker state badge — mirrors cc-switch's FailoverPriorityBadge. */
 function CircuitBreakerBadge({ state }: { state?: string }) {
   if (state === "closed") return null
-  if (state === "open") return (
-    <Badge variant="destructive" className="text-xs gap-1">
-      <Zap className="w-3 h-3" />
-      {t("provider.circuitBreaker")}
-    </Badge>
-  )
-  if (state === "half-open") return (
-    <Badge variant="secondary" className="text-xs gap-1">
-      <Zap className="w-3 h-3" />
-      {t("provider.probing")}
-    </Badge>
-  )
+  if (state === "open")
+    return (
+      <Badge variant="destructive" className="text-xs gap-1">
+        <Zap className="w-3 h-3" />
+        {t("provider.circuitBreaker")}
+      </Badge>
+    )
+  if (state === "half-open")
+    return (
+      <Badge variant="secondary" className="text-xs gap-1">
+        <Zap className="w-3 h-3" />
+        {t("provider.probing")}
+      </Badge>
+    )
   return null
 }
 
@@ -208,7 +210,8 @@ function PresetCatalog() {
                 {e.envVars.length > 0 && (
                   <div className="text-[10px] text-muted-foreground font-mono truncate">
                     {e.envVars.join(" / ")}
-                    {e.contextWindow !== undefined && ` · ${(e.contextWindow / 1024).toFixed(0)}K ctx`}
+                    {e.contextWindow !== undefined &&
+                      ` · ${(e.contextWindow / 1024).toFixed(0)}K ctx`}
                   </div>
                 )}
               </div>
@@ -378,9 +381,7 @@ function ProviderCard({
           <div className="flex items-center gap-2">
             {/* Health latency display */}
             {health?.latencyMs !== undefined && (
-              <span className="text-xs text-muted-foreground">
-                {health.latencyMs}ms
-              </span>
+              <span className="text-xs text-muted-foreground">{health.latencyMs}ms</span>
             )}
 
             {!isDefault && (
@@ -429,10 +430,10 @@ function ProviderCard({
               </SelectTrigger>
               <SelectContent>
                 {catalog.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
+                  <SelectItem key={m} value={m}>
+                    {m}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           ) : (

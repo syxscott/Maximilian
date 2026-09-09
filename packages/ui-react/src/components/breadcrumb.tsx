@@ -39,10 +39,7 @@ function BreadcrumbItemEl({
 
   const base =
     "inline-flex items-center text-sm transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-  const className = cn(
-    isLast ? "text-foreground font-medium" : "text-muted-foreground",
-    base,
-  )
+  const className = cn(isLast ? "text-foreground font-medium" : "text-muted-foreground", base)
 
   if (item.href && !item.onClick) {
     return (
@@ -79,14 +76,18 @@ export const Breadcrumb = React.forwardRef<HTMLElement, BreadcrumbProps>(functio
   ref,
 ) {
   const visible = React.useMemo(() => {
-    if (!maxItems || items.length <= maxItems) return { head: items, collapsed: [] as BreadcrumbItem[] }
+    if (!maxItems || items.length <= maxItems)
+      return { head: items, collapsed: [] as BreadcrumbItem[] }
     if (maxItems < 2) return { head: items.slice(-1), collapsed: items.slice(0, -1) }
 
     const headCount = Math.max(1, maxItems - 2)
     const head = items.slice(0, headCount)
     const tail = items.slice(-1)
     const collapsed = items.slice(headCount, -1)
-    return { head: [...head, { label: <MoreHorizontal className="h-4 w-4" /> }, ...tail], collapsed }
+    return {
+      head: [...head, { label: <MoreHorizontal className="h-4 w-4" /> }, ...tail],
+      collapsed,
+    }
   }, [items, maxItems])
 
   return (

@@ -85,7 +85,11 @@ const darkDefault: ThemeColors = {
 }
 
 export const DEFAULT_THEMES: Record<string, ThemeJson> = {
-  opencode: { name: "opencode", mode: "dark", colors: darkDefault as unknown as Record<string, string> },
+  opencode: {
+    name: "opencode",
+    mode: "dark",
+    colors: darkDefault as unknown as Record<string, string>,
+  },
 }
 
 export const allThemes = (): Record<string, ThemeJson> => ({ ...DEFAULT_THEMES })
@@ -95,7 +99,12 @@ export function hasTheme(name: string): boolean {
 }
 
 export function isTheme(value: unknown): value is ThemeJson {
-  return !!value && typeof value === "object" && "name" in (value as object) && "colors" in (value as object)
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "name" in (value as object) &&
+    "colors" in (value as object)
+  )
 }
 
 export function resolveTheme(json: ThemeJson, _mode: "dark" | "light"): ThemeColors {
@@ -128,7 +137,9 @@ export function setSystemTheme(_theme: ThemeJson | undefined): void {
   /* no-op */
 }
 
-export function subscribeThemes(_listener: (themes: Record<string, ThemeJson>) => void): () => void {
+export function subscribeThemes(
+  _listener: (themes: Record<string, ThemeJson>) => void,
+): () => void {
   return () => {}
 }
 
@@ -152,7 +163,10 @@ export type ThemeContextValue = {
   ready: boolean
 }
 
-export const { use: useTheme, provider: ThemeProvider } = createSimpleContext<ThemeContextValue, { mode: "dark" | "light" }>({
+export const { use: useTheme, provider: ThemeProvider } = createSimpleContext<
+  ThemeContextValue,
+  { mode: "dark" | "light" }
+>({
   name: "Theme",
   init: (props) => {
     const initial = DEFAULT_THEMES.opencode
@@ -186,9 +200,9 @@ export function createSyntaxStyleMemo(factory: () => unknown): () => unknown {
 
 // Standalone helper retained so consumers that expect a JSX component can use
 // `<ThemeContext.Provider value={...}>` directly if they bypass `ThemeProvider`.
-export const ThemeContext: React.Context<ThemeContextValue | undefined> = createContext<ThemeContextValue | undefined>(
-  undefined,
-)
+export const ThemeContext: React.Context<ThemeContextValue | undefined> = createContext<
+  ThemeContextValue | undefined
+>(undefined)
 
 export function ThemeInlineProvider(props: { value: ThemeContextValue; children: ReactNode }) {
   return createElement(ThemeContext.Provider, { value: props.value }, props.children)

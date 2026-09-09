@@ -5,12 +5,7 @@ export interface TagProps extends React.HTMLAttributes<HTMLSpanElement> {}
 
 export const Tag = React.forwardRef<HTMLSpanElement, TagProps>(
   ({ className, children, ...rest }, ref) => (
-    <span
-      ref={ref}
-      data-component="tag"
-      className={cn(className)}
-      {...rest}
-    >
+    <span ref={ref} data-component="tag" className={cn(className)} {...rest}>
       {children}
     </span>
   ),

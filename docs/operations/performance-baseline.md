@@ -13,7 +13,7 @@ target is paired with a number here, and the perf-pr workflow
 
 The baseline is the **p95 latency** measured against a fresh
 docker-compose stack on the GH runner. The numbers are what we
-*currently* get; they're not aspirational. The SLO targets live in
+_currently_ get; they're not aspirational. The SLO targets live in
 `slo.md`; this document tracks the distance between the baseline and
 the target.
 
@@ -35,13 +35,13 @@ numbers after the first nightly `load.yml` run on `main`. The point of
 this section is to have a place to record them so the perf-pr
 workflow has a target.
 
-| Endpoint | p50 (ms) | p95 (ms) | p99 (ms) | SLO target | Status |
-| -------- | -------- | -------- | -------- | ---------- | ------ |
-| `GET /api/health` | _pending measurement_ | _pending_ | _pending_ | — | — |
-| `GET /api/workspaces` | _pending_ | _pending_ | _pending_ | p95 ≤ 1s | — |
-| `GET /api/workspaces/:id` | _pending_ | _pending_ | _pending_ | — | — |
-| `POST /api/auth/login` | _pending_ | _pending_ | _pending_ | p95 ≤ 1.5s | — |
-| `POST /api/chat` (stub provider) | _pending_ | _pending_ | _pending_ | p95 ≤ 2s | — |
+| Endpoint                         | p50 (ms)              | p95 (ms)  | p99 (ms)  | SLO target | Status |
+| -------------------------------- | --------------------- | --------- | --------- | ---------- | ------ |
+| `GET /api/health`                | _pending measurement_ | _pending_ | _pending_ | —          | —      |
+| `GET /api/workspaces`            | _pending_             | _pending_ | _pending_ | p95 ≤ 1s   | —      |
+| `GET /api/workspaces/:id`        | _pending_             | _pending_ | _pending_ | —          | —      |
+| `POST /api/auth/login`           | _pending_             | _pending_ | _pending_ | p95 ≤ 1.5s | —      |
+| `POST /api/chat` (stub provider) | _pending_             | _pending_ | _pending_ | p95 ≤ 2s   | —      |
 
 Each row is mirrored in `benchmarks/load/baselines/p95-{label}-ms.json`:
 
@@ -75,12 +75,12 @@ k6 run --vus 5 --duration 60s benchmarks/load/k6-chat.js
 Throughput is recorded as **requests per second at p99 ≤ 1s** per
 endpoint. Provisional target (post Phase 12 measurement):
 
-| Endpoint | Target RPS |
-| -------- | ---------- |
-| `GET /api/health` | 1000 |
-| `GET /api/workspaces` | 200 |
+| Endpoint               | Target RPS        |
+| ---------------------- | ----------------- |
+| `GET /api/health`      | 1000              |
+| `GET /api/workspaces`  | 200               |
 | `POST /api/auth/login` | 50 (bcrypt-bound) |
-| `POST /api/chat` | 20 |
+| `POST /api/chat`       | 20                |
 
 ## Meta-cycle baseline (Phase 1)
 
@@ -88,11 +88,11 @@ The `meta_cycle_duration_seconds` histogram (Phase 9) records each
 MetaOrchestrator cycle duration. Provisional targets, based on the
 buckets:
 
-| Bucket | Healthy | Warning | Concerning |
-| ------ | ------- | ------- | ---------- |
-| < 30s | ≥ 95% of cycles | 80-95% | < 80% |
-| 30-60s | ≤ 5% | 5-15% | > 15% |
-| > 60s | 0% | ≤ 5% | > 5% |
+| Bucket | Healthy         | Warning | Concerning |
+| ------ | --------------- | ------- | ---------- |
+| < 30s  | ≥ 95% of cycles | 80-95%  | < 80%      |
+| 30-60s | ≤ 5%            | 5-15%   | > 15%      |
+| > 60s  | 0%              | ≤ 5%    | > 5%       |
 
 SLO-5 says P95 ≤ 60s, so > 60s should be ≤ 5%.
 

@@ -40,10 +40,7 @@ describe.skipIf(!HAS_BUN)("live smoke: real opencode serve via bun", () => {
   let pool: SessionPool
 
   beforeAll(async () => {
-    writeFileSync(
-      join(TMPDIR, "opencode.json"),
-      JSON.stringify({ theme: "system", provider: {} }),
-    )
+    writeFileSync(join(TMPDIR, "opencode.json"), JSON.stringify({ theme: "system", provider: {} }))
 
     supervisor = new Supervisor({
       command: ["bun"],

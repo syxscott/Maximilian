@@ -22,23 +22,14 @@
  * opencode's runtime observation in `Agent.Service.list()`.
  */
 
-import { EventEmitter } from "node:events";
-import type { EventStore, StoredEvent, Team } from "@max/core";
-import {
-  EventBridge,
-  type MappedEventInfo,
-  type OpencodeEvent,
-} from "@max/core-thin-sdk";
+import { EventEmitter } from "node:events"
+import type { EventStore, StoredEvent, Team } from "@max/core"
+import { EventBridge, type MappedEventInfo, type OpencodeEvent } from "@max/core-thin-sdk"
 
 // ── Public types ───────────────────────────────────────────────────────────
 
 /** Lifecycle state the bridge tracks for each opencode session / team. */
-export type BridgeTeamStatus =
-  | "active"
-  | "idle"
-  | "degraded"
-  | "completed"
-  | "failed";
+export type BridgeTeamStatus = "active" | "idle" | "degraded" | "completed" | "failed"
 
 /**
  * Per-team state snapshot. The bridge keeps one of these in memory and
@@ -47,51 +38,51 @@ export type BridgeTeamStatus =
  */
 export interface TeamState {
   /** Team id (== opencode session id, since each session becomes a team). */
-  teamId: string;
+  teamId: string
   /** Original `Team` passed in via `existingTeams` (if any). */
-  team?: Team;
+  team?: Team
   /** Lifecycle state (active / idle / degraded / completed / failed). */
-  status: BridgeTeamStatus;
+  status: BridgeTeamStatus
   /** Most recent opencode session id (usually same as teamId). */
-  lastSessionId?: string;
+  lastSessionId?: string
   /** ISO-8601 timestamp of the most recent state change. */
-  lastUpdated: string;
+  lastUpdated: string
   /** Capability tags discovered for this team. */
-  capabilities: string[];
+  capabilities: string[]
   /** Plugin-added capabilities (set on `plugin.added` events). */
-  pluginCapabilities: string[];
+  pluginCapabilities: string[]
   /** Count of `session.compacted` events seen. */
-  compactionCount: number;
+  compactionCount: number
   /** Count of `session.error` events seen. */
-  errorCount: number;
+  errorCount: number
   /** Count of `session.idle` events seen (== completed task count). */
-  completionCount: number;
+  completionCount: number
   /** Last error message seen, if any. */
-  lastError?: string;
+  lastError?: string
 }
 
 export interface MetaSystemOpencodeBridgeOptions {
   /** EventBridge instance to subscribe to. Must already be (or will be) started. */
-  eventBridge: EventBridge;
+  eventBridge: EventBridge
   /** EventStore the bridge writes derived events to. */
-  eventStore: EventStore;
+  eventStore: EventStore
   /**
    * Map of pre-existing teams keyed by teamId. Sessions matching these
    * ids reuse the existing Team; new sessions create fresh TeamState
    * entries on the fly.
    */
-  existingTeams: Map<string, Team>;
+  existingTeams: Map<string, Team>
   /**
    * Optional callback invoked when a session error crosses the
    * degradation threshold (≥ `errorThreshold` errors). Receives the
    * teamId and a human-readable reason. Default threshold: 2.
    */
-  onReplan?: (input: { teamId: string; reason: string }) => void;
+  onReplan?: (input: { teamId: string; reason: string }) => void
   /**
    * Optional override for the number of session errors that flips a team
    * from `degraded` to a replan trigger. Defaults to 2.
    */
-  errorThreshold?: number;
+  errorThreshold?: number
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────────
@@ -103,23 +94,23 @@ const HANDLED_OPENCODE_TYPES: ReadonlySet<string> = new Set([
   "session.error",
   "session.idle",
   "plugin.added",
-]);
+])
 
 /** Defensive type-guard for objects that look like an opencode envelope. */
 function isOpencodeEnvelope(value: unknown): value is OpencodeEvent {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.type === "string";
+  if (typeof value !== "object" || value === null) return false
+  const v = value as Record<string, unknown>
+  return typeof v.type === "string"
 }
 
 // ── MetaSystemOpencodeBridge ───────────────────────────────────────────────
 
 export declare interface MetaSystemOpencodeBridge {
   /** Fires whenever a team's status changes. */
-  on(event: "team-state-changed", listener: (state: TeamState) => void): this;
+  on(event: "team-state-changed", listener: (state: TeamState) => void): this
   /** Fires when a replan is triggered. */
-  on(event: "replan", listener: (input: { teamId: string; reason: string }) => void): this;
-  on(event: string, listener: (...args: unknown[]) => void): this;
+  on(event: "replan", listener: (input: { teamId: string; reason: string }) => void): this
+  on(event: string, listener: (...args: unknown[]) => void): this
 }
 
 /**
@@ -127,30 +118,31 @@ export declare interface MetaSystemOpencodeBridge {
  * table that downstream consumers (Digital Twin, TruthAudit) can query.
  */
 export class MetaSystemOpencodeBridge extends EventEmitter {
-  private readonly eventBridge: EventBridge;
-  private readonly eventStore: EventStore;
-  private readonly existingTeams: Map<string, Team>;
-  private readonly onReplan?: (input: { teamId: string; reason: string }) => void;
-  private readonly errorThreshold: number;
+  private readonly eventBridge: EventBridge
+  private readonly eventStore: EventStore
+  private readonly existingTeams: Map<string, Team>
+  private readonly onReplan?: (input: { teamId: string; reason: string }) => void
+  private readonly errorThreshold: number
 
   /** Per-team state table. Keyed by teamId == sessionId. */
-  private readonly states = new Map<string, TeamState>();
+  private readonly states = new Map<string, TeamState>()
 
   /** Unsubscribe handle returned by `EventBridge.subscribe()`. */
-  private unsubscribe: (() => void) | null = null;
-  private started = false;
+  private unsubscribe: (() => void) | null = null
+  private started = false
 
   constructor(opts: MetaSystemOpencodeBridgeOptions) {
-    super();
-    if (!opts.eventBridge) throw new Error("MetaSystemOpencodeBridge: `eventBridge` is required");
-    if (!opts.eventStore) throw new Error("MetaSystemOpencodeBridge: `eventStore` is required");
-    if (!opts.existingTeams) throw new Error("MetaSystemOpencodeBridge: `existingTeams` is required");
+    super()
+    if (!opts.eventBridge) throw new Error("MetaSystemOpencodeBridge: `eventBridge` is required")
+    if (!opts.eventStore) throw new Error("MetaSystemOpencodeBridge: `eventStore` is required")
+    if (!opts.existingTeams)
+      throw new Error("MetaSystemOpencodeBridge: `existingTeams` is required")
 
-    this.eventBridge = opts.eventBridge;
-    this.eventStore = opts.eventStore;
-    this.existingTeams = opts.existingTeams;
-    this.onReplan = opts.onReplan;
-    this.errorThreshold = opts.errorThreshold ?? 2;
+    this.eventBridge = opts.eventBridge
+    this.eventStore = opts.eventStore
+    this.existingTeams = opts.existingTeams
+    this.onReplan = opts.onReplan
+    this.errorThreshold = opts.errorThreshold ?? 2
 
     // Seed state table with any pre-existing teams.
     for (const [teamId, team] of this.existingTeams.entries()) {
@@ -165,7 +157,7 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
         compactionCount: 0,
         errorCount: 0,
         completionCount: 0,
-      });
+      })
     }
   }
 
@@ -173,9 +165,9 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
 
   /** Begin listening for mapped events. Idempotent. */
   start(): void {
-    if (this.started) return;
-    this.unsubscribe = this.eventBridge.subscribe((info: MappedEventInfo) => this.onMapped(info));
-    this.started = true;
+    if (this.started) return
+    this.unsubscribe = this.eventBridge.subscribe((info: MappedEventInfo) => this.onMapped(info))
+    this.started = true
   }
 
   /**
@@ -184,15 +176,15 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
    */
   stop(): void {
     if (this.unsubscribe) {
-      this.unsubscribe();
-      this.unsubscribe = null;
+      this.unsubscribe()
+      this.unsubscribe = null
     }
-    this.started = false;
+    this.started = false
   }
 
   /** Whether the bridge is currently subscribed to events. */
   isRunning(): boolean {
-    return this.started;
+    return this.started
   }
 
   // ── Public query API ───────────────────────────────────────────────────
@@ -206,57 +198,57 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
    * — callers get `undefined` instead of throwing for unknown ids.
    */
   getTeamState(teamId: string): TeamState | undefined {
-    return this.states.get(teamId);
+    return this.states.get(teamId)
   }
 
   /** Snapshot of all known team states. */
   getAllTeamStates(): TeamState[] {
-    return [...this.states.values()];
+    return [...this.states.values()]
   }
 
   /** Number of teams currently tracked. */
   size(): number {
-    return this.states.size;
+    return this.states.size
   }
 
   // ── Event dispatch ─────────────────────────────────────────────────────
 
   private onMapped(info: MappedEventInfo): void {
-    if (!isOpencodeEnvelope(info.sourceEvent)) return;
-    const opencodeType = info.opencodeType;
-    if (!HANDLED_OPENCODE_TYPES.has(opencodeType)) return;
+    if (!isOpencodeEnvelope(info.sourceEvent)) return
+    const opencodeType = info.opencodeType
+    if (!HANDLED_OPENCODE_TYPES.has(opencodeType)) return
 
-    const data = (info.sourceEvent.data ?? {}) as Record<string, unknown>;
+    const data = (info.sourceEvent.data ?? {}) as Record<string, unknown>
     const sessionId =
       typeof data.sessionID === "string"
         ? data.sessionID
         : typeof info.draft.aggregateId === "string"
           ? info.draft.aggregateId
-          : "global";
+          : "global"
 
     switch (opencodeType) {
       case "session.created":
-        this.handleSessionCreated(sessionId, data);
-        break;
+        this.handleSessionCreated(sessionId, data)
+        break
       case "session.compacted":
-        this.handleSessionCompacted(sessionId, data);
-        break;
+        this.handleSessionCompacted(sessionId, data)
+        break
       case "session.error":
-        this.handleSessionError(sessionId, data);
-        break;
+        this.handleSessionError(sessionId, data)
+        break
       case "session.idle":
-        this.handleSessionIdle(sessionId, data);
-        break;
+        this.handleSessionIdle(sessionId, data)
+        break
       case "plugin.added":
-        this.handlePluginAdded(sessionId, data);
-        break;
+        this.handlePluginAdded(sessionId, data)
+        break
     }
   }
 
   // ── Per-event handlers ─────────────────────────────────────────────────
 
   private handleSessionCreated(sessionId: string, data: Record<string, unknown>): void {
-    const existing = this.states.get(sessionId);
+    const existing = this.states.get(sessionId)
     if (existing) {
       // Re-entrant create (e.g. session reused): refresh status, do not
       // reset counters — they reflect the team's history.
@@ -264,12 +256,12 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
         status: "active",
         lastSessionId: sessionId,
         lastUpdated: new Date().toISOString(),
-      });
+      })
     } else {
       // New session → new team entry. Capability discovery runs at the
       // CapabilityDiscoveryEngine level (downstream); the bridge just
       // records the existence and seeds any tags the envelope carries.
-      const inferredCapabilities = this.extractCapabilities(data);
+      const inferredCapabilities = this.extractCapabilities(data)
       this.states.set(sessionId, {
         teamId: sessionId,
         team: this.existingTeams.get(sessionId),
@@ -281,23 +273,23 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
         compactionCount: 0,
         errorCount: 0,
         completionCount: 0,
-      });
+      })
     }
 
     this.recordDerived("team:session-created", sessionId, {
       sessionId,
       capabilities: this.states.get(sessionId)?.capabilities ?? [],
-    });
-    const state = this.states.get(sessionId);
-    if (state) this.emit("team-state-changed", state);
+    })
+    const state = this.states.get(sessionId)
+    if (state) this.emit("team-state-changed", state)
   }
 
   private handleSessionCompacted(sessionId: string, data: Record<string, unknown>): void {
-    const state = this.ensureState(sessionId);
+    const state = this.ensureState(sessionId)
     this.updateState(sessionId, {
       compactionCount: state.compactionCount + 1,
       lastUpdated: new Date().toISOString(),
-    });
+    })
 
     // Surface a derived "prediction window shifted" event so a downstream
     // consumer (future TruthAudit adapter / orchestrator hook) can
@@ -309,39 +301,39 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
       sessionId,
       compactionCount: state.compactionCount + 1,
       reason: typeof data.reason === "string" ? data.reason : "compaction",
-    });
+    })
   }
 
   private handleSessionError(sessionId: string, data: Record<string, unknown>): void {
-    const state = this.ensureState(sessionId);
+    const state = this.ensureState(sessionId)
     const errorMessage =
       typeof data.error === "string"
         ? data.error
         : typeof data.message === "string"
           ? data.message
-          : "session error";
+          : "session error"
     this.updateState(sessionId, {
       status: "degraded",
       errorCount: state.errorCount + 1,
       lastError: errorMessage,
       lastUpdated: new Date().toISOString(),
-    });
+    })
 
     this.recordDerived("team:degraded", sessionId, {
       sessionId,
       errorCount: state.errorCount + 1,
       error: errorMessage,
-    });
+    })
 
-    const after = this.states.get(sessionId);
-    if (after) this.emit("team-state-changed", after);
+    const after = this.states.get(sessionId)
+    if (after) this.emit("team-state-changed", after)
 
     // Trigger replan once the error threshold is crossed.
     if (after && after.errorCount >= this.errorThreshold && this.onReplan) {
-      const reason = `errorCount ${after.errorCount} >= threshold ${this.errorThreshold}: ${errorMessage}`;
-      this.emit("replan", { teamId: sessionId, reason });
+      const reason = `errorCount ${after.errorCount} >= threshold ${this.errorThreshold}: ${errorMessage}`
+      this.emit("replan", { teamId: sessionId, reason })
       try {
-        this.onReplan({ teamId: sessionId, reason });
+        this.onReplan({ teamId: sessionId, reason })
       } catch (err) {
         // Swallow callback errors so a broken replan hook doesn't
         // poison the rest of the bridge.
@@ -350,26 +342,26 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
           `[MetaSystemOpencodeBridge] onReplan callback failed: ${
             err instanceof Error ? err.message : String(err)
           }`,
-        );
+        )
       }
     }
   }
 
   private handleSessionIdle(sessionId: string, data: Record<string, unknown>): void {
-    const state = this.ensureState(sessionId);
+    const state = this.ensureState(sessionId)
     this.updateState(sessionId, {
       status: "completed",
       completionCount: state.completionCount + 1,
       lastUpdated: new Date().toISOString(),
-    });
+    })
 
     this.recordDerived("team:task-completed", sessionId, {
       sessionId,
       completionCount: state.completionCount + 1,
       raw: data,
-    });
-    const after = this.states.get(sessionId);
-    if (after) this.emit("team-state-changed", after);
+    })
+    const after = this.states.get(sessionId)
+    if (after) this.emit("team-state-changed", after)
   }
 
   private handlePluginAdded(sessionId: string, data: Record<string, unknown>): void {
@@ -380,15 +372,12 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
     // the bridge was notified on (when present), or record the
     // capability as a derived event without mutating any team state
     // if there is no session — never fan out to all teams.
-    const pluginName = typeof data.name === "string" ? data.name : null;
-    const pluginRole = typeof data.role === "string"
-      ? data.role
-      : typeof data.agent === "string"
-        ? data.agent
-        : null;
-    if (!pluginName && !pluginRole) return;
+    const pluginName = typeof data.name === "string" ? data.name : null
+    const pluginRole =
+      typeof data.role === "string" ? data.role : typeof data.agent === "string" ? data.agent : null
+    if (!pluginName && !pluginRole) return
 
-    const tag = pluginRole ?? pluginName ?? "unknown";
+    const tag = pluginRole ?? pluginName ?? "unknown"
 
     if (!sessionId) {
       // No session to scope to — record the event but don't pollute
@@ -399,23 +388,23 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
         pluginName,
         appliedTeams: [],
         reason: "no session scope",
-      });
-      return;
+      })
+      return
     }
 
-    const state = this.ensureState(sessionId);
+    const state = this.ensureState(sessionId)
     if (!state.pluginCapabilities.includes(tag)) {
       this.updateState(sessionId, {
         pluginCapabilities: [...state.pluginCapabilities, tag],
         lastUpdated: new Date().toISOString(),
-      });
+      })
     }
 
     this.recordDerived("capability:registered", sessionId, {
       capability: tag,
       pluginName,
       appliedTeams: [sessionId],
-    });
+    })
   }
 
   // ── Internal helpers ───────────────────────────────────────────────────
@@ -427,8 +416,8 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
    * session).
    */
   private ensureState(teamId: string): TeamState {
-    const existing = this.states.get(teamId);
-    if (existing) return existing;
+    const existing = this.states.get(teamId)
+    if (existing) return existing
     const fresh: TeamState = {
       teamId,
       team: this.existingTeams.get(teamId),
@@ -440,36 +429,33 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
       compactionCount: 0,
       errorCount: 0,
       completionCount: 0,
-    };
-    this.states.set(teamId, fresh);
-    return fresh;
+    }
+    this.states.set(teamId, fresh)
+    return fresh
   }
 
   /** Apply a partial update to a team's state and refresh `lastUpdated`. */
-  private updateState(
-    teamId: string,
-    patch: Partial<Omit<TeamState, "teamId">>,
-  ): void {
-    const prev = this.states.get(teamId);
-    if (!prev) return;
-    const { lastUpdated: _ignored, ...rest } = patch as Partial<TeamState>;
+  private updateState(teamId: string, patch: Partial<Omit<TeamState, "teamId">>): void {
+    const prev = this.states.get(teamId)
+    if (!prev) return
+    const { lastUpdated: _ignored, ...rest } = patch as Partial<TeamState>
     this.states.set(teamId, {
       ...prev,
       ...rest,
       lastUpdated: new Date().toISOString(),
-    });
+    })
   }
 
   /** Extract any capability tags from a session.created payload. */
   private extractCapabilities(data: Record<string, unknown>): string[] {
-    const out: string[] = [];
-    if (typeof data.agent === "string") out.push(data.agent);
+    const out: string[] = []
+    if (typeof data.agent === "string") out.push(data.agent)
     if (Array.isArray(data.capabilities)) {
       for (const c of data.capabilities) {
-        if (typeof c === "string") out.push(c);
+        if (typeof c === "string") out.push(c)
       }
     }
-    return out;
+    return out
   }
 
   /**
@@ -478,13 +464,9 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
    * the session id as aggregateId when present, else falls back to
    * the bridge's global aggregate.
    */
-  private recordDerived(
-    type: string,
-    aggregateId: string,
-    data: Record<string, unknown>,
-  ): void {
-    const aid = aggregateId && aggregateId !== "global" ? aggregateId : "meta-system";
-    this.eventStore.append({ type, aggregateId: aid, data });
+  private recordDerived(type: string, aggregateId: string, data: Record<string, unknown>): void {
+    const aid = aggregateId && aggregateId !== "global" ? aggregateId : "meta-system"
+    this.eventStore.append({ type, aggregateId: aid, data })
   }
 }
 
@@ -494,7 +476,7 @@ export class MetaSystemOpencodeBridge extends EventEmitter {
 export const __testing = {
   HANDLED_OPENCODE_TYPES,
   isOpencodeEnvelope,
-};
+}
 
 // Silence unused-var complaint while keeping the type import live.
-export type { StoredEvent };
+export type { StoredEvent }

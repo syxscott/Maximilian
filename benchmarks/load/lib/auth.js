@@ -17,57 +17,51 @@
  * on the endpoints under test rather than the auth path.
  */
 
-import http from "k6/http";
+import http from "k6/http"
 
-const TEST_PASSWORD = "LoadTest123!";
+const TEST_PASSWORD = "LoadTest123!"
 
 export function uniqueEmail(vu, iter, prefix = "loadtest") {
-  return `${prefix}-${vu}-${iter}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@loadtest.local`;
+  return `${prefix}-${vu}-${iter}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@loadtest.local`
 }
 
 export function registerUser(baseUrl, email, password = TEST_PASSWORD) {
-  const res = http.post(
-    `${baseUrl}/api/auth/register`,
-    JSON.stringify({ email, password }),
-    { headers: { "Content-Type": "application/json" } },
-  );
+  const res = http.post(`${baseUrl}/api/auth/register`, JSON.stringify({ email, password }), {
+    headers: { "Content-Type": "application/json" },
+  })
   if (res.status !== 200 && res.status !== 201) {
-    throw new Error(`register failed: ${res.status} ${res.body}`);
+    throw new Error(`register failed: ${res.status} ${res.body}`)
   }
-  const body = JSON.parse(res.body);
+  const body = JSON.parse(res.body)
   if (!body.accessToken || !body.refreshToken) {
-    throw new Error(`register response missing tokens: ${res.body}`);
+    throw new Error(`register response missing tokens: ${res.body}`)
   }
   return {
     accessToken: body.accessToken,
     refreshToken: body.refreshToken,
     email,
     password,
-  };
+  }
 }
 
 export function login(baseUrl, email, password = TEST_PASSWORD) {
-  const res = http.post(
-    `${baseUrl}/api/auth/login`,
-    JSON.stringify({ email, password }),
-    { headers: { "Content-Type": "application/json" } },
-  );
+  const res = http.post(`${baseUrl}/api/auth/login`, JSON.stringify({ email, password }), {
+    headers: { "Content-Type": "application/json" },
+  })
   if (res.status !== 200) {
-    throw new Error(`login failed: ${res.status} ${res.body}`);
+    throw new Error(`login failed: ${res.status} ${res.body}`)
   }
-  return JSON.parse(res.body);
+  return JSON.parse(res.body)
 }
 
 export function refresh(baseUrl, refreshToken) {
-  const res = http.post(
-    `${baseUrl}/api/auth/refresh`,
-    JSON.stringify({ refreshToken }),
-    { headers: { "Content-Type": "application/json" } },
-  );
+  const res = http.post(`${baseUrl}/api/auth/refresh`, JSON.stringify({ refreshToken }), {
+    headers: { "Content-Type": "application/json" },
+  })
   if (res.status !== 200) {
-    throw new Error(`refresh failed: ${res.status} ${res.body}`);
+    throw new Error(`refresh failed: ${res.status} ${res.body}`)
   }
-  return JSON.parse(res.body);
+  return JSON.parse(res.body)
 }
 
 export function authHeaders(accessToken, extra = {}) {
@@ -77,7 +71,7 @@ export function authHeaders(accessToken, extra = {}) {
       Authorization: `Bearer ${accessToken}`,
       ...extra,
     },
-  };
+  }
 }
 
 /**
@@ -87,10 +81,10 @@ export function authHeaders(accessToken, extra = {}) {
  * auth latency.
  */
 export function provisionUsers(baseUrl, count) {
-  const users = [];
+  const users = []
   for (let i = 0; i < count; i++) {
-    const email = uniqueEmail(0, i, "load");
-    users.push(registerUser(baseUrl, email));
+    const email = uniqueEmail(0, i, "load")
+    users.push(registerUser(baseUrl, email))
   }
-  return users;
+  return users
 }

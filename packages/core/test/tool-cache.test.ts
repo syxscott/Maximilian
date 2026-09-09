@@ -29,20 +29,26 @@ class StubProvider implements Provider {
   id = "stub"
   name = "stub"
   defaultModel = "stub-1"
-  isConfigured(): boolean { return true }
+  isConfigured(): boolean {
+    return true
+  }
   /** Each chat returns a fresh tool call to keep the loop going. */
   callCount = 0
-  constructor(private readonly toolName: string, private readonly input: unknown) {
-  }
+  constructor(
+    private readonly toolName: string,
+    private readonly input: unknown,
+  ) {}
   async chat(_messages: ChatMessage[]): Promise<ChatResponse> {
     this.callCount++
     return {
-      content: '```tool\n' + JSON.stringify({ name: this.toolName, input: this.input }) + '\n```',
+      content: "```tool\n" + JSON.stringify({ name: this.toolName, input: this.input }) + "\n```",
       model: "stub-1",
       usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 },
     }
   }
-  async *stream() { throw new Error("not used") }
+  async *stream() {
+    throw new Error("not used")
+  }
 }
 
 /**
@@ -60,7 +66,10 @@ function buildRegistryWithSpy(toolName: string): {
   }
   const executeSpy = vi.fn(async (input: { x: number }) => ({
     result: `value-${input.x}`,
-    output: { structured: { doubled: input.x * 2 }, content: [{ type: "text", text: `value-${input.x}` }] },
+    output: {
+      structured: { doubled: input.x * 2 },
+      content: [{ type: "text", text: `value-${input.x}` }],
+    },
   }))
   const registry = createToolRegistry()
   // registry.register takes Record<string, AnyTool>; pass an object keyed by tool name.
@@ -151,7 +160,9 @@ describe("Tool loop cache (借鉴 crewAI cache_handler)", () => {
       id = "stub"
       name = "stub"
       defaultModel = "stub-1"
-      isConfigured(): boolean { return true }
+      isConfigured(): boolean {
+        return true
+      }
       async chat(_messages: ChatMessage[]): Promise<ChatResponse> {
         return {
           content:
@@ -161,14 +172,20 @@ describe("Tool loop cache (借鉴 crewAI cache_handler)", () => {
           usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
         }
       }
-      async *stream() { throw new Error("nope") }
+      async *stream() {
+        throw new Error("nope")
+      }
     }
     const { registry, executeSpy } = buildRegistryWithSpy("echo")
     const cache = new Map<string, unknown>()
-    await runToolLoop(new ToolEnabledProvider(new TwoToolCallStub(), registry), [{ role: "user", content: "go" }], {
-      maxRounds: 1,
-      toolCache: cache,
-    })
+    await runToolLoop(
+      new ToolEnabledProvider(new TwoToolCallStub(), registry),
+      [{ role: "user", content: "go" }],
+      {
+        maxRounds: 1,
+        toolCache: cache,
+      },
+    )
     expect(executeSpy).toHaveBeenCalledTimes(1)
     // The cache entry was written.
     expect(cache.size).toBe(1)

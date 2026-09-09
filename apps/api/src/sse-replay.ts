@@ -15,15 +15,15 @@
  * `parseLastEventId` / `encodeSseFrame` helpers work unchanged.
  */
 
-import type { Context } from "hono";
-import { getLogger } from "@max/telemetry";
-import { JsonlEventLog, type LoggedEvent } from "./event-log.js";
+import type { Context } from "hono"
+import { getLogger } from "@max/telemetry"
+import { JsonlEventLog, type LoggedEvent } from "./event-log.js"
 
-const log = getLogger("api/sse-replay");
+const log = getLogger("api/sse-replay")
 
 /** Map a LoggedEvent to the SSE wire frame: `id: <seq>\ndata: {...}\n\n`. */
 export function encodeLoggedEvent(event: LoggedEvent): string {
-  return `id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`;
+  return `id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 /**
@@ -33,12 +33,12 @@ export function encodeLoggedEvent(event: LoggedEvent): string {
  * lands (here we map it to a seq of the JSONL log, not the buffer id).
  */
 export function parseLastEventIdHeader(value: string | undefined | null): number {
-  if (!value) return 0;
-  const trimmed = value.trim();
-  if (!trimmed) return 0;
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return parsed;
+  if (!value) return 0
+  const trimmed = value.trim()
+  if (!trimmed) return 0
+  const parsed = Number.parseInt(trimmed, 10)
+  if (!Number.isFinite(parsed) || parsed < 0) return 0
+  return parsed
 }
 
 /**
@@ -56,16 +56,13 @@ export interface SseReplayOptions {
    * client as an SSE frame. Events are appended to the log *before*
    * being pushed so a reconnecting client replays them from disk.
    */
-  subscribe?: (
-    workspaceId: string,
-    onEvent: (payload: unknown) => void,
-  ) => () => void;
+  subscribe?: (workspaceId: string, onEvent: (payload: unknown) => void) => () => void
   /**
    * Hook invoked when a client connects — used to send a one-shot
    * "current state" snapshot that the client needs even if the log
    * is empty. Return null to skip.
    */
-  onConnect?: (workspaceId: string) => Promise<Record<string, unknown> | null>;
+  onConnect?: (workspaceId: string) => Promise<Record<string, unknown> | null>
 }
 
 /**
@@ -86,92 +83,92 @@ export function createSseHandler(
   opts: SseReplayOptions = {},
 ): (c: Context) => Response {
   return (c: Context): Response => {
-    const workspaceId = c.req.param("id") ?? new URL(c.req.url).searchParams.get("id") ?? "";
+    const workspaceId = c.req.param("id") ?? new URL(c.req.url).searchParams.get("id") ?? ""
     if (!workspaceId) {
       return new Response(JSON.stringify({ error: "missing id" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
-      });
+      })
     }
 
-    const log_ = registry.forWorkspace(workspaceId);
-    const encoder = new TextEncoder();
-    let unsub: (() => void) | undefined;
-    let heartbeat: ReturnType<typeof setInterval> | undefined;
-    let closed = false;
-    let lastSentSeq = 0;
+    const log_ = registry.forWorkspace(workspaceId)
+    const encoder = new TextEncoder()
+    let unsub: (() => void) | undefined
+    let heartbeat: ReturnType<typeof setInterval> | undefined
+    let closed = false
+    let lastSentSeq = 0
 
-    const lastEventId = parseLastEventIdHeader(c.req.header("Last-Event-ID"));
+    const lastEventId = parseLastEventIdHeader(c.req.header("Last-Event-ID"))
 
     const stream = new ReadableStream<Uint8Array>({
       start: async (controller) => {
         const send = (bytes: Uint8Array): boolean => {
-          if (closed) return false;
+          if (closed) return false
           try {
-            controller.enqueue(bytes);
-            return true;
+            controller.enqueue(bytes)
+            return true
           } catch {
-            return false;
+            return false
           }
-        };
+        }
         const cleanup = () => {
-          if (closed) return;
-          closed = true;
+          if (closed) return
+          closed = true
           if (heartbeat) {
-            clearInterval(heartbeat);
-            heartbeat = undefined;
+            clearInterval(heartbeat)
+            heartbeat = undefined
           }
           if (unsub) {
             try {
-              unsub();
+              unsub()
             } catch {
               /* ignore */
             }
-            unsub = undefined;
+            unsub = undefined
           }
           try {
-            controller.close();
+            controller.close()
           } catch {
             /* ignore */
           }
-        };
+        }
 
         // SSE connections get dropped silently by nginx/ALB after 60s
         // of idleness. Send a comment frame every 25s to keep the
         // connection alive.
         heartbeat = setInterval(() => {
-          if (closed) return;
-          if (!send(encoder.encode(": ping\n\n"))) cleanup();
-        }, 25_000);
+          if (closed) return
+          if (!send(encoder.encode(": ping\n\n"))) cleanup()
+        }, 25_000)
 
         // 1. Fire the onConnect hook to deliver a one-shot snapshot that
         //    the client always needs as a baseline.
         try {
           if (opts.onConnect) {
-            const snapshot = await opts.onConnect(workspaceId);
+            const snapshot = await opts.onConnect(workspaceId)
             if (snapshot) {
-              send(encoder.encode(`event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`));
+              send(encoder.encode(`event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`))
             }
           }
         } catch (err) {
-          log.warn({ err, workspaceId }, "sse onConnect failed");
+          log.warn({ err, workspaceId }, "sse onConnect failed")
         }
 
         // 2. Replay all events the client hasn't seen. We use `tail(0)`
         //    semantics — return all events with seq > lastEventId. If
         //    the log is empty (fresh workspace), this is a no-op.
         try {
-          const replayEvents = await log_.readAfter(lastEventId);
+          const replayEvents = await log_.readAfter(lastEventId)
           for (const ev of replayEvents) {
-            if (ev.seq > lastSentSeq) lastSentSeq = ev.seq;
-            const ok = send(encoder.encode(encodeLoggedEvent(ev)));
+            if (ev.seq > lastSentSeq) lastSentSeq = ev.seq
+            const ok = send(encoder.encode(encodeLoggedEvent(ev)))
             if (!ok) {
-              cleanup();
-              return;
+              cleanup()
+              return
             }
           }
         } catch (err) {
-          log.warn({ err, workspaceId }, "sse replay failed");
+          log.warn({ err, workspaceId }, "sse replay failed")
         }
 
         // 3. Stream future events via the registered subscriber.
@@ -182,13 +179,13 @@ export function createSseHandler(
             log_
               .append("event", payload)
               .then((result) => {
-                const frame = `id: ${result.seq}\ndata: ${JSON.stringify(payload)}\n\n`;
-                if (!send(encoder.encode(frame))) cleanup();
+                const frame = `id: ${result.seq}\ndata: ${JSON.stringify(payload)}\n\n`
+                if (!send(encoder.encode(frame))) cleanup()
               })
               .catch((err) => {
-                log.warn({ err, workspaceId }, "sse live-append failed");
-              });
-          });
+                log.warn({ err, workspaceId }, "sse live-append failed")
+              })
+          })
         }
 
         // 4. When no subscriber is registered, there's nothing to stream
@@ -197,36 +194,36 @@ export function createSseHandler(
         //    stream stays open for the life of the connection.
         if (!opts.subscribe) {
           const done = () => {
-            if (closed) return;
+            if (closed) return
             try {
               send(
                 encoder.encode(
                   `event: stream-end\ndata: ${JSON.stringify({ ok: true, latestSeq: log_.latestSeq() })}\n\n`,
                 ),
-              );
+              )
             } catch {
               /* controller already dead */
             }
-            cleanup();
-          };
+            cleanup()
+          }
           // Defer to the next microtask so the snapshot/replay frames are
           // flushed before the close (otherwise a fast test that cancels
           // immediately would race the in-flight enqueues).
-          queueMicrotask(done);
+          queueMicrotask(done)
         }
       },
       cancel() {
         // Client disconnected — stop pushing.
-        if (closed) return;
-        closed = true;
+        if (closed) return
+        closed = true
         if (heartbeat) {
-          clearInterval(heartbeat);
-          heartbeat = undefined;
+          clearInterval(heartbeat)
+          heartbeat = undefined
         }
-        unsub?.();
-        unsub = undefined;
+        unsub?.()
+        unsub = undefined
       },
-    });
+    })
 
     return new Response(stream as unknown as BodyInit, {
       headers: {
@@ -235,8 +232,8 @@ export function createSseHandler(
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       },
-    });
-  };
+    })
+  }
 }
 
 /**
@@ -250,49 +247,46 @@ export function createSseHandler(
  * `createSseHandler` is the owner of the log.
  */
 export interface EventBus {
-  publish(workspaceId: string, payload: unknown): void;
-  subscribe(
-    workspaceId: string,
-    onEvent: (payload: unknown) => void,
-  ): () => void;
+  publish(workspaceId: string, payload: unknown): void
+  subscribe(workspaceId: string, onEvent: (payload: unknown) => void): () => void
   /** Count of currently subscribed clients (per workspace, summed). */
-  size(): number;
+  size(): number
 }
 
 export function createEventBus(): EventBus {
-  const subs = new Map<string, Set<(payload: unknown) => void>>();
+  const subs = new Map<string, Set<(payload: unknown) => void>>()
   return {
     publish(workspaceId, payload) {
-      const set = subs.get(workspaceId);
-      if (!set) return;
+      const set = subs.get(workspaceId)
+      if (!set) return
       for (const cb of [...set]) {
         try {
-          cb(payload);
+          cb(payload)
         } catch (err) {
-          log.warn({ err, workspaceId }, "event-bus subscriber error");
+          log.warn({ err, workspaceId }, "event-bus subscriber error")
         }
       }
     },
     subscribe(workspaceId, onEvent) {
-      let set = subs.get(workspaceId);
+      let set = subs.get(workspaceId)
       if (!set) {
-        set = new Set();
-        subs.set(workspaceId, set);
+        set = new Set()
+        subs.set(workspaceId, set)
       }
-      set.add(onEvent);
+      set.add(onEvent)
       return () => {
-        const cur = subs.get(workspaceId);
-        if (!cur) return;
-        cur.delete(onEvent);
-        if (cur.size === 0) subs.delete(workspaceId);
-      };
+        const cur = subs.get(workspaceId)
+        if (!cur) return
+        cur.delete(onEvent)
+        if (cur.size === 0) subs.delete(workspaceId)
+      }
     },
     size() {
-      let n = 0;
-      for (const set of subs.values()) n += set.size;
-      return n;
+      let n = 0
+      for (const set of subs.values()) n += set.size
+      return n
     },
-  };
+  }
 }
 
 /**
@@ -302,23 +296,20 @@ export function createEventBus(): EventBus {
  * `bus.publish(workspaceId, payload)` to fan out to SSE clients.
  */
 export async function createSseReplaySubsystem(opts: {
-  rootDir: string;
-  loader?: () => Promise<typeof import("./event-log.js")>;
+  rootDir: string
+  loader?: () => Promise<typeof import("./event-log.js")>
 }) {
   // Lazy-import so we avoid a top-level dependency cycle in environments
   // where modules load each other in unusual order. Tests can pass a
   // `loader` that returns a re-exported module object; production can
   // omit it and we'll `import()` the canonical module.
-  const mod =
-    opts.loader !== undefined
-      ? await opts.loader()
-      : await import("./event-log.js");
-  const { EventLogRegistry } = mod;
-  const registry = new EventLogRegistry(opts.rootDir);
-  const bus = createEventBus();
+  const mod = opts.loader !== undefined ? await opts.loader() : await import("./event-log.js")
+  const { EventLogRegistry } = mod
+  const registry = new EventLogRegistry(opts.rootDir)
+  const bus = createEventBus()
   const handler = createSseHandler(
     { forWorkspace: (id) => registry.for(id) },
     { subscribe: (id, cb) => bus.subscribe(id, cb) },
-  );
-  return { registry, bus, handler };
+  )
+  return { registry, bus, handler }
 }

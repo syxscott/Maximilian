@@ -5,7 +5,11 @@ import katex from "katex"
 import { bundledLanguages, type BundledLanguage } from "shiki"
 import * as React from "react"
 import { createSimpleContext } from "./helper.js"
-import { getSharedHighlighter, registerCustomTheme, type ThemeRegistrationResolved } from "@pierre/diffs"
+import {
+  getSharedHighlighter,
+  registerCustomTheme,
+  type ThemeRegistrationResolved,
+} from "@pierre/diffs"
 
 export const OpenCodeTheme = {
   name: "OpenCode",
@@ -32,7 +36,13 @@ export const OpenCodeTheme = {
       },
     },
     {
-      scope: ["constant", "entity.name.constant", "variable.other.constant", "variable.language", "entity"],
+      scope: [
+        "constant",
+        "entity.name.constant",
+        "variable.other.constant",
+        "variable.language",
+        "entity",
+      ],
       settings: {
         foreground: "var(--syntax-constant)",
       },
@@ -125,7 +135,11 @@ export const OpenCodeTheme = {
       },
     },
     {
-      scope: ["support.type.object.module", "variable.other.object", "support.type.property-name.css"],
+      scope: [
+        "support.type.object.module",
+        "variable.other.object",
+        "support.type.property-name.css",
+      ],
       settings: {
         foreground: "var(--syntax-object)",
       },
@@ -448,9 +462,12 @@ export interface MarkedParser {
   parse(markdown: string): Promise<string> | string
 }
 
-const { use: useMarked, provider: MarkedProviderBase } = createSimpleContext<MarkedParser, {
-  nativeParser?: NativeMarkdownParser
-}>({
+const { use: useMarked, provider: MarkedProviderBase } = createSimpleContext<
+  MarkedParser,
+  {
+    nativeParser?: NativeMarkdownParser
+  }
+>({
   name: "Marked",
   init: (props) => {
     const jsParser = marked.use(

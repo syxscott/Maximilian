@@ -21,7 +21,7 @@ const SENSITIVE_HEADER_NAMES = new Set<string>([
   "cookie",
   "set-cookie",
   "proxy-authorization",
-]);
+])
 
 const SENSITIVE_FIELD_NAMES = new Set<string>([
   "password",
@@ -39,7 +39,7 @@ const SENSITIVE_FIELD_NAMES = new Set<string>([
   "creditcard",
   "credit_card",
   "ssn",
-]);
+])
 
 const SENSITIVE_PATTERNS: ReadonlyArray<RegExp> = [
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
@@ -52,50 +52,50 @@ const SENSITIVE_PATTERNS: ReadonlyArray<RegExp> = [
   /Bearer\s+[A-Za-z0-9_\-.=]{20,}/gi,
   /\b\d{3}-\d{2}-\d{4}\b/g,
   /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
-];
+]
 
-const REPLACEMENT = "[REDACTED]";
-const MASKED_HEADER = "***";
-const MASKED_FIELD = "***REDACTED***";
+const REPLACEMENT = "[REDACTED]"
+const MASKED_HEADER = "***"
+const MASKED_FIELD = "***REDACTED***"
 
 export function maskHeaders(headers: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(headers)) {
     if (SENSITIVE_HEADER_NAMES.has(k.toLowerCase())) {
-      out[k] = MASKED_HEADER;
+      out[k] = MASKED_HEADER
     } else {
-      out[k] = maskString(v);
+      out[k] = maskString(v)
     }
   }
-  return out;
+  return out
 }
 
 export function maskBody(body: unknown): unknown {
-  return walk(body);
+  return walk(body)
 }
 
 export function maskString(s: string): string {
-  let out = s;
+  let out = s
   for (const re of SENSITIVE_PATTERNS) {
-    re.lastIndex = 0;
-    out = out.replace(re, REPLACEMENT);
+    re.lastIndex = 0
+    out = out.replace(re, REPLACEMENT)
   }
-  return out;
+  return out
 }
 
 function walk(value: unknown): unknown {
-  if (typeof value === "string") return maskString(value);
-  if (Array.isArray(value)) return value.map((v) => walk(v));
+  if (typeof value === "string") return maskString(value)
+  if (Array.isArray(value)) return value.map((v) => walk(v))
   if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
+    const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (SENSITIVE_FIELD_NAMES.has(k.toLowerCase())) {
-        out[k] = MASKED_FIELD;
+        out[k] = MASKED_FIELD
       } else {
-        out[k] = walk(v);
+        out[k] = walk(v)
       }
     }
-    return out;
+    return out
   }
-  return value;
+  return value
 }

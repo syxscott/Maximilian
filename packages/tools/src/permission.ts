@@ -146,14 +146,22 @@ export function matchPattern(pattern: string, value: string): boolean {
 
 const DANGEROUS_PATTERNS = [
   // Recursive remove, format, dd (disk write)
-  /^rm\s+-rf/i, /^dd\s+/i, /^mkfs/i, /^fdisk/i,
+  /^rm\s+-rf/i,
+  /^dd\s+/i,
+  /^mkfs/i,
+  /^fdisk/i,
   // Pipe to shell (remote code execution via curl/wget)
-  /^curl\s+.*\|\s*sh/i, /^wget\s+.*\|\s*sh/i,
-  /^curl\s+.*bash/i, /^wget\s+.*bash/i,
+  /^curl\s+.*\|\s*sh/i,
+  /^wget\s+.*\|\s*sh/i,
+  /^curl\s+.*bash/i,
+  /^wget\s+.*bash/i,
   // Netcat reverse shell
-  /^nc\s+-e/i, /^nc\s+.*-c\s+/i, /^ncat\s+/i,
+  /^nc\s+-e/i,
+  /^nc\s+.*-c\s+/i,
+  /^ncat\s+/i,
   // Interactive bash
-  /^bash\s+-i/i, /^python\d*\s+-i/i,
+  /^bash\s+-i/i,
+  /^python\d*\s+-i/i,
   // Fork bomb patterns
   /^\s*:()\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*:\s*/i,
   // base64 decode and pipe to shell
@@ -161,8 +169,9 @@ const DANGEROUS_PATTERNS = [
   // eval with user input
   /^eval\s+\$\(/i,
   // File overwrite via redirect with sudo
-  /^sudo\s+.*>\s*\//i, /^sudo\s+.*\|\s*sh/i,
-];
+  /^sudo\s+.*>\s*\//i,
+  /^sudo\s+.*\|\s*sh/i,
+]
 
 export function validateBashCommand(command: string): string {
   // Split by common command separators to check all parts
@@ -316,9 +325,7 @@ export function deriveSubagentScope(
   return {
     parentId: parent.parentId,
     allowedTools: narrow.allowedTools ?? parent.allowedTools,
-    forbiddenPaths: [
-      ...new Set([...parent.forbiddenPaths, ...(narrow.forbiddenPaths ?? [])]),
-    ],
+    forbiddenPaths: [...new Set([...parent.forbiddenPaths, ...(narrow.forbiddenPaths ?? [])])],
     requireApproval: narrow.requireApproval ?? parent.requireApproval,
   }
 }

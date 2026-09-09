@@ -2,7 +2,9 @@ import * as React from "react"
 import * as AccordionPrimitive from "@radix-ui/react-accordion"
 import { cn } from "../lib/utils.js"
 
-export interface StickyAccordionHeaderProps extends React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Header> {
+export interface StickyAccordionHeaderProps extends React.ComponentPropsWithoutRef<
+  typeof AccordionPrimitive.Header
+> {
   className?: string
 }
 

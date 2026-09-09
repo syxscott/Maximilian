@@ -61,7 +61,8 @@ function parseUnifiedDiff(text: string): DiffLine[] | null {
   if (!text) return null
   const lines = text.split(/\r?\n/)
   // Look for a unified-diff signature: a "--- " line followed by a "+++ " line.
-  const hasOldNew = lines.some((l) => l.startsWith("--- ")) && lines.some((l) => l.startsWith("+++ "))
+  const hasOldNew =
+    lines.some((l) => l.startsWith("--- ")) && lines.some((l) => l.startsWith("+++ "))
   if (!hasOldNew) return null
   const out: DiffLine[] = []
   let oldNumber = 0
@@ -128,14 +129,15 @@ function diffCaptionFor(text: string): string | undefined {
   const plus = text.split(/\r?\n/).find((l) => l.startsWith("+++ ") || l.startsWith("--- "))
   if (!plus) return undefined
   // Strip the leading marker and any "a/" / "b/" prefixes some diff tools add.
-  return plus.replace(/^(\+\+\+|---) /, "").replace(/^[ab]\//, "").trim() || undefined
+  return (
+    plus
+      .replace(/^(\+\+\+|---) /, "")
+      .replace(/^[ab]\//, "")
+      .trim() || undefined
+  )
 }
 
-export function OutputPanel({
-  workspaceId,
-  workspace,
-  events,
-}: OutputPanelProps) {
+export function OutputPanel({ workspaceId, workspace, events }: OutputPanelProps) {
   useLocale()
   const results = (workspace?.results ?? []).filter((r) => r.agentRole !== "review")
   const [openIdx, setOpenIdx] = useState<number | null>(null)
@@ -246,7 +248,11 @@ export function OutputPanel({
               </div>
               {inlineDiff && (
                 <div className="mt-3">
-                  <DiffViewer lines={inlineDiff} mode="unified" caption={diffCaptionFor(r.output)} />
+                  <DiffViewer
+                    lines={inlineDiff}
+                    mode="unified"
+                    caption={diffCaptionFor(r.output)}
+                  />
                 </div>
               )}
             </TabsContent>

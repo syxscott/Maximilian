@@ -19,7 +19,9 @@ export function DialogLanguageList(props: DialogLanguageListProps) {
   const sorted = useMemo(
     () =>
       [...listLocales()].sort((a, b) =>
-        localeDisplayName(a).localeCompare(localeDisplayName(b), undefined, { sensitivity: "base" }),
+        localeDisplayName(a).localeCompare(localeDisplayName(b), undefined, {
+          sensitivity: "base",
+        }),
       ),
     [],
   )

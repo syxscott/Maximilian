@@ -55,11 +55,23 @@ const STATUS_VARIANT: Record<
   OpencodeSession["status"],
   { variant: "default" | "secondary" | "destructive" | "outline"; className: string; label: string }
 > = {
-  busy: { variant: "default", className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30", label: "Busy" },
+  busy: {
+    variant: "default",
+    className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30",
+    label: "Busy",
+  },
   idle: { variant: "secondary", className: "bg-muted text-muted-foreground", label: "Idle" },
-  retry: { variant: "outline", className: "bg-amber-500/15 text-amber-700 border-amber-500/30", label: "Retry" },
+  retry: {
+    variant: "outline",
+    className: "bg-amber-500/15 text-amber-700 border-amber-500/30",
+    label: "Retry",
+  },
   error: { variant: "destructive", className: "", label: "Error" },
-  compacting: { variant: "outline", className: "bg-sky-500/15 text-sky-700 border-sky-500/30", label: "Compacting" },
+  compacting: {
+    variant: "outline",
+    className: "bg-sky-500/15 text-sky-700 border-sky-500/30",
+    label: "Compacting",
+  },
   unknown: { variant: "outline", className: "", label: "Unknown" },
 }
 
@@ -187,11 +199,7 @@ function ExpandedRow({ detail, loading, error }: ExpandedRowProps) {
     )
   }
   if (!detail || detail.recent.length === 0) {
-    return (
-      <div className="px-9 py-3 text-xs text-muted-foreground">
-        No events yet.
-      </div>
-    )
+    return <div className="px-9 py-3 text-xs text-muted-foreground">No events yet.</div>
   }
   return (
     <ul className="px-9 py-2 space-y-1" data-testid="opencode-session-events">
@@ -213,9 +221,7 @@ function ExpandedRow({ detail, loading, error }: ExpandedRowProps) {
               <span className="text-muted-foreground truncate flex-1" title={summary}>
                 {summary}
               </span>
-              <span className="text-muted-foreground/60 tabular-nums shrink-0">
-                #{ev.seq}
-              </span>
+              <span className="text-muted-foreground/60 tabular-nums shrink-0">#{ev.seq}</span>
             </li>
           )
         })}
@@ -302,9 +308,7 @@ export function OpencodeSessionList({
         ) : error && sessions.length === 0 ? (
           <div className="text-xs text-destructive py-2">{error.message}</div>
         ) : sessions.length === 0 ? (
-          <div className="text-xs text-muted-foreground py-2">
-            {t("opencode.sessions.empty")}
-          </div>
+          <div className="text-xs text-muted-foreground py-2">{t("opencode.sessions.empty")}</div>
         ) : (
           <div className="space-y-1">
             {sessions.map((s) => (

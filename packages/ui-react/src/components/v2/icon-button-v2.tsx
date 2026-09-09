@@ -2,8 +2,10 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cn } from "../../lib/utils.js"
 
-export interface IconButtonV2Props
-  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
+export interface IconButtonV2Props extends Omit<
+  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  "children"
+> {
   size?: "small" | "normal" | "large"
   variant?: "neutral" | "contrast" | "ghost" | "ghost-muted"
   state?: "rest" | "hover" | "pressed"

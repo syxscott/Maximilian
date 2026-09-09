@@ -1,9 +1,4 @@
-import {
-  type ReactNode,
-  type HTMLAttributes,
-  useState,
-  useCallback,
-} from "react"
+import { type ReactNode, type HTMLAttributes, useState, useCallback } from "react"
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
 import { cn } from "../lib/utils.js"
 import { DiffChanges, type DiffChangesSingle } from "./diff-changes-v2.js"
@@ -46,8 +41,10 @@ function isTriggerTitle(val: unknown): val is BasicToolV2TriggerTitle {
   )
 }
 
-export interface BasicToolV2Props
-  extends Omit<HTMLAttributes<HTMLDivElement>, "children" | "title"> {
+export interface BasicToolV2Props extends Omit<
+  HTMLAttributes<HTMLDivElement>,
+  "children" | "title"
+> {
   trigger: BasicToolV2TriggerTitle | ReactNode
   children?: ReactNode
   status?: string
@@ -95,17 +92,17 @@ export function BasicToolV2({
       className={cn(className)}
       {...(rest as Record<string, unknown>)}
     >
-      <CollapsiblePrimitive.Trigger
-        asChild
-        disabled={!canExpand}
-      >
+      <CollapsiblePrimitive.Trigger asChild disabled={!canExpand}>
         <div
           role="button"
           tabIndex={0}
           data-slot="basic-tool-v2-trigger"
           className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/50 data-[disabled]:cursor-default data-[disabled]:hover:bg-transparent"
         >
-          <div data-slot="basic-tool-v2-labels" className="flex flex-1 flex-wrap items-center gap-1.5 text-sm">
+          <div
+            data-slot="basic-tool-v2-labels"
+            className="flex flex-1 flex-wrap items-center gap-1.5 text-sm"
+          >
             {isTriggerTitle(trigger) ? (
               <>
                 <span data-slot="basic-tool-v2-title" className="font-medium">
@@ -113,7 +110,11 @@ export function BasicToolV2({
                 </span>
                 {!pending && trigger.subtitle && (
                   <>
-                    <span data-slot="basic-tool-v2-sep" aria-hidden="true" className="text-muted-foreground">
+                    <span
+                      data-slot="basic-tool-v2-sep"
+                      aria-hidden="true"
+                      className="text-muted-foreground"
+                    >
                       ·
                     </span>
                     <span
@@ -144,7 +145,9 @@ export function BasicToolV2({
                     <DiffChanges changes={trigger.changes} />
                   </span>
                 )}
-                {!pending && trigger.action && <span data-slot="basic-tool-v2-action">{trigger.action}</span>}
+                {!pending && trigger.action && (
+                  <span data-slot="basic-tool-v2-action">{trigger.action}</span>
+                )}
               </>
             ) : (
               trigger

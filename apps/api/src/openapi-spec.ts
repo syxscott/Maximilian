@@ -15,8 +15,7 @@ export const openApiSpec = {
   info: {
     title: "Maximilian API",
     version: "0.1.0",
-    description:
-      "Meta-agent OS API. Submit user requests, observe execution, manage governance.",
+    description: "Meta-agent OS API. Submit user requests, observe execution, manage governance.",
   },
   servers: [
     { url: "/api", description: "Current host (no version prefix)" },
@@ -146,7 +145,8 @@ export const openApiSpec = {
     "/health": {
       get: {
         summary: "Health check",
-        description: "Returns backend health, providers, and module status. Used for liveness probes.",
+        description:
+          "Returns backend health, providers, and module status. Used for liveness probes.",
         responses: {
           "200": {
             description: "Healthy or degraded (still returns 200 with status field)",
@@ -158,7 +158,8 @@ export const openApiSpec = {
     "/ready": {
       get: {
         summary: "Readiness check",
-        description: "Returns 200 only when all critical dependencies (DB, Redis) are reachable. Used for K8s readiness probes.",
+        description:
+          "Returns 200 only when all critical dependencies (DB, Redis) are reachable. Used for K8s readiness probes.",
         responses: {
           "200": {
             description: "Ready",
@@ -181,7 +182,9 @@ export const openApiSpec = {
               "application/json": {
                 schema: {
                   type: "object",
-                  properties: { providers: { type: "array", items: { $ref: "#/components/schemas/Provider" } } },
+                  properties: {
+                    providers: { type: "array", items: { $ref: "#/components/schemas/Provider" } },
+                  },
                 },
               },
             },
@@ -195,14 +198,21 @@ export const openApiSpec = {
         description: "Creates a user (and a tenant if tenantName provided). Returns JWT tokens.",
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/AuthRegister" } } },
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/AuthRegister" } },
+          },
         },
         responses: {
           "200": {
             description: "Registered",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/AuthTokens" } } },
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/AuthTokens" } },
+            },
           },
-          "400": { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          "400": {
+            description: "Validation error",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
           "409": { description: "Email already registered" },
         },
       },
@@ -217,7 +227,9 @@ export const openApiSpec = {
         responses: {
           "200": {
             description: "OK",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/AuthTokens" } } },
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/AuthTokens" } },
+            },
           },
           "401": { description: "Invalid credentials" },
         },
@@ -241,7 +253,9 @@ export const openApiSpec = {
         responses: {
           "200": {
             description: "OK",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/AuthTokens" } } },
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/AuthTokens" } },
+            },
           },
           "401": { description: "Invalid refresh token" },
         },
@@ -260,7 +274,8 @@ export const openApiSpec = {
     "/chat": {
       post: {
         summary: "Submit user request",
-        description: "Commander plans tasks and dispatches agents. Returns the workspace ID for polling.",
+        description:
+          "Commander plans tasks and dispatches agents. Returns the workspace ID for polling.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -269,7 +284,9 @@ export const openApiSpec = {
         responses: {
           "200": {
             description: "Workspace created",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/ChatResponse" } } },
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ChatResponse" } },
+            },
           },
           "401": { description: "Unauthenticated" },
         },
@@ -332,7 +349,12 @@ export const openApiSpec = {
             description: "OK",
             content: {
               "application/json": {
-                schema: { type: "object", properties: { tenants: { type: "array", items: { $ref: "#/components/schemas/Tenant" } } } },
+                schema: {
+                  type: "object",
+                  properties: {
+                    tenants: { type: "array", items: { $ref: "#/components/schemas/Tenant" } },
+                  },
+                },
               },
             },
           },
@@ -342,13 +364,28 @@ export const openApiSpec = {
       post: {
         summary: "Create tenant (admin only)",
         security: [{ bearerAuth: [] }],
-        responses: { "200": { description: "Created" }, "403": { description: "Admin role required" } },
+        responses: {
+          "200": { description: "Created" },
+          "403": { description: "Admin role required" },
+        },
       },
     },
     "/tenants/{id}": {
-      get: { summary: "Get tenant", security: [{ bearerAuth: [] }], responses: { "200": { description: "OK" } } },
-      put: { summary: "Update tenant", security: [{ bearerAuth: [] }], responses: { "200": { description: "OK" } } },
-      delete: { summary: "Delete tenant", security: [{ bearerAuth: [] }], responses: { "200": { description: "OK" } } },
+      get: {
+        summary: "Get tenant",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
+      put: {
+        summary: "Update tenant",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
+      delete: {
+        summary: "Delete tenant",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
     },
     "/gov/pending": {
       get: {
@@ -359,7 +396,12 @@ export const openApiSpec = {
             description: "OK",
             content: {
               "application/json": {
-                schema: { type: "object", properties: { proposals: { type: "array", items: { $ref: "#/components/schemas/Proposal" } } } },
+                schema: {
+                  type: "object",
+                  properties: {
+                    proposals: { type: "array", items: { $ref: "#/components/schemas/Proposal" } },
+                  },
+                },
               },
             },
           },
@@ -375,19 +417,39 @@ export const openApiSpec = {
       },
     },
     "/evolution/metrics": {
-      get: { summary: "List evolution metrics", security: [{ bearerAuth: [] }], responses: { "200": { description: "OK" } } },
+      get: {
+        summary: "List evolution metrics",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
     },
     "/evolution/agents": {
-      get: { summary: "List agent manifests", security: [{ bearerAuth: [] }], responses: { "200": { description: "OK" } } },
+      get: {
+        summary: "List agent manifests",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
     },
     "/executions": {
-      get: { summary: "List execution traces", security: [{ bearerAuth: [] }], responses: { "200": { description: "OK" } } },
+      get: {
+        summary: "List execution traces",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
     },
     "/executions/{id}": {
-      get: { summary: "Get execution trace", security: [{ bearerAuth: [] }], responses: { "200": { description: "OK" } } },
+      get: {
+        summary: "Get execution trace",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
     },
     "/meta/capabilities": {
-      get: { summary: "List capabilities", security: [{ bearerAuth: [] }], responses: { "200": { description: "OK" } } },
+      get: {
+        summary: "List capabilities",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
     },
   },
-} as const;
+} as const

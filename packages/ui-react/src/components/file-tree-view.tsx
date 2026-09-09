@@ -15,8 +15,7 @@ export interface FileTreeNode {
   meta?: { added?: number; deleted?: number; modified?: number }
 }
 
-export interface FileTreeViewProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onSelect"> {
+export interface FileTreeViewProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onSelect"> {
   nodes: FileTreeNode[]
   /** Currently selected path. */
   value?: string
@@ -114,9 +113,7 @@ const FileTreeViewRow = React.memo(function FileTreeViewRow({
           <File className="h-4 w-4" />
         )}
       </span>
-      <span className="truncate">
-        {renderLabel ? renderLabel(node) : node.name}
-      </span>
+      <span className="truncate">{renderLabel ? renderLabel(node) : node.name}</span>
       {node.meta ? (
         <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
           {node.meta.added ? <span className="text-green-600">+{node.meta.added}</span> : null}
@@ -153,10 +150,7 @@ export const FileTreeView = React.forwardRef<HTMLDivElement, FileTreeViewProps>(
       [onSelect],
     )
 
-    const rows = React.useMemo<FlatRow[]>(
-      () => flatten(nodes, expanded, 0, []),
-      [nodes, expanded],
-    )
+    const rows = React.useMemo<FlatRow[]>(() => flatten(nodes, expanded, 0, []), [nodes, expanded])
 
     return (
       <div

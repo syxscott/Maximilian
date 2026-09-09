@@ -73,10 +73,7 @@ export function DialogConsoleOrg() {
 
   const showError = Boolean(loadError)
 
-  const current = useMemo(
-    () => orgs?.find((item) => item.active),
-    [orgs],
-  )
+  const current = useMemo(() => orgs?.find((item) => item.active), [orgs])
 
   const options: Option[] = useMemo(() => {
     if (showError) return []

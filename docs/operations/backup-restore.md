@@ -5,12 +5,12 @@ restoring the PostgreSQL state that Maximilian depends on.
 
 ## What gets backed up
 
-| Component | What | Why | Backup method |
-|---|---|---|---|
-| **PostgreSQL** | All schemas, including: users, workspaces, executions, metrics, evolution_events, org_events, telemetry, pending_proposals | Source of truth for everything | `pg_dump` |
-| **Redis** (if `TASK_QUEUE_ENABLED=true`) | BullMQ job state — active / waiting / completed / failed | Required to resume in-flight tasks | `BGSAVE` + `COPY` |
-| **Disk artifacts** | Workspace files, agent memory snapshots, execution logs | Filesystem-based fallback for many stores | `tar` snapshot |
-| **Configuration** | `.env`, `config.json`, `docker-compose.yml`, K8s manifests | Reproducibility | Version control |
+| Component                                | What                                                                                                                       | Why                                       | Backup method     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ----------------- |
+| **PostgreSQL**                           | All schemas, including: users, workspaces, executions, metrics, evolution_events, org_events, telemetry, pending_proposals | Source of truth for everything            | `pg_dump`         |
+| **Redis** (if `TASK_QUEUE_ENABLED=true`) | BullMQ job state — active / waiting / completed / failed                                                                   | Required to resume in-flight tasks        | `BGSAVE` + `COPY` |
+| **Disk artifacts**                       | Workspace files, agent memory snapshots, execution logs                                                                    | Filesystem-based fallback for many stores | `tar` snapshot    |
+| **Configuration**                        | `.env`, `config.json`, `docker-compose.yml`, K8s manifests                                                                 | Reproducibility                           | Version control   |
 
 ## Daily backup (recommended)
 

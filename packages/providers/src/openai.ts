@@ -5,15 +5,12 @@
  * class via the registry / preset pipeline.
  */
 
-import {
-  OpenAIChatProvider,
-  type OpenAIChatConfig,
-} from "./formats/openai-chat.js";
+import { OpenAIChatProvider, type OpenAIChatConfig } from "./formats/openai-chat.js"
 
 export interface OpenAIConfig {
-  apiKey: string;
-  baseURL?: string;
-  defaultModel?: string;
+  apiKey: string
+  baseURL?: string
+  defaultModel?: string
 }
 
 export class OpenAIProvider extends OpenAIChatProvider {
@@ -24,6 +21,6 @@ export class OpenAIProvider extends OpenAIChatProvider {
       apiKey: config.apiKey,
       baseURL: config.baseURL ?? "https://api.openai.com/v1",
       defaultModel: config.defaultModel ?? "gpt-4o-mini",
-    } satisfies OpenAIChatConfig);
+    } satisfies OpenAIChatConfig)
   }
 }

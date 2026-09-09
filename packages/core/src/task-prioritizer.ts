@@ -12,19 +12,19 @@
  * This lets the planner adapt dynamically rather than following a static order.
  */
 
-import type { Provider } from "@max/providers";
-import type { ChatMessage } from "@max/providers";
-import type { Task, TaskPriority } from "./types.js";
-import type { Result } from "./types.js";
+import type { Provider } from "@max/providers"
+import type { ChatMessage } from "@max/providers"
+import type { Task, TaskPriority } from "./types.js"
+import type { Result } from "./types.js"
 
 /**
  * Options for constructing a TaskPrioritizer.
  */
 export interface TaskPrioritizerOptions {
   /** LLM provider to use for re-ranking. */
-  llm: Provider;
+  llm: Provider
   /** Model to use (default: provider default). */
-  model?: string;
+  model?: string
 }
 
 /**
@@ -41,12 +41,12 @@ function buildReRankPrompt(
       (t, i) =>
         `${i + 1}. [${t.agentRole}] ${t.description}${t.dependsOn.length > 0 ? ` (depends on: ${t.dependsOn.join(", ")})` : ""}`,
     )
-    .join("\n");
+    .join("\n")
 
   const resultSummary = context.recentResults
     .slice(-5)
     .map((r) => `[${r.agentRole}] ${r.output.slice(0, 150)}`)
-    .join("\n");
+    .join("\n")
 
   return `You are a task prioritization agent. Given the overall goal and recent execution results,
 re-order the pending tasks to maximize progress toward the goal.
@@ -71,7 +71,7 @@ Rules:
 - If a task's scope is wrong or too broad, use newScope to tighten it
 - Preserve dependency constraints (don't move a task before its dependency)
 - Respond with ALL tasks, not just the high-priority ones
-- Respond with valid JSON only, no markdown or explanation`;
+- Respond with valid JSON only, no markdown or explanation`
 }
 
 /**
@@ -93,42 +93,42 @@ export class TaskPrioritizer {
     tasks: Task[],
     context: { recentResults: Result[]; goal: string },
   ): Promise<TaskPriority[]> {
-    const prompt = buildReRankPrompt(tasks, context);
+    const prompt = buildReRankPrompt(tasks, context)
 
-    const messages: ChatMessage[] = [{ role: "user", content: prompt }];
+    const messages: ChatMessage[] = [{ role: "user", content: prompt }]
 
     const response = await this.opts.llm.chat(messages, {
       model: this.opts.model,
       temperature: 0.3, // slightly creative for re-scoping
-    });
+    })
 
-    let parsed: TaskPriority[] | null;
+    let parsed: TaskPriority[] | null
     try {
-      const jsonMatch = response.content.match(/\[[\s\S]*\]/);
-      const raw = jsonMatch ? jsonMatch[0]! : response.content;
-      const value = JSON.parse(raw);
-      parsed = Array.isArray(value) ? value : null;
+      const jsonMatch = response.content.match(/\[[\s\S]*\]/)
+      const raw = jsonMatch ? jsonMatch[0]! : response.content
+      const value = JSON.parse(raw)
+      parsed = Array.isArray(value) ? value : null
     } catch {
-      parsed = null;
+      parsed = null
     }
     if (!parsed) {
       // Fallback: return tasks in their original order with medium priority
-      parsed = tasks.map((t) => ({ taskId: t.id, priority: "medium" as const }));
+      parsed = tasks.map((t) => ({ taskId: t.id, priority: "medium" as const }))
     }
 
     // Validate: ensure all task ids are present
-    const taskIds = new Set(tasks.map((t) => t.id));
-    const valid = parsed.filter((p) => taskIds.has(p.taskId));
+    const taskIds = new Set(tasks.map((t) => t.id))
+    const valid = parsed.filter((p) => taskIds.has(p.taskId))
     if (valid.length !== tasks.length) {
       // Some ids didn't match — supplement with medium-priority for missing ones
-      const covered = new Set(valid.map((p) => p.taskId));
+      const covered = new Set(valid.map((p) => p.taskId))
       for (const t of tasks) {
         if (!covered.has(t.id)) {
-          valid.push({ taskId: t.id, priority: "medium" });
+          valid.push({ taskId: t.id, priority: "medium" })
         }
       }
     }
 
-    return valid;
+    return valid
   }
 }

@@ -111,10 +111,11 @@ export function DialogStatus(props: DialogStatusProps) {
           <Text>{mcpEntries.length} MCP Servers</Text>
           {mcpEntries.map(([key, item]) => (
             <Box key={key} flexDirection="row" gap={1}>
-              <Text color={STATUS_COLOR[item.status]} flexShrink={0}>•</Text>
+              <Text color={STATUS_COLOR[item.status]} flexShrink={0}>
+                •
+              </Text>
               <Text wrap="word">
-                <Text bold>{key}</Text>{" "}
-                <Text dimColor>{mcpStatusText(key, item)}</Text>
+                <Text bold>{key}</Text> <Text dimColor>{mcpStatusText(key, item)}</Text>
               </Text>
             </Box>
           ))}
@@ -128,7 +129,9 @@ export function DialogStatus(props: DialogStatusProps) {
           <Text>{props.lsps.length} LSP Servers</Text>
           {props.lsps.map((item) => (
             <Box key={item.id} flexDirection="row" gap={1}>
-              <Text color={STATUS_COLOR[item.status]} flexShrink={0}>•</Text>
+              <Text color={STATUS_COLOR[item.status]} flexShrink={0}>
+                •
+              </Text>
               <Text wrap="word">
                 <Text bold>{item.id}</Text> <Text dimColor>{item.root}</Text>
               </Text>
@@ -142,8 +145,12 @@ export function DialogStatus(props: DialogStatusProps) {
           <Text>{enabledFormatters.length} Formatters</Text>
           {enabledFormatters.map((item) => (
             <Box key={item.name} flexDirection="row" gap={1}>
-              <Text color="green" flexShrink={0}>•</Text>
-              <Text wrap="word" bold>{item.name}</Text>
+              <Text color="green" flexShrink={0}>
+                •
+              </Text>
+              <Text wrap="word" bold>
+                {item.name}
+              </Text>
             </Box>
           ))}
         </Box>
@@ -156,7 +163,9 @@ export function DialogStatus(props: DialogStatusProps) {
           <Text>{plugins.length} Plugins</Text>
           {plugins.map((item) => (
             <Box key={item.name} flexDirection="row" gap={1}>
-              <Text color="green" flexShrink={0}>•</Text>
+              <Text color="green" flexShrink={0}>
+                •
+              </Text>
               <Text wrap="word">
                 <Text bold>{item.name}</Text>
                 {item.version && <Text dimColor> @{item.version}</Text>}

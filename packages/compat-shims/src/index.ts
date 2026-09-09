@@ -20,8 +20,8 @@
  * tree-shake: `import { useHonoApp } from "@max/compat-shims/hono"`.
  */
 
-export * from "./version.js";
-export * from "./ink.js";
-export * from "./drizzle.js";
-export * from "./hono.js";
-export * from "./llm.js";
+export * from "./version.js"
+export * from "./ink.js"
+export * from "./drizzle.js"
+export * from "./hono.js"
+export * from "./llm.js"

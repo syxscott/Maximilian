@@ -63,8 +63,7 @@ export class OpencodeExecutor {
     this.client = new OpencodeHttpClient({ baseUrl: opts.baseUrl })
     this.usePool = opts.poolSessions ?? true
     this.pool = new SessionPool(this.client)
-    this.sessionTitle =
-      opts.sessionTitle ?? ((t) => `max-${t.id.slice(0, 8)}`)
+    this.sessionTitle = opts.sessionTitle ?? ((t) => `max-${t.id.slice(0, 8)}`)
   }
 
   /**
@@ -80,11 +79,7 @@ export class OpencodeExecutor {
    *               Without this, an aborted task would still be running
    *               in opencode until natural completion, burning tokens.
    */
-  async executeTask(
-    task: Task,
-    workspaceId: string,
-    signal?: AbortSignal,
-  ): Promise<ExecuteResult> {
+  async executeTask(task: Task, workspaceId: string, signal?: AbortSignal): Promise<ExecuteResult> {
     const t0 = Date.now()
     // 1. 取得/创建 opencode session
     const poolSizeBefore = this.usePool ? this.pool.size() : 0
@@ -100,9 +95,7 @@ export class OpencodeExecutor {
     // pool's size grew (a fresh session was created server-side) or
     // when the pool is disabled entirely. Matches the SLO target:
     //   opencode_sessions_leaked_total / opencode_sessions_created_total < 0.0001
-    const wasCreatedThisCall = !this.usePool
-      ? true
-      : (this.pool.size() > poolSizeBefore)
+    const wasCreatedThisCall = !this.usePool ? true : this.pool.size() > poolSizeBefore
     if (wasCreatedThisCall) {
       opencodeSessionsCreatedTotal.inc()
     }
@@ -144,7 +137,7 @@ export class OpencodeExecutor {
 
     // 4. 提取 assistant 文本作为 Maximilian result
     const outputText = (res.parts ?? [])
-      .map((p: any) => (typeof p?.text === "string" ? p.text : p?.text?.text ?? ""))
+      .map((p: any) => (typeof p?.text === "string" ? p.text : (p?.text?.text ?? "")))
       .filter(Boolean)
       .join("\n")
       .trim()
@@ -167,9 +160,7 @@ export class OpencodeExecutor {
       metadata: {
         sessionId,
         executor: "opencode",
-        ...(outputText.length === 0
-          ? { error: "opencode returned no text parts" }
-          : {}),
+        ...(outputText.length === 0 ? { error: "opencode returned no text parts" } : {}),
       },
       createdAt: new Date().toISOString(),
       durationMs: Date.now() - t0,

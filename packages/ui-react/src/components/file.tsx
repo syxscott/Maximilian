@@ -159,7 +159,11 @@ export const useFileComponent = (): FileComponent => {
             <pre className="text-12-regular text-text-weak whitespace-pre-wrap">
               {props.mode === "text"
                 ? String((props as TextFileProps).file?.contents ?? "")
-                : JSON.stringify((props as DiffFileProps).fileDiff ?? (props as DiffFileProps).before, null, 2)}
+                : JSON.stringify(
+                    (props as DiffFileProps).fileDiff ?? (props as DiffFileProps).before,
+                    null,
+                    2,
+                  )}
             </pre>
           )}
         />
@@ -173,17 +177,11 @@ export const File: <T = unknown>(props: FileProps<T>) => React.ReactElement = (p
   const FileComp = useFileComponent()
   if (props.mode === "text") {
     return (
-      <FileMedia
-        media={props.media}
-        fallback={() => <FileComp {...props} />}
-      />
+      <FileMedia media={props.media} fallback={() => <FileComp {...props} />} />
     ) as React.ReactElement
   }
   return (
-    <FileMedia
-      media={props.media}
-      fallback={() => <FileComp {...props} />}
-    />
+    <FileMedia media={props.media} fallback={() => <FileComp {...props} />} />
   ) as React.ReactElement
 }
 

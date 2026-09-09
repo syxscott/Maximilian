@@ -21,14 +21,14 @@
 
 ## Test Summary
 
-| Layer | Count | Status |
-|-------|-------|--------|
-| Unit (meta-system) | 71 | ✅ pass |
-| Integration (apps/api) | 10 | ✅ pass |
-| E2E (apps/api) | 7 | ✅ pass |
-| **Phase 6 total** | **88** | **✅** |
-| Phase 5 (autonomy) | 37 | ✅ no regression |
-| Phase 4 (DAGS) | 24 | ✅ no regression |
+| Layer                  | Count  | Status           |
+| ---------------------- | ------ | ---------------- |
+| Unit (meta-system)     | 71     | ✅ pass          |
+| Integration (apps/api) | 10     | ✅ pass          |
+| E2E (apps/api)         | 7      | ✅ pass          |
+| **Phase 6 total**      | **88** | **✅**           |
+| Phase 5 (autonomy)     | 37     | ✅ no regression |
+| Phase 4 (DAGS)         | 24     | ✅ no regression |
 
 ## Bug Fixes
 

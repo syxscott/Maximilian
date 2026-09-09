@@ -46,7 +46,9 @@ function noopProvider(): Provider {
     async chat(_messages: ChatMessage[]): Promise<ChatResponse> {
       return { content: "x", model: "x" }
     },
-    async *stream() { /* noop */ },
+    async *stream() {
+      /* noop */
+    },
   }
 }
 
@@ -69,17 +71,18 @@ function makeWorkspace(id: string): Workspace {
 function makeSink() {
   return {
     workspaces: new Map<string, Workspace>(),
-    async saveWorkspace(w: Workspace) { this.workspaces.set(w.id, w) },
-    async loadWorkspace(id: string) { return this.workspaces.get(id) },
+    async saveWorkspace(w: Workspace) {
+      this.workspaces.set(w.id, w)
+    },
+    async loadWorkspace(id: string) {
+      return this.workspaces.get(id)
+    },
   }
 }
 
 describe("AgentRuntime permission pause/resume", () => {
   it("awaits a parked request and resolves when the runtime is told", async () => {
-    const runtime = new AgentRuntime(
-      () => new NoopAgent(noopProvider()),
-      makeSink(),
-    )
+    const runtime = new AgentRuntime(() => new NoopAgent(noopProvider()), makeSink())
     const promise = runtime.awaitPermission("prq_a", {
       workspaceId: "ws1",
       taskId: "t1",
@@ -88,7 +91,9 @@ describe("AgentRuntime permission pause/resume", () => {
 
     // Park the call: should not resolve until we tell it to.
     let resolved = false
-    void promise.then(() => { resolved = true })
+    void promise.then(() => {
+      resolved = true
+    })
 
     // Tiny delay to let the microtask settle.
     await new Promise((r) => setTimeout(r, 5))
@@ -101,18 +106,12 @@ describe("AgentRuntime permission pause/resume", () => {
   })
 
   it("returns false for unknown request ids", () => {
-    const runtime = new AgentRuntime(
-      () => new NoopAgent(noopProvider()),
-      makeSink(),
-    )
+    const runtime = new AgentRuntime(() => new NoopAgent(noopProvider()), makeSink())
     expect(runtime.resolvePermission("nonexistent", "deny")).toBe(false)
   })
 
   it("emits permission-resolved after the decision is applied", async () => {
-    const runtime = new AgentRuntime(
-      () => new NoopAgent(noopProvider()),
-      makeSink(),
-    )
+    const runtime = new AgentRuntime(() => new NoopAgent(noopProvider()), makeSink())
     const events: RuntimeEvent[] = []
     runtime.on((e) => events.push(e))
 
@@ -134,10 +133,7 @@ describe("AgentRuntime permission pause/resume", () => {
   })
 
   it("a workspace still runs to completion when no permission is awaited", async () => {
-    const runtime = new AgentRuntime(
-      () => new NoopAgent(noopProvider()),
-      makeSink(),
-    )
+    const runtime = new AgentRuntime(() => new NoopAgent(noopProvider()), makeSink())
     const ws = makeWorkspace("ws-3")
     const result = await runtime.execute(ws)
     expect(result.status).toBe("completed")

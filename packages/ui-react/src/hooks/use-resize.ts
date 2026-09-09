@@ -45,8 +45,10 @@ export function useResize<T extends Element = Element>(
       const target = latest.target as Element
       const rect = box === "border-box" ? target.getBoundingClientRect() : latest.contentRect
       const next: Size = {
-        width: round !== undefined ? Math.round(rect.width * 10 ** round) / 10 ** round : rect.width,
-        height: round !== undefined ? Math.round(rect.height * 10 ** round) / 10 ** round : rect.height,
+        width:
+          round !== undefined ? Math.round(rect.width * 10 ** round) / 10 ** round : rect.width,
+        height:
+          round !== undefined ? Math.round(rect.height * 10 ** round) / 10 ** round : rect.height,
       }
       setSize(next)
     })

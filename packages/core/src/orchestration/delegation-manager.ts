@@ -69,28 +69,17 @@ export class DelegationManager {
     const mp = options?.maxParallel
     // Fractional values < 1 (e.g. 0.5, 1e-9) would produce ~tasks.length empty iterations.
     // Require integer >= 1.
-    this.maxParallel =
-      Number.isSafeInteger(mp) && mp !== undefined && mp >= 1
-        ? mp
-        : 3
+    this.maxParallel = Number.isSafeInteger(mp) && mp !== undefined && mp >= 1 ? mp : 3
 
     const mr = options?.maxRetries
-    this.maxRetries =
-      Number.isSafeInteger(mr) && mr !== undefined && mr >= 0
-        ? mr
-        : 2
+    this.maxRetries = Number.isSafeInteger(mr) && mr !== undefined && mr >= 0 ? mr : 2
 
     const bbm = options?.baseBackoffMs
-    this.baseBackoffMs =
-      Number.isFinite(bbm) && bbm !== undefined && bbm >= 0
-        ? bbm
-        : 100
+    this.baseBackoffMs = Number.isFinite(bbm) && bbm !== undefined && bbm >= 0 ? bbm : 100
 
     const mrdm = options?.maxRetryDurationMs
     this.maxRetryDurationMs =
-      Number.isFinite(mrdm) && mrdm !== undefined && mrdm >= 0
-        ? mrdm
-        : 30_000
+      Number.isFinite(mrdm) && mrdm !== undefined && mrdm >= 0 ? mrdm : 30_000
   }
 
   /**
@@ -122,9 +111,7 @@ export class DelegationManager {
 
     for (let i = 0; i < taskList.length; i += this.maxParallel) {
       const batch = taskList.slice(i, i + this.maxParallel)
-      const batchResults = await Promise.all(
-        batch.map((task) => this.runWithRetry(task, handlers)),
-      )
+      const batchResults = await Promise.all(batch.map((task) => this.runWithRetry(task, handlers)))
       results.push(...batchResults)
     }
 

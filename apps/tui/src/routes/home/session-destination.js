@@ -7,17 +7,17 @@
  * provider shape so consumers can compile; the real state plumbing is left
  * for a follow-up task.
  */
-import { createContext, createElement, useContext, useState } from "react";
-const SessionDestinationContext = createContext(undefined);
+import { createContext, createElement, useContext, useState } from "react"
+const SessionDestinationContext = createContext(undefined)
 export function HomeSessionDestinationProvider(props) {
-    const [destination, setDestinationState] = useState(undefined);
-    const value = {
-        destination: () => destination,
-        setDestination: (next) => setDestinationState(next),
-        clear: () => setDestinationState(undefined),
-    };
-    return createElement(SessionDestinationContext.Provider, { value }, props.children);
+  const [destination, setDestinationState] = useState(undefined)
+  const value = {
+    destination: () => destination,
+    setDestination: (next) => setDestinationState(next),
+    clear: () => setDestinationState(undefined),
+  }
+  return createElement(SessionDestinationContext.Provider, { value }, props.children)
 }
 export function useHomeSessionDestination() {
-    return useContext(SessionDestinationContext);
+  return useContext(SessionDestinationContext)
 }

@@ -249,9 +249,11 @@ export class OpencodePermissionTranslator {
    * to `bash: "ask"`, which is *less* restrictive than `deny`. For
    * tools Maximilian cannot classify, deny is the only safe default.
    */
-  toMaximilianToolInput(
-    event: OpencodePermissionAskedEvent,
-  ): { tool: ToolName | null; target: string; input: Record<string, unknown> } {
+  toMaximilianToolInput(event: OpencodePermissionAskedEvent): {
+    tool: ToolName | null
+    target: string
+    input: Record<string, unknown>
+  } {
     const tool = pickToolName(event)
     const target = pickTarget(event)
     // Construct an `input` object that Maximilian's `extractTarget`
@@ -354,9 +356,7 @@ export interface TranslatedReply {
 function pickToolName(event: OpencodePermissionAskedEvent): ToolName | null {
   const candidate =
     event.action ??
-    (typeof event.metadata?.["tool"] === "string"
-      ? (event.metadata["tool"] as string)
-      : undefined)
+    (typeof event.metadata?.["tool"] === "string" ? (event.metadata["tool"] as string) : undefined)
   switch (candidate) {
     case "bash":
     case "read":

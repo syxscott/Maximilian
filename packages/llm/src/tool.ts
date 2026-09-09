@@ -133,9 +133,6 @@ export function structuredOutputTool<T>(
  * 借鉴 opencode - 检查 LLM 是否调用了 StructuredOutput 工具
  * 用于检测 plan 评审、最终决策等关键节点是否已完成。
  */
-export function isStructuredOutputCall(
-  toolName: string,
-  expectedName: string,
-): boolean {
+export function isStructuredOutputCall(toolName: string, expectedName: string): boolean {
   return toolName === expectedName
 }

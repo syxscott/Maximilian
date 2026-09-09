@@ -16,8 +16,8 @@
 
 ## 代码统计
 
-| 文件 | 行数 |
-|---|---|
-| `packages/autonomy/src/types.ts` | 211（含全部 5.x 类型） |
-| `packages/autonomy/src/execution-store.ts` | 110 |
-| `apps/api/src/routes/executions.ts` | 80 |
+| 文件                                       | 行数                   |
+| ------------------------------------------ | ---------------------- |
+| `packages/autonomy/src/types.ts`           | 211（含全部 5.x 类型） |
+| `packages/autonomy/src/execution-store.ts` | 110                    |
+| `apps/api/src/routes/executions.ts`        | 80                     |

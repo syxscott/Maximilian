@@ -15,14 +15,14 @@
  * 1-file change.
  */
 
-import { resolveMajor } from "./version.js";
+import { resolveMajor } from "./version.js"
 
 /**
  * The driver name tells us which sub-import to use. drizzle-orm 0.34 split
  * the driver-specific helpers into `drizzle-orm/<driver>` (e.g.
  * `drizzle-orm/postgres-js`, `drizzle-orm/node-postgres`).
  */
-export type DrizzleDriver = "postgres-js" | "node-postgres" | "neon" | "libsql";
+export type DrizzleDriver = "postgres-js" | "node-postgres" | "neon" | "libsql"
 
 /**
  * Resolved drizzle API. Today this is just version detection; the actual
@@ -30,11 +30,11 @@ export type DrizzleDriver = "postgres-js" | "node-postgres" | "neon" | "libsql";
  */
 export interface DrizzleCapabilities {
   /** drizzle-orm major (0.x for now — we don't bump majors lightly) */
-  major: number;
+  major: number
   /** Whether the installed version uses split driver packages (>=0.34) */
-  splitDrivers: boolean;
+  splitDrivers: boolean
   /** Detected driver if a pg store is already wired up; null otherwise */
-  driver: DrizzleDriver | null;
+  driver: DrizzleDriver | null
 }
 
 /**
@@ -46,9 +46,9 @@ export interface DrizzleCapabilities {
  * drizzle simply isn't installed.
  */
 export function detectDrizzleCapabilities(): DrizzleCapabilities {
-  const major = resolveMajor("drizzle-orm", 0);
-  const splitDrivers = major > 0 || true; // 0.34+ all use split drivers
-  return { major, splitDrivers, driver: null };
+  const major = resolveMajor("drizzle-orm", 0)
+  const splitDrivers = major > 0 || true // 0.34+ all use split drivers
+  return { major, splitDrivers, driver: null }
 }
 
 /**
@@ -68,13 +68,13 @@ export function driverImportPath(driver: DrizzleDriver): string {
   // a find-and-replace across the pg store code.
   switch (driver) {
     case "postgres-js":
-      return "drizzle-orm/postgres-js";
+      return "drizzle-orm/postgres-js"
     case "node-postgres":
-      return "drizzle-orm/node-postgres";
+      return "drizzle-orm/node-postgres"
     case "neon":
-      return "drizzle-orm/neon-http";
+      return "drizzle-orm/neon-http"
     case "libsql":
-      return "drizzle-orm/libsql";
+      return "drizzle-orm/libsql"
   }
 }
 
@@ -91,13 +91,13 @@ export function driverImportPath(driver: DrizzleDriver): string {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function serialColumn(): any {
-  const caps = detectDrizzleCapabilities();
+  const caps = detectDrizzleCapabilities()
   if (caps.major === 0) {
     // 0.x — caller decides based on installed minor.
     throw new Error(
       "[compat-shims] serialColumn() requires drizzle-orm to be installed; " +
         "this shim is forward-compat prep only — implement against the installed minor.",
-    );
+    )
   }
-  throw new Error(`[compat-shims] drizzle-orm major ${caps.major} not yet handled`);
+  throw new Error(`[compat-shims] drizzle-orm major ${caps.major} not yet handled`)
 }

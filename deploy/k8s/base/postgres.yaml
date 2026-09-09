@@ -44,7 +44,7 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 70   # postgres image's built-in user
+        runAsUser: 70 # postgres image's built-in user
         fsGroup: 70
       containers:
         - name: postgres

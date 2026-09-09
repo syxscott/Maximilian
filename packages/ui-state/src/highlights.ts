@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { createStore, useStore } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
@@ -66,7 +74,9 @@ export const createHighlightsStore = (storageKey = "highlights.v1") =>
       }),
       {
         name: storageKey,
-        storage: createJSONStorage(() => (typeof localStorage !== "undefined" ? localStorage : undefinedStorage())),
+        storage: createJSONStorage(() =>
+          typeof localStorage !== "undefined" ? localStorage : undefinedStorage(),
+        ),
         onRehydrateStorage: () => (state) => {
           if (state) state.ready = true
         },
@@ -140,7 +150,9 @@ function parseRelease(value: unknown): ParsedRelease | undefined {
 
 function parseChangelog(value: unknown): ParsedRelease[] | undefined {
   if (Array.isArray(value)) {
-    return value.map(parseRelease).filter((release): release is ParsedRelease => release !== undefined)
+    return value
+      .map(parseRelease)
+      .filter((release): release is ParsedRelease => release !== undefined)
   }
   if (!isRecord(value)) return
   if (!Array.isArray(value.releases)) return
@@ -150,10 +162,19 @@ function parseChangelog(value: unknown): ParsedRelease[] | undefined {
 }
 
 function dedupeKey(highlight: Highlight) {
-  return [highlight.title, highlight.description, highlight.media?.type ?? "", highlight.media?.src ?? ""].join("\n")
+  return [
+    highlight.title,
+    highlight.description,
+    highlight.media?.type ?? "",
+    highlight.media?.src ?? "",
+  ].join("\n")
 }
 
-function sliceHighlights(input: { releases: ParsedRelease[]; current?: string; previous?: string }) {
+function sliceHighlights(input: {
+  releases: ParsedRelease[]
+  current?: string
+  previous?: string
+}) {
   const current = normalizeVersion(input.current)
   const previous = normalizeVersion(input.previous)
   const releases = input.releases

@@ -6,7 +6,7 @@ name: mutation-test
 
 on:
   schedule:
-    - cron: "17 5 * * *"  # 05:17 UTC daily
+    - cron: "17 5 * * *" # 05:17 UTC daily
   workflow_dispatch:
 
 permissions:

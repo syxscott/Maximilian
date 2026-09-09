@@ -18,7 +18,9 @@ function Directory(props: { api: TuiPluginApi }) {
     if (!selected || selected.type === "new") return undefined
     const out = abbreviateHome(selected.directory, paths.home)
     const branch =
-      selected.directory === (props.api.state.path.directory || paths.cwd) ? props.api.state.vcs?.branch : undefined
+      selected.directory === (props.api.state.path.directory || paths.cwd)
+        ? props.api.state.vcs?.branch
+        : undefined
     if (branch) return out + ":" + branch
     return out
   }, [destination])
@@ -39,7 +41,7 @@ function Mcp(props: { api: TuiPluginApi }) {
   return (
     <Box gap={1} flexDirection="row" flexShrink={0}>
       <Text color={theme.text}>
-        <Text color={err ? theme.error : count > 0 ? theme.success : theme.textMuted}>{'⊙ '}</Text>
+        <Text color={err ? theme.error : count > 0 ? theme.success : theme.textMuted}>{"⊙ "}</Text>
         {count} MCP
       </Text>
       <Text color={theme.textMuted}>/status</Text>

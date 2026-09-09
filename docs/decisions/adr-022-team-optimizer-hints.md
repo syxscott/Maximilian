@@ -23,10 +23,12 @@ Hints are returned, **never applied automatically**. The API exposes them via `/
 ## Consequences
 
 **正面**：
+
 - Safety: meta-system can observe freely without risking org integrity
 - Reversibility: hints can be ignored or rejected
 - Traceable: each hint is logged to `OrganizationMemory`
 
 **负面**：
+
 - Hints don't materialize as real changes (gap closed by Phase 7?)
 - Heuristic thresholds may need tuning per workload
