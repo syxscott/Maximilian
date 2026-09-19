@@ -33,9 +33,13 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "anthropic",
     name: "Anthropic",
     envKey: "ANTHROPIC_API_KEY",
+    envModel: "ANTHROPIC_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://api.anthropic.com",
-    defaultModel: "claude-3-5-sonnet-latest",
+    // Frontier as of 2026-09-01 (claude-fable-5-1 + claude-mythos-5-1 dual
+    // release; Opus 4.1 retired 2026-08-05). Model id verified against the
+    // Claude Platform docs.
+    defaultModel: "claude-fable-5-1",
     category: "official",
     isOfficial: true,
   },
@@ -43,6 +47,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "google",
     name: "Google",
     envKey: "GOOGLE_API_KEY",
+    envModel: "GOOGLE_MODEL",
     apiFormat: "gemini_native",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     defaultModel: "gemini-2.5-flash",
@@ -63,9 +68,12 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "openai",
     name: "OpenAI",
     envKey: "OPENAI_API_KEY",
+    envModel: "OPENAI_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://api.openai.com/v1",
-    defaultModel: "gpt-4o",
+    // GPT-5.6 family GA (Sol flagship / Terra balanced / Luna light);
+    // Terra is the balanced everyday default — same tier slot gpt-4o held.
+    defaultModel: "gpt-5.6-terra",
     category: "official",
     isOfficial: true,
   },
@@ -176,6 +184,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "deepseek",
     name: "DeepSeek",
     envKey: "DEEPSEEK_API_KEY",
+    envModel: "DEEPSEEK_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://api.deepseek.com/anthropic",
     defaultModel: "claude-3-5-sonnet-latest",
@@ -1299,6 +1308,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "openrouter",
     name: "OpenRouter",
     envKey: "OPENROUTER_API_KEY",
+    envModel: "OPENROUTER_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://openrouter.ai/api",
     defaultModel: "claude-3-5-sonnet-latest",
