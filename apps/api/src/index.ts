@@ -61,7 +61,7 @@ import {
 } from "@max/core"
 import { Commander } from "@max/commander"
 import { FileWorkspaceStore } from "@max/workspace"
-import { defaultAgentFactory } from "@max/agents"
+import { createDefaultAgentFactory } from "@max/agents"
 import { EvolutionFacade, evolutionAwareFactory, SealedFileVault } from "@max/evolution"
 import { DAGS, BlueprintStore } from "@max/dags"
 import {
@@ -396,7 +396,7 @@ for (const p of providers) providerRegistry.set(p.id, p)
 // supporting runtime default provider changes.
 const getDefaultProvider = () => registry.default()!
 
-const factory = defaultAgentFactory(getDefaultProvider, providerRegistry)
+const factory = await createDefaultAgentFactory(getDefaultProvider, providerRegistry)
 
 const eventLog = new Map<string, RuntimeEvent[]>()
 const workspaceTouchedAt = new Map<string, number>()
@@ -571,6 +571,11 @@ const modelSelectorPort: ModelSelectorPort | undefined = modelRouting?.selector
 const modelRouterPort: ModelRouter | undefined = modelRouting?.router
 
 const runtime = new AgentRuntime(finalFactory, sink, {
+  // Tool loop (minimax-code borrowing): agents execute real tools through the
+  // multi-round loop, permission-gated. TOOL_LOOP_ENABLED=false restores the
+  // legacy single-LLM-call behaviour.
+  enableToolLoop: config.TOOL_LOOP_ENABLED,
+  permissionAskTimeoutMs: config.PERMISSION_ASK_TIMEOUT_MS,
   memoryStore: memoryStorePort,
   modelSelector: modelSelectorPort,
   modelRouter: modelRouterPort,

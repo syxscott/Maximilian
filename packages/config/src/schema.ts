@@ -86,6 +86,17 @@ export const ConfigSchema = z.object({
   TELEMETRY_ENABLED: booleanString,
   SAFE_ROLLOUT_MODE: RolloutModeSchema,
 
+  // Tool loop (minimax-code borrowing): when true, agents get real tools
+  // (bash/read/write/edit/glob/grep, gated by the permission system) and the
+  // runtime routes their tasks through the multi-round tool loop instead of
+  // a single LLM call. Kill switch — set false to restore pure single-call
+  // agent behaviour.
+  TOOL_LOOP_ENABLED: booleanString,
+  // How long a parked "ask" permission prompt waits for a human answer
+  // before the runtime resolves it fail-closed (deepseek-harness borrowing:
+  // the decision set is closed and an unanswered ask never approves).
+  PERMISSION_ASK_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+
   // Telemetry
   TELEMETRY_BUFFER_SIZE: z.coerce.number().int().positive().default(1000),
   TELEMETRY_PERSIST_PATH: z.string().optional(),

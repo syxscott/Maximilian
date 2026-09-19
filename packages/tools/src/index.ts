@@ -24,6 +24,14 @@ export {
   type PermissionProvider,
 } from "./with-permission.js"
 export {
+  DEFAULT_PERMISSIONS,
+  loadPermissions,
+  savePermissions,
+  type Permission,
+  type Permissions,
+  type ToolName,
+} from "./permission.js"
+export {
   PermissionService,
   type AlwaysDecision,
   type ApprovalResolution,

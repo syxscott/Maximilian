@@ -54,6 +54,9 @@ export abstract class Agent {
    */
   protected modelOverride?: { provider: string; model: string }
 
+  /** Tool provider attached by the factory when the tool loop is enabled. */
+  protected toolProvider?: import("./tool-integration.js").ToolEnabledProvider
+
   readonly id: string
   readonly createdAt: string
   /** Role identifier this agent was created for (used by RolePlaying factory). */
@@ -252,7 +255,16 @@ export abstract class Agent {
    * don't use tools.
    */
   getToolProvider(): import("./tool-integration.js").ToolEnabledProvider | undefined {
-    return undefined
+    return this.toolProvider
+  }
+
+  /**
+   * Attach a tool provider (set by the agent factory when the tool loop is
+   * enabled). The registry is shared across agents; each agent's runtime
+   * gate applies manifest.allowedTools on top via setToolAllowlist.
+   */
+  setToolProvider(provider: import("./tool-integration.js").ToolEnabledProvider | undefined): void {
+    this.toolProvider = provider
   }
 
   /** Snapshot for UI display. Returns a frozen copy. */

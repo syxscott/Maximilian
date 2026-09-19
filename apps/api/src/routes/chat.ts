@@ -104,10 +104,28 @@ export function postChat(deps: ChatDeps) {
         return c.json({ error: "Workspace not found" }, 404)
       }
       if (deps.runtime.isExecuting(workspaceId)) {
-        const steered = deps.runtime.steer(workspaceId, message, "api")
-        if (steered) {
-          log.info({ workspaceId, tenantId: tenantId ?? "dev" }, "steering message accepted")
-          return c.json({ workspaceId, status: "steered", mode: "commander" })
+        // steerChecked returns a receipt (minimax-code borrowing): retries
+        // of the same (source, message) within the dedup window are
+        // acknowledged idempotently with the same receipt instead of
+        // injecting the instruction twice.
+        const receipt = deps.runtime.steerChecked(workspaceId, message, "api")
+        if (receipt.accepted) {
+          log.info(
+            {
+              workspaceId,
+              tenantId: tenantId ?? "dev",
+              receiptId: receipt.receiptId,
+              duplicate: receipt.duplicate ?? false,
+            },
+            "steering message accepted",
+          )
+          return c.json({
+            workspaceId,
+            status: "steered",
+            mode: "commander",
+            receiptId: receipt.receiptId,
+            duplicate: receipt.duplicate ?? false,
+          })
         }
       }
     }

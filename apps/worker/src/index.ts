@@ -23,7 +23,7 @@ import {
   type ModelRouter,
   isPolicyDeniedMessage,
 } from "@max/core"
-import { defaultAgentFactory } from "@max/agents"
+import { createDefaultAgentFactory } from "@max/agents"
 import { EvolutionFacade, evolutionAwareFactory, SealedFileVault } from "@max/evolution"
 import {
   createDb,
@@ -116,7 +116,7 @@ async function main() {
   const providerRegistry = new Map<string, Provider>()
   for (const p of providers) providerRegistry.set(p.id, p)
 
-  const factory = defaultAgentFactory(() => registry.default()!, providerRegistry)
+  const factory = await createDefaultAgentFactory(() => registry.default()!, providerRegistry)
 
   // Optional evolution engine — when ON, evolutionAwareFactory handles
   // both memory injection and model selection internally. Hoisted to
@@ -204,6 +204,9 @@ async function main() {
   const modelRouterPort: ModelRouter | undefined = modelRouting?.router
 
   const runtime = new AgentRuntime(finalFactory, sink, {
+    // Tool loop (minimax-code borrowing) — see the API entry for the flag.
+    enableToolLoop: config.TOOL_LOOP_ENABLED,
+    permissionAskTimeoutMs: config.PERMISSION_ASK_TIMEOUT_MS,
     memoryStore: memoryStorePort,
     modelSelector: modelSelectorPort,
     modelRouter: modelRouterPort,

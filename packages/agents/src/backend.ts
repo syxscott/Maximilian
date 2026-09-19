@@ -12,6 +12,7 @@ import type { Provider } from "@max/providers"
 const MANIFEST: AgentManifest = {
   role: "backend",
   displayName: "Backend Agent",
+  allowedTools: ["bash", "read", "write", "edit", "glob", "grep"],
   goal: "Generate clean, working server-side code (Node.js / Express / REST API).",
   systemPrompt: `You are the Backend Agent in a multi-agent system.
 

@@ -135,13 +135,28 @@ describe("Steering hooks (借鉴 openclaw)", () => {
     })
     const stopProvider = new StopProvider()
     const provider = new ToolEnabledProvider(stopProvider, registry)
-    const followUp = vi.fn(() => [{ role: "user" as const, content: "follow-up question" }])
-    await runToolLoop(provider, [{ role: "user", content: "go" }], {
+    // pi-style continuation semantics: the follow-up queue is CONSUMED —
+    // the loop re-enters on natural exit while follow-ups remain, and the
+    // follow-up response may itself issue tool calls. Return one follow-up
+    // on the first exit, then an empty queue on the next check.
+    let followUpsReturned = 0
+    const followUp = vi.fn(() => {
+      followUpsReturned += 1
+      return followUpsReturned === 1
+        ? [{ role: "user" as const, content: "follow-up question" }]
+        : []
+    })
+    const { allToolCalls } = await runToolLoop(provider, [{ role: "user", content: "go" }], {
       maxRounds: 3,
       getFollowUpMessages: followUp,
     })
-    // Follow-up is called once after the tool loop exits.
-    expect(followUp).toHaveBeenCalledTimes(1)
+    // Called on the first natural exit (returned a follow-up → loop
+    // re-entered) and again on the second exit (empty → loop returned).
+    expect(followUp).toHaveBeenCalledTimes(2)
+    // The follow-up turn actually ran: 3 provider chats total (tool call,
+    // post-follow-up, final) — verify via the tool call ledger.
+    expect(allToolCalls.length).toBe(1)
+    expect(stopProvider.callIndex).toBeGreaterThanOrEqual(3)
   })
 
   it("prepareNextTurn is called before each provider.chat()", async () => {

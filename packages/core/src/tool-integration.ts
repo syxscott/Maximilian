@@ -6,8 +6,10 @@ import type { AnyTool, ToolDefinition } from "@max/llm"
 import {
   createToolRegistry,
   type ToolRegistry,
+  type Materialization,
   type ExecuteInput,
   isPermissionRequestError,
+  isPermissionDeniedError,
 } from "@max/tools"
 import type { Provider, ChatMessage, ChatOptions } from "@max/providers"
 import type { AgentContext, Agent } from "./agent.js"
@@ -425,6 +427,16 @@ export interface ToolLoopOptions {
    */
   toolExecution?: ToolExecutionMode
   /**
+   * Called after each tool-calling iteration completes (minimax-code
+   * Extension SPI borrowing). Return a short strategy reminder string to
+   * inject it as a user message on the next round (the seam the
+   * runaway-guard extension uses); return undefined to observe only.
+   */
+  onStepEnd?: (
+    round: number,
+    info: { toolCalls: number; stopReason?: string },
+  ) => string | undefined
+  /**
    * Called before a tool is executed, after arguments have been validated (借鉴 pi).
    *
    * Return `{ block: true }` to prevent execution. The loop emits an error
@@ -612,6 +624,24 @@ async function executeSingleToolCall(
       })
     }
   } catch (err) {
+    // Explicit deny (with-permission "deny" decision): surface as a tool
+    // error so the LLM can adapt — same contract as a user "deny" answer.
+    // Before the permission system was wired into the loop this path was
+    // unreachable and a deny crashed the whole runToolLoop.
+    if (isPermissionDeniedError(err)) {
+      const denyMsg = err.message
+      options.emitEvent?.({
+        type: "tool-end",
+        workspaceId: options.workspaceId ?? "",
+        taskId: options.taskId ?? "",
+        toolName: call.name,
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        error: denyMsg,
+      })
+      options.onToolResult?.(call, { error: denyMsg })
+      return { output: { error: denyMsg }, skip: false }
+    }
     if (isPermissionRequestError(err) && options.awaitPermission) {
       const reqErr = err
       options.emitEvent?.({
@@ -747,18 +777,16 @@ export async function runToolLoop(
     const response = await provider.chat(currentMessages, options)
 
     if (response.toolCalls.length === 0) {
-      // Follow-up injection (借鉴 openclaw): check for follow-up messages
-      // even on natural exit, not just after maxRounds exhaustion.
+      // Follow-up continuation (pi borrowing): on natural exit with queued
+      // follow-ups, push them and RE-ENTER the loop instead of performing a
+      // single extra turn — the follow-up response can itself issue tool
+      // calls and consume further queued follow-ups, all bounded by the
+      // same maxRounds budget.
       if (options.getFollowUpMessages) {
         const followUps = options.getFollowUpMessages()
         if (followUps && followUps.length > 0) {
-          const followUpMessages = [
-            ...currentMessages,
-            { role: "assistant" as const, content: response.content },
-            ...followUps,
-          ]
-          const followUpResponse = await provider.chat(followUpMessages, options)
-          return { response: followUpResponse, allToolCalls }
+          currentMessages.push({ role: "assistant", content: response.content }, ...followUps)
+          continue
         }
       }
       return { response, allToolCalls }
@@ -833,6 +861,20 @@ export async function runToolLoop(
     if (refundOnProgress && response.toolCalls.length > 0 && toolBudget.value < maxToolCalls) {
       toolBudget.value = Math.min(toolBudget.value + 1, maxToolCalls)
     }
+
+    // Step-end hook (minimax-code Extension SPI, minimal form): observers can
+    // detect runaway/looping behaviour and return a strategy reminder that is
+    // injected as a user message on the next round — the same seam mcode's
+    // runaway-guard extension uses for `agent.steer()`.
+    if (options.onStepEnd) {
+      const reminder = options.onStepEnd(round, {
+        toolCalls: response.toolCalls.length,
+        stopReason: response.stopReason,
+      })
+      if (reminder) {
+        currentMessages.push({ role: "user", content: reminder })
+      }
+    }
   }
 
   // If we exhausted rounds, return the last response
@@ -868,9 +910,63 @@ export async function createDefaultToolRegistry(): Promise<ToolRegistry> {
   return registry
 }
 
+/**
+ * Shared registry promise so every agent in a process reuses one registry
+ * (it is stateless per `materialize()` call, so sharing is safe) instead of
+ * re-importing the builtin tools per agent.
+ */
+let sharedRegistryPromise: Promise<ToolRegistry> | undefined
+export function getSharedToolRegistry(): Promise<ToolRegistry> {
+  sharedRegistryPromise ??= createDefaultToolRegistry()
+  return sharedRegistryPromise
+}
+
+/**
+ * Create the production tool registry: built-in tools gated by the
+ * permission system (permission.ts defaults: read/glob/grep allow with
+ * secret-path deny patterns; bash/write/edit ask). The permission config
+ * is re-read per settle so `PUT /api/permissions` changes apply without a
+ * restart.
+ */
+export async function createPermissionedToolRegistry(): Promise<ToolRegistry> {
+  const { withPermission, DEFAULT_PERMISSIONS } = await import("@max/tools")
+  const inner = await createDefaultToolRegistry()
+  const innerMaterialize = inner.materialize.bind(inner)
+  return {
+    register: inner.register.bind(inner),
+    unregister: inner.unregister.bind(inner),
+    has: inner.has.bind(inner),
+    get: inner.get.bind(inner),
+    list: inner.list.bind(inner),
+    materialize(): Materialization {
+      return withPermission(innerMaterialize(), async () => {
+        try {
+          const { loadPermissions } = await import("@max/tools")
+          return await loadPermissions()
+        } catch {
+          return DEFAULT_PERMISSIONS
+        }
+      })
+    },
+  }
+}
+
 /** Create a tool-enabled provider from a base provider. */
 export async function createToolEnabledProvider(provider: Provider): Promise<ToolEnabledProvider> {
-  const registry = await createDefaultToolRegistry()
+  const registry = await getSharedToolRegistry()
+  return new ToolEnabledProvider(provider, registry)
+}
+
+/**
+ * Create a tool-enabled provider backed by the PERMISSION-GATED registry —
+ * the production path (bash/write/edit prompt the human; secret paths are
+ * denied outright). Tests that exercise tools without a permission layer
+ * should use {@link createToolEnabledProvider} instead.
+ */
+export async function createPermissionedToolProvider(
+  provider: Provider,
+): Promise<ToolEnabledProvider> {
+  const registry = await createPermissionedToolRegistry()
   return new ToolEnabledProvider(provider, registry)
 }
 

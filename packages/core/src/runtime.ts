@@ -9,7 +9,7 @@
  *   - Persist results to a sink (Workspace)
  */
 
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { Agent, type AgentContext } from "./agent.js"
 import { withSpan, getLogger, opencodeSessionsLeakedTotal } from "@max/telemetry"
 import { OpencodeExecutor } from "./opencode-executor.js"
@@ -19,6 +19,8 @@ import { runToolLoop, type ToolEnabledProvider } from "./tool-integration.js"
 import { classifyTaskError } from "./failover-reason.js"
 import type { AgentManifest } from "./types.js"
 import { StallDetector, type StallInfo } from "./stall-detection.js"
+import { PermissionService } from "@max/tools"
+import { onProviderRetryStatus } from "@max/providers"
 import type { ChatMessage } from "@max/providers"
 import type { AgentRole, Plan, Result, Task, Workspace, WorkspaceStatus } from "./types.js"
 import {
@@ -118,6 +120,13 @@ export interface ApprovalResponse {
 export type ApprovalResolveResult =
   { ok: true } | { ok: false; reason: "unknown" | "comment_required" }
 
+/**
+ * Human decision on a parked permission prompt (minimax-code borrowing).
+ * "allow-always" stores a pattern rule in the workspace's PermissionService
+ * and retroactively approves every matching pending request in the wave.
+ */
+export type PermissionDecision = "allow" | "deny" | "allow-always"
+
 export type RuntimeEvent =
   | { type: "plan"; workspaceId: string; plan: Plan }
   | { type: "task-start"; workspaceId: string; taskId: string; agentRole: AgentRole }
@@ -155,7 +164,9 @@ export type RuntimeEvent =
       workspaceId: string
       taskId: string
       requestId: string
-      decision: "allow" | "deny"
+      decision: PermissionDecision
+      /** How the decision was reached: the user, an "always" rule, or fail-closed timeout. */
+      via?: "user" | "always-rule" | "timeout"
     }
   | {
       type: "approval-request"
@@ -188,10 +199,24 @@ export type RuntimeEvent =
       /** Followup messages left after the run finished — caller should start a new cycle. */
       messages: import("./steering.js").SteeringMessage[]
     }
+  | {
+      type: "llm-retry-status"
+      workspaceId: string
+      providerId: string
+      phase: "waiting" | "recovered" | "exhausted"
+      attempt: number
+      maxAttempts: number
+      delayMs: number
+      nextRetryAtMs: number
+      reason: string
+    }
 
 export type RuntimeListener = (event: RuntimeEvent) => void
 
 export type AgentFactory = (role: AgentRole, preferredProvider?: string) => Agent | undefined
+
+/** Window within which an identical (source, text) steer is treated as a retry, not a new instruction. */
+const STEERING_DEDUP_WINDOW_MS = 60_000
 
 export interface RuntimeSink {
   saveWorkspace(workspace: Workspace): Promise<void>
@@ -335,6 +360,13 @@ export interface RuntimeOptions {
    * / rabbit-holing before downstream LLM judges see the text.
    */
   failureDetector?: (text: string) => FailureDetectionResult
+  /**
+   * How long a parked "ask" permission prompt waits for a human answer
+   * before the PermissionService resolves it fail-closed as `unavailable`
+   * (deepseek-harness borrowing: an unanswered ask NEVER approves; the tool
+   * call surfaces as an error so the LLM can adapt). Default: 600_000 (10 min).
+   */
+  permissionAskTimeoutMs?: number
 }
 
 /**
@@ -457,6 +489,7 @@ export class AgentRuntime {
   private modelRouter?: ModelRouter
   private termination: TerminationCondition
   private enableToolLoop: boolean
+  private permissionAskTimeoutMs: number
   private getSkills?: RuntimeOptions["getSkills"]
   private maxTaskRetries: number
   private maxIdleRoundsBeforeStall: number
@@ -479,10 +512,19 @@ export class AgentRuntime {
    * (via the API) calls `resolvePermission(requestId, decision)`.
    * Keyed by the requestId minted in `@max/tools/with-permission`.
    */
+  /**
+   * Per-workspace PermissionService (opencode + deepseek-harness borrowing):
+   * stores "always" pattern rules, batch-resolves pending asks on one
+   * answer, and enforces fail-closed timeouts. One instance per workspace —
+   * "always" is scoped to the session, matching opencode semantics.
+   */
+  private permissionServices = new Map<string, PermissionService>()
+  /** Recent steering receipts for duplicate suppression (key → receipt). */
+  private steeringReceipts = new Map<string, { at: number; receiptId: string }>()
   private permissionResolvers = new Map<
     string,
     {
-      resolve: (decision: "allow" | "deny") => void
+      resolve: (decision: PermissionDecision) => void
       reject: (err: Error) => void
       meta: {
         workspaceId: string
@@ -547,6 +589,25 @@ export class AgentRuntime {
     this.modelRouter = options?.modelRouter
     this.termination = options?.termination ?? NeverTermination
     this.enableToolLoop = options?.enableToolLoop ?? false
+    this.permissionAskTimeoutMs = options?.permissionAskTimeoutMs ?? 600_000
+
+    // Retry-status event stream (minimax-code llm-retry borrowing): forward
+    // every provider retry (waiting/recovered/exhausted) as a RuntimeEvent so
+    // dashboards/TUIs can show "Retrying · n/m · next in Xs". The bus is
+    // process-global; one runtime instance per process subscribes once here.
+    onProviderRetryStatus((event) => {
+      this.emitEvent({
+        type: "llm-retry-status",
+        workspaceId: this._currentWorkspaceId ?? "",
+        providerId: event.providerId,
+        phase: event.phase,
+        attempt: event.attempt,
+        maxAttempts: event.maxAttempts,
+        delayMs: event.delayMs,
+        nextRetryAtMs: event.nextRetryAt,
+        reason: event.reason,
+      })
+    })
     this.getSkills = options?.getSkills
     this.maxTaskRetries = options?.maxTaskRetries ?? 0
     this.maxIdleRoundsBeforeStall = options?.maxIdleRoundsBeforeStall ?? 3
@@ -659,9 +720,112 @@ export class AgentRuntime {
       target: meta.target,
       decision: "ask",
     })
-    return new Promise<"allow" | "deny">((resolve, reject) => {
-      this.permissionResolvers.set(requestId, { resolve, reject, meta: { ...meta, promptedAt } })
+
+    // PermissionService layer (opencode + deepseek-harness borrowing):
+    // an "always" rule from earlier in this workspace approves instantly;
+    // a parked ask batch-resolves with matching asks and fails closed on
+    // timeout. The user-answer channel (permissionResolvers) stays as-is
+    // so the existing API/TUI contract is unchanged.
+    const service = this.getPermissionService(meta.workspaceId)
+    const serviceResolution = service.request({
+      tool: meta.tool as never,
+      target: meta.target,
+      requestId,
+      timeoutMs: this.permissionAskTimeoutMs,
     })
+
+    const userDecision = new Promise<PermissionDecision>((resolve) => {
+      this.permissionResolvers.set(requestId, {
+        resolve: (d) => resolve(d),
+        reject: () => resolve("deny"),
+        meta: { ...meta, promptedAt },
+      })
+    })
+
+    return Promise.race([
+      serviceResolution.then((r): "allow" | "deny" => {
+        // Service settled on its own: always-rule auto-approval or
+        // fail-closed timeout. Only act when the user channel is still
+        // parked — if the user answered first, resolvePermission already
+        // audited + emitted, and service.answer() settling afterwards must
+        // not double-record.
+        if (!this.permissionResolvers.has(requestId)) {
+          return r.outcome === "allowed" ? "allow" : "deny"
+        }
+        if (r.outcome === "allowed") {
+          this.settleUserChannel(requestId, meta, "allow", "always-rule")
+          return "allow"
+        }
+        if (r.outcome === "rejected") {
+          this.settleUserChannel(requestId, meta, "deny", "user")
+          return "deny"
+        }
+        const via = r.outcome === "cancelled" ? "user" : "timeout"
+        this.settleUserChannel(requestId, meta, "deny", via)
+        return "deny"
+      }),
+      userDecision.then((d): "allow" | "deny" => {
+        // Route the user's answer through the service so "always" stores
+        // its pattern rule and matching pending asks batch-resolve.
+        void service
+          .answer(
+            requestId,
+            d === "allow" ? "allowed-once" : d === "allow-always" ? "always" : "rejected",
+          )
+          .catch(() => {})
+        return d === "deny" ? "deny" : "allow"
+      }),
+    ])
+  }
+
+  /**
+   * Close the parked user-answer channel after the service resolved the
+   * request on its own (always-rule or timeout), and surface the outcome
+   * as a `permission-resolved` event so dashboards clear the prompt card.
+   */
+  private settleUserChannel(
+    requestId: string,
+    meta: { workspaceId: string; taskId: string; tool: string; target: string },
+    decision: PermissionDecision,
+    via: "user" | "always-rule" | "timeout",
+  ): void {
+    const entry = this.permissionResolvers.get(requestId)
+    this.permissionResolvers.delete(requestId)
+    entry?.resolve(decision === "allow" ? "allow" : "deny")
+    this.permissionAudit.record({
+      at: new Date().toISOString(),
+      requestId,
+      workspaceId: meta.workspaceId,
+      taskId: meta.taskId,
+      tool: meta.tool,
+      target: meta.target,
+      decision,
+      promptedAt: entry?.meta.promptedAt,
+    })
+    this.emit({
+      type: "permission-resolved",
+      workspaceId: meta.workspaceId,
+      taskId: meta.taskId,
+      requestId,
+      decision,
+      via,
+    })
+  }
+
+  /** Per-workspace PermissionService, created lazily (opencode semantics: "always" is session-scoped). */
+  getPermissionService(workspaceId: string): PermissionService {
+    let svc = this.permissionServices.get(workspaceId)
+    if (!svc) {
+      svc = new PermissionService({
+        onEvent: (event) => {
+          // Audit trail is queryable per workspace; persistence to the
+          // durable event log lands with the SQLite session store.
+          void event
+        },
+      })
+      this.permissionServices.set(workspaceId, svc)
+    }
+    return svc
   }
 
   /**
@@ -673,10 +837,13 @@ export class AgentRuntime {
    * Every resolution is appended to the in-memory audit log so operators
    * can later review which prompts the user approved vs denied.
    */
-  resolvePermission(requestId: string, decision: "allow" | "deny"): boolean {
+  resolvePermission(requestId: string, decision: PermissionDecision): boolean {
     const entry = this.permissionResolvers.get(requestId)
     if (!entry) return false
     this.permissionResolvers.delete(requestId)
+    // Pass the ORIGINAL decision through — awaitPermission's user branch
+    // routes "allow-always" to service.answer("always"); collapsing it to
+    // "allow" here would silently downgrade to allowed-once.
     entry.resolve(decision)
     this.permissionAudit.record({
       at: new Date().toISOString(),
@@ -694,6 +861,7 @@ export class AgentRuntime {
       taskId: entry.meta.taskId,
       requestId,
       decision,
+      via: "user",
     })
     return true
   }
@@ -2222,10 +2390,36 @@ export class AgentRuntime {
    * an idle workspace (the caller should start a new workspace instead).
    */
   steer(workspaceId: string, text: string, source?: string): boolean {
-    if (!this.isExecuting(workspaceId)) return false
+    return this.steerChecked(workspaceId, text, source).accepted
+  }
+
+  /**
+   * Like {@link steer} but returns a receipt (minimax-code borrowing):
+   * `accepted` + a stable `receiptId` the caller can correlate, and
+   * duplicate suppression — the same (source, text) pair within a short
+   * window is acknowledged idempotently (same receipt, enqueued once) so
+   * a client retry after a flaky network doesn't inject the instruction
+   * twice.
+   */
+  steerChecked(
+    workspaceId: string,
+    text: string,
+    source?: string,
+  ): { accepted: boolean; receiptId?: string; duplicate?: boolean; reason?: string } {
+    if (!this.isExecuting(workspaceId)) {
+      return { accepted: false, reason: "workspace not executing" }
+    }
+    const key = `${source ?? ""}|${createHash("sha256").update(text).digest("hex").slice(0, 16)}`
+    const now = Date.now()
+    const recent = this.steeringReceipts.get(key)
+    if (recent && now - recent.at < STEERING_DEDUP_WINDOW_MS) {
+      return { accepted: true, receiptId: recent.receiptId, duplicate: true }
+    }
+    const receiptId = `str_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+    this.steeringReceipts.set(key, { at: now, receiptId })
     const label = source ? `[steering from ${source}]` : "[steering]"
     this.enqueueSteeringMessages(workspaceId, [{ role: "user", content: `${label} ${text}` }])
-    return true
+    return { accepted: true, receiptId }
   }
 
   /**

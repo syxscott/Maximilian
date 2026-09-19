@@ -16,7 +16,7 @@
  * append-only durability we'll swap the body for a line-delimited JSONL.
  */
 
-export type PermissionAuditDecision = "ask" | "allow" | "deny"
+export type PermissionAuditDecision = "ask" | "allow" | "deny" | "allow-always"
 
 export interface PermissionAuditEntry {
   /** ISO timestamp. */

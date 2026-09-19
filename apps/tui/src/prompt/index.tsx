@@ -129,6 +129,14 @@ export const Prompt = forwardRef<PromptRef | undefined, PromptProps>(
       props.sessionID ?? ""
     ] ?? { type: "idle" }
 
+    // Latest LLM retry status across providers (minimax-code llm-retry
+    // borrowing): render "Retrying · n/m · next in Xs" while a provider is
+    // in the waiting phase so a silent backoff looks alive.
+    const retryEntries = Object.values(sync.data.llm_retry_status ?? {})
+    const activeRetry = retryEntries
+      .filter((r) => r.phase === "waiting")
+      .sort((a, b) => b.at - a.at)[0]
+
     const autocompleteRef = useRef<AutocompleteRef | undefined>(undefined)
     const inputRef = useRef<{ focus: () => void; blur: () => void } | null>(null)
 
@@ -367,6 +375,16 @@ export const Prompt = forwardRef<PromptRef | undefined, PromptProps>(
           agentStyleId={0}
           promptPartTypeId={() => 0}
         />
+        {activeRetry ? (
+          <Box marginTop={1}>
+            <Text color={theme.warning}>
+              Retrying model request ({activeRetry.providerId ?? "provider"}) ·{" "}
+              {activeRetry.attempt + 1}/{activeRetry.maxAttempts} · next in{" "}
+              {Math.max(0, Math.ceil((activeRetry.nextRetryAtMs - Date.now()) / 1000))}s
+              {activeRetry.reason ? ` · ${activeRetry.reason.slice(0, 80)}` : ""}
+            </Text>
+          </Box>
+        ) : null}
         {status.type !== "idle" ? (
           <Box marginTop={1}>
             <Text color={theme.warning}>Session: {status.type}</Text>

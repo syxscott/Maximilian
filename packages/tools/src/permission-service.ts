@@ -59,6 +59,12 @@ export interface PendingRequest {
 export interface PermissionRequestInput {
   tool: ToolName
   target: string
+  /**
+   * External correlation id (e.g. the PermissionRequestError's requestId).
+   * When provided, `answer()` must be called with THIS id; when omitted the
+   * service mints its own (only observable via audit events).
+   */
+  requestId?: string
   /** Optional explicit pattern for "always" (defaults to the exact target). */
   pattern?: string
   /** Resolve to `unavailable` after this long without an answer. */
@@ -111,7 +117,7 @@ export class PermissionService {
     }
 
     // 2. Park the request until an answer (or timeout → fail closed).
-    const requestId = this.nextId()
+    const requestId = input.requestId ?? this.nextId()
     const entry: PendingEntry = {
       requestId,
       tool: input.tool,

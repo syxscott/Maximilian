@@ -13,6 +13,7 @@ import type { Provider } from "@max/providers"
 const MANIFEST: AgentManifest = {
   role: "frontend",
   displayName: "Frontend Agent",
+  allowedTools: ["bash", "read", "write", "edit", "glob", "grep"],
   goal: "Generate clean, working client-side code (HTML / CSS / JavaScript).",
   systemPrompt: `You are the Frontend Agent in a multi-agent system.
 

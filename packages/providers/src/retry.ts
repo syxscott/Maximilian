@@ -28,6 +28,38 @@ export interface ProviderRetryStatus {
   reason: string
 }
 
+/**
+ * Process-level retry-status bus (minimax-code llm-retry borrowing): the
+ * runtime subscribes once and forwards every provider retry as an
+ * `llm-retry-status` RuntimeEvent, so dashboards/TUIs can show
+ * "Retrying · n/m · next in Xs" without each call site plumbing a callback.
+ */
+export type ProviderRetryPhase = "waiting" | "recovered" | "exhausted"
+
+export interface ProviderRetryBusEvent extends ProviderRetryStatus {
+  phase: ProviderRetryPhase
+}
+
+const retryBusListeners = new Set<(event: ProviderRetryBusEvent) => void>()
+
+/** Subscribe to all provider retry statuses. Returns an unsubscribe fn. */
+export function onProviderRetryStatus(
+  listener: (event: ProviderRetryBusEvent) => void,
+): () => void {
+  retryBusListeners.add(listener)
+  return () => retryBusListeners.delete(listener)
+}
+
+function emitRetryBus(event: ProviderRetryBusEvent): void {
+  for (const listener of retryBusListeners) {
+    try {
+      listener(event)
+    } catch {
+      // A broken subscriber must not break the retry loop.
+    }
+  }
+}
+
 export interface RetryOptions {
   /** Max retry attempts (default: 3) */
   maxAttempts?: number
@@ -94,8 +126,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
   const pause = options?.sleep ?? sleep
 
   function emitStatus(attempt: number, delayMs: number, err: unknown): void {
-    if (!options?.onRetryStatus) return
-    options.onRetryStatus({
+    const status = {
       providerId: provider.id,
       attempt,
       maxAttempts,
@@ -103,6 +134,25 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
       nextRetryAt: Date.now() + delayMs,
       action: describeRetryAction(err),
       reason: err instanceof Error ? err.message : String(err),
+    }
+    options?.onRetryStatus?.(status)
+    emitRetryBus({ ...status, phase: "waiting" })
+  }
+
+  function emitOutcome(
+    phase: "recovered" | "exhausted",
+    attempt: number,
+    err: unknown,
+  ): void {
+    emitRetryBus({
+      providerId: provider.id,
+      attempt,
+      maxAttempts,
+      delayMs: 0,
+      nextRetryAt: Date.now(),
+      action: phase === "recovered" ? "recovered" : "retry budget exhausted",
+      reason: err instanceof Error ? err.message : String(err ?? "unknown"),
+      phase,
     })
   }
 
@@ -110,10 +160,13 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
     let lastError: unknown
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        return await provider.chat(messages, opts)
+        const res = await provider.chat(messages, opts)
+        if (attempt > 0) emitOutcome("recovered", attempt, lastError)
+        return res
       } catch (err) {
         lastError = err
         if (!isRetryable(err, retryableStatuses) || attempt === maxAttempts - 1) {
+          if (attempt > 0) emitOutcome("exhausted", attempt, err)
           throw err
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())
@@ -129,16 +182,20 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
     opts?: ChatOptions,
   ): AsyncIterable<ChatChunk> {
     let lastError: unknown = new Error("Stream failed after all retry attempts")
+    let streamAttempt = 0
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         for await (const chunk of provider.stream(messages, opts)) {
           yield chunk
         }
         // Stream completed successfully — exit the retry loop
+        if (streamAttempt > 0) emitOutcome("recovered", streamAttempt, lastError)
         return
       } catch (err) {
         lastError = err
+        streamAttempt = attempt + 1
         if (!isRetryable(err, retryableStatuses) || attempt === maxAttempts - 1) {
+          if (attempt > 0) emitOutcome("exhausted", attempt, err)
           throw err
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())
@@ -147,6 +204,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
         // Continue to next attempt
       }
     }
+    if (streamAttempt > 0) emitOutcome("exhausted", streamAttempt - 1, lastError)
     throw lastError
   }
 
@@ -158,10 +216,13 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
     let lastError: unknown
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        return await provider.embeddings(input, model)
+        const res = await provider.embeddings(input, model)
+        if (attempt > 0) emitOutcome("recovered", attempt, lastError)
+        return res
       } catch (err) {
         lastError = err
         if (!isRetryable(err, retryableStatuses) || attempt === maxAttempts - 1) {
+          if (attempt > 0) emitOutcome("exhausted", attempt, err)
           throw err
         }
         const delay = resolveDelay(attempt, baseDelay, maxDelay, jitter, options?.headers?.())

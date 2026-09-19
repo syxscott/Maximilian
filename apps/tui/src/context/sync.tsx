@@ -70,6 +70,29 @@ export type SyncEvent =
       type: "message.part.removed"
       properties: { sessionID: string; messageID: string; partID: string }
     }
+  | {
+      // RuntimeEvent arrives verbatim over the SSE frame (flat fields); the
+      // OpenCode-server dot-name alias with `.properties` is accepted too.
+      type: "llm-retry-status" | "llm.retry.status"
+      workspaceId?: string
+      providerId?: string
+      phase?: "waiting" | "recovered" | "exhausted"
+      attempt?: number
+      maxAttempts?: number
+      delayMs?: number
+      nextRetryAtMs?: number
+      reason?: string
+      properties?: {
+        workspaceId: string
+        providerId: string
+        phase: "waiting" | "recovered" | "exhausted"
+        attempt: number
+        maxAttempts: number
+        delayMs: number
+        nextRetryAtMs: number
+        reason: string
+      }
+    }
   | { type: "lsp.updated"; properties: Record<string, never> }
   | { type: "vcs.branch.updated"; properties: { branch: string } }
   | { type: "server.instance.disposed"; properties?: Record<string, never> }
@@ -93,6 +116,20 @@ export type SyncData = {
   config: Record<string, unknown>
   session: unknown[]
   session_status: Record<string, unknown>
+  /** Latest LLM retry status per provider (minimax-code llm-retry borrowing). */
+  llm_retry_status: Record<
+    string,
+    {
+      providerId: string
+      phase: "waiting" | "recovered" | "exhausted"
+      attempt: number
+      maxAttempts: number
+      delayMs: number
+      nextRetryAtMs: number
+      reason: string
+      at: number
+    }
+  >
   session_diff: Record<string, unknown[]>
   todo: Record<string, unknown[]>
   message: Record<string, unknown[]>
@@ -119,6 +156,7 @@ const initialData: SyncData = {
   config: {},
   session: [],
   session_status: {},
+  llm_retry_status: {},
   session_diff: {},
   todo: {},
   message: {},
@@ -132,6 +170,28 @@ const initialData: SyncData = {
 
 function reducer(state: SyncData, event: SyncEvent): SyncData {
   switch (event.type) {
+    case "llm-retry-status":
+    case "llm.retry.status": {
+      const p = event.properties ?? event
+      const providerId = p.providerId
+      if (!providerId || !p.phase) return state
+      return {
+        ...state,
+        llm_retry_status: {
+          ...state.llm_retry_status,
+          [providerId]: {
+            providerId,
+            phase: p.phase,
+            attempt: p.attempt ?? 0,
+            maxAttempts: p.maxAttempts ?? 0,
+            delayMs: p.delayMs ?? 0,
+            nextRetryAtMs: p.nextRetryAtMs ?? 0,
+            reason: p.reason ?? "",
+            at: Date.now(),
+          },
+        },
+      }
+    }
     case "session.status":
       return {
         ...state,

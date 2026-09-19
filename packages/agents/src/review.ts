@@ -14,6 +14,8 @@ import type { ReviewResult } from "@max/core"
 const MANIFEST: AgentManifest = {
   role: "review",
   displayName: "Review Agent",
+  // Review only reads — it must not mutate the artifacts it judges.
+  allowedTools: ["read", "glob", "grep"],
   goal: "Critique generated artifacts and produce a structured review.",
   systemPrompt: `You are the Review Agent in a multi-agent system.
 
