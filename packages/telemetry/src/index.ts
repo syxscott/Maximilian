@@ -53,6 +53,7 @@ export {
   llmErrorsTotal,
   // Phase 9 — SLO indicator metrics
   truthAuditVerdictsTotal,
+  communicationTokensTotal,
   opencodeSessionsCreatedTotal,
   opencodeSessionsLeakedTotal,
   metaCycleDuration,

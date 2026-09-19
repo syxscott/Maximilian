@@ -23,6 +23,8 @@ import {
   type Workspace,
   reviewPlan as coreReviewPlan,
   type PlanReview as CorePlanReview,
+  renderHandoffBundle,
+  defaultHandoffBudgetTokens,
 } from "@max/core"
 import { getLogger } from "@max/telemetry"
 
@@ -587,15 +589,19 @@ export class Commander {
     }
   }
 
-  /** Build a compact summary of completed results for the replanner prompt. */
+  /**
+   * Build a compact summary of completed results for the replanner prompt.
+   * Bounded by the shared handoff budget (C2C borrowing) — the previous
+   * fixed 200-char slice threw away almost everything; the budget keeps
+   * head artifacts whole and truncates the tail with a self-report.
+   */
   private summariseResults(results: Result[]): string {
     if (results.length === 0) return "(none)"
-    return results
-      .map((r) => {
-        const snippet = r.output.length > 200 ? r.output.slice(0, 200) + "…" : r.output
-        return `- [${r.taskId}] (${r.agentRole}): ${snippet}`
-      })
-      .join("\n")
+    return renderHandoffBundle(
+      results.map((r) => ({ title: `[${r.taskId}] (${r.agentRole})`, body: r.output })),
+      Math.max(512, defaultHandoffBudgetTokens() / 2),
+      { role: "replanner", kind: "replan-summary" },
+    ).text
   }
 }
 

@@ -84,6 +84,15 @@ export const llmErrorsTotal = new Counter({
  * `verdict="correct"` / `total_verdicts_total ≥ 0.8`. Computed by the
  * meta-system's TruthAudit when it emits a TruthReport.
  */
+/** Inter-agent communication payload cost (C2C borrowing): estimated tokens
+ *  of handoff bundles (priorResults, replanner snippets) by consuming role. */
+export const communicationTokensTotal = new Counter({
+  name: "maximilian_communication_tokens_total",
+  help: "Estimated tokens of inter-agent handoff payloads",
+  registers: [registry],
+  labelNames: ["role", "kind"],
+})
+
 export const truthAuditVerdictsTotal = new Counter({
   name: "maximilian_truth_audit_verdicts_total",
   help: "TruthAudit verdicts, labelled by verdict kind",

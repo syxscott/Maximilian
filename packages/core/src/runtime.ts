@@ -1890,8 +1890,31 @@ export class AgentRuntime {
           }
         }
 
+        // Sharer quality gate (C2C borrowing, §A.4.6): a weak sharer's
+        // wrong output can mislead a stronger downstream agent. When the
+        // failureDetector flagged an artifact, downgrade it in the context
+        // handed to downstream agents so they treat it as an unverified
+        // draft instead of a trusted input.
+        const flagged = new Set(
+          workspace.results
+            .filter(
+              (r) =>
+                (r.metadata as { failureDetection?: { failed?: boolean } } | undefined)
+                  ?.failureDetection?.failed === true,
+            )
+            .map((r) => r.id),
+        )
+        const priorResults: AgentContext["priorResults"] = workspace.results.map((r) =>
+          flagged.has(r.id)
+            ? {
+                ...r,
+                output: `[unverified draft — the failure detector flagged this output; verify before relying on it]\n${r.output}`,
+              }
+            : r,
+        )
+
         const ctx: AgentContext = {
-          priorResults: workspace.results,
+          priorResults,
           // Pass the workspace's abort signal so agents that check it can
           // short-circuit LLM calls when the workspace is cancelled. The
           // runtime also races execution against this signal (see below)

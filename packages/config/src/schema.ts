@@ -92,6 +92,13 @@ export const ConfigSchema = z.object({
   // a single LLM call. Kill switch — set false to restore pure single-call
   // agent behaviour.
   TOOL_LOOP_ENABLED: booleanString,
+  // Inter-agent handoff budget (C2C borrowing): hard cap on the priorResults
+  // bundle / replanner snippet injected into downstream agents, in estimated
+  // tokens. Communication text is a first-class cost item and becomes a net
+  // negative under long context — cap it at the code level, never by asking
+  // the model to be brief.
+  HANDOFF_BUDGET_TOKENS: z.coerce.number().int().positive().default(4000),
+
   // How long a parked "ask" permission prompt waits for a human answer
   // before the runtime resolves it fail-closed (deepseek-harness borrowing:
   // the decision set is closed and an unanswered ask never approves).

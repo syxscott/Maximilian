@@ -6,6 +6,7 @@
 export * from "./types.js"
 export * from "./agent.js"
 export * from "./runtime.js"
+export * from "./handoff.js"
 export * from "./steering.js"
 export * from "./prompt-queue.js"
 export * from "./file-memory-store.js"

@@ -6,7 +6,12 @@
  */
 
 import { randomUUID } from "node:crypto"
-import { Agent, type AgentContext } from "@max/core"
+import {
+  Agent,
+  type AgentContext,
+  renderHandoffBundle,
+  defaultHandoffBudgetTokens,
+} from "@max/core"
 import type { AgentManifest, Result, Task } from "@max/core"
 import type { Provider } from "@max/providers"
 import type { ReviewResult } from "@max/core"
@@ -48,9 +53,19 @@ export class ReviewAgent extends Agent {
   }
 
   override async execute(task: Task, ctx: AgentContext): Promise<Result> {
-    const bundle = ctx.priorResults
-      .map((r) => `--- ${r.agentRole.toUpperCase()} (resultId=${r.id}) ---\n${r.output}`)
-      .join("\n\n")
+    // Handoff budget (C2C borrowing): the priorResults bundle is the
+    // review agent's whole input — without a cap, upstream output length
+    // directly becomes review cost (and past a threshold, a quality
+    // negative). Code-level truncation with a self-report, never a prompt
+    // request to "be brief".
+    const bundle = renderHandoffBundle(
+      ctx.priorResults.map((r) => ({
+        title: `${r.agentRole.toUpperCase()} (resultId=${r.id})`,
+        body: r.output,
+      })),
+      defaultHandoffBudgetTokens(),
+      { role: "review", kind: "review-bundle" },
+    ).text
 
     const messages = this.buildMessages(
       `Original user request: ${ctx.priorResults[0]?.metadata?.userRequest ?? "(unknown)"}\n\nArtifacts to review:\n${bundle}\n\nProduce the JSON review now.`,

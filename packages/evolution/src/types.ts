@@ -125,6 +125,16 @@ export const AgentMemorySchema = z.object({
    * also never silently destroyed.
    */
   archived: z.record(z.array(MemoryEntrySchema)).optional(),
+  /**
+   * Per-bucket lesson efficacy ledger (C2C borrowing: injection is
+   * SELECTIVE — enriching what already works helps, enriching what
+   * struggles hurts; Table 10 found only 2 of 28 layers benefited).
+   * delta = reviewScore − role baseline for runs whose prelude included
+   * the bucket; gating uses mean = deltaSum / injectedCount.
+   */
+  efficacy: z
+    .record(z.object({ injectedCount: z.number().int().nonnegative(), deltaSum: z.number() }))
+    .optional(),
   totalEntries: z.number().int().nonnegative().default(0),
   compressedAt: z.string().optional(),
 })

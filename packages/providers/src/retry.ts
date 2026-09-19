@@ -139,11 +139,7 @@ export function withRetry(provider: Provider, options?: RetryOptions): Provider 
     emitRetryBus({ ...status, phase: "waiting" })
   }
 
-  function emitOutcome(
-    phase: "recovered" | "exhausted",
-    attempt: number,
-    err: unknown,
-  ): void {
+  function emitOutcome(phase: "recovered" | "exhausted", attempt: number, err: unknown): void {
     emitRetryBus({
       providerId: provider.id,
       attempt,

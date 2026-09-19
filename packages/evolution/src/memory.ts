@@ -50,6 +50,52 @@ export class AgentMemoryStore {
    * snapshot is what callers inject at session start; later `record*`
    * calls do not affect it until the next freeze.
    */
+  /**
+   * Record one run's outcome against every active bucket's efficacy
+   * ledger. `delta = reviewScore − role baseline` (all buckets were part
+   * of the frozen prelude for that run, so credit/blame is bucket-level —
+   * honest coarse granularity; per-entry attribution would need
+   * ablation runs per lesson).
+   */
+  static applyEfficacy(mem: AgentMemory, delta: number): void {
+    const buckets = ["userFeedback", "reviewSuggestions", "commonErrors", "goodExamples"] as const
+    const efficacy = (mem.efficacy ??= {})
+    for (const bucket of buckets) {
+      if ((mem[bucket]?.length ?? 0) === 0) continue
+      const cur = efficacy[bucket] ?? { injectedCount: 0, deltaSum: 0 }
+      efficacy[bucket] = { injectedCount: cur.injectedCount + 1, deltaSum: cur.deltaSum + delta }
+    }
+  }
+
+  /**
+   * Gating decision per bucket (C2C gate, orchestration-layer translation):
+   * mean efficacy > +eps → inject; < −eps → skip; insufficient samples →
+   * inject with an uncertainty bias (a lesson with no evidence should not
+   * be blocked from getting evidence).
+   */
+  static gatingDecisions(
+    mem: AgentMemory,
+    opts: { eps?: number; minSamples?: number } = {},
+  ): Array<{ bucket: string; decision: "inject" | "skip"; mean: number; injectedCount: number }> {
+    const eps = opts.eps ?? 0.25
+    const minSamples = opts.minSamples ?? 3
+    const buckets = [
+      "userFeedback",
+      "reviewSuggestions",
+      "commonErrors",
+      "goodExamples",
+    ] as const
+    const out: Array<{ bucket: string; decision: "inject" | "skip"; mean: number; injectedCount: number }> = []
+    for (const bucket of buckets) {
+      if ((mem[bucket]?.length ?? 0) === 0) continue
+      const e = mem.efficacy?.[bucket]
+      const mean = e && e.injectedCount > 0 ? e.deltaSum / e.injectedCount : 0
+      const skip = e !== undefined && e.injectedCount >= minSamples && mean < -eps
+      out.push({ bucket, decision: skip ? "skip" : "inject", mean, injectedCount: e?.injectedCount ?? 0 })
+    }
+    return out
+  }
+
   static freeze(mem: AgentMemory): FrozenMemorySnapshot {
     const prelude = AgentMemoryStore.toPrelude(mem)
     return {
@@ -60,25 +106,35 @@ export class AgentMemoryStore {
   }
   /**
    * Build the "memory prelude" text that gets prepended to a role's system
-   * prompt at execution time.
+   * prompt at execution time. `gating` (C2C borrowing): "enforce" skips
+   * buckets whose efficacy mean is significantly negative; "shadow" keeps
+   * the old behaviour (use {@link gatingDecisions} to log what WOULD be
+   * skipped); "off" is the legacy unconditional render.
    */
-  static toPrelude(mem: AgentMemory): string {
+  static toPrelude(mem: AgentMemory, gating: "off" | "shadow" | "enforce" = "off"): string {
+    const skip = new Set(
+      gating === "enforce"
+        ? AgentMemoryStore.gatingDecisions(mem)
+            .filter((d) => d.decision === "skip")
+            .map((d) => d.bucket)
+        : [],
+    )
     const sections: string[] = []
     const joinTail = (entries: MemoryEntry[], n: number) =>
       entries
         .slice(-n)
         .map((e) => e.content)
         .join("\n- ")
-    if (mem.userFeedback.length > 0) {
+    if (mem.userFeedback.length > 0 && !skip.has("userFeedback")) {
       sections.push(`User feedback to honor:\n- ${joinTail(mem.userFeedback, 5)}`)
     }
-    if (mem.reviewSuggestions.length > 0) {
+    if (mem.reviewSuggestions.length > 0 && !skip.has("reviewSuggestions")) {
       sections.push(`Reviewer suggestions:\n- ${joinTail(mem.reviewSuggestions, 5)}`)
     }
-    if (mem.commonErrors.length > 0) {
+    if (mem.commonErrors.length > 0 && !skip.has("commonErrors")) {
       sections.push(`Common errors to avoid:\n- ${joinTail(mem.commonErrors, 5)}`)
     }
-    if (mem.goodExamples.length > 0) {
+    if (mem.goodExamples.length > 0 && !skip.has("goodExamples")) {
       sections.push(`Patterns that worked well:\n- ${joinTail(mem.goodExamples, 3)}`)
     }
     if (sections.length === 0) return ""
@@ -181,7 +237,9 @@ export class AgentMemoryStore {
     mem: AgentMemory,
     summarizer?: MemorySummarizer,
   ): Promise<AgentMemory> {
-    const buckets: Array<keyof Omit<AgentMemory, "totalEntries" | "compressedAt" | "archived">> = [
+    const buckets: Array<
+    keyof Omit<AgentMemory, "totalEntries" | "compressedAt" | "archived" | "efficacy">
+  > = [
       "userFeedback",
       "reviewSuggestions",
       "commonErrors",
