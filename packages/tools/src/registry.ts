@@ -10,6 +10,7 @@ import {
   ToolFailure,
   ToolExecuteContextBuilder,
   ExtensionBag,
+  isValidToolKind,
 } from "@max/llm"
 
 // ── Registration ──
@@ -85,6 +86,15 @@ export function createToolRegistry(): ToolRegistry {
         if (!validateToolName(name)) {
           throw new Error(
             `Invalid tool name: "${name}". Must match /^[A-Za-z][A-Za-z0-9_-]{0,63}$/`,
+          )
+        }
+        // ToolKind enforcement (ToolKind enum borrowing — the capability
+        // lattice was test-only before this gate): every registered tool
+        // must declare a valid kind so permission routing and the
+        // capability lattice can key off it.
+        if (typeof tool.kind !== "string" || !isValidToolKind(tool.kind)) {
+          throw new Error(
+            `Tool "${name}" must declare a valid kind (one of bash/read/write/edit/glob/grep/other); got: ${String(tool.kind)}`,
           )
         }
         if (scope) {

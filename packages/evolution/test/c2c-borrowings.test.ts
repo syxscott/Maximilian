@@ -12,14 +12,15 @@ import { promises as fs } from "node:fs"
 import path from "node:path"
 import os from "node:os"
 import { renderHandoffBundle, defaultHandoffBudgetTokens, estimateTokens } from "@max/core"
-import { AgentMemoryStore, type AgentMemory } from "../src/memory.js"
+import { AgentMemoryStore } from "../src/memory.js"
+import type { AgentMemory } from "../src/types.js"
 import {
   runOracleTriad,
   OracleLessonsMissingError,
   type OracleTriadExecutor,
 } from "../src/oracle-triad.js"
 import { ProfileStore } from "../src/profile-store.js"
-import type { AgentManifest, Task } from "../src/types.js"
+import type { AgentManifest, Task } from "@max/core"
 
 // ── D: handoff budget ────────────────────────────────────────────────────────
 
