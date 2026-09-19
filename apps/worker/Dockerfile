@@ -34,6 +34,10 @@ RUN pnpm --recursive --filter @max/worker... run build
 # ─── runtime ──────────────────────────────────────────────────────────
 FROM base AS runtime
 ENV NODE_ENV=production
+# The --prod install below re-runs better-sqlite3's install script (it
+# compiles from source on alpine musl — no prebuilt for this ABI), so the
+# runtime stage needs the same build chain as the deps stage.
+RUN apk add --no-cache python3 make g++
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/worker/package.json ./apps/worker/
 COPY packages ./packages
