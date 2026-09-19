@@ -88,6 +88,18 @@ export interface ToolOutputBudgetOptions {
   artifactDir: string
   /** Session/task scoping for the artifact filename. */
   scope?: string
+  /**
+   * Durable omission sink (deepseek borrowing: budget-exceeded decisions
+   * are recorded as replayable events, not silent truncations — resume/
+   * fork/replay must not resurrect the omitted bytes). Called once per
+   * externalization with the artifact metadata.
+   */
+  omissionSink?: (omission: {
+    tool: string
+    artifactPath: string
+    originalChars: number
+    at: string
+  }) => void
 }
 
 /**
@@ -116,6 +128,12 @@ export function createToolOutputBudget(opts: ToolOutputBudgetOptions): {
       try {
         await fs.mkdir(opts.artifactDir, { recursive: true })
         await fs.writeFile(filePath, text, "utf8")
+        opts.omissionSink?.({
+          tool: toolName,
+          artifactPath: filePath,
+          originalChars: text.length,
+          at: new Date().toISOString(),
+        })
       } catch {
         // Artifact write failed — degrade to head+tail preview.
         const head = text.slice(0, 2000)

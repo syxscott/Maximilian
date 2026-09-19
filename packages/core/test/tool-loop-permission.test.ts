@@ -141,3 +141,32 @@ describe("AgentRuntime permission service paths", () => {
 
 // Keep the imports referenced for lint (Workspace/Result/Task used in types only).
 export type { Workspace, Result, Task }
+
+describe("AgentRuntime auto-review mode (deepseek borrowing)", () => {
+  const meta = { workspaceId: "ws-ar", taskId: "t-ar", tool: "bash", target: "npm publish" }
+
+  it("auto-allows when the reviewer returns a legal low/allow verdict", async () => {
+    const runtime = new AgentRuntime(() => undefined, makeSink(), {
+      autoReviewer: async () => ({ risk: "low", decision: "allow", reason: "routine cleanup" }),
+    })
+    await expect(runtime.awaitPermission("ar-1", meta)).resolves.toBe("allow")
+    // Every subsequent legal low/allow verdict auto-approves too.
+    await expect(runtime.awaitPermission("ar-2", meta)).resolves.toBe("allow")
+  })
+
+  it("fails closed on reviewer errors and illegal verdicts", async () => {
+    const runtime = new AgentRuntime(() => undefined, makeSink(), {
+      autoReviewer: async () => {
+        throw new Error("reviewer exploded")
+      },
+    })
+    await expect(runtime.awaitPermission("ar-3", meta)).resolves.toBe("deny")
+  })
+
+  it("high-risk verdicts always deny", async () => {
+    const runtime = new AgentRuntime(() => undefined, makeSink(), {
+      autoReviewer: async () => ({ risk: "high", decision: "allow", reason: "trust me" }),
+    })
+    await expect(runtime.awaitPermission("ar-4", meta)).resolves.toBe("deny")
+  })
+})

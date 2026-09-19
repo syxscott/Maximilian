@@ -121,6 +121,32 @@ export type ApprovalResolveResult =
   { ok: true } | { ok: false; reason: "unknown" | "comment_required" }
 
 /**
+ * Auto-review protocol (deepseek-harness borrowing: Permission Auto
+ * review). A pre-execute LLM reviewer semantically inspects each "ask"
+ * using session context. The decision set is CLOSED — only
+ * {low,allow} / {medium,allow|deny} / {high,deny} are legal; anything
+ * else fails closed as deny.
+ */
+export type AutoReviewRisk = "low" | "medium" | "high"
+export type AutoReviewDecision = "allow" | "deny"
+
+export interface AutoReviewVerdict {
+  risk: AutoReviewRisk
+  decision: AutoReviewDecision
+  reason?: string
+}
+
+/**
+ * Legal (risk, decision) pairs. Anything outside this set fails closed.
+ */
+export function isValidAutoReviewVerdict(v: { risk: string; decision: string }): v is AutoReviewVerdict {
+  if (v.risk === "low") return v.decision === "allow"
+  if (v.risk === "medium") return v.decision === "allow" || v.decision === "deny"
+  if (v.risk === "high") return v.decision === "deny"
+  return false
+}
+
+/**
  * Human decision on a parked permission prompt (minimax-code borrowing).
  * "allow-always" stores a pattern rule in the workspace's PermissionService
  * and retroactively approves every matching pending request in the wave.
@@ -165,8 +191,11 @@ export type RuntimeEvent =
       taskId: string
       requestId: string
       decision: PermissionDecision
-      /** How the decision was reached: the user, an "always" rule, or fail-closed timeout. */
-      via?: "user" | "always-rule" | "timeout"
+      /** How the decision was reached: the user, an "always" rule, fail-closed
+       *  timeout, or the auto reviewer. */
+      via?: "user" | "always-rule" | "timeout" | "auto-review"
+      /** Reviewer reason (auto-review only) — never enters model context. */
+      reason?: string
     }
   | {
       type: "approval-request"
@@ -361,6 +390,24 @@ export interface RuntimeOptions {
    */
   failureDetector?: (text: string) => FailureDetectionResult
   /**
+   * Auto reviewer (deepseek-harness Permission Auto review borrowing).
+   * When set, "ask" decisions are routed to this semantic reviewer instead
+   * of parking for a human: given the tool call and session context it
+   * returns a CLOSED-SET verdict. Illegal verdicts and reviewer errors
+   * fail closed as deny. The user channel (permission-resolved SSE +
+   * /permissions/answer) stays available as the manual override.
+   */
+  autoReviewer?: (req: {
+    tool: string
+    target: string
+    taskId: string
+    workspaceId: string
+    /** User request that spawned the task. */
+    userRequest?: string
+    /** Prior artifacts in the workspace (already budgeted upstream). */
+    priorOutputs: string[]
+  }) => Promise<AutoReviewVerdict>
+  /**
    * How long a parked "ask" permission prompt waits for a human answer
    * before the PermissionService resolves it fail-closed as `unavailable`
    * (deepseek-harness borrowing: an unanswered ask NEVER approves; the tool
@@ -482,6 +529,8 @@ function readPreflightResult(metadata: unknown): PreflightCache | null {
 export class AgentRuntime {
   private listeners = new Set<RuntimeListener>()
   private runningWorkspaces = new Map<string, AbortController>()
+  /** Per-workspace user request (for auto-review context). */
+  private workspaceUserRequests = new Map<string, string>()
   private ledgers = new Map<string, Ledger>()
   private maxConcurrency: number
   private memoryStore?: AgentMemoryStorePort
@@ -490,6 +539,7 @@ export class AgentRuntime {
   private termination: TerminationCondition
   private enableToolLoop: boolean
   private permissionAskTimeoutMs: number
+  private autoReviewer?: RuntimeOptions["autoReviewer"]
   private getSkills?: RuntimeOptions["getSkills"]
   private maxTaskRetries: number
   private maxIdleRoundsBeforeStall: number
@@ -590,6 +640,7 @@ export class AgentRuntime {
     this.termination = options?.termination ?? NeverTermination
     this.enableToolLoop = options?.enableToolLoop ?? false
     this.permissionAskTimeoutMs = options?.permissionAskTimeoutMs ?? 600_000
+    this.autoReviewer = options?.autoReviewer
 
     // Retry-status event stream (minimax-code llm-retry borrowing): forward
     // every provider retry (waiting/recovered/exhausted) as a RuntimeEvent so
@@ -742,6 +793,46 @@ export class AgentRuntime {
       })
     })
 
+    // Auto-review arm (deepseek Permission Auto review borrowing): when a
+    // reviewer is configured, give it the call + session context FIRST.
+    // Closed-set validation means an illegal/failed verdict fails closed
+    // as deny. The human channel stays parked as the manual override —
+    // the user can still answer while the reviewer deliberates.
+    const reviewer = this.autoReviewer
+    if (reviewer) {
+      const reviewPromise = (async (): Promise<"allow" | "deny"> => {
+        try {
+          const verdict = await reviewer({
+            tool: meta.tool,
+            target: meta.target,
+            taskId: meta.taskId,
+            workspaceId: meta.workspaceId,
+            userRequest: this.workspaceUserRequests.get(meta.workspaceId),
+            priorOutputs: [],
+          })
+          // Closed-set validation — anything outside fails closed.
+          if (!isValidAutoReviewVerdict(verdict)) {
+            return "deny"
+          }
+          if (verdict.decision === "allow") {
+            this.settleUserChannel(requestId, meta, "allow", "auto-review", verdict.reason)
+            return "allow"
+          }
+          this.settleUserChannel(requestId, meta, "deny", "auto-review", verdict.reason)
+          return "deny"
+        } catch {
+          // Reviewer errors fail closed.
+          this.settleUserChannel(requestId, meta, "deny", "auto-review", "reviewer error")
+          return "deny"
+        }
+      })()
+      return Promise.race([
+      reviewPromise,
+      serviceResolution.then((r) => (r.outcome === "allowed" ? ("allow" as const) : ("deny" as const))),
+      userDecision.then((d) => (d === "deny" ? ("deny" as const) : ("allow" as const))),
+    ]) as Promise<"allow" | "deny">
+    }
+
     return Promise.race([
       serviceResolution.then((r): "allow" | "deny" => {
         // Service settled on its own: always-rule auto-approval or
@@ -787,7 +878,8 @@ export class AgentRuntime {
     requestId: string,
     meta: { workspaceId: string; taskId: string; tool: string; target: string },
     decision: PermissionDecision,
-    via: "user" | "always-rule" | "timeout",
+    via: "user" | "always-rule" | "timeout" | "auto-review",
+    reason?: string,
   ): void {
     const entry = this.permissionResolvers.get(requestId)
     this.permissionResolvers.delete(requestId)
@@ -809,6 +901,7 @@ export class AgentRuntime {
       requestId,
       decision,
       via,
+      reason,
     })
   }
 
@@ -1234,6 +1327,7 @@ export class AgentRuntime {
     try {
       const controller = new AbortController()
       this.runningWorkspaces.set(workspace.id, controller)
+      this.workspaceUserRequests.set(workspace.id, workspace.userRequest)
 
       // Initialize the Magentic-One style ledger for this workspace.
       const initialLedger = freshLedger(workspace.id)

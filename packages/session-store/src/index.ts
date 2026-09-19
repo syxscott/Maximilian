@@ -77,6 +77,8 @@ export interface AppendMessageInput {
   role: string
   content: string
   createdAt?: string
+  /** User-turn ordinal — rewind operates on this (hermes state_rewind). */
+  turnOrdinal?: number
 }
 
 /** Input for {@link SessionStore.appendEvent}. */
@@ -177,26 +179,107 @@ export class SessionStore {
             { value: string | null } | undefined
         )?.value
       : undefined
-    if (existing !== undefined && existing !== null) {
-      const version = Number.parseInt(existing, 10)
-      if (Number.isFinite(version) && version > SCHEMA_VERSION) {
-        throw new Error(
-          `session-store: database ${this.path} has schema_version ${version}, ` +
-            `but this code understands at most ${SCHEMA_VERSION} (forward-only migrations)`,
-        )
-      }
+    const current = existing !== undefined && existing !== null ? Number.parseInt(existing, 10) : 0
+    if (Number.isFinite(current) && current > SCHEMA_VERSION) {
+      throw new Error(
+        `session-store: database ${this.path} has schema_version ${current}, ` +
+          `but this code understands at most ${SCHEMA_VERSION} (forward-only migrations)`,
+      )
     }
-    this.db.transaction(() => {
-      this.db.exec(SCHEMA_SQL)
-      this.db
-        .prepare(
-          "INSERT INTO meta (key, value) VALUES ('schema_version', ?) " +
-            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        )
-        .run(String(SCHEMA_VERSION))
-    })()
-    this.migrated = true
+
+    // Adjacent-edge migration chain (deepseek session-format V2->V3
+    // borrowing): recovery from ANY old version walks the edges one at a
+    // time; every edge runs inside its own transaction. Edge 0 doubles as
+    // the initial bootstrap (v0 -> v1: CREATE TABLE IF NOT EXISTS *).
+    const edges: Array<{ to: number; up: () => void }> = [
+      {
+        to: 1,
+        up: () => {
+          this.db.exec(SCHEMA_SQL)
+          this.setMetaRaw("schema_version", "1")
+        },
+      },
+      {
+        // v1 -> v2 (rewind borrowing): soft-delete + turn-ordinal columns on
+        // messages so a user-turn rewind can hide rows without destroying
+        // the durable transcript.
+        to: 2,
+        up: () => {
+          const cols = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{
+            name: string
+          }>
+          if (!cols.some((c) => c.name === "deleted_at")) {
+            this.db.exec("ALTER TABLE messages ADD COLUMN deleted_at TEXT")
+          }
+          if (!cols.some((c) => c.name === "turn_ordinal")) {
+            this.db.exec("ALTER TABLE messages ADD COLUMN turn_ordinal INTEGER")
+          }
+          this.setMetaRaw("schema_version", "2")
+        },
+      },
+    ]
+
+    for (const edge of edges) {
+      if (current >= edge.to) continue
+      this.db.transaction(() => {
+        edge.up()
+      })()
+    }
     return this
+  }
+
+  /** Raw meta write used by migration edges (bypasses the statement cache). */
+  private setMetaRaw(key: string, value: string): void {
+    this.db
+      .prepare(
+        "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      )
+      .run(key, value)
+  }
+
+  /**
+   * Rewind a user turn (hermes state_rewind borrowing): soft-delete the
+   * messages of turn `turnOrdinal` and everything AFTER it, WITHOUT
+   * destroying the durable rows. Returns the number of hidden messages.
+   */
+  rewindFromTurn(sessionId: string, turnOrdinal: number): number {
+    const info = this.db
+      .prepare(
+        "UPDATE messages SET deleted_at = ? WHERE session_id = ? AND deleted_at IS NULL AND COALESCE(turn_ordinal, 0) >= ?",
+      )
+      .run(new Date().toISOString(), sessionId, turnOrdinal)
+    return info.changes
+  }
+
+  /** Bounded timeline index (hermes state_timeline borrowing), oldest last, soft-deleted rows flagged. */
+  timeline(
+    sessionId: string,
+    limit = 200,
+  ): Array<{
+    id: string
+    role: string
+    turnOrdinal: number | null
+    createdAt: string
+    deleted: boolean
+  }> {
+    const rows = this.statement(
+      "timeline",
+      "SELECT id, role, turn_ordinal AS turnOrdinal, created_at AS createdAt, deleted_at AS deletedAt " +
+        "FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?",
+    ).all(sessionId, limit) as Array<{
+      id: string
+      role: string
+      turnOrdinal: number | null
+      createdAt: string
+      deletedAt: string | null
+    }>
+    return rows.reverse().map((row) => ({
+      id: row.id,
+      role: row.role,
+      turnOrdinal: row.turnOrdinal,
+      createdAt: row.createdAt,
+      deleted: row.deletedAt !== null,
+    }))
   }
 
   /** Current schema_version recorded in the `meta` table (0 if unset or not yet migrated). */
@@ -334,14 +417,22 @@ export class SessionStore {
   appendMessage(input: AppendMessageInput): void {
     this.statement(
       "appendMessage",
-      `INSERT INTO messages (id, session_id, role, content, created_at)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO messages (id, session_id, role, content, created_at, turn_ordinal)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          session_id = excluded.session_id,
          role = excluded.role,
          content = excluded.content,
-         created_at = excluded.created_at`,
-    ).run(input.id, input.sessionId, input.role, input.content, input.createdAt ?? nowIso())
+         created_at = excluded.created_at,
+         turn_ordinal = excluded.turn_ordinal`,
+    ).run(
+      input.id,
+      input.sessionId,
+      input.role,
+      input.content,
+      input.createdAt ?? nowIso(),
+      input.turnOrdinal ?? 0,
+    )
   }
 
   /** Append a workspace event; returns the autoincrement row id. */

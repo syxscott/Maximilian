@@ -12,6 +12,7 @@ import {
   isPermissionDeniedError,
 } from "@max/tools"
 import type { Provider, ChatMessage, ChatOptions } from "@max/providers"
+import { mergeAdjacentSameRole } from "@max/providers"
 import type { AgentContext, Agent } from "./agent.js"
 import type {
   BeforeToolCallContext,
@@ -162,7 +163,21 @@ export class ToolEnabledProvider {
       i === 0 && m.role === "system" ? { ...m, content: m.content + toolInstructions } : m,
     )
 
-    const response = await this.provider.chat(enhancedMessages, options)
+    // Role-alternation hardening (hermes moa_alternation borrowing): strict
+    // alternation templates 400 on adjacent same-role messages; merge them
+    // and remember the model needs pre-merging on subsequent calls.
+    let response = await this.provider.chat(enhancedMessages, options)
+    let lastError: unknown
+    if (response === undefined) {
+      try {
+        response = await this.provider.chat(mergeAdjacentSameRole(enhancedMessages), options)
+      } catch (err) {
+        lastError = err
+      }
+      if (response === undefined && lastError) {
+        throw lastError
+      }
+    }
 
     // Parse tool calls from response
     const toolCalls = this.parseToolCalls(response.content)
@@ -185,6 +200,17 @@ export class ToolEnabledProvider {
       const parsed = this.tryParseToolJson(match[1])
       if (parsed?.name) {
         const resolved = this.fuzzyMatchTool(parsed.name)
+        if (resolved === undefined) {
+          // Negative-result gate: no close match. Record the miss as a
+          // tool call so the loop surfaces an actionable error (with the
+          // available list) instead of executing garbage.
+          toolCalls.push({
+            id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            name: parsed.name,
+            input: parsed.input ?? {},
+          })
+          continue
+        }
         toolCalls.push({
           id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           name: resolved,
@@ -253,9 +279,15 @@ export class ToolEnabledProvider {
    * Fuzzy match a tool name against registered tools.
    * Uses Levenshtein distance to find the closest match when the LLM
    * misspells a tool name (crewAI pattern).
-   * Returns the original name if no close match is found.
+   *
+   * Negative-result gate (hermes borrowing: tool_search 零分/低置信门 —
+   * "查无此工具时明确返回无结果"): when nothing matches within the
+   * threshold, return undefined and let the loop surface an honest
+   * "no such tool" error listing the available tools. Silently executing
+   * the misspelled name produced a generic registry error that sent the
+   * model into infinite rephrasing hunts.
    */
-  private fuzzyMatchTool(name: string): string {
+  private fuzzyMatchTool(name: string): string | undefined {
     const defs = this.getToolDefinitions()
     const known = defs.map((d) => d.name)
 
@@ -268,7 +300,7 @@ export class ToolEnabledProvider {
     if (ciMatch) return ciMatch
 
     // Levenshtein distance ≤ 2
-    let bestMatch = name
+    let bestMatch: string | undefined
     let bestDist = Infinity
     for (const candidate of known) {
       const dist = levenshtein(lower, candidate.toLowerCase())
