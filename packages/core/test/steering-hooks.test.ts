@@ -85,7 +85,7 @@ function buildProvider(): {
     echo: {
       name: "echo",
       description: "echo",
-        kind: "misc",
+      kind: "misc",
       inputSchema: { type: "object", properties: { x: { type: "number" } } },
       async execute(input: { x: number }) {
         return {
