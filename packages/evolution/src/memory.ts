@@ -79,19 +79,24 @@ export class AgentMemoryStore {
   ): Array<{ bucket: string; decision: "inject" | "skip"; mean: number; injectedCount: number }> {
     const eps = opts.eps ?? 0.25
     const minSamples = opts.minSamples ?? 3
-    const buckets = [
-      "userFeedback",
-      "reviewSuggestions",
-      "commonErrors",
-      "goodExamples",
-    ] as const
-    const out: Array<{ bucket: string; decision: "inject" | "skip"; mean: number; injectedCount: number }> = []
+    const buckets = ["userFeedback", "reviewSuggestions", "commonErrors", "goodExamples"] as const
+    const out: Array<{
+      bucket: string
+      decision: "inject" | "skip"
+      mean: number
+      injectedCount: number
+    }> = []
     for (const bucket of buckets) {
       if ((mem[bucket]?.length ?? 0) === 0) continue
       const e = mem.efficacy?.[bucket]
       const mean = e && e.injectedCount > 0 ? e.deltaSum / e.injectedCount : 0
       const skip = e !== undefined && e.injectedCount >= minSamples && mean < -eps
-      out.push({ bucket, decision: skip ? "skip" : "inject", mean, injectedCount: e?.injectedCount ?? 0 })
+      out.push({
+        bucket,
+        decision: skip ? "skip" : "inject",
+        mean,
+        injectedCount: e?.injectedCount ?? 0,
+      })
     }
     return out
   }
@@ -238,13 +243,8 @@ export class AgentMemoryStore {
     summarizer?: MemorySummarizer,
   ): Promise<AgentMemory> {
     const buckets: Array<
-    keyof Omit<AgentMemory, "totalEntries" | "compressedAt" | "archived" | "efficacy">
-  > = [
-      "userFeedback",
-      "reviewSuggestions",
-      "commonErrors",
-      "goodExamples",
-    ]
+      keyof Omit<AgentMemory, "totalEntries" | "compressedAt" | "archived" | "efficacy">
+    > = ["userFeedback", "reviewSuggestions", "commonErrors", "goodExamples"]
 
     let next: AgentMemory = { ...mem }
     let changed = false

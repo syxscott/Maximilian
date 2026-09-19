@@ -98,9 +98,7 @@ export function renderHandoffBundle(
 
   const text = parts.join("\n\n")
   const estimatedTokens = estimateTokens(text.length)
-  communicationTokensTotal
-    .labels(opts.role, opts.kind ?? "handoff")
-    .inc(estimatedTokens)
+  communicationTokensTotal.labels(opts.role, opts.kind ?? "handoff").inc(estimatedTokens)
 
   return { text, totalChars, truncatedEntries, estimatedTokens }
 }
