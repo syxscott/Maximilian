@@ -92,6 +92,12 @@ export const ConfigSchema = z.object({
   // a single LLM call. Kill switch — set false to restore pure single-call
   // agent behaviour.
   TOOL_LOOP_ENABLED: booleanString,
+  // Lesson gating (C2C borrowing): injection is selective — a memory
+  // bucket whose mean efficacy (review score delta vs role baseline) is
+  // significantly negative stops being injected. "shadow" logs what WOULD
+  // be skipped without changing behaviour; "off" is the legacy render.
+  LESSON_GATING: z.enum(["off", "shadow", "enforce"]).default("shadow"),
+
   // Inter-agent handoff budget (C2C borrowing): hard cap on the priorResults
   // bundle / replanner snippet injected into downstream agents, in estimated
   // tokens. Communication text is a first-class cost item and becomes a net

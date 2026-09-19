@@ -746,6 +746,9 @@ importers:
       '@max/providers':
         specifier: workspace:*
         version: link:../providers
+      '@max/telemetry':
+        specifier: workspace:*
+        version: link:../telemetry
       zod:
         specifier: ^3.23.8
         version: 3.25.76

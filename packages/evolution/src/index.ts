@@ -16,6 +16,13 @@
 export * from "./types.js"
 export { MetricsStore } from "./metrics-store.js"
 export type { MetricsStoreLike } from "./metrics-store.js"
+export {
+  runOracleTriad,
+  OracleLessonsMissingError,
+  type OracleTriadReport,
+  type OracleTriadDeps,
+  type OracleTriadExecutor,
+} from "./oracle-triad.js"
 export { ProfileStore } from "./profile-store.js"
 export {
   Leaderboard,

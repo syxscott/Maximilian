@@ -525,6 +525,7 @@ if (evolutionEnabled) {
     candidates: providers,
     fallbackProvider: defaultProvider,
     defaultManifests: {},
+    lessonGating: config.LESSON_GATING,
     ...(db ? { profileStore: new PgProfileStore(db) } : {}),
     // Persist metrics in Postgres when available (the facade previously
     // always fell back to the file store, making usage/metrics PG-blind).

@@ -145,6 +145,7 @@ async function main() {
       candidates: providers,
       fallbackProvider: defaultProvider,
       defaultManifests: {},
+      lessonGating: config.LESSON_GATING,
       // The worker is PG-only (see startup check below), so metrics go to
       // Postgres — the file store here would fragment learning state
       // across worker hosts.

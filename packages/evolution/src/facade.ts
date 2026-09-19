@@ -26,6 +26,9 @@ import { containsSecret, scrubSecrets } from "./secret-scrub.js"
 import { entryContent } from "./types.js"
 import { BackgroundReflector, defaultReflector, type Reflector } from "./reflection.js"
 import { isPolicyDeniedMessage } from "@max/core"
+import { getLogger } from "@max/telemetry"
+
+const log = getLogger("evolution-facade")
 import type { AgentProfile, MetricRecord, ModelSelection } from "./types.js"
 
 export interface CompletionInput {
@@ -71,6 +74,13 @@ export interface EvolutionFacadeOptions {
    * disable background reflection entirely.
    */
   reflector?: Reflector | false
+  /**
+   * Lesson gating mode (C2C borrowing): "enforce" skips memory buckets
+   * whose mean efficacy is significantly negative at prelude-render time;
+   * "shadow" (default) records what WOULD be skipped without changing
+   * behaviour; "off" is the legacy unconditional render.
+   */
+  lessonGating?: "off" | "shadow" | "enforce"
 }
 
 export class EvolutionFacade {
@@ -80,6 +90,8 @@ export class EvolutionFacade {
   readonly selector: ModelSelector
   readonly evolution: EvolutionEngine
   readonly sealedVault?: SealedFileVault
+  /** Lesson gating mode (C2C borrowing). */
+  readonly lessonGating: "off" | "shadow" | "enforce"
   readonly reflector?: BackgroundReflector
 
   /**
@@ -111,6 +123,7 @@ export class EvolutionFacade {
     )
     this.evolution = new EvolutionEngine(opts.rootDir, this.metrics, this.profiles)
     this.sealedVault = opts.sealedVault
+    this.lessonGating = opts.lessonGating ?? "shadow"
     this.reflector =
       opts.reflector === false
         ? undefined
@@ -178,6 +191,39 @@ export class EvolutionFacade {
         const suggestions =
           (input.result.metadata.review as { suggestions?: string[] }).suggestions ?? []
         nextMemory = AgentMemoryStore.recordReviewSuggestions(nextMemory, suggestions)
+      }
+      // Lesson efficacy ledger (C2C borrowing): delta = this run's review
+      // score − the role's rolling baseline (mean of PRIOR scored runs).
+      // Coarse by design — bucket-level credit/blame, since every active
+      // bucket was part of that run's frozen prelude.
+      const scored = records.filter((r) => r.reviewScore !== undefined)
+      if (scored.length > 0 && !Number.isNaN(input.reviewScore)) {
+        const priorScores = scored
+          .filter((r) => r.taskId !== input.task.id)
+          .map((r) => r.reviewScore!)
+        const baseline =
+          priorScores.length > 0
+            ? priorScores.reduce((a, b) => a + b, 0) / priorScores.length
+            : (input.reviewScore as number)
+        const delta = (input.reviewScore as number) - baseline
+        AgentMemoryStore.applyEfficacy(nextMemory, delta)
+        if (this.lessonGating !== "off") {
+          for (const d of AgentMemoryStore.gatingDecisions(nextMemory)) {
+            if (this.lessonGating === "enforce" || d.decision === "skip") {
+              log.info(
+                {
+                  role: input.task.agentRole,
+                  bucket: d.bucket,
+                  decision: d.decision,
+                  mean: Number(d.mean.toFixed(3)),
+                  injectedCount: d.injectedCount,
+                  mode: this.lessonGating,
+                },
+                "lesson gating",
+              )
+            }
+          }
+        }
       }
       nextMemory = await AgentMemoryStore.maybeCompress(nextMemory)
       // Curator maintenance pass (hermes): collapse duplicates so the corpus

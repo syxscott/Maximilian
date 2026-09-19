@@ -88,7 +88,7 @@ class MemoryAugmentedAgent extends Agent {
       // Freeze once per agent instance: later memory writes don't change
       // this workspace's prompts (prefix-cache stability over freshness —
       // the next workspace run picks the updated memory up).
-      this.frozenPrelude = AgentMemoryStore.toPrelude(profile.memory)
+      this.frozenPrelude = AgentMemoryStore.toPrelude(profile.memory, this.facade.lessonGating)
     }
     if (this.frozenPrelude) {
       // Goes through the overridden setter, which forwards to inner.
