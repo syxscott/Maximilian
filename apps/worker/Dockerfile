@@ -9,6 +9,9 @@ WORKDIR /app
 
 # ─── deps ──────────────────────────────────────────────────────────────
 FROM base AS deps
+# Native module build deps (better-sqlite3 compiles from source on alpine
+# musl — no prebuilt binaries for that ABI).
+RUN apk add --no-cache python3 make g++
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig*.json ./
 COPY apps/worker/package.json ./apps/worker/
 COPY packages ./packages

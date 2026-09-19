@@ -72,9 +72,7 @@
       "@opentelemetry/auto-instrumentations-node": "^0.78.0",
       "@opentelemetry/propagator-jaeger": "^2.9.0"
     },
-    "neverBuiltDependencies": [
-      "better-sqlite3"
-    ]
+    "neverBuiltDependencies": []
   },
   "packageManager": "pnpm@9.12.0",
   "engines": {

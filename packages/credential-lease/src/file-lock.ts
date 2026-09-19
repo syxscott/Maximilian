@@ -1,24 +1,24 @@
-import { open, rm, stat } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { open, rm, stat } from "node:fs/promises"
+import { dirname } from "node:path"
 
-import { ensurePrivateDirectory } from './atomic-write.js';
+import { ensurePrivateDirectory } from "./atomic-write.js"
 
 export interface FileLockOptions {
   /** Age (ms) after which a leftover lock file is considered stale and broken. */
-  staleMs?: number;
+  staleMs?: number
   /** Total budget (ms) spent retrying the exclusive create before failing. */
-  timeoutMs?: number;
+  timeoutMs?: number
   /** Base delay (ms) between retries; grows linearly up to 50ms. */
-  retryDelayMs?: number;
+  retryDelayMs?: number
 }
 
-const DEFAULT_STALE_MS = 30_000;
-const DEFAULT_TIMEOUT_MS = 10_000;
-const DEFAULT_RETRY_DELAY_MS = 5;
-const MAX_RETRY_DELAY_MS = 50;
+const DEFAULT_STALE_MS = 30_000
+const DEFAULT_TIMEOUT_MS = 10_000
+const DEFAULT_RETRY_DELAY_MS = 5
+const MAX_RETRY_DELAY_MS = 50
 
 function sleep(durationMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, durationMs));
+  return new Promise((resolve) => setTimeout(resolve, durationMs))
 }
 
 /**
@@ -31,36 +31,36 @@ export async function withFileLock<T>(
   operation: () => Promise<T>,
   options: FileLockOptions = {},
 ): Promise<T> {
-  const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
-  await ensurePrivateDirectory(dirname(lockPath));
-  const deadline = Date.now() + timeoutMs;
-  let attempt = 0;
-  let handle;
+  const staleMs = options.staleMs ?? DEFAULT_STALE_MS
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
+  await ensurePrivateDirectory(dirname(lockPath))
+  const deadline = Date.now() + timeoutMs
+  let attempt = 0
+  let handle
   for (;;) {
     try {
-      handle = await open(lockPath, 'wx', 0o600);
-      break;
+      handle = await open(lockPath, "wx", 0o600)
+      break
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
       if (Date.now() >= deadline) {
-        throw new Error(`Timed out acquiring credential lease lock: ${lockPath}`);
+        throw new Error(`Timed out acquiring credential lease lock: ${lockPath}`)
       }
       try {
-        const metadata = await stat(lockPath);
-        if (Date.now() - metadata.mtimeMs > staleMs) await rm(lockPath, { force: true });
+        const metadata = await stat(lockPath)
+        if (Date.now() - metadata.mtimeMs > staleMs) await rm(lockPath, { force: true })
       } catch {
         // The holder released it first; retry immediately.
       }
-      await sleep(Math.min(MAX_RETRY_DELAY_MS, retryDelayMs * (attempt + 1)));
-      attempt += 1;
+      await sleep(Math.min(MAX_RETRY_DELAY_MS, retryDelayMs * (attempt + 1)))
+      attempt += 1
     }
   }
-  await handle.close();
+  await handle.close()
   try {
-    return await operation();
+    return await operation()
   } finally {
-    await rm(lockPath, { force: true });
+    await rm(lockPath, { force: true })
   }
 }

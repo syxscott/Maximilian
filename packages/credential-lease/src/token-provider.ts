@@ -1,5 +1,5 @@
-import type { CredentialAuthMachine } from './auth-machine.js';
-import type { AccessTokenLease, AuthStatusSnapshot } from './auth-machine.js';
+import type { CredentialAuthMachine } from "./auth-machine.js"
+import type { AccessTokenLease, AuthStatusSnapshot } from "./auth-machine.js"
 
 /**
  * Provider-facing token interface, ported from minimax-code's `MCodeTokenProvider`.
@@ -8,9 +8,9 @@ import type { AccessTokenLease, AuthStatusSnapshot } from './auth-machine.js';
  * know which lease they used.
  */
 export interface TokenProvider {
-  getStatus(): Promise<AuthStatusSnapshot>;
-  getAccessToken(options: { minValidityMs: number }): Promise<AccessTokenLease>;
-  handleUnauthorized(): Promise<'retry' | 'logout'>;
+  getStatus(): Promise<AuthStatusSnapshot>
+  getAccessToken(options: { minValidityMs: number }): Promise<AccessTokenLease>
+  handleUnauthorized(): Promise<"retry" | "logout">
 }
 
 export function createTokenProvider(machine: CredentialAuthMachine): TokenProvider {
@@ -19,5 +19,5 @@ export function createTokenProvider(machine: CredentialAuthMachine): TokenProvid
     getAccessToken: (options: { minValidityMs: number }) =>
       machine.getAccessToken(options.minValidityMs),
     handleUnauthorized: () => machine.handleUnauthorized(),
-  });
+  })
 }
