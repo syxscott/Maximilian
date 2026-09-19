@@ -85,6 +85,7 @@ function buildProvider(): {
     echo: {
       name: "echo",
       description: "echo",
+        kind: "misc",
       inputSchema: { type: "object", properties: { x: { type: "number" } } },
       async execute(input: { x: number }) {
         return {
@@ -121,6 +122,7 @@ describe("Steering hooks (借鉴 openclaw)", () => {
       echo: {
         name: "echo",
         description: "echo",
+        kind: "misc",
         inputSchema: { type: "object", properties: { x: { type: "number" } } },
         async execute(input: { x: number }) {
           return {

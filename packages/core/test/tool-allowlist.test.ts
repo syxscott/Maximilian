@@ -39,10 +39,10 @@ class StubProvider implements Provider {
 function buildProvider(): ToolEnabledProvider {
   const registry = createToolRegistry()
   registry.register({
-    echo: { name: "echo", description: "echo", inputSchema: {} } as never,
-    read_file: { name: "read_file", description: "read", inputSchema: {} } as never,
-    write_file: { name: "write_file", description: "write", inputSchema: {} } as never,
-    exec: { name: "exec", description: "execute", inputSchema: {} } as never,
+    echo: { name: "echo", kind: "misc", description: "echo", inputSchema: {} } as never,
+    read_file: { name: "read_file", kind: "read", description: "read", inputSchema: {} } as never,
+    write_file: { name: "write_file", kind: "edit", description: "write", inputSchema: {} } as never,
+    exec: { name: "exec", kind: "execute", description: "execute", inputSchema: {} } as never,
   })
   return new ToolEnabledProvider(new StubProvider(), registry)
 }

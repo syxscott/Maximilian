@@ -62,6 +62,7 @@ function buildRegistryWithSpy(toolName: string): {
   const def: ToolDefinition = {
     name: toolName,
     description: "spy",
+    kind: "misc",
     inputSchema: { type: "object", properties: { x: { type: "number" } } },
   }
   const executeSpy = vi.fn(async (input: { x: number }) => ({
