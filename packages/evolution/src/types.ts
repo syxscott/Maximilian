@@ -201,6 +201,10 @@ export const LeaderboardEntrySchema = z.object({
   //   rather than hidden.
   baselineScore: z.number().min(0).max(10).optional(),
   deltaScore: z.number().optional(),
+  /** Performance-gap-recovered (C2C §A.3.1 borrowing): share of the
+   *  oracle-arm gap the current corpus recovers, 0..1+. Populated by the
+   *  oracle-triad harness. */
+  pgr: z.number().min(0).optional(),
   costDeltaUSD: z.number().optional(),
   /** Per-version history of from→to decisions. */
   versionHistory: z

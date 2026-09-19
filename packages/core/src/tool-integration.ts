@@ -715,7 +715,10 @@ async function executeSingleToolCall(
 
   // afterToolCall hook (借鉴 pi)
   if (options.afterToolCall) {
-    const afterResult = options.afterToolCall({
+    // Awaiting sync-or-async results lets extension transformers do IO
+    // (the tool-output-budget extension externalizes oversized outputs to
+    // a file artifact).
+    const afterResult = await options.afterToolCall({
       assistantMessage: {},
       toolCall: call,
       args: call.input,

@@ -17,6 +17,11 @@ export * from "./types.js"
 export { MetricsStore } from "./metrics-store.js"
 export type { MetricsStoreLike } from "./metrics-store.js"
 export {
+  computeFlipMatrix,
+  summarizeFlipMatrix,
+  type FlipMatrix,
+} from "./flip-matrix.js"
+export {
   runOracleTriad,
   OracleLessonsMissingError,
   type OracleTriadReport,

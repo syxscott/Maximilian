@@ -231,3 +231,28 @@ describe("runOracleTriad", () => {
     ).rejects.toBeInstanceOf(OracleLessonsMissingError)
   })
 })
+
+// ── flip matrix (C2C Fig 7 borrowing) ────────────────────────────────────────
+
+describe("computeFlipMatrix", () => {
+  it("reports flips in both directions and the transfer rate", async () => {
+    const { computeFlipMatrix, summarizeFlipMatrix } = await import("../src/flip-matrix.js")
+    const m = computeFlipMatrix(
+      ["t1", "t2", "t3", "t4"], // baseline correct
+      ["t1", "t2", "t5", "t6"], // enriched correct
+    )
+    expect(m.newlyCorrect.sort()).toEqual(["t5", "t6"])
+    expect(m.newlyWrong).toEqual(["t3", "t4"])
+    expect(m.bothCorrect.sort()).toEqual(["t1", "t2"])
+    expect(m.net).toBe(0)
+    expect(m.transferRate).toBeCloseTo(0.5, 5) // 2 of 4 enriched-correct were already correct
+    expect(summarizeFlipMatrix(m)).toContain("net +0")
+  })
+
+  it("identifies genuine transfer when enriched wins new tasks", async () => {
+    const { computeFlipMatrix } = await import("../src/flip-matrix.js")
+    const m = computeFlipMatrix(["t1"], ["t1", "t2", "t3"])
+    expect(m.net).toBe(2)
+    expect(m.transferRate).toBeCloseTo(1 / 3, 5)
+  })
+})
