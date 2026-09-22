@@ -119,6 +119,47 @@ export class TruthAudit {
   }
 
   /**
+   * Resolve an OPEN measurement (the sampleSize=0 placeholder recorded at
+   * rollout time) with real observed deltas. The placeholder is replaced
+   * IN PLACE — never appended — so verify()'s sample mean cannot be
+   * dragged toward zero by an unresolved row. Identity note: the
+   * replacement keeps the original `recordedAt`, which is what the
+   * persistence layer keys on (`proposalId::recordedAt`), so the durable
+   * row is updated, not duplicated.
+   *
+   * Returns the resolved measurement, or null when no open measurement
+   * exists for the proposal (already resolved, or never recorded).
+   */
+  resolveMeasurement(input: {
+    proposalId: string
+    actual: TruthMeasurement["actual"]
+    sampleSize: number
+  }): TruthMeasurement | null {
+    const idx = this.measurements.findIndex(
+      (m) => m.proposalId === input.proposalId && m.sampleSize === 0,
+    )
+    if (idx === -1) return null
+    const open = this.measurements[idx]!
+    const resolved: TruthMeasurement = {
+      ...open,
+      actual: input.actual,
+      sampleSize: input.sampleSize,
+    }
+    this.measurements[idx] = resolved
+    if (this.deps.saveMeasurement) {
+      Promise.resolve(this.deps.saveMeasurement(resolved)).catch((err) => {
+        console.warn(`[TruthAudit] saveMeasurement (resolve) failed: ${(err as Error).message}`)
+      })
+    }
+    return resolved
+  }
+
+  /** Open (sampleSize=0) measurements — predictions awaiting real actuals. */
+  openMeasurements(): TruthMeasurement[] {
+    return this.measurements.filter((m) => m.sampleSize === 0)
+  }
+
+  /**
    * Verify a single proposal's prediction against all measurements recorded
    * for it. Returns null if no measurement exists yet (insufficient data).
    */

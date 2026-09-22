@@ -240,6 +240,11 @@ export const putGovernanceConfigRoute = createRoute({
 
 interface MetaRouteDeps {
   orchestrator: MetaOrchestrator
+  /** Truth-audit loop closure (hermes usage-anchor borrowing): resolve
+   *  open predictions from telemetry before each cycle runs. */
+  truthCalibrator?: {
+    resolveOpen(): Promise<{ resolved: number; pending: number; inspected: number }>
+  }
   governance: GovernanceEngine
   organizationMemory: OrganizationMemory
   simulation: SimulationEngine
@@ -298,8 +303,18 @@ export function metaRoutes(deps: MetaRouteDeps) {
         graphs: body.graphs as TeamGraph[],
         discoverySignals: body.discoverySignals as DiscoverySignal[],
       }
+      // Resolve open truth measurements first so this cycle's
+      // calibration report sees real actuals where telemetry allows.
+      let truthResolution: { resolved: number; pending: number; inspected: number } | undefined
+      if (deps.truthCalibrator) {
+        try {
+          truthResolution = await deps.truthCalibrator.resolveOpen()
+        } catch {
+          // Calibration is advisory — a metrics hiccup must not fail the cycle.
+        }
+      }
       const result = await orchestrator.cycle(input)
-      return c.json(result)
+      return c.json({ ...result, truthResolution })
     },
 
     listEvents: async (c: Context) => {

@@ -63,7 +63,12 @@ import {
 import { Commander } from "@max/commander"
 import { FileWorkspaceStore } from "@max/workspace"
 import { createDefaultAgentFactory } from "@max/agents"
-import { EvolutionFacade, evolutionAwareFactory, SealedFileVault } from "@max/evolution"
+import {
+  EvolutionFacade,
+  evolutionAwareFactory,
+  SealedFileVault,
+  MetricsStore,
+} from "@max/evolution"
 import { DAGS, BlueprintStore } from "@max/dags"
 import {
   ExecutionStore,
@@ -94,6 +99,7 @@ import {
   VisualizerAdapter,
   TruthAudit,
   type DiscoverySignal,
+  TruthCalibrator,
 } from "@max/meta-system"
 import { postChat, postChatRoute } from "./routes/chat.js"
 import {
@@ -1162,6 +1168,7 @@ let metaRegistry: CapabilityRegistry | undefined
 let metaDiscovery: CapabilityDiscoveryEngine | undefined
 let metaPendingStore: PendingProposalStore | undefined
 let metaRollout: SafeRollout | undefined
+let truthCalibrator: TruthCalibrator | undefined
 let metaBirth: InstanceType<typeof AgentBirthEngine> | undefined
 
 if (metaAgentEnabled) {
@@ -1198,6 +1205,38 @@ if (metaAgentEnabled) {
         },
       })
     : undefined
+
+  // Truth-audit loop closure (hermes usage-anchor borrowing): resolve open
+  // predictions from real role telemetry before each meta cycle. Role
+  // linkage is best-effort — the discovery proposal's capabilityId is used
+  // as the role key; measurements whose capability carries no metric
+  // history simply stay pending (never guessed).
+  if (truthAudit) {
+    const truthMetrics = db ? new PgMetricsStore(db) : new MetricsStore(metaRoot)
+    truthCalibrator = new TruthCalibrator({
+      listRolePoints: async (role) => {
+        const records = await truthMetrics.listForRole(role)
+        return records.map((r) => ({
+          at: r.timestamp,
+          reviewScore: r.reviewScore,
+          executionTimeMs: r.executionTime,
+        }))
+      },
+      resolveProposalRoles: async (proposalId) => {
+        const proposals = await metaDiscovery.listProposals()
+        const hit = proposals.find((p) => p.id === proposalId)
+        return hit ? [hit.capabilityId] : []
+      },
+      getMeasurements: () => truthAudit.openMeasurements(),
+      resolveMeasurement: (resolved) => {
+        truthAudit.resolveMeasurement({
+          proposalId: resolved.proposalId,
+          actual: resolved.actual,
+          sampleSize: resolved.sampleSize,
+        })
+      },
+    })
+  }
   // Phase 8 — when DIGITAL_TWIN_ENABLED, engines are constructed WITHOUT
   // save/retire callbacks; the orchestrator wires manualSaveBlueprint /
   // manualRetireBlueprint so that no mutation bypasses the pipeline.
@@ -2241,6 +2280,7 @@ if (executionStore) {
 if (metaOrchestrator && metaGovernance && metaOrgMemory && metaSimulation) {
   const mr = metaRoutes({
     orchestrator: metaOrchestrator,
+    truthCalibrator,
     governance: metaGovernance,
     organizationMemory: metaOrgMemory,
     simulation: metaSimulation,

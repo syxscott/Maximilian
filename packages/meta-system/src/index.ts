@@ -89,6 +89,12 @@ export { ReplayEngine, type ReplayDeps, type ReplayInput } from "./replay-engine
 export { PendingProposalStore } from "./pending-proposal-store.js"
 export { TruthAudit, buildMeasurement, type TruthAuditDeps } from "./truth-audit.js"
 export {
+  TruthCalibrator,
+  type CalibratorRolePoint,
+  type TruthCalibratorDeps,
+  type CalibratorSummary,
+} from "./truth-calibrator.js"
+export {
   VisualizerAdapter,
   UINodeSchema,
   UIEdgeSchema,
