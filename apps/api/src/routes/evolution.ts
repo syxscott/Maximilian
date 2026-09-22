@@ -24,6 +24,11 @@ import { ErrorSchema } from "../schemas.js"
 
 interface Deps {
   facade: EvolutionFacade
+  /** Oracle-triad harness (C2C injection-ceiling measurement). Undefined
+   *  when the judge/executor wiring is absent — the route answers 503. */
+  oracleTriad?: {
+    run(input: { role: string; taskDescription: string; requireOracle?: boolean }): Promise<unknown>
+  }
 }
 
 const FeedbackSchema = z.object({
@@ -302,4 +307,70 @@ async function readDecisions(facade: EvolutionFacade, role: AgentRole) {
   // doesn't leak storage paths.
   const versions = await facade.evolution.listVersions(role)
   return versions
+}
+
+export const oracleTriadRoute = createRoute({
+  method: "post",
+  path: "/evolution/oracle-triad",
+  tags: ["evolution"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            role: z.string().min(1),
+            taskDescription: z.string().min(1).max(8000),
+            /** Fail (409) instead of reporting "corpus missing" when the
+             *  role has no curated lessons file. */
+            requireOracle: z.boolean().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: z.unknown() } },
+      description: "Three-arm report with PGR",
+    },
+    400: { content: { "application/json": { schema: ErrorSchema } }, description: "Invalid body" },
+    409: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Oracle lessons missing for this role",
+    },
+    503: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Oracle-triad harness not wired (needs judge + executor)",
+    },
+  },
+})
+
+export function oracleTriadHandler(deps: Deps) {
+  return async (c: Context) => {
+    if (!deps.oracleTriad) {
+      return c.json(
+        { error: "oracle triad not wired (needs EvolutionFacadeOptions.oracleTriad)" },
+        503,
+      )
+    }
+    const body = c.req.valid("json" as never) as {
+      role: string
+      taskDescription: string
+      requireOracle?: boolean
+    }
+    try {
+      const report = await deps.oracleTriad.run({
+        role: body.role,
+        taskDescription: body.taskDescription,
+        requireOracle: body.requireOracle,
+      })
+      return c.json(report as Record<string, unknown>)
+    } catch (err) {
+      const message = (err as Error).message ?? ""
+      if (/oracle lessons not curated/.test(message)) {
+        return c.json({ error: message }, 409)
+      }
+      throw err
+    }
+  }
 }

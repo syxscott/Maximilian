@@ -18,6 +18,12 @@ import { ProfileStore } from "./profile-store.js"
 import { Leaderboard } from "./leaderboard.js"
 import { ModelSelector } from "./selector.js"
 import { AgentMemoryStore } from "./memory.js"
+import {
+  runOracleTriad,
+  type OracleTriadDeps,
+  type OracleTriadExecutor,
+  type OracleTriadReport,
+} from "./oracle-triad.js"
 import { MemoryCurator, normalizeContentKey } from "./curator.js"
 import { EvolutionEngine, SCORE_THRESHOLD } from "./evolution.js"
 import { SealedFileVault } from "./sealed-files.js"
@@ -74,6 +80,18 @@ export interface EvolutionFacadeOptions {
    * disable background reflection entirely.
    */
   reflector?: Reflector | false
+  /**
+   * Oracle-triad harness wiring (C2C borrowing, §A.3.1): the executor runs
+   * each arm with a manifest variant, the judge scores outputs (identical
+   * judging across arms — paper discipline), and oracleLessonsDir holds
+   * hand-curated lessons disjoint from evaluation tasks. When unset,
+   * `runOracleTriad` is unavailable (the route answers 503).
+   */
+  oracleTriad?: {
+    executor: OracleTriadExecutor
+    judge: (output: string, task: { id: string; description: string }) => Promise<number> | number
+    oracleLessonsDir: string
+  }
   /**
    * Lesson gating mode (C2C borrowing): "enforce" skips memory buckets
    * whose mean efficacy is significantly negative at prelude-render time;
@@ -246,6 +264,44 @@ export class EvolutionFacade {
     this.reflector?.schedule({ record, output: input.result?.output })
 
     return record
+  }
+
+  /**
+   * Run the three-arm oracle triad (direct / few-shot / oracle) for one
+   * (role, task) — the measurement entry point for the injection-ceiling
+   * discipline. The few-shot arm is gated with THIS facade's lessonGating
+   * so the triad measures exactly what production injects. Requires the
+   * `oracleTriad` wiring in the constructor options.
+   */
+  async runOracleTriad(
+    task: { id: string; description: string },
+    role: AgentRole,
+    opts: { requireOracle?: boolean } = {},
+  ): Promise<OracleTriadReport> {
+    const harness = this.opts.oracleTriad
+    if (!harness) {
+      throw new Error(
+        "oracle triad unavailable: EvolutionFacadeOptions.oracleTriad (executor/judge/oracleLessonsDir) is not wired",
+      )
+    }
+    const baseManifest = this.opts.defaultManifests[role] ?? {
+      role,
+      displayName: role,
+      goal: role,
+      systemPrompt: `You are the ${role} agent.`,
+    }
+    const deps: OracleTriadDeps = {
+      profiles: this.profiles,
+      executor: harness.executor,
+      judge: (output) => harness.judge(output, task),
+      oracleLessonsDir: harness.oracleLessonsDir,
+    }
+    return runOracleTriad(deps, { id: task.id, description: task.description } as never, {
+      role,
+      baseManifest,
+      requireOracle: opts.requireOracle,
+      gating: this.lessonGating,
+    })
   }
 
   /**

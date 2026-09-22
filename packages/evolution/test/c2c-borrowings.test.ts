@@ -52,6 +52,33 @@ describe("renderHandoffBundle", () => {
     expect(r.estimatedTokens).toBeLessThanOrEqual(1100)
   })
 
+  it("reports an exact taxonomy when the tail is fully dropped (no false 'partial')", () => {
+    const r = renderHandoffBundle(
+      [
+        { title: "A", body: "x".repeat(500) },
+        { title: "B", body: "y".repeat(5000) },
+      ],
+      150, // 600 chars — A fits whole, B never shown at all
+      { role: "review" },
+    )
+    // Regression: the old summary said "showing partial of 2" although B
+    // was dropped WITHOUT any partial entry being present.
+    expect(r.text).toContain("showing 1 full of 2 artifacts")
+    expect(r.text).toContain("1 dropped")
+    expect(r.text).not.toContain("1 partial")
+    expect(r.truncatedEntries).toBe(1)
+  })
+
+  it("reports a lone partial entry as partial, never as 'showing 0'", () => {
+    const big = "x".repeat(20_000)
+    const r = renderHandoffBundle([{ title: "ONLY", body: big }], 1000, { role: "review" })
+    expect(r.text).toContain("showing first")
+    // Regression: the old summary printed "showing 0 of 1 artifacts" for a
+    // single entry that WAS partially shown.
+    expect(r.text).toContain("0 full + 1 partial of 1 artifacts")
+    expect(r.truncatedEntries).toBe(1)
+  })
+
   it("estimateTokens and default budget sanity", () => {
     expect(estimateTokens(400)).toBe(100)
     delete process.env.HANDOFF_BUDGET_TOKENS
@@ -254,5 +281,81 @@ describe("computeFlipMatrix", () => {
     const m = computeFlipMatrix(["t1"], ["t1", "t2", "t3"])
     expect(m.net).toBe(2)
     expect(m.transferRate).toBeCloseTo(1 / 3, 5)
+  })
+})
+
+// ── oracle-triad regressions (missing corpus + gating parity) ───────────────
+
+describe("runOracleTriad regressions", () => {
+  let tmpDir: string
+  let profiles: ProfileStore
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "oracle-regress-"))
+    profiles = new ProfileStore(tmpDir)
+  })
+
+  it("a missing corpus suppresses PGR even when judge noise fakes a gap", async () => {
+    // No lessons file exists at all. The oracle arm then degenerates into a
+    // repeat of direct; a judge returning a noisy "gap" must NOT produce a
+    // stop-investing PGR verdict (regression: it previously did).
+    const { executor } = makeLearningExecutor({ direct: 0, fewShot: 0, oracle: 0 })
+    let n = 0
+    const report = await runOracleTriad(
+      {
+        profiles,
+        executor,
+        oracleLessonsDir: path.join(tmpDir, "absent"),
+        judge: () => [4, 4.2, 7.9][n++]!,
+      },
+      makeTask("t-noise"),
+      { role: "backend", baseManifest: BASE_MANIFEST },
+    )
+    expect(report.oracleCorpusMissing).toBe(true)
+    expect(report.pgr).toBeUndefined()
+    expect(report.interpretation).toContain("curate lessons first")
+  })
+
+  it("the few-shot arm honors the gating option (parity with production)", async () => {
+    await fs.mkdir(path.join(tmpDir, "oracle-lessons"), { recursive: true })
+    await fs.writeFile(path.join(tmpDir, "oracle-lessons", "backend.md"), "lesson", "utf8")
+    const profile = await profiles.getOrCreate("backend", BASE_MANIFEST)
+    await profiles.save({
+      ...profile,
+      memory: {
+        ...profile.memory,
+        commonErrors: [{ content: "poisoned-bucket-content", mime: "text/plain" }],
+        totalEntries: 1,
+        efficacy: { commonErrors: { injectedCount: 5, deltaSum: -5 } }, // mean −1 ≪ −eps
+      } as never,
+    })
+    const { executor, seen } = makeLearningExecutor({ direct: 4, fewShot: 6, oracle: 8 })
+
+    await runOracleTriad(
+      {
+        profiles,
+        executor,
+        oracleLessonsDir: path.join(tmpDir, "oracle-lessons"),
+        judge: (o) => Number(o.split(":")[1]),
+      },
+      makeTask("t-gate"),
+      { role: "backend", baseManifest: BASE_MANIFEST, gating: "enforce" },
+    )
+    const fewShotEnforce = seen.find((s) => s.includes("Lessons learned")) ?? ""
+    expect(fewShotEnforce).not.toContain("poisoned-bucket-content")
+
+    seen.length = 0
+    await runOracleTriad(
+      {
+        profiles,
+        executor,
+        oracleLessonsDir: path.join(tmpDir, "oracle-lessons"),
+        judge: (o) => Number(o.split(":")[1]),
+      },
+      makeTask("t-nogate"),
+      { role: "backend", baseManifest: BASE_MANIFEST, gating: "off" },
+    )
+    const fewShotOff = seen.find((s) => s.includes("Lessons learned")) ?? ""
+    expect(fewShotOff).toContain("poisoned-bucket-content")
   })
 })

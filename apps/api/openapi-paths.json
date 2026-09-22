@@ -68,6 +68,7 @@
   "POST /chat",
   "POST /evolution/evolve/{role}",
   "POST /evolution/feedback",
+  "POST /evolution/oracle-triad",
   "POST /executions/{id}/feedback",
   "POST /flags/evaluate",
   "POST /flags/{name}/override",

@@ -63,19 +63,22 @@ export function renderHandoffBundle(
   const totalChars = entries.reduce((sum, e) => sum + e.title.length + e.body.length, 0)
   const parts: string[] = []
   let used = 0
-  let truncatedEntries = 0
+  let keptFull = 0
+  let keptPartial = 0
+  let dropped = 0
 
   for (let i = 0; i < entries.length; i++) {
     const { title, body } = entries[i]!
     const full = `--- ${title} ---\n${body}`
     const remaining = maxChars - used
     if (remaining <= 200) {
-      truncatedEntries += entries.length - i
+      dropped = entries.length - i
       break
     }
     if (full.length <= remaining) {
       parts.push(full)
       used += full.length
+      keptFull += 1
       continue
     }
     // Keep the head of this entry and self-report the cut (swarms borrowing:
@@ -86,19 +89,32 @@ export function renderHandoffBundle(
         `[… showing first ${shown} of ${body.length} chars — artifact truncated by handoff budget]`,
     )
     used += remaining
-    truncatedEntries += 1
+    keptPartial = 1
+    dropped = entries.length - i - 1
     break // budget exhausted
   }
 
-  if (truncatedEntries > 0) {
-    parts.push(
-      `[handoff budget: showing ${parts.length > 0 && truncatedEntries < entries.length ? "partial" : `${entries.length - truncatedEntries}`} of ${entries.length} artifacts — ${(totalChars / 1000).toFixed(1)}k chars total, budget ${maxChars} chars]`,
-    )
+  if (keptPartial > 0 || dropped > 0) {
+    // Exact taxonomy — the receiver must know precisely what it did and did
+    // not get: "partial" alone would conflate a head-cut entry with entries
+    // that were never shown at all.
+    const shownDesc = [`${keptFull} full`, ...(keptPartial > 0 ? ["1 partial"] : [])].join(" + ")
+    const summary = [
+      `showing ${shownDesc} of ${entries.length} artifacts`,
+      ...(dropped > 0 ? [`${dropped} dropped`] : []),
+      `${(totalChars / 1000).toFixed(1)}k chars total, budget ${maxChars} chars`,
+    ].join(" — ")
+    parts.push(`[handoff budget: ${summary}]`)
   }
 
   const text = parts.join("\n\n")
   const estimatedTokens = estimateTokens(text.length)
   communicationTokensTotal.labels(opts.role, opts.kind ?? "handoff").inc(estimatedTokens)
 
-  return { text, totalChars, truncatedEntries, estimatedTokens }
+  return {
+    text,
+    totalChars,
+    truncatedEntries: keptPartial + dropped,
+    estimatedTokens,
+  }
 }

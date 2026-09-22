@@ -103,6 +103,7 @@ import {
 } from "@max/meta-system"
 import { postChat, postChatRoute } from "./routes/chat.js"
 import { workflowRoutes, workflowRunRoute, workflowGetRoute } from "./routes/workflows.js"
+import { oracleTriadRoute, oracleTriadHandler } from "./routes/evolution.js"
 import {
   getWorkspace,
   listWorkspaces,
@@ -577,6 +578,11 @@ if (evolutionEnabled) {
       sealedVault = undefined
     })
   }
+  // Oracle-triad harness (C2C §A.3.1): only wired when a curated lessons
+  // directory exists. Executor = the default provider; judge = the
+  // autonomy ReviewIntelligence (same LLM/heuristic review used for
+  // structured reviews — identical judging across the three arms).
+  const oracleLessonsDir = config.EVOLUTION_ORACLE_LESSONS_DIR
   evolution = new EvolutionFacade({
     rootDir: workspaceDir,
     candidates: providers,
@@ -588,6 +594,42 @@ if (evolutionEnabled) {
     // always fell back to the file store, making usage/metrics PG-blind).
     ...(db ? { metricsStore: new PgMetricsStore(db) } : {}),
     ...(sealedVault ? { sealedVault } : {}),
+    ...(oracleLessonsDir
+      ? {
+          oracleTriad: {
+            executor: {
+              executeWithManifest: async (
+                task: { description?: string },
+                manifest: {
+                  systemPrompt?: string
+                },
+              ) => {
+                const provider = getDefaultProvider()
+                const res = await provider.chat([
+                  { role: "system", content: manifest.systemPrompt ?? "" },
+                  { role: "user", content: task.description ?? "" },
+                ])
+                return { output: res.content }
+              },
+            },
+            judge: async (
+              output: string,
+              task: { id: string; description: string },
+            ): Promise<number> => {
+              const { ReviewIntelligence } = await import("@max/autonomy")
+              const judge = new ReviewIntelligence({ provider: getDefaultProvider() })
+              const review = await judge.review({
+                taskId: task.id,
+                workspaceId: "oracle-triad",
+                artifacts: [output],
+                userRequest: task.description,
+              })
+              return review.score
+            },
+            oracleLessonsDir,
+          },
+        }
+      : {}),
   })
   await evolution.initialize()
   finalFactory = evolutionAwareFactory(evolution)
@@ -2266,7 +2308,22 @@ api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
 
 // Evolution routes
 if (evolution) {
-  const evo = evolutionRoutes({ facade: evolution })
+  const evoDeps = {
+    facade: evolution,
+    ...(config.EVOLUTION_ORACLE_LESSONS_DIR
+      ? {
+          oracleTriad: {
+            run: (input: { role: string; taskDescription: string; requireOracle?: boolean }) =>
+              evolution.runOracleTriad(
+                { id: `triad-${Date.now()}`, description: input.taskDescription },
+                input.role as never,
+                { requireOracle: input.requireOracle },
+              ),
+          },
+        }
+      : {}),
+  }
+  const evo = evolutionRoutes(evoDeps)
   api.openapi(listMetricsRoute, requireAuthMiddleware(), evo.listMetrics)
   api.openapi(getMetricRoute, requireAuthMiddleware(), evo.getMetric)
   api.openapi(listAgentsRoute, requireAuthMiddleware(), evo.listAgents)
@@ -2276,6 +2333,7 @@ if (evolution) {
   api.openapi(listVersionsRoute, requireAuthMiddleware(), evo.listVersions)
   api.openapi(listDecisionsRoute, requireAuthMiddleware(), evo.listDecisions)
   api.openapi(recordFeedbackRoute, requireAuthMiddleware(), evo.recordFeedback)
+  api.openapi(oracleTriadRoute, requireAuthMiddleware(), oracleTriadHandler(evoDeps))
   api.openapi(triggerEvolveRoute, requireAuthMiddleware(), evo.triggerEvolve)
 }
 

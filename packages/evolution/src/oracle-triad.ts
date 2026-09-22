@@ -49,9 +49,15 @@ export interface OracleTriadReport {
   oracle: OracleTriadVariantResult
   /**
    * Share of the oracle gap recovered by the current corpus, 0..1+.
-   * undefined when the oracle arm does not beat direct (no recoverable gap).
+   * undefined when the oracle arm does not beat direct (no recoverable gap)
+   * OR when the oracle corpus is missing (no measurement is possible —
+   * with no lessons the oracle arm degenerates into a repeat of direct and
+   * any "gap" is judge noise; deriving a stop-investing signal from that
+   * would recommend against curating exactly when curation is the need).
    */
   pgr: number | undefined
+  /** true when `<dir>/<role>.md` did not exist — pgr is meaningless then. */
+  oracleCorpusMissing: boolean
   interpretation: string
 }
 
@@ -111,19 +117,31 @@ export async function runOracleTriad(
     role: string
     baseManifest: AgentManifest
     requireOracle?: boolean
+    /**
+     * Gating applied to the few-shot arm's prelude. MUST match production
+     * (the enabled factory passes its LESSON_GATING through) — otherwise
+     * the triad measures an ungated corpus while production injects a
+     * gated one. Default "enforce": measure what survives the gate.
+     */
+    gating?: "off" | "shadow" | "enforce"
   },
 ): Promise<OracleTriadReport> {
   // role is an open string (DAGS-generated slugs like "reviewer-2" are
   // valid); the core AgentRole union only covers the built-in quartet.
-  const profile: AgentProfile = await deps.profiles.getOrCreate(opts.role as never, opts.baseManifest)
-  const currentPrelude = AgentMemoryStore.toPrelude(profile.memory)
+  const profile: AgentProfile = await deps.profiles.getOrCreate(
+    opts.role as never,
+    opts.baseManifest,
+  )
+  const currentPrelude = AgentMemoryStore.toPrelude(profile.memory, opts.gating ?? "enforce")
 
   const oracleFile = path.join(deps.oracleLessonsDir, `${opts.role}.md`)
   let oracleLessons: string
+  let oracleCorpusMissing = false
   try {
     oracleLessons = await fs.readFile(oracleFile, "utf8")
   } catch {
     if (opts.requireOracle) throw new OracleLessonsMissingError(opts.role, deps.oracleLessonsDir)
+    oracleCorpusMissing = true
     oracleLessons = ""
   }
   const oraclePrelude = oracleLessons.trim()
@@ -135,10 +153,16 @@ export async function runOracleTriad(
   const oracle = await runArm("oracle", task, opts.baseManifest, oraclePrelude, deps)
 
   const gap = oracle.quality - direct.quality
-  const pgr = gap > 0.05 ? Math.max(0, (fewShot.quality - direct.quality) / gap) : undefined
+  const pgr =
+    !oracleCorpusMissing && gap > 0.05
+      ? Math.max(0, (fewShot.quality - direct.quality) / gap)
+      : undefined
 
   let interpretation: string
-  if (pgr === undefined) {
+  if (oracleCorpusMissing) {
+    interpretation =
+      "no oracle corpus curated for this role — the triad cannot measure the ceiling; curate lessons first"
+  } else if (pgr === undefined) {
     interpretation =
       "oracle ≤ direct: context injection has no recoverable headroom for this role/task — stop investing in the lesson corpus"
   } else if (pgr >= 0.7) {
@@ -150,5 +174,14 @@ export async function runOracleTriad(
       "large headroom but the corpus recovers almost none of it — corpus quality is the bottleneck"
   }
 
-  return { role: opts.role, taskId: task.id, direct, fewShot, oracle, pgr, interpretation }
+  return {
+    role: opts.role,
+    taskId: task.id,
+    direct,
+    fewShot,
+    oracle,
+    pgr,
+    oracleCorpusMissing,
+    interpretation,
+  }
 }

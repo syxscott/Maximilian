@@ -98,6 +98,12 @@ export const ConfigSchema = z.object({
   // be skipped without changing behaviour; "off" is the legacy render.
   LESSON_GATING: z.enum(["off", "shadow", "enforce"]).default("shadow"),
 
+  // Oracle-triad harness (C2C borrowing): directory of hand-curated lesson
+  // files `<dir>/<role>.md`, DISJOINT from evaluation tasks. When set, the
+  // POST /api/evolution/oracle-triad route measures the injection ceiling
+  // (direct / few-shot / oracle + PGR). Unset = triad route answers 503.
+  EVOLUTION_ORACLE_LESSONS_DIR: z.string().optional(),
+
   // Inter-agent handoff budget (C2C borrowing): hard cap on the priorResults
   // bundle / replanner snippet injected into downstream agents, in estimated
   // tokens. Communication text is a first-class cost item and becomes a net
