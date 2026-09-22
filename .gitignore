@@ -20,3 +20,7 @@ __pycache__/
 !pnpm-lock.yaml
 research/similar-projects/
 *.tsbuildinfo
+
+# Playwright artifacts
+test-results/
+playwright-report/
