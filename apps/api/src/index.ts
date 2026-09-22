@@ -51,7 +51,7 @@ import {
 
 const log = getLogger("api")
 
-import { getRegistry, type Provider } from "@max/providers"
+import { getRegistry, ModelCatalog, type Provider } from "@max/providers"
 import {
   AgentRuntime,
   type RuntimeSink,
@@ -390,6 +390,21 @@ if (!defaultProvider) {
 
 // Provider registry: id → Provider instance (for dynamic model selection).
 const providerRegistry = new Map<string, Provider>()
+
+// Live model catalog (three-tier borrowing): follows the vendor's current
+// lineup (models.dev) instead of freezing at preset strings. Attached to
+// the registry after async init; failures degrade to the embedded snapshot.
+const modelCatalog = new ModelCatalog({ backgroundRefresh: true })
+try {
+  await modelCatalog.init()
+  registry.attachCatalog(modelCatalog)
+  log.info(
+    { source: modelCatalog.info.source, models: modelCatalog.list().length },
+    "model catalog: attached",
+  )
+} catch (err) {
+  log.warn({ err }, "model catalog init failed — preset defaults remain")
+}
 for (const p of providers) providerRegistry.set(p.id, p)
 
 // Wrap a getter that reads from the registry every time,
@@ -577,6 +592,68 @@ const runtime = new AgentRuntime(finalFactory, sink, {
   // legacy single-LLM-call behaviour.
   enableToolLoop: config.TOOL_LOOP_ENABLED,
   permissionAskTimeoutMs: config.PERMISSION_ASK_TIMEOUT_MS,
+  // Auto review (deepseek Permission Auto review borrowing): LLM semantic
+  // reviewer for "ask" prompts. Off by default — it spends tokens per ask
+  // and auto-approves low/medium-risk calls without a human.
+  ...(config.PERMISSION_AUTO_REVIEW
+    ? {
+        autoReviewer: async (req: {
+          tool: string
+          target: string
+          taskId: string
+          workspaceId: string
+          userRequest?: string
+          priorOutputs: string[]
+        }) => {
+          const reviewerProvider = registry.default()!
+          const messages = [
+            {
+              role: "system" as const,
+              content:
+                "You are a security reviewer for an autonomous coding agent. " +
+                "Decide whether the proposed tool call is safe to auto-approve. " +
+                'Respond with ONLY a JSON object: {"risk":"low"|"medium"|"high","decision":"allow"|"deny","reason":"..."} ' +
+                "Rules: exact cleanup of objects THIS session created = low+allow. " +
+                "Pre-existing object deletion, production operations, external sends = medium. " +
+                "Cross-trust-boundary exfiltration = high+deny. Be conservative.",
+            },
+            {
+              role: "user",
+              content: `User request: ${req.userRequest ?? "(unknown)"}
+Tool: ${req.tool}
+Target: ${req.target}
+Prior outputs (truncated): ${req.priorOutputs.join(" | ").slice(0, 2000) || "(none)"}`,
+            },
+          ]
+          const response = await reviewerProvider.chat(messages, {
+            temperature: 0,
+            maxTokens: 200,
+            jsonMode: true,
+            model: reviewerProvider.defaultModel,
+          })
+          try {
+            const parsed = JSON.parse(response.content) as {
+              risk?: string
+              decision?: string
+              reason?: string
+            }
+            const risk =
+              parsed.risk === "low" || parsed.risk === "medium" || parsed.risk === "high"
+                ? parsed.risk
+                : "high"
+            const decision = parsed.decision === "allow" ? "allow" : "deny"
+            return { risk, decision, reason: String(parsed.reason ?? "") }
+          } catch {
+            return {
+              risk: "high" as const,
+              decision: "deny" as const,
+              reason: "reviewer produced unparseable output",
+            }
+          }
+        },
+      }
+    : {}),
+
   memoryStore: memoryStorePort,
   modelSelector: modelSelectorPort,
   modelRouter: modelRouterPort,

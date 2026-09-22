@@ -23,7 +23,19 @@ import { withRetry } from "./retry.js"
 import { withCircuitBreaker } from "./circuit-breaker.js"
 import { withSseGuard } from "./sse-guard.js"
 import { PROVIDER_PRESETS, type ProviderPreset } from "./presets/index.js"
+import { ModelCatalog } from "./model-catalog.js"
 import { createProviderForFormat } from "./formats/index.js"
+
+export interface RegistryOptions {
+  /**
+   * Optional live model catalog (three-tier borrowing). When attached,
+   * `getEffectiveDefaultModel` prefers the catalog's newest stable model
+   * for the provider whenever the user has NOT pinned a model via env
+   * (X_MODEL) or setProviderConfig — so the default follows the vendor's
+   * current lineup instead of freezing at a hardcoded preset string.
+   */
+  catalog?: ModelCatalog
+}
 
 export interface ProviderConfig {
   /** Override default model for this provider. */
@@ -48,6 +60,8 @@ export interface ProviderRegistry {
   listPresets(): ProviderPreset[]
   /** Look up a preset by id. */
   getPreset(id: string): ProviderPreset | undefined
+  /** Attach a live model catalog (three-tier borrowing). */
+  attachCatalog(c: import("./model-catalog.js").ModelCatalog): void
 }
 
 /**
@@ -70,7 +84,11 @@ function isPresetActive(preset: ProviderPreset, env: NodeJS.ProcessEnv): boolean
   return true
 }
 
-export function createRegistry(env: NodeJS.ProcessEnv = process.env): ProviderRegistry {
+export function createRegistry(
+  env: NodeJS.ProcessEnv = process.env,
+  options?: RegistryOptions,
+): ProviderRegistry {
+  let catalog = options?.catalog
   const resilient: Provider[] = []
   const activePresetIds: string[] = []
 
@@ -133,11 +151,25 @@ export function createRegistry(env: NodeJS.ProcessEnv = process.env): ProviderRe
         const fromEnv = env[preset.envModel]
         if (fromEnv) return fromEnv
       }
+      // Live catalog (three-tier borrowing): when attached, prefer the
+      // newest stable catalog model for this provider over the frozen
+      // preset string. Never overrides an explicit env/config choice.
+      if (catalog) {
+        const entries = catalog.list(id).filter((e) => e.status === "stable")
+        if (entries.length > 0) {
+          const frontier = entries.find((e) => e.tier === "frontier") ?? entries[0]
+          return frontier!.modelId
+        }
+      }
       const provider = resilient.find((p) => p.id === id)
       return provider?.defaultModel ?? preset?.defaultModel ?? ""
     },
     listPresets: () => PROVIDER_PRESETS.filter((p) => !p.hidden),
     getPreset: (id) => findPreset(id),
+    /** Attach a live catalog post-construction (its init() is async). */
+    attachCatalog(c: ModelCatalog): void {
+      catalog = c
+    },
   }
 }
 

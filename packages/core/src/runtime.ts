@@ -10,12 +10,16 @@
  */
 
 import { createHash, randomUUID } from "node:crypto"
+import os from "node:os"
+import path from "node:path"
 import { Agent, type AgentContext } from "./agent.js"
 import { withSpan, getLogger, opencodeSessionsLeakedTotal } from "@max/telemetry"
 import { OpencodeExecutor } from "./opencode-executor.js"
 
 const log = getLogger("core:runtime")
 import { runToolLoop, type ToolEnabledProvider } from "./tool-integration.js"
+import * as toolExtensions from "./tool-extensions.js"
+import { createRunawayGuard } from "./tool-extensions.js"
 import { classifyTaskError } from "./failover-reason.js"
 import type { AgentManifest } from "./types.js"
 import { StallDetector, type StallInfo } from "./stall-detection.js"
@@ -411,6 +415,23 @@ export interface RuntimeOptions {
     priorOutputs: string[]
   }) => Promise<AutoReviewVerdict>
   /**
+   * Runaway guard (minimax-code runaway-guard borrowing): after N
+   * consecutive tool-loop rounds with zero tool calls, inject a one-shot
+   * strategy reminder. 0 disables. Default: 4.
+   */
+  runawayGuardPatience?: number
+  /**
+   * Tool output budget (C2C/swarms borrowing): tool outputs larger than
+   * this many characters are externalized to an artifact + receipt instead
+   * of taxing every subsequent round. Default: 20_000.
+   */
+  toolOutputMaxChars?: number
+  /**
+   * Directory for externalized tool-output artifacts. Default:
+   * `<os tmpdir>/maximilian-artifacts`.
+   */
+  toolOutputArtifactDir?: string
+  /**
    * How long a parked "ask" permission prompt waits for a human answer
    * before the PermissionService resolves it fail-closed as `unavailable`
    * (deepseek-harness borrowing: an unanswered ask NEVER approves; the tool
@@ -543,6 +564,9 @@ export class AgentRuntime {
   private enableToolLoop: boolean
   private permissionAskTimeoutMs: number
   private autoReviewer?: RuntimeOptions["autoReviewer"]
+  private runawayGuardPatience: number
+  private toolOutputMaxChars: number
+  private toolOutputArtifactDir?: string
   private getSkills?: RuntimeOptions["getSkills"]
   private maxTaskRetries: number
   private maxIdleRoundsBeforeStall: number
@@ -644,6 +668,9 @@ export class AgentRuntime {
     this.enableToolLoop = options?.enableToolLoop ?? false
     this.permissionAskTimeoutMs = options?.permissionAskTimeoutMs ?? 600_000
     this.autoReviewer = options?.autoReviewer
+    this.runawayGuardPatience = options?.runawayGuardPatience ?? 4
+    this.toolOutputMaxChars = options?.toolOutputMaxChars ?? 20_000
+    this.toolOutputArtifactDir = options?.toolOutputArtifactDir
 
     // Retry-status event stream (minimax-code llm-retry borrowing): forward
     // every provider retry (waiting/recovered/exhausted) as a RuntimeEvent so
@@ -753,6 +780,32 @@ export class AgentRuntime {
    * — refusing the duplicate prevents an unbounded linked list of resolvers
    * from forming on tight retry loops. Matches `awaitApproval`'s contract.
    */
+  /**
+   * Build the onStepEnd hook for the tool loop (runaway-guard extension,
+   * minimax-code borrowing). patience 0 = disabled.
+   */
+  private assembleRunawayGuardOnStepEnd(workspaceId: string) {
+    const patience = this.runawayGuardPatience
+    if (patience <= 0) return undefined
+    return createRunawayGuard({ patience }).onStepEnd
+  }
+
+  /**
+   * Build the afterToolCall hook for the tool loop (tool-output-budget
+   * extension, minimax-code borrowing). Oversized outputs are externalized
+   * to an artifact and replaced with a receipt.
+   */
+  private assembleAfterToolCall(workspaceId: string) {
+    if (this.toolOutputMaxChars <= 0) return undefined
+    const { createToolOutputBudget } = toolExtensions
+    const artifactDir = this.toolOutputArtifactDir ?? path.join(os.tmpdir(), "maximilian-artifacts")
+    return createToolOutputBudget({
+      artifactDir,
+      maxChars: this.toolOutputMaxChars,
+      scope: workspaceId,
+    }).afterToolCall
+  }
+
   awaitPermission(
     requestId: string,
     meta: { workspaceId: string; taskId: string; tool: string; target: string },
@@ -2166,7 +2219,8 @@ export class AgentRuntime {
                   },
                   undefined, // toolExecution (借鉴 pi)
                   safetyCheck, // beforeToolCall (SafetyGuardrails)
-                  undefined, // afterToolCall (借鉴 pi)
+                  this.assembleAfterToolCall(workspace.id), // afterToolCall (output budget)
+                  this.assembleRunawayGuardOnStepEnd(workspace.id), // onStepEnd (runaway guard)
                 ),
                 ctx.signal,
                 workspace.id,
@@ -2640,7 +2694,14 @@ async function runToolLoopAndSubmit(
   ) => import("./types.js").BeforeToolCallResult | undefined,
   afterToolCall?: (
     ctx: import("./types.js").AfterToolCallContext,
-  ) => import("./types.js").AfterToolCallResult | undefined,
+  ) =>
+    | import("./types.js").AfterToolCallResult
+    | undefined
+    | Promise<import("./types.js").AfterToolCallResult | undefined>,
+  onStepEnd?: (
+    round: number,
+    info: { toolCalls: number; stopReason?: string },
+  ) => string | undefined,
 ): Promise<Result> {
   const messages = agent.buildChatMessages(task, ctx)
   const { response, allToolCalls } = await runToolLoop(toolProvider, messages, {
@@ -2655,6 +2716,8 @@ async function runToolLoopAndSubmit(
     toolExecution,
     beforeToolCall,
     afterToolCall,
+
+    onStepEnd,
   })
   const result: Result = {
     id: `r-${randomUUID().slice(0, 8)}`,

@@ -488,7 +488,9 @@ export interface ToolLoopOptions {
    *
    * Any omitted fields keep their original values.
    */
-  afterToolCall?: (context: AfterToolCallContext) => AfterToolCallResult | undefined
+  afterToolCall?: (
+    context: AfterToolCallContext,
+  ) => AfterToolCallResult | undefined | Promise<AfterToolCallResult | undefined>
 }
 
 /** Tools that write files and are subject to ownedFiles gating. */

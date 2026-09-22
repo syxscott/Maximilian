@@ -105,6 +105,22 @@ export const ConfigSchema = z.object({
   // the model to be brief.
   HANDOFF_BUDGET_TOKENS: z.coerce.number().int().positive().default(4000),
 
+  // Runaway guard (minimax-code runaway-guard borrowing): after N
+  // consecutive tool-loop rounds with zero tool calls, inject a one-shot
+  // strategy reminder. 0 disables.
+  RUNAWAY_GUARD_PATIENCE: z.coerce.number().int().nonnegative().default(4),
+  // Tool output budget (C2C/swarms borrowing): tool outputs larger than
+  // this many chars are externalized to an artifact + receipt instead of
+  // taxing every subsequent round.
+  TOOL_OUTPUT_MAX_CHARS: z.coerce.number().int().positive().default(20_000),
+
+  // Auto review (deepseek Permission Auto review borrowing): when true,
+  // "ask" permission prompts are routed to an LLM semantic reviewer instead
+  // of parking for a human. Closed-set verdicts (low/medium may allow;
+  // high always denies); reviewer errors fail closed. Costs tokens and
+  // changes the security posture — default false.
+  PERMISSION_AUTO_REVIEW: optionalBooleanString,
+
   // How long a parked "ask" permission prompt waits for a human answer
   // before the runtime resolves it fail-closed (deepseek-harness borrowing:
   // the decision set is closed and an unanswered ask never approves).
