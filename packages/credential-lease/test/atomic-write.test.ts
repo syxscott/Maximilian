@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
@@ -43,6 +43,15 @@ describe("atomicWritePrivateFile", () => {
     await atomicWritePrivateFile(target, "second")
     expect((await stat(target)).mode & 0o777).toBe(0o600)
     expect(await readFile(target, "utf8")).toBe("second")
+  })
+
+  it("forces an existing wider-mode parent directory back to 0700", async () => {
+    const dir = await makeTempDir("credential-lease-atomic-")
+    const nested = path.join(dir, "run")
+    await mkdir(nested, { mode: 0o755 })
+    const target = path.join(nested, "state.json")
+    await atomicWritePrivateFile(target, "x")
+    expect((await stat(nested)).mode & 0o777).toBe(0o700)
   })
 
   it("replaces content without leaving temporary files behind", async () => {

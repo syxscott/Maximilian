@@ -979,7 +979,11 @@ describe("5.9 — promotion write-back", () => {
       } as never,
       candidateGenerator: { generate: async () => candidate, listAll: async () => [] } as never,
       promotionEngine: promotionEngine as never,
-      applyPromotion: async (cand: { parentBlueprintId: string; systemPrompt: string; version: string }) => {
+      applyPromotion: async (cand: {
+        parentBlueprintId: string
+        systemPrompt: string
+        version: string
+      }) => {
         applied.push({
           parent: cand.parentBlueprintId,
           systemPrompt: cand.systemPrompt,
