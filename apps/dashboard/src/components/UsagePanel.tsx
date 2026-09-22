@@ -9,8 +9,14 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useUsageDaily, useUsageSummary } from "@/lib/api/hooks"
-import type { UsageRange, UsageSummary, DailyUsageEntry, LatencyStats } from "@/api"
+import { useUsageDaily, useUsageSummary, useUsageWindows } from "@/lib/api/hooks"
+import type {
+  UsageRange,
+  UsageSummary,
+  DailyUsageEntry,
+  LatencyStats,
+  UsageWindowBucket,
+} from "@/api"
 import { useLocale, t, formatTokens, formatPercent } from "@max/i18n"
 
 const RANGES: Array<{ key: UsageRange; labelKey: string }> = [
@@ -72,7 +78,48 @@ export function UsagePanel() {
       ) : (
         <DailyTrendCard daily={daily.daily} range={range} />
       )}
+
+      <RollingWindowsCard />
     </div>
+  )
+}
+
+/**
+ * Rolling usage windows (5h / 24h / 7d / 30d) — the dashboard consumer of
+ * /api/obs/usage/windows. Rate-limit planning view: fixed look-backs that
+ * do not reset with the selectable range above.
+ */
+function RollingWindowsCard() {
+  const { data, isLoading } = useUsageWindows()
+  if (isLoading) return null
+  const windows: UsageWindowBucket[] = data?.windows ?? []
+  if (windows.length === 0) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          {t("usage.windows.title")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {windows.map((w) => (
+            <div key={w.window} className="rounded-md border p-3">
+              <div className="text-xs font-medium text-muted-foreground uppercase">{w.window}</div>
+              <div className="mt-1 text-lg font-semibold">
+                {formatTokens(w.inputTokens + w.outputTokens)}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {w.requests} {t("usage.metric.requests").toLowerCase()}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {w.costUsd === null ? `— (${w.unpricedRequests} unpriced)` : formatUsd(w.costUsd)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

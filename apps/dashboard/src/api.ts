@@ -632,6 +632,26 @@ export const UsageDailyResponseSchema = z.object({
 })
 export type UsageDailyResponse = z.infer<typeof UsageDailyResponseSchema>
 
+/** One rolling usage window (cc-switch tray borrowing: 5h/24h/7d/30d). */
+export const UsageWindowBucketSchema = z.object({
+  window: z.string(),
+  spanMs: z.number(),
+  startMs: z.number(),
+  requests: z.number(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheReadTokens: z.number(),
+  /** null when any request in the window lacks exact pricing. */
+  costUsd: z.number().nullable(),
+  unpricedRequests: z.number(),
+})
+export type UsageWindowBucket = z.infer<typeof UsageWindowBucketSchema>
+
+export const UsageWindowsResponseSchema = z.object({
+  windows: z.array(UsageWindowBucketSchema),
+})
+export type UsageWindowsResponse = z.infer<typeof UsageWindowsResponseSchema>
+
 const PlanTaskSchema = z.object({
   id: z.string(),
   agentRole: z.string(),
@@ -931,5 +951,12 @@ export const usageApi = {
       `${BASE}/obs/usage/daily?range=${encodeURIComponent(range)}`,
       { headers: authHeaders(), signal },
       UsageDailyResponseSchema,
+    ),
+
+  windows: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/obs/usage/windows`,
+      { headers: authHeaders(), signal },
+      UsageWindowsResponseSchema,
     ),
 }

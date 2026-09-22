@@ -29,6 +29,7 @@ export const queryKeys = {
   pendingProposals: ["pending-proposals"] as const,
   usageSummary: (range: UsageRange) => ["usage-summary", range] as const,
   usageDaily: (range: UsageRange) => ["usage-daily", range] as const,
+  usageWindows: () => ["usage-windows"] as const,
 }
 
 // ── Health ───────────────────────────────────────────────────────────────
@@ -300,6 +301,15 @@ export function useUsageDaily(range: UsageRange) {
   return useQuery({
     queryKey: queryKeys.usageDaily(range),
     queryFn: ({ signal }) => usageApi.daily(range, signal),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  })
+}
+
+export function useUsageWindows() {
+  return useQuery({
+    queryKey: queryKeys.usageWindows(),
+    queryFn: ({ signal }) => usageApi.windows(signal),
     staleTime: 60_000,
     refetchInterval: 60_000,
   })

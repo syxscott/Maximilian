@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto"
 import { chmod, mkdir, open, rename, unlink } from "node:fs/promises"
 import { dirname } from "node:path"
 
@@ -13,7 +14,7 @@ export async function ensurePrivateDirectory(directory: string): Promise<void> {
 export async function atomicWritePrivateFile(path: string, content: string): Promise<void> {
   const directory = dirname(path)
   await ensurePrivateDirectory(directory)
-  const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
+  const temporaryPath = `${path}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`
   const handle = await open(temporaryPath, "wx", 0o600)
 
   try {

@@ -362,5 +362,6 @@
   "review.viewRaw": "查看原文",
   "theme.toggleTitle": "当前：{current}，点击切换到 {next}",
   "theme.toggleAria": "切换主题（当前：{mode}）",
-  "usage.cost.partial": "部分估算——窗口内含无价目请求"
+  "usage.cost.partial": "部分估算——窗口内含无价目请求",
+  "usage.windows.title": "滚动用量窗口(5h / 24h / 7d / 30d)"
 }

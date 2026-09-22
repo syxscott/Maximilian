@@ -362,5 +362,6 @@
   "review.viewRaw": "View raw",
   "theme.toggleTitle": "Current: {current}. Switch to {next}",
   "theme.toggleAria": "Switch theme (current: {mode})",
-  "usage.cost.partial": "partial estimate — unpriced requests in window"
+  "usage.cost.partial": "partial estimate — unpriced requests in window",
+  "usage.windows.title": "Rolling usage windows (5h / 24h / 7d / 30d)"
 }
