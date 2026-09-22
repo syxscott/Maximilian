@@ -1383,6 +1383,23 @@ if (dagsMode) {
     planner,
     candidateGenerator,
     promotionEngine,
+    // Promotion write-back: materialize a promoted candidate on the LIVE
+    // blueprint (systemPrompt + version) so the active agent actually
+    // gains the improvement instead of only the history file recording it.
+    applyPromotion: async (candidate, record) => {
+      const parent = await blueprintStore.get(candidate.parentBlueprintId)
+      if (!parent) return
+      await blueprintStore.save({
+        ...parent,
+        systemPrompt: candidate.systemPrompt,
+        version: candidate.version,
+        metadata: {
+          ...((parent.metadata as Record<string, unknown>) ?? {}),
+          promotedBy: record.id,
+          promotedAt: record.promotedAt,
+        },
+      })
+    },
   })
 
   learningApi = new LearningAPI(

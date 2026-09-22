@@ -193,13 +193,16 @@ async function main() {
     if (!evolution) {
       log.warn("DAGS_MODE without EVOLUTION_ENABLED — autonomy observe disabled (worker)")
     } else {
+      const workerBlueprintStore = new PgBlueprintStore(
+        db,
+      ) as unknown as import("@max/dags").BlueprintStore
       const dags = new DAGS({
         rootDir: config.WORKSPACE_DIR,
         evolution,
         candidates: providers,
         // Same cast pattern as the API: the Pg store satisfies the
         // BlueprintStore contract without extending the file class.
-        store: new PgBlueprintStore(db) as unknown as import("@max/dags").BlueprintStore,
+        store: workerBlueprintStore,
       })
       const insightsStore = new PgInsightsStore(
         db,
@@ -218,6 +221,21 @@ async function main() {
         planner: new EvolutionPlanner(config.WORKSPACE_DIR),
         candidateGenerator,
         promotionEngine,
+        // Promotion write-back (see apps/api for the rationale).
+        applyPromotion: async (candidate, record) => {
+          const parent = await workerBlueprintStore.get(candidate.parentBlueprintId)
+          if (!parent) return
+          await workerBlueprintStore.save({
+            ...parent,
+            systemPrompt: candidate.systemPrompt,
+            version: candidate.version,
+            metadata: {
+              ...((parent.metadata as Record<string, unknown>) ?? {}),
+              promotedBy: record.id,
+              promotedAt: record.promotedAt,
+            },
+          })
+        },
       })
       log.info("autonomy orchestrator: ON (worker)")
     }

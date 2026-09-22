@@ -40,6 +40,14 @@ export interface AutonomyDeps {
   planner: EvolutionPlanner
   candidateGenerator: CandidateGenerator
   promotionEngine: PromotionEngine
+  /**
+   * Promotion write-back port (optional). Called when a candidate is
+   * PROMOTED so the host can materialize the win on the live blueprint
+   * (systemPrompt + version) through its own BlueprintStore. Without it
+   * promotions are recorded in history but the active agent never gains
+   * the improvement — the write-back dead end.
+   */
+  applyPromotion?: (candidate: CandidateVersion, record: PromotionRecord) => Promise<void>
 }
 
 export interface ObserveResult {
@@ -166,7 +174,21 @@ export class AutonomyOrchestrator {
       const blueprint = await resolveCachedBlueprint(candidate.agentRole)
       if (!blueprint) continue
       const decision = await this.deps.promotionEngine.decide(candidate, blueprint.id, executions)
-      if (decision.record) promotions.push(decision.record)
+      if (decision.record) {
+        promotions.push(decision.record)
+        // Write-back: a promoted candidate must reach the LIVE blueprint,
+        // not just the history file. Best-effort — a write failure is
+        // logged and never fails the observation pass.
+        if (decision.verdict === "promote" && this.deps.applyPromotion) {
+          try {
+            await this.deps.applyPromotion(candidate, decision.record)
+          } catch (err) {
+            console.warn(
+              `[autonomy] applyPromotion failed for ${candidate.id}: ${(err as Error).message}`,
+            )
+          }
+        }
+      }
     }
 
     return { executions, reviews, plans, candidates, promotions }

@@ -906,3 +906,136 @@ describe("5.8 — AutonomyOrchestrator.observe()", () => {
     } as unknown as Task
   }
 })
+
+describe("5.9 — promotion write-back", () => {
+  it("calls applyPromotion when a candidate is promoted", async () => {
+    const candidate = {
+      id: "bp-frontend-v2-x",
+      agentRole: "frontend",
+      version: "v2",
+      parentBlueprintId: "bp-frontend-1",
+      parentVersion: "v1",
+      systemPrompt: "improved prompt",
+      changes: [],
+      generationReason: ["test"],
+      createdAt: new Date().toISOString(),
+      stats: { totalRuns: 4, avgScore: 8, acceptance: 0.9 },
+      status: "candidate" as const,
+    }
+    const record = {
+      id: "promo-test",
+      role: "frontend",
+      fromVersion: "v1",
+      toVersion: "v2",
+      sampleSize: 4,
+      oldAvgScore: 6,
+      newAvgScore: 8,
+      scoreGain: 0.33,
+      oldAcceptance: 0.5,
+      newAcceptance: 0.9,
+      acceptanceGain: 0.8,
+      promotedAt: new Date().toISOString(),
+      reason: "test",
+      rule: { minSample: 2, minScoreGain: 0.1, minAcceptanceGain: 0.1 },
+    }
+    const promotionEngine = {
+      decide: async () => ({ verdict: "promote", record, reason: record.reason }),
+      loadHistory: async () => [],
+    }
+    const blueprintStub = {
+      id: "bp-frontend-1",
+      role: "frontend",
+      version: "v1",
+      systemPrompt: "original prompt",
+    }
+    const planStub = {
+      id: "plan-1",
+      agentRole: "frontend",
+      changes: [],
+      rationale: "test",
+      createdAt: new Date().toISOString(),
+    }
+    const applied: Array<{ parent: string; systemPrompt: string; version: string }> = []
+    const orchestrator = new AutonomyOrchestrator({
+      dags: {
+        store: {
+          findByRole: async () => [blueprintStub],
+        },
+      } as never,
+      review: { review: async () => ({ score: 8, summary: "ok", findings: [] }) } as never,
+      executionStore: {
+        save: async () => {},
+        listAll: async () => [],
+      } as never,
+      insightsStore: {} as never,
+      failureAnalyzer: {} as never,
+      insightsStore: { loadPatterns: async () => [] } as never,
+      failureAnalyzer: {
+        analyze: async () => null,
+        leaderboardInsight: async () => null,
+      } as never,
+      planner: {
+        plan: () => planStub,
+        savePlan: async () => {},
+        listPlans: async () => [planStub],
+      } as never,
+      candidateGenerator: { generate: async () => candidate, listAll: async () => [] } as never,
+      promotionEngine: promotionEngine as never,
+      applyPromotion: async (cand) => {
+        applied.push({
+          parent: cand.parentBlueprintId,
+          systemPrompt: cand.systemPrompt,
+          version: cand.version,
+        })
+      },
+    } as never)
+
+    const workspace = {
+      id: "ws-promo",
+      userRequest: "test",
+      plan: { tasks: [{ id: "t1", agentRole: "frontend", status: "completed" }] },
+      results: [{ taskId: "t1", agentRole: "frontend", output: "ok" }],
+    } as never
+    await orchestrator.observe(workspace)
+
+    expect(applied).toHaveLength(1)
+    expect(applied[0]).toEqual({
+      parent: "bp-frontend-1",
+      systemPrompt: "improved prompt",
+      version: "v2",
+    })
+  })
+
+  it("does not call applyPromotion on a skip decision", async () => {
+    const promotionEngine = {
+      decide: async () => ({ verdict: "skip", reason: "insufficient samples" }),
+      loadHistory: async () => [],
+    }
+    let called = 0
+    const orchestrator = new AutonomyOrchestrator({
+      dags: { store: { findByRole: async () => [] } } as never,
+      review: { review: async () => ({ score: 8, summary: "ok", findings: [] }) } as never,
+      executionStore: { save: async () => {}, listAll: async () => [] } as never,
+      insightsStore: { loadPatterns: async () => [] } as never,
+      failureAnalyzer: {
+        analyze: async () => null,
+        leaderboardInsight: async () => null,
+      } as never,
+      planner: { plan: () => null, listPlans: async () => [] } as never,
+      candidateGenerator: { generate: async () => null, listAll: async () => [] } as never,
+      promotionEngine: promotionEngine as never,
+      applyPromotion: async () => {
+        called += 1
+      },
+    } as never)
+
+    const workspace = {
+      id: "ws-skip",
+      userRequest: "test",
+      plan: { tasks: [{ id: "t1", agentRole: "frontend", status: "completed" }] },
+      results: [{ taskId: "t1", agentRole: "frontend", output: "ok" }],
+    } as never
+    await orchestrator.observe(workspace)
+    expect(called).toBe(0)
+  })
+})
