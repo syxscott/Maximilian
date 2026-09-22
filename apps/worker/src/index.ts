@@ -16,6 +16,7 @@ import path from "node:path"
 import { getConfig } from "@max/config"
 import { getLogger, initOtel } from "@max/telemetry"
 import { getRegistry, type Provider } from "@max/providers"
+import { loadProviderCredentialsFromVault } from "@max/core"
 import {
   AgentRuntime,
   type RuntimeSink,
@@ -100,6 +101,17 @@ async function main() {
   // Wire up stores.
   const db = createDb(config.DATABASE_URL)
   const store = new PgWorkspaceStore(db) as unknown as FileWorkspaceStore
+
+  // Vault-sourced provider credentials (see apps/api for the rationale):
+  // merged into env before the registry singleton is created.
+  const vaultCredentials = await loadProviderCredentialsFromVault()
+  if (Object.keys(vaultCredentials).length > 0) {
+    Object.assign(process.env, vaultCredentials)
+    log.info(
+      { providers: Object.keys(vaultCredentials).length },
+      "provider credentials loaded from vault",
+    )
+  }
 
   const registry = getRegistry()
   const providers = registry.list()

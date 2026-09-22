@@ -58,6 +58,7 @@ import {
   type RuntimeEvent,
   type ModelRouter,
   isPolicyDeniedMessage,
+  loadProviderCredentialsFromVault,
 } from "@max/core"
 import { Commander } from "@max/commander"
 import { FileWorkspaceStore } from "@max/workspace"
@@ -376,6 +377,19 @@ const sessionStore = config.SESSION_STORE_ENABLED
       }
     })()
   : undefined
+
+// Vault-sourced provider credentials (hermes Credential Vault borrowing):
+// encrypted entries titled `provider:<presetId>` are merged into the
+// process env BEFORE the registry singleton is created — the registry's
+// env-only key contract is preserved.
+const vaultCredentials = await loadProviderCredentialsFromVault()
+if (Object.keys(vaultCredentials).length > 0) {
+  Object.assign(process.env, vaultCredentials)
+  log.info(
+    { providers: Object.keys(vaultCredentials).length },
+    "provider credentials loaded from vault",
+  )
+}
 
 const registry = getRegistry()
 const providers = registry.list()
