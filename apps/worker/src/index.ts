@@ -27,10 +27,22 @@ import {
 import { createDefaultAgentFactory } from "@max/agents"
 import { EvolutionFacade, evolutionAwareFactory, SealedFileVault } from "@max/evolution"
 import {
+  AutonomyOrchestrator,
+  CandidateGenerator,
+  EvolutionPlanner,
+  FailurePatternAnalyzer,
+  PromotionEngine,
+  ReviewIntelligence,
+} from "@max/autonomy"
+import { DAGS } from "@max/dags"
+import {
   createDb,
   closeDb,
   PgWorkspaceStore,
   PgMetricsStore,
+  PgBlueprintStore,
+  PgExecutionStore,
+  PgInsightsStore,
   getProviderConfigsFromDb,
 } from "@max/database"
 import { FileWorkspaceStore } from "@max/workspace"
@@ -38,6 +50,7 @@ import {
   createWorker,
   createWorkspaceEventPublisher,
   acquireResourceLease,
+  CrashBudget,
   type WorkspaceProcessor,
 } from "@max/queue"
 import { Gateway, createWebhookAdapter } from "@max/gateway"
@@ -158,6 +171,46 @@ async function main() {
     log.info("evolution engine: ON (worker)")
   }
 
+  // Autonomy closed loop (Phase 5 parity with the API): in queue mode the
+  // worker IS the executing process, so `observe` must run here — the
+  // API's own observe calls never see queue-mode workspaces. Without this
+  // the execution records / structured reviews / promotion pipeline stay
+  // cold for every queued run.
+  let orchestrator: AutonomyOrchestrator | undefined
+  if (config.DAGS_MODE) {
+    if (!evolution) {
+      log.warn("DAGS_MODE without EVOLUTION_ENABLED — autonomy observe disabled (worker)")
+    } else {
+      const dags = new DAGS({
+        rootDir: config.WORKSPACE_DIR,
+        evolution,
+        candidates: providers,
+        // Same cast pattern as the API: the Pg store satisfies the
+        // BlueprintStore contract without extending the file class.
+        store: new PgBlueprintStore(db) as unknown as import("@max/dags").BlueprintStore,
+      })
+      const insightsStore = new PgInsightsStore(
+        db,
+      ) as unknown as import("@max/autonomy").InsightsStore
+      const candidateGenerator = new CandidateGenerator(config.WORKSPACE_DIR)
+      const promotionEngine = new PromotionEngine(config.WORKSPACE_DIR, candidateGenerator)
+      await promotionEngine.loadHistory()
+      orchestrator = new AutonomyOrchestrator({
+        dags,
+        review: new ReviewIntelligence({ provider: registry.default()! }),
+        executionStore: new PgExecutionStore(
+          db,
+        ) as unknown as import("@max/autonomy").ExecutionStore,
+        insightsStore,
+        failureAnalyzer: new FailurePatternAnalyzer(insightsStore),
+        planner: new EvolutionPlanner(config.WORKSPACE_DIR),
+        candidateGenerator,
+        promotionEngine,
+      })
+      log.info("autonomy orchestrator: ON (worker)")
+    }
+  }
+
   // Tenant cache: the sink is created once at startup but each job
   // scopes to a different tenant. The processor seeds this map before
   // runtime.execute so the sink can scope its read/write calls.
@@ -272,6 +325,16 @@ async function main() {
         { taskId: event.taskId, workspaceId: event.workspaceId, error: event.error },
         "task failed",
       )
+    }
+
+    // 2.5 Autonomy closed loop (worker parity): a queued workspace's only
+    // chance to be observed is here, when its run completes.
+    if (orchestrator && event.type === "done") {
+      try {
+        await orchestrator.observe(event.workspace)
+      } catch (err) {
+        log.warn({ err, workspaceId: event.workspaceId }, "orchestrator.observe failed (worker)")
+      }
     }
 
     // 3. Evolution feeding (mirror of apps/api runtime listener).
@@ -445,11 +508,34 @@ async function main() {
     log.info({ concurrency, redisUrl: redisUrl.replace(/\/\/.*@/, "//***@") }, "worker ready")
   })
 
-  worker.on("failed", (job: Job<WorkspaceJobData> | undefined, err: Error) => {
+  // Per-workspace crash budgets (ZCode zcode-server-cli borrowing): a
+  // workspace whose jobs keep crashing inside the window stops burning
+  // BullMQ retries — the job is discarded with the budget's structured
+  // reason instead of being re-attempted into the same failure.
+  const crashBudgets = new Map<string, CrashBudget>()
+  const crashBudgetFor = (workspaceId: string): CrashBudget => {
+    let budget = crashBudgets.get(workspaceId)
+    if (!budget) {
+      budget = new CrashBudget()
+      crashBudgets.set(workspaceId, budget)
+    }
+    return budget
+  }
+
+  worker.on("failed", async (job: Job<WorkspaceJobData> | undefined, err: Error) => {
     log.error(
       { jobId: job?.id, workspaceId: job?.data.workspaceId, err: err.message },
       "job failed",
     )
+    if (!job) return
+    const decision = crashBudgetFor(job.data.workspaceId).recordCrash(Date.now())
+    if (!decision.allowRestart) {
+      await job.discard()
+      log.error(
+        { jobId: job.id, workspaceId: job.data.workspaceId, reason: decision.reason },
+        "crash budget exhausted — remaining retries discarded",
+      )
+    }
   })
 
   // Notification egress (openclaw gateway borrowing): when a channel is
@@ -467,6 +553,8 @@ async function main() {
     : undefined
 
   worker.on("completed", (job: Job<WorkspaceJobData>) => {
+    // A clean completion proves health — the budget starts fresh.
+    crashBudgetFor(job.data.workspaceId).reset()
     log.info({ jobId: job.id, workspaceId: job.data.workspaceId }, "job completed")
     if (notificationGateway) {
       const workspaceId = job.data.workspaceId
