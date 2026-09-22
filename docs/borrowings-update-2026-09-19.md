@@ -47,3 +47,41 @@
   N² 通信成为实测瓶颈再考虑。
 - 强顾问模式与 query 级难度路由(设计已就绪:复用 handoff 预算通道 + router 前置层,
   默认 off;待 TOOL_LOOP 在生产验证后一起评估)。
+
+## 四、2026-09-22/23 追加:ZCode 批次 + 接线批次
+
+> 新来源:zai-org/ZCode(zai 的终端编码 agent)。两批工作:①移植其独立模块(925dba6);
+> ②给已移植但零消费方的模块补真实接线(f17d9ea/bbd28f9/da47d89/e096186/355f222/fd968a2)。
+
+### 4.1 已落地
+
+| #   | 借鉴项           | 来源                       | 实现                                                                                                                                                                                                                       | 测试                                                |
+| --- | ---------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| 17  | 模型目录三级加载 | ZCode provider-node        | ModelCatalog(远程 models.dev → 温缓存 → 内嵌快照)接进 registry:attachCatalog + getEffectiveDefaultModel 查询目录;slug 别名表(kimi→moonshotai、zhipu→zhipuai、dashscope→alibaba)+ flagship 选取(最高档 + 最新 release_date) | 别名/flagship/解析 9 用例                           |
+| 18  | 远程目录同步器   | ZCode remote-synchronizer  | RemoteCatalogSynchronizer:HTTPS-only 边界、20s 总预算、租约控制文件、指数退避(退避检查在抢租约之前——否则滑动永不到期)、lastSuccessAt 间隔门                                                                                | 退避/间隔回归 4 用例                                |
+| 19  | 原生厂商预设更新 | 各厂商 2026-09 阵容        | deepseek-v4-pro / kimi-k3 / MiniMax-M3 / glm-5.3 / qwen3.8-max + 163 个转售渠道预设跟进官方五家                                                                                                                            | presets 测试                                        |
+| 20  | 架构治理         | ZCode architecture lint    | architecture-policy.yaml + scripts/architecture-check.mjs(入口存在、禁包内部深导入、禁 app 互引)接入 CI                                                                                                                    | CI 步骤                                             |
+| 21  | 工作流引擎       | ZCode dynamic-workflow     | packages/workflow-engine:journal 短路恢复、字节级 script-hash 拒绝、phase 进度;api `/api/workflows/run                                                                                                                     | :runId` LLM 链管线消费(进程内 journal,诚实边界见下) | 引擎 5 用例 |
+| 22  | 崩溃预算         | ZCode crashBudget          | CrashBudget 挂 worker BullMQ failed/completed:同工作区反复崩溃 → 丢弃剩余重试(结构化 reason),干净完成重置                                                                                                                  | 既有单测                                            |
+| 23  | 加密凭证库接线   | hermes Credential Vault    | Vault(AES-256-GCM/opaque handle/redaction)成为 providers 凭证源:`provider:<presetId>` 条目启动时并入 env;registry 的 env-only 契约不变;错口令降级不炸启动                                                                  | core 4 用例                                         |
+| 24  | truth-audit 闭合 | hermes 用量锚点 + 残差对比 | TruthCalibrator:rollout 后按角色指标(基线锚窗 vs 后窗)算真实 delta,resolveMeasurement 原位替换开放预测(保 recordedAt 即持久化身份);runCycle 前自动解析                                                                     | 校准器 5 用例                                       |
+| 25  | promotion 写回   | (既有缺口的闭合)           | AutonomyDeps.applyPromotion:promote 裁决把 candidate 的 systemPrompt/version 写回活蓝图(api/worker 经各自 BlueprintStore)——此前只记历史不落地                                                                              | 写回 2 用例                                         |
+| 26  | 会话存储双写     | mcode 双写迁移模式(接线)   | session-store 接进 api/worker runtime.on:事件镜像 + plan.userRequest→user 消息 + result.output→assistant 消息 + usage + steering 收据闭环(text 匹配消费)                                                                   | 监听器 6 用例                                       |
+| 27  | worker 自治闭环  | (既有缺口的闭合)           | queue 模式下 worker 构造 autonomy 栈并在 done 事件调 orchestrator.observe——此前 observe 只在 api 本地路径跑,排队工作区永远不被观察                                                                                         | (复用 observe 测试)                                 |
+| 28  | TUI 源码净化     | —                          | 删除 src/ 下 122 个陈旧编译 .js 双胞胎(-15409 行),只留 .ts/.tsx 源                                                                                                                                                         | tsc + 14 用例                                       |
+
+### 4.2 诚实降级(移植了核心、但宿主功能尚不存在)
+
+以下模块核心 + 测试已就位,**刻意不接线**——宿主功能不存在,硬接等于给不存在的产品面造接缝:
+
+- **planImageEviction**(图像批量逐出):本代码库没有图像输入管线(chat 路由无图像附件路径)。等图像输入落地时是现成策略。
+- **ActivationPool**(子代理活跃容量池):防嵌套委托死锁;本 runtime 是平铺任务波 + 信号量,没有嵌套委派。等 subagent 编排落地。
+- **PendingSlotManager**(cron exactly-once + 不可达阶梯):本代码库没有 cron 调度器。
+- **CapabilityTicketStore**(单次能力票据):其设计场景(WS 角色提升、跨租户审批中转)在当前 api/gateway 中不存在。
+- **RemoteCatalogSynchronizer**:ModelCatalog 已有自带锁 + 定时刷新;同步器保留为需要租约控制同步的调用方使用(文档已如实标注)。
+
+### 4.3 其余诚实边界
+
+- 工作流引擎的 api journal 是进程内 Map:重试内恢复可用,跨重启恢复需要 SQLite 版 WorkflowJournalPort(session-store events 表),标注在路由头。
+- truth 校准的角色联动是 best-effort:discovery 提案的 capabilityId 直接当角色键;无指标历史的提案保持 pending,不猜。cost/risk 维度无锚点时解析为 0(= 无观测变化),不编造。
+- HITL merge/split/rebalance_team 仍走"记录审批、下轮重提具体 mutation"路径;端到端 hint 物化需 TeamOptimizer 接线,未做。

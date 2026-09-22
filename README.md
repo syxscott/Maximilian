@@ -301,9 +301,9 @@ Afterward, the **Meta-system** observes in the background — discovering new ca
 </tr>
 <tr>
 <td align="center">🧪</td>
-<td><b>2300+ 测试</b> — 23 包 + 4 app 覆盖,Vitest + CI 跑 PG 真实库</td>
+<td><b>2300+ 测试</b> — 26 包 + 4 app 覆盖,Vitest + CI 跑 PG 真实库</td>
 <td align="center">🧪</td>
-<td><b>2300+ tests</b> — 23 packages + 4 apps, Vitest + CI runs against real Postgres</td>
+<td><b>2300+ tests</b> — 26 packages + 4 apps, Vitest + CI runs against real Postgres</td>
 </tr>
 <tr>
 <td align="center">📈</td>
@@ -437,7 +437,7 @@ cd Maximilian
 pnpm install
 ```
 
-**这一步会**:装 23 个 packages + 4 个 apps 的依赖(用 pnpm workspace),拉 turbo / vitest / drizzle 等 devDeps。
+**这一步会**:装 26 个 packages + 4 个 apps 的依赖(用 pnpm workspace),拉 turbo / vitest / drizzle 等 devDeps。
 
 **首次预计时间**:~2 分钟(取决于网速)。
 
@@ -450,7 +450,7 @@ cd Maximilian
 pnpm install
 ```
 
-**What this does**: installs 23 packages + 4 apps via pnpm workspaces, plus devDeps (turbo, vitest, drizzle, etc.).
+**What this does**: installs 26 packages + 4 apps via pnpm workspaces, plus devDeps (turbo, vitest, drizzle, etc.).
 
 **First run time**: ~2 min (network-dependent).
 
@@ -851,7 +851,7 @@ flowchart TB
 <tr><td><b>Logging</b></td><td>Pino (structured JSON)</td><td align="center">📝</td></tr>
 <tr><td><b>Tracing</b></td><td>OpenTelemetry + OTLP</td><td align="center">🔭</td></tr>
 <tr><td><b>Metrics</b></td><td>prom-client + Prometheus</td><td align="center">📊</td></tr>
-<tr><td><b>Tests</b></td><td>Vitest (2300+ tests, 23 packages + 4 apps)</td><td align="center">🧪</td></tr>
+<tr><td><b>Tests</b></td><td>Vitest (2300+ tests, 26 packages + 4 apps)</td><td align="center">🧪</td></tr>
 <tr><td><b>CI/CD</b></td><td>GitHub Actions + Docker multi-stage</td><td align="center">🐳</td></tr>
 <tr><td><b>Load test</b></td><td>k6 (nightly)</td><td align="center">📈</td></tr>
 </table>
@@ -870,7 +870,7 @@ Maximilian/
 │   ├── tui/            ⌨️ Terminal UI (Ink + React)
 │   └── worker/         📨 BullMQ consumer
 │
-├── 📦 packages/        (23 packages)
+├── 📦 packages/        (26 packages)
 │   ├── core/           🧠 Agent runtime, plan/task/result types
 │   ├── providers/      🔌 Unified LLM provider + retry + circuit-breaker
 │   ├── dags/           🤖 Team graph composition
@@ -1358,7 +1358,7 @@ Every borrowed module is annotated with `借鉴 <project>` in its source header 
 <br>
 
 <sub>
-Built with ❤️ by syxscott · Powered by 23 packages · 4 apps · 2300+ tests<br>
+Built with ❤️ by syxscott · Powered by 26 packages · 4 apps · 2300+ tests<br>
 <sub>⚡ Meta-agent OS · 2026</sub>
 </sub>
 
