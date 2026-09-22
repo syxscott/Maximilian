@@ -101,12 +101,12 @@ export class WorkflowEngine {
   ): Promise<WorkflowRunReport> {
     const previous = await this.journal.readAll(runId)
     if (previous.length > 0) {
-      const journaledHash = await this.readScriptHash(runId)
+      const journaledHash = readScriptHash(previous)
       if (journaledHash !== undefined && journaledHash !== definition.scriptHash) {
         throw new WorkflowScriptChangedError(journaledHash, definition.scriptHash)
       }
     }
-    await this.writeScriptHash(runId, definition.scriptHash)
+    await writeScriptHash(this.journal, runId, definition.scriptHash, previous)
 
     const done = new Map<string, unknown>()
     let skippedFromJournal = 0
@@ -132,7 +132,9 @@ export class WorkflowEngine {
       }
       await this.journal.append(runId, {
         siteId: step.siteId,
-        attempt: 0,
+        // Re-execution ordinal: every journal entry (including failures)
+        // for this site precedes this attempt.
+        attempt: previous.filter((e) => e.siteId === step.siteId).length,
         output,
         ok,
         phase: step.phase,
@@ -155,28 +157,30 @@ export class WorkflowEngine {
       phaseProgress,
     }
   }
-
-  /** Script hash bookkeeping lives in the journal as a meta row (siteId = "__script_hash__"). */
-  private async readScriptHash(runId: string): Promise<string | undefined> {
-    const entries = await this.journal.readAll(runId)
-    const meta = entries.find((e) => e.siteId === SCRIPT_HASH_SITE)
-    return (meta?.output as string | undefined) ?? undefined
-  }
-
-  private async writeScriptHash(runId: string, hash: string): Promise<void> {
-    const entries = await this.journal.readAll(runId)
-    if (entries.some((e) => e.siteId === SCRIPT_HASH_SITE)) return
-    await this.journal.append(runId, {
-      siteId: SCRIPT_HASH_SITE,
-      attempt: 0,
-      output: hash,
-      ok: true,
-      recordedAt: new Date().toISOString(),
-    })
-  }
 }
 
 const SCRIPT_HASH_SITE = "__script_hash__"
+
+function readScriptHash(entries: JournalEntry[]): string | undefined {
+  const meta = entries.find((e) => e.siteId === SCRIPT_HASH_SITE)
+  return (meta?.output as string | undefined) ?? undefined
+}
+
+async function writeScriptHash(
+  journal: WorkflowJournalPort,
+  runId: string,
+  hash: string,
+  knownEntries: JournalEntry[],
+): Promise<void> {
+  if (knownEntries.some((e) => e.siteId === SCRIPT_HASH_SITE)) return
+  await journal.append(runId, {
+    siteId: SCRIPT_HASH_SITE,
+    attempt: 0,
+    output: hash,
+    ok: true,
+    recordedAt: new Date().toISOString(),
+  })
+}
 
 function previousInputOf(steps: WorkflowStep[], siteId: string): string | undefined {
   const idx = steps.findIndex((s) => s.siteId === siteId)

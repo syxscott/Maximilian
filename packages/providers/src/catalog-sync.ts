@@ -17,8 +17,11 @@
  *    control-file read/write).
  *
  * Pairs with ModelCatalog: the synchronizer decides WHEN to refresh and
- * hands the downloaded JSON to `catalog.ingestRemote()`; ModelCatalog owns
- * validation, the three-tier fallback, and the cache.
+ * hands the downloaded JSON to the caller, which feeds it through the
+ * catalog's load path; ModelCatalog owns validation, the three-tier
+ * fallback, and the cache. (Currently standalone — ModelCatalog refreshes
+ * itself via its own lock + timer; this module is the ported policy for
+ * callers that want lease-controlled syncing.)
  */
 
 import { promises as fs } from "node:fs"
@@ -93,6 +96,23 @@ export class RemoteCatalogSynchronizer {
     const now = this.now()
     if (control && control.leaseUntil > now) return null // another process holds the lease
 
+    // Exponential backoff after consecutive failures (ZCode borrowing):
+    // failureCount N delays the next attempt by 2^N minutes, capped at 1h.
+    // Checked BEFORE the lease is taken — writing a fresh lease on a
+    // skipped poll would slide `lastAttempt` forward on every poll and
+    // the backoff would never elapse.
+    if (control && control.failureCount > 0) {
+      const backoffMs = Math.min(2 ** control.failureCount * 30_000, 60 * 60_000)
+      const lastAttempt = control.leaseUntil - LEASE_MS
+      if (now - lastAttempt < backoffMs) return null
+    }
+
+    // Success-interval gate: a fresh catalog does not need re-downloading.
+    if (control?.lastSuccessAt) {
+      const last = Date.parse(control.lastSuccessAt)
+      if (Number.isFinite(last) && now - last < this.intervalMs) return null
+    }
+
     const leaseId = randomBytes(8).toString("hex")
     await this.writeControl({
       leaseId,
@@ -100,14 +120,6 @@ export class RemoteCatalogSynchronizer {
       failureCount: control?.failureCount ?? 0,
       lastSuccessAt: control?.lastSuccessAt,
     })
-
-    // Exponential backoff after consecutive failures (ZCode borrowing):
-    // failureCount N delays the next attempt by 2^N minutes, capped at 1h.
-    if (control && control.failureCount > 0) {
-      const backoffMs = Math.min(2 ** control.failureCount * 30_000, 60 * 60_000)
-      const lastAttempt = control.leaseUntil - LEASE_MS
-      if (now - lastAttempt < backoffMs) return null
-    }
 
     try {
       const res = await this.fetchImpl(this.opts.remoteUrl, {

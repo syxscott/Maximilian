@@ -120,4 +120,28 @@ describe("WorkflowEngine", () => {
     const all = journal.entries.filter((e) => e.runId === "run-4")
     expect(all.some((e) => e.entry.ok === false)).toBe(true)
   })
+
+  it("a failed step re-executes on resume with its attempt ordinal incremented", async () => {
+    const journal = makeJournal()
+    let failFirst = true
+    const engine = new WorkflowEngine(journal, {
+      async executeStep(step) {
+        if (step.siteId === "flaky" && failFirst) throw new Error("transient")
+        return `done-${step.siteId}`
+      },
+    })
+    const definition = def("src-d", [["flaky"], ["after"]])
+    await expect(engine.run("run-5", definition, null)).rejects.toThrow(/transient/)
+
+    failFirst = false
+    const report = await engine.run("run-5", definition, null)
+    expect(report.completed.map((c) => c.siteId)).toEqual(["flaky", "after"])
+    // The retried step's second journal entry carries attempt=1.
+    const flaky = journal.entries
+      .filter((e) => e.runId === "run-5" && e.entry.siteId === "flaky")
+      .map((e) => e.entry)
+    expect(flaky).toHaveLength(2)
+    expect(flaky.map((e) => e.ok)).toEqual([false, true])
+    expect(flaky.map((e) => e.attempt)).toEqual([0, 1])
+  })
 })

@@ -57,6 +57,8 @@ export interface ModelCatalogEntry {
   status: ModelStatus
   /** Value tier derived from price (see `inferTierFromPrice`). */
   tier: ModelTier
+  /** Vendor release date (ISO), when the catalog reports one. */
+  releaseDate?: string
 }
 
 export type CatalogSource = "embedded" | "cache" | "remote"
@@ -170,6 +172,7 @@ function parseModelsDevEntry(
     reasoning: m.reasoning === true,
     status,
     tier: inferTierFromPrice(cost?.inputPerMTok ?? null),
+    ...(typeof m.release_date === "string" ? { releaseDate: m.release_date } : {}),
   }
 }
 
@@ -410,6 +413,27 @@ export class ModelCatalog {
   }
 
   /**
+   * Entries for a Maximilian preset id, resolved through the models.dev
+   * slug alias table (see `catalogSlugsFor`). The first slug that has
+   * entries wins, so regional mirrors never dilute the primary one.
+   */
+  listForPreset(presetId: string): ModelCatalogEntry[] {
+    for (const slug of catalogSlugsFor(presetId)) {
+      const entries = this.list(slug)
+      if (entries.length > 0) return entries
+    }
+    return []
+  }
+
+  /**
+   * The preset's current flagship per the catalog, or undefined. Stable
+   * entries only; top tier present, newest release within it.
+   */
+  frontierForPreset(presetId: string): ModelCatalogEntry | undefined {
+    return pickFrontierEntry(this.listForPreset(presetId))
+  }
+
+  /**
    * Cost lookup. Returns `null` when the model (or its price) is unknown —
    * callers must treat that as "cost unknown", never 0.
    */
@@ -444,6 +468,68 @@ export function normalizeModelId(modelId: string): string {
     .replace(/[._]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
+}
+
+/**
+ * models.dev provider slugs differ from Maximilian preset ids for several
+ * vendors (`kimi` preset ↔ `moonshotai` slug, `zhipu` ↔ `zhipuai`/`zai`,
+ * `dashscope-bailian` ↔ `alibaba`). Without this table the registry's
+ * catalog lookup silently misses exactly the fast-iterating vendors.
+ * Order matters: the slug that mirrors the preset's own base URL first,
+ * regional/plan mirrors after.
+ */
+export const CATALOG_PROVIDER_ALIASES: Record<string, readonly string[]> = {
+  kimi: [
+    "moonshotai",
+    "moonshotai-cn",
+    "kimi",
+    "moonshot",
+    "kimi-code-plan-global",
+    "kimi-code-plan-cn",
+  ],
+  "kimi-coding": ["kimi-code-plan-global", "kimi-code-plan-cn", "moonshotai"],
+  zhipu: ["zhipuai", "zai", "zhipu", "zhipuai-coding-plan"],
+  "dashscope-bailian": ["alibaba-cn", "alibaba", "dashscope-bailian", "qwen"],
+  "dashscope-coding": ["alibaba-coding-plan", "alibaba-coding-plan-cn", "alibaba"],
+  "qwen-coder": ["alibaba-cn", "alibaba", "qwen"],
+  minimax: ["minimax", "minimax-cn"],
+  deepseek: ["deepseek"],
+  anthropic: ["anthropic"],
+  openai: ["openai"],
+  google: ["google"],
+}
+
+/**
+ * Catalog slugs that may hold entries for a preset id (primary first).
+ * Cosmetic preset suffixes (`-2`, `-v`, `-en`, `-cn`) are stripped before
+ * the table lookup; unknown ids fall back to themselves.
+ */
+export function catalogSlugsFor(presetId: string): readonly string[] {
+  let base = presetId
+  for (;;) {
+    const stripped = base.replace(/-(2|v|en|cn)$/, "")
+    if (stripped === base) break
+    base = stripped
+  }
+  return CATALOG_PROVIDER_ALIASES[base] ?? [presetId]
+}
+
+const TIER_RANK: Record<ModelTier, number> = { frontier: 2, standard: 1, economy: 0 }
+
+/**
+ * Pick the vendor's current flagship from catalog entries: among `stable`
+ * models, the top price tier present, and within that tier the newest
+ * release date (tier alone is not enough — cheap vendors never rank
+ * frontier, and models.dev's JSON order is alphabetical). Undefined when
+ * nothing stable exists.
+ */
+export function pickFrontierEntry(entries: ModelCatalogEntry[]): ModelCatalogEntry | undefined {
+  const stable = entries.filter((e) => e.status === "stable")
+  if (stable.length === 0) return undefined
+  const topRank = Math.max(...stable.map((e) => TIER_RANK[e.tier]))
+  const pool = stable.filter((e) => TIER_RANK[e.tier] === topRank)
+  pool.sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""))
+  return pool[0]
 }
 
 export { inferTierFromPrice } from "./model-catalog-snapshot.js"

@@ -92,7 +92,9 @@ for (const file of walk(root)) {
     for (const line of src.split("\n")) {
       const m = line.match(deepImportRe)
       if (m) {
-        violations.push(`${rel}: deep import of package internals — ${m[0]} (import the public entry instead)`)
+        violations.push(
+          `${rel}: deep import of package internals — ${m[0]} (import the public entry instead)`,
+        )
       }
     }
   }

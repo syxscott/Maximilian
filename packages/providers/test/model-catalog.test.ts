@@ -323,3 +323,108 @@ describe("normalizeModelId + tiers", () => {
     expect(inferTierFromPrice(null)).toBe("standard")
   })
 })
+
+describe("catalog slugs + frontier pick (preset id ↔ models.dev slug)", () => {
+  const VENDOR_BODY = {
+    moonshotai: {
+      models: {
+        "kimi-k3": {
+          name: "Kimi K3",
+          cost: { input: 0.6, output: 2.5 },
+          release_date: "2026-08-01",
+        },
+        "kimi-old": {
+          name: "Kimi Old",
+          cost: { input: 0.6, output: 2.5 },
+          release_date: "2026-01-01",
+        },
+      },
+    },
+    zhipuai: {
+      models: {
+        "glm-5.3": {
+          name: "GLM-5.3",
+          cost: { input: 1.4, output: 4.4 },
+          release_date: "2026-07-15",
+        },
+      },
+    },
+    alibaba: {
+      models: {
+        "qwen3.8-max": {
+          name: "Qwen3.8 Max",
+          cost: { input: 1.2, output: 6 },
+          release_date: "2026-09-01",
+        },
+        "qwen3.8-flash": {
+          name: "Qwen3.8 Flash",
+          cost: { input: 0.1, output: 0.4 },
+          release_date: "2026-09-15",
+        },
+      },
+    },
+  }
+
+  function vendorFetch(body: unknown): typeof fetch {
+    return (async () =>
+      new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch
+  }
+
+  async function loadedCatalog(body: unknown): Promise<ModelCatalog> {
+    const catalog = new ModelCatalog({
+      cacheDir: tmp,
+      fetchImpl: vendorFetch(body),
+      backgroundRefresh: false,
+    })
+    await catalog.init()
+    return catalog
+  }
+
+  it("resolves preset ids through the slug alias table", async () => {
+    const catalog = await loadedCatalog(VENDOR_BODY)
+    expect(catalog.listForPreset("kimi").map((e) => e.modelId)).toEqual(["kimi-k3", "kimi-old"])
+    expect(catalog.listForPreset("kimi-2")).toHaveLength(2)
+    expect(catalog.listForPreset("zhipu").map((e) => e.modelId)).toEqual(["glm-5.3"])
+    expect(catalog.listForPreset("dashscope-bailian")).toHaveLength(2)
+    expect(catalog.listForPreset("nonexistent-vendor")).toEqual([])
+  })
+
+  it("picks the flagship: top tier present, newest release within it", async () => {
+    const catalog = await loadedCatalog(VENDOR_BODY)
+    // moonshotai: same tier → newest release_date wins (kimi-k3).
+    expect(catalog.frontierForPreset("kimi")?.modelId).toBe("kimi-k3")
+    // alibaba: standard (qwen3.8-max) outranks economy (qwen3.8-flash) even
+    // though flash is newer — tier is the primary sort.
+    expect(catalog.frontierForPreset("dashscope-bailian")?.modelId).toBe("qwen3.8-max")
+    // Unknown vendor → undefined, caller keeps the frozen preset default.
+    expect(catalog.frontierForPreset("nonexistent-vendor")).toBeUndefined()
+  })
+
+  it("captures release_date and defaults status to stable during parse", () => {
+    const entries = parseModelsDevCatalog(VENDOR_BODY)
+    const k3 = entries.find((e) => e.modelId === "kimi-k3")
+    expect(k3?.releaseDate).toBe("2026-08-01")
+    expect(k3?.status).toBe("stable")
+  })
+
+  it("never picks alpha/beta/deprecated entries", async () => {
+    const catalog = await loadedCatalog({
+      deepseek: {
+        models: {
+          "deepseek-beta": {
+            name: "Beta",
+            cost: { input: 5, output: 20 },
+            release_date: "2026-09-20",
+            status: "beta",
+          },
+          "deepseek-v4-pro": {
+            name: "V4 Pro",
+            cost: { input: 0.5, output: 2 },
+            release_date: "2026-08-13",
+          },
+        },
+      },
+    })
+    expect(catalog.frontierForPreset("deepseek")?.modelId).toBe("deepseek-v4-pro")
+  })
+})

@@ -152,14 +152,13 @@ export function createRegistry(
         if (fromEnv) return fromEnv
       }
       // Live catalog (three-tier borrowing): when attached, prefer the
-      // newest stable catalog model for this provider over the frozen
-      // preset string. Never overrides an explicit env/config choice.
-      if (catalog) {
-        const entries = catalog.list(id).filter((e) => e.status === "stable")
-        if (entries.length > 0) {
-          const frontier = entries.find((e) => e.tier === "frontier") ?? entries[0]
-          return frontier!.modelId
-        }
+      // vendor's current flagship — resolved through the models.dev slug
+      // alias table (kimi→moonshotai, zhipu→zhipuai, …), stable entries
+      // only, top tier then newest release date. Never overrides an
+      // explicit env/config choice.
+      const frontier = catalog?.frontierForPreset(id)
+      if (frontier) {
+        return frontier.modelId
       }
       const provider = resilient.find((p) => p.id === id)
       return provider?.defaultModel ?? preset?.defaultModel ?? ""
