@@ -130,6 +130,9 @@ export async function startCredentialLeaseBroker(
         ) {
           return lease
         }
+        // A freshly validated lease that still fails the usability check can
+        // never succeed on retry — retrying it here would spin forever.
+        throw new CredentialLeaseProtocolError("AUTH_REQUIRED")
       } finally {
         if (inFlight === current) inFlight = undefined
       }

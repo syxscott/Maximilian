@@ -99,7 +99,10 @@ describe("parseCredentialLeaseRequest", () => {
 
   it("rejects malformed request ids", () => {
     const base = { version: 1, capability: CAPABILITY, method: "status" }
-    expectProtocolCode(() => parseCredentialLeaseRequest({ ...base, requestId: "" }), "INVALID_REQUEST")
+    expectProtocolCode(
+      () => parseCredentialLeaseRequest({ ...base, requestId: "" }),
+      "INVALID_REQUEST",
+    )
     expectProtocolCode(
       () => parseCredentialLeaseRequest({ ...base, requestId: "bad id!" }),
       "INVALID_REQUEST",
@@ -108,12 +111,18 @@ describe("parseCredentialLeaseRequest", () => {
       () => parseCredentialLeaseRequest({ ...base, requestId: "x".repeat(129) }),
       "INVALID_REQUEST",
     )
-    expectProtocolCode(() => parseCredentialLeaseRequest({ ...base, requestId: 5 }), "INVALID_REQUEST")
+    expectProtocolCode(
+      () => parseCredentialLeaseRequest({ ...base, requestId: 5 }),
+      "INVALID_REQUEST",
+    )
   })
 
   it("rejects malformed capabilities", () => {
     const base = { version: 1, requestId: "req-5", method: "status" }
-    expectProtocolCode(() => parseCredentialLeaseRequest({ ...base, capability: "short" }), "INVALID_REQUEST")
+    expectProtocolCode(
+      () => parseCredentialLeaseRequest({ ...base, capability: "short" }),
+      "INVALID_REQUEST",
+    )
     expectProtocolCode(
       () => parseCredentialLeaseRequest({ ...base, capability: "g".repeat(64) }),
       "INVALID_REQUEST",
@@ -159,19 +168,34 @@ describe("parseCredentialLeaseRequest", () => {
 
   it("rejects out-of-range or non-integer minValidityMs", () => {
     const base = { version: 1, requestId: "req-9", capability: CAPABILITY, method: "lease" }
-    expectProtocolCode(() => parseCredentialLeaseRequest({ ...base, minValidityMs: -1 }), "INVALID_REQUEST")
-    expectProtocolCode(() => parseCredentialLeaseRequest({ ...base, minValidityMs: 1.5 }), "INVALID_REQUEST")
+    expectProtocolCode(
+      () => parseCredentialLeaseRequest({ ...base, minValidityMs: -1 }),
+      "INVALID_REQUEST",
+    )
+    expectProtocolCode(
+      () => parseCredentialLeaseRequest({ ...base, minValidityMs: 1.5 }),
+      "INVALID_REQUEST",
+    )
     expectProtocolCode(
       () => parseCredentialLeaseRequest({ ...base, minValidityMs: 5 * 60 * 1000 + 1 }),
       "INVALID_REQUEST",
     )
-    expectProtocolCode(() => parseCredentialLeaseRequest({ ...base, minValidityMs: "0" }), "INVALID_REQUEST")
+    expectProtocolCode(
+      () => parseCredentialLeaseRequest({ ...base, minValidityMs: "0" }),
+      "INVALID_REQUEST",
+    )
   })
 
   it("rejects out-of-range or non-integer generations", () => {
     const base = { version: 1, requestId: "req-10", capability: CAPABILITY, method: "unauthorized" }
-    expectProtocolCode(() => parseCredentialLeaseRequest({ ...base, generation: -1 }), "INVALID_REQUEST")
-    expectProtocolCode(() => parseCredentialLeaseRequest({ ...base, generation: 2.5 }), "INVALID_REQUEST")
+    expectProtocolCode(
+      () => parseCredentialLeaseRequest({ ...base, generation: -1 }),
+      "INVALID_REQUEST",
+    )
+    expectProtocolCode(
+      () => parseCredentialLeaseRequest({ ...base, generation: 2.5 }),
+      "INVALID_REQUEST",
+    )
   })
 })
 
@@ -383,7 +407,10 @@ describe("parseCredentialLeaseResponse", () => {
 describe("response builders", () => {
   it("maps protocol errors onto their code and anything else onto INTERNAL_ERROR", () => {
     expect(
-      createCredentialLeaseFailureResponse("r1", new CredentialLeaseProtocolError("CAPABILITY_REJECTED")),
+      createCredentialLeaseFailureResponse(
+        "r1",
+        new CredentialLeaseProtocolError("CAPABILITY_REJECTED"),
+      ),
     ).toMatchObject({ ok: false, error: { code: "CAPABILITY_REJECTED" } })
     expect(createCredentialLeaseFailureResponse("r1", new Error("boom"))).toMatchObject({
       ok: false,
@@ -392,7 +419,10 @@ describe("response builders", () => {
   })
 
   it("rejects malformed request ids in failure responses", () => {
-    expectProtocolCode(() => createCredentialLeaseFailureResponse("bad id!", new Error("boom")), "INVALID_REQUEST")
+    expectProtocolCode(
+      () => createCredentialLeaseFailureResponse("bad id!", new Error("boom")),
+      "INVALID_REQUEST",
+    )
   })
 
   it("round-trips success responses through the strict parser", () => {
