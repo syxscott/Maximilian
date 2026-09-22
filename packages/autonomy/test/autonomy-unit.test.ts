@@ -967,8 +967,6 @@ describe("5.9 — promotion write-back", () => {
         save: async () => {},
         listAll: async () => [],
       } as never,
-      insightsStore: {} as never,
-      failureAnalyzer: {} as never,
       insightsStore: { loadPatterns: async () => [] } as never,
       failureAnalyzer: {
         analyze: async () => null,
@@ -981,7 +979,7 @@ describe("5.9 — promotion write-back", () => {
       } as never,
       candidateGenerator: { generate: async () => candidate, listAll: async () => [] } as never,
       promotionEngine: promotionEngine as never,
-      applyPromotion: async (cand) => {
+      applyPromotion: async (cand: { parentBlueprintId: string; systemPrompt: string; version: string }) => {
         applied.push({
           parent: cand.parentBlueprintId,
           systemPrompt: cand.systemPrompt,
