@@ -159,6 +159,9 @@ importers:
       '@max/tools':
         specifier: workspace:*
         version: link:../../packages/tools
+      '@max/workflow-engine':
+        specifier: workspace:*
+        version: link:../../packages/workflow-engine
       '@max/workspace':
         specifier: workspace:*
         version: link:../../packages/workspace

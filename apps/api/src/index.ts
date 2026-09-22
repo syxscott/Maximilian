@@ -102,6 +102,7 @@ import {
   TruthCalibrator,
 } from "@max/meta-system"
 import { postChat, postChatRoute } from "./routes/chat.js"
+import { workflowRoutes, workflowRunRoute, workflowGetRoute } from "./routes/workflows.js"
 import {
   getWorkspace,
   listWorkspaces,
@@ -1765,6 +1766,11 @@ if (db && config.JWT_SECRET) {
   api.openapi(tenantDeleteRoute, requireAuthMiddleware(), requireRole("admin"), tenants.remove)
   log.info("tenant routes: ON")
 }
+
+const workflowHandlers = workflowRoutes({ getDefaultProvider })
+
+api.openapi(workflowRunRoute, requireAuthMiddleware(), workflowHandlers.run)
+api.openapi(workflowGetRoute, requireAuthMiddleware(), workflowHandlers.get)
 
 api.openapi(
   postChatRoute,
