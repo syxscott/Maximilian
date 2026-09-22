@@ -139,7 +139,10 @@ export interface AutoReviewVerdict {
 /**
  * Legal (risk, decision) pairs. Anything outside this set fails closed.
  */
-export function isValidAutoReviewVerdict(v: { risk: string; decision: string }): v is AutoReviewVerdict {
+export function isValidAutoReviewVerdict(v: {
+  risk: string
+  decision: string
+}): v is AutoReviewVerdict {
   if (v.risk === "low") return v.decision === "allow"
   if (v.risk === "medium") return v.decision === "allow" || v.decision === "deny"
   if (v.risk === "high") return v.decision === "deny"
@@ -827,10 +830,12 @@ export class AgentRuntime {
         }
       })()
       return Promise.race([
-      reviewPromise,
-      serviceResolution.then((r) => (r.outcome === "allowed" ? ("allow" as const) : ("deny" as const))),
-      userDecision.then((d) => (d === "deny" ? ("deny" as const) : ("allow" as const))),
-    ]) as Promise<"allow" | "deny">
+        reviewPromise,
+        serviceResolution.then((r) =>
+          r.outcome === "allowed" ? ("allow" as const) : ("deny" as const),
+        ),
+        userDecision.then((d) => (d === "deny" ? ("deny" as const) : ("allow" as const))),
+      ]) as Promise<"allow" | "deny">
     }
 
     return Promise.race([

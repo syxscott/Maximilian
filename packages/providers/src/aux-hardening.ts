@@ -91,15 +91,16 @@ export class FallbackCooldown {
  * Strict role-alternation templates reject requests where two consecutive
  * messages share a role; their content is concatenated with a blank line.
  */
-export function mergeAdjacentSameRole<T extends { role: string }>(
-  messages: T[],
-): T[] {
+export function mergeAdjacentSameRole<T extends { role: string }>(messages: T[]): T[] {
   const out: T[] = []
   for (const m of messages) {
     const last = out[out.length - 1]
     if (last && last.role === m.role) {
       const lastAny = last as unknown as { content?: unknown }
-      if (typeof lastAny.content === "string" && typeof (m as unknown as { content?: unknown }).content === "string") {
+      if (
+        typeof lastAny.content === "string" &&
+        typeof (m as unknown as { content?: unknown }).content === "string"
+      ) {
         lastAny.content = `${lastAny.content}\n\n${(m as unknown as { content: string }).content}`
       } else {
         out.push({ ...m })
