@@ -12,6 +12,7 @@
  *   WORKER_CONCURRENCY — max concurrent jobs (default: 3)
  */
 
+import path from "node:path"
 import { getConfig } from "@max/config"
 import { getLogger, initOtel } from "@max/telemetry"
 import { getRegistry, type Provider } from "@max/providers"
@@ -221,7 +222,39 @@ async function main() {
   //  2. Event backflow — publish every runtime event to Redis so the API
   //     can fan it out to SSE/webhook subscribers.
   const publishWorkspaceEvent = createWorkspaceEventPublisher(redisUrl)
+
+  // SQLite session store (M4 double-write): the worker is the executing
+  // process in queue mode, so it is the single writer for conversation
+  // turns, events and usage. The JSONL event log stays authoritative.
+  let onSessionEvent: ((event: unknown) => void) | undefined
+  if (config.SESSION_STORE_ENABLED) {
+    try {
+      const { SessionStore, createSessionRuntimeListener } = await import("@max/session-store")
+      const sessionPath =
+        config.SESSION_STORE_PATH ??
+        path.join(
+          config.EVENTS_DIR ?? path.join(config.WORKSPACE_DIR, "events"),
+          "session-store.sqlite",
+        )
+      const s = new SessionStore({ path: sessionPath })
+      s.migrate()
+      onSessionEvent = createSessionRuntimeListener(s) as (event: unknown) => void
+      log.info({ path: sessionPath }, "session store: ON")
+    } catch (err) {
+      log.warn({ err }, "session store unavailable — running without the SQLite side store")
+    }
+  }
+
   runtime.on(async (event) => {
+    // 0. SQLite double-write (session-store wiring).
+    if (onSessionEvent) {
+      try {
+        onSessionEvent(event)
+      } catch (err) {
+        log.warn({ err, workspaceId: event.workspaceId }, "session store write failed")
+      }
+    }
+
     // 1. Backflow (always — even with evolution off, SSE clients need it).
     try {
       const tenantId =

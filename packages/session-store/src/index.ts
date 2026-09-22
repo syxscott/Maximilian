@@ -495,6 +495,72 @@ export class SessionStore {
   }
 
   /**
+   * Mark pending steering rows whose text matches one of `texts` as
+   * consumed (used by the runtime-event loop: a `steering-applied` event
+   * carries the drained message contents, which is how the persistence
+   * side learns the receipt was honored without the runtime having to
+   * thread receipt ids through its in-memory queue).
+   * Returns the number of rows newly consumed.
+   */
+  consumeSteeringTexts(workspaceId: string, texts: string[], consumedAt?: string): number {
+    if (texts.length === 0) return 0
+    const placeholders = texts.map(() => "?").join(", ")
+    const result = this.statement(
+      "consumeSteeringTexts",
+      `UPDATE steering_queue SET consumed_at = ?
+       WHERE workspace_id = ? AND consumed_at IS NULL AND text IN (${placeholders})`,
+    ).run(consumedAt ?? nowIso(), workspaceId, ...texts)
+    return toNumber(result.changes)
+  }
+
+  /** Pending (unconsumed) steering rows for a workspace, oldest first. */
+  pendingSteering(
+    workspaceId: string,
+  ): Array<{ receiptId: string; text: string; source: string | null; createdAt: string | null }> {
+    return (
+      this.statement(
+        "pendingSteering",
+        `SELECT receipt_id, text, source, created_at FROM steering_queue
+         WHERE workspace_id = ? AND consumed_at IS NULL ORDER BY id`,
+      ).all(workspaceId) as Array<{
+        receipt_id: string
+        text: string
+        source: string | null
+        created_at: string | null
+      }>
+    ).map((r) => ({
+      receiptId: r.receipt_id,
+      text: r.text,
+      source: r.source,
+      createdAt: r.created_at,
+    }))
+  }
+
+  /** Usage rows for a workspace, oldest first. */
+  listUsage(
+    workspaceId: string,
+    limit = 100,
+  ): Array<{
+    tokensIn: number | null
+    tokensOut: number | null
+    model: string | null
+    at: string | null
+  }> {
+    return (
+      this.statement(
+        "listUsage",
+        `SELECT tokens_in, tokens_out, model, at FROM usage
+         WHERE workspace_id = ? ORDER BY id LIMIT ?`,
+      ).all(workspaceId, limit) as Array<{
+        tokens_in: number | null
+        tokens_out: number | null
+        model: string | null
+        at: string | null
+      }>
+    ).map((r) => ({ tokensIn: r.tokens_in, tokensOut: r.tokens_out, model: r.model, at: r.at }))
+  }
+
+  /**
    * Accumulate lesson efficacy for a (role, bucket) pair: repeated
    * upserts ADD to injected_count and delta_sum, which is the aggregate
    * the efficacy ledger tracks across many injections.
@@ -605,3 +671,4 @@ export class SessionStore {
 }
 
 export { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.js"
+export { createSessionRuntimeListener, type SessionRuntimeEvent } from "./runtime-listener.js"

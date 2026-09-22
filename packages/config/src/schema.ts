@@ -149,6 +149,15 @@ export const ConfigSchema = z.object({
   // to workspace state by default.
   EVENTS_DIR: z.string().optional(),
 
+  // SQLite session store (M4 double-write, minimax-code borrowing): the
+  // executing process mirrors runtime events, conversation turns and
+  // token usage into SQLite while the JSONL log stays authoritative.
+  // In queue mode set SESSION_STORE_PATH to a path shared with the API
+  // container so both sides read the same store. Disable to run without
+  // the native better-sqlite3 dependency.
+  SESSION_STORE_ENABLED: booleanString.default("true"),
+  SESSION_STORE_PATH: z.string().optional(),
+
   // Logging
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 

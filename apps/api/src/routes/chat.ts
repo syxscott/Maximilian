@@ -10,6 +10,7 @@ import type { AutonomyOrchestrator } from "@max/autonomy"
 import type { Queue } from "bullmq"
 import { runDagsFlow, buildDagsWorkspace } from "../dags-flow.js"
 import { readWorkerHeartbeat, HEARTBEAT_MAX_AGE_MS, type ResourceBudget } from "@max/queue"
+import type { SessionStore } from "@max/session-store"
 import { getConfig } from "@max/config"
 
 const ChatRequestSchema = z.object({
@@ -55,6 +56,8 @@ interface ChatDeps {
   runtime: AgentRuntime
   store: FileWorkspaceStore
   eventLog: Map<string, RuntimeEvent[]>
+  /** SQLite side store (M4 double-write) — steering receipts persist here. */
+  sessionStore?: SessionStore
   // Optional Phase 5 wiring.
   dagsMode?: boolean
   dags?: DAGS
@@ -110,6 +113,21 @@ export function postChat(deps: ChatDeps) {
         // injecting the instruction twice.
         const receipt = deps.runtime.steerChecked(workspaceId, message, "api")
         if (receipt.accepted) {
+          // Persist the receipt (idempotent by receiptId) so the ledger
+          // survives restarts; consumption is confirmed by the
+          // `steering-applied` event in the runtime listener.
+          if (receipt.receiptId) {
+            try {
+              deps.sessionStore?.enqueueSteering({
+                workspaceId,
+                text: message,
+                source: "api",
+                receiptId: receipt.receiptId,
+              })
+            } catch (err) {
+              log.warn({ err, workspaceId }, "steering receipt persistence failed")
+            }
+          }
           log.info(
             {
               workspaceId,

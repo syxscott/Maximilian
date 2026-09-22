@@ -356,6 +356,27 @@ const store = (
   db ? new PgWorkspaceStore(db) : new FileWorkspaceStore(workspaceDir)
 ) as FileWorkspaceStore
 
+// SQLite session store (M4 double-write): the side store mirrors runtime
+// events, conversation turns and usage while the JSONL log above stays
+// authoritative. The API process only writes here when IT executes (no
+// queue mode); in queue mode the worker is the single writer.
+const sessionStore = config.SESSION_STORE_ENABLED
+  ? await (async () => {
+      try {
+        const { SessionStore, createSessionRuntimeListener } = await import("@max/session-store")
+        const sessionPath =
+          config.SESSION_STORE_PATH ?? path.join(eventsRootDir, "session-store.sqlite")
+        const s = new SessionStore({ path: sessionPath })
+        s.migrate()
+        log.info({ path: sessionPath }, "session store: ON")
+        return { store: s, onSessionEvent: createSessionRuntimeListener(s) }
+      } catch (err) {
+        log.warn({ err }, "session store unavailable — running without the SQLite side store")
+        return undefined
+      }
+    })()
+  : undefined
+
 const registry = getRegistry()
 const providers = registry.list()
 let defaultProvider: Provider | undefined = registry.default()
@@ -802,6 +823,11 @@ runtime.on(async (event) => {
   }
 
   recordRuntimeEvent(event)
+
+  // SQLite double-write (session-store wiring). No-op when the store is
+  // disabled or failed to open; store errors propagate — the JSONL log is
+  // written independently and stays authoritative during migration.
+  sessionStore?.onSessionEvent(event)
 
   // Forward runtime events to the webhook/SSE subscription bus.
   // Without this, `publishEvent` is never called and webhook/SSE
@@ -1695,6 +1721,7 @@ api.openapi(
     runtime,
     store,
     eventLog,
+    sessionStore: sessionStore?.store,
     dagsMode,
     dags,
     orchestrator,

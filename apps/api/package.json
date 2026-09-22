@@ -20,6 +20,7 @@
     "@max/autonomy": "workspace:*",
     "@max/commander": "workspace:*",
     "@max/config": "workspace:*",
+    "@max/session-store": "workspace:*",
     "@max/core": "workspace:*",
     "@max/core-thin-sdk": "workspace:*",
     "@max/dags": "workspace:*",

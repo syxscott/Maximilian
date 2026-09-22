@@ -150,6 +150,9 @@ importers:
       '@max/queue':
         specifier: workspace:*
         version: link:../../packages/queue
+      '@max/session-store':
+        specifier: workspace:*
+        version: link:../../packages/session-store
       '@max/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
@@ -447,6 +450,9 @@ importers:
       '@max/queue':
         specifier: workspace:*
         version: link:../../packages/queue
+      '@max/session-store':
+        specifier: workspace:*
+        version: link:../../packages/session-store
       '@max/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry

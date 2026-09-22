@@ -15,6 +15,7 @@
     "@max/autonomy": "workspace:*",
     "@max/commander": "workspace:*",
     "@max/config": "workspace:*",
+    "@max/session-store": "workspace:*",
     "@max/core": "workspace:*",
     "@max/dags": "workspace:*",
     "@max/database": "workspace:*",
