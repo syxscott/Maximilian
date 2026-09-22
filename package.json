@@ -31,7 +31,8 @@
     "size:why": "size-limit --why",
     "db:dry-run": "node scripts/migrate-dry-run.mjs",
     "storybook": "storybook dev -p 6006",
-    "storybook:build": "storybook build -o docs/storybook"
+    "storybook:build": "storybook build -o docs/storybook",
+    "architecture:check": "node scripts/architecture-check.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",

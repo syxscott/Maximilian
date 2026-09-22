@@ -35,3 +35,4 @@ export {
   type CatalogInfo,
   type ModelCatalogOptions,
 } from "./model-catalog.js"
+export * from "./catalog-sync.js"

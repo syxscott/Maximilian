@@ -159,7 +159,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "DASHSCOPE_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://dashscope.aliyuncs.com/apps/anthropic",
-    defaultModel: "claude-fable-5-1",
+    defaultModel: "qwen3.8-max",
     category: "china",
   },
   {
@@ -169,7 +169,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "DASHSCOPE_BAILIAN_2_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "qwen3.8-max",
     category: "china",
   },
   {
@@ -179,7 +179,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "DASHSCOPE_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://coding.dashscope.aliyuncs.com/apps/anthropic",
-    defaultModel: "claude-fable-5-1",
+    defaultModel: "qwen3.8-max",
     category: "china",
   },
   {
@@ -189,7 +189,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "DASHSCOPE_CODING_2_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://coding.dashscope.aliyuncs.com/apps/anthropic",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "qwen3.8-max",
     category: "china",
   },
   {
@@ -199,7 +199,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "DEEPSEEK_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://api.deepseek.com/anthropic",
-    defaultModel: "claude-fable-5-1",
+    defaultModel: "deepseek-v4-pro",
     category: "china",
   },
   {
@@ -209,7 +209,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "DEEPSEEK_2_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://api.deepseek.com/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "deepseek-v4-pro",
     category: "china",
   },
   {
@@ -219,7 +219,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "DEEPSEEK_OPENAI_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://api.deepseek.com",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "deepseek-v4-pro",
     category: "china",
   },
   {
@@ -262,7 +262,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "MOONSHOT_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://api.moonshot.cn/anthropic",
-    defaultModel: "claude-fable-5-1",
+    defaultModel: "kimi-k3",
     category: "china",
   },
   {
@@ -272,7 +272,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "KIMI_2_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://api.moonshot.cn/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "kimi-k3",
     category: "china",
   },
   {
@@ -282,7 +282,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "MOONSHOT_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://api.kimi.com/coding/",
-    defaultModel: "claude-fable-5-1",
+    defaultModel: "kimi-k3",
     category: "china",
   },
   {
@@ -292,7 +292,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "KIMI_CODING_2_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://api.kimi.com/coding/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "kimi-k3",
     category: "china",
   },
   {
@@ -302,7 +302,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "KIMI_CODING_CODING_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://api.kimi.com/coding/",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "kimi-k3",
     category: "china",
   },
   {
@@ -312,7 +312,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "KIMI_CODING_V_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://api.kimi.com/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "kimi-k3",
     category: "china",
   },
   {
@@ -322,7 +322,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "KIMI_K2_7_CODE_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://api.moonshot.cn/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "kimi-k3",
     category: "china",
   },
   {
@@ -368,7 +368,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "MINIMAX_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://api.minimaxi.com/anthropic",
-    defaultModel: "claude-fable-5-1",
+    defaultModel: "MiniMax-M3",
     category: "china",
   },
   {
@@ -378,7 +378,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "MINIMAX_MODEL_2",
     apiFormat: "openai_chat",
     baseUrl: "https://platform.minimaxi.com",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "MiniMax-M3",
     category: "china",
   },
   {
@@ -388,7 +388,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "MINIMAX_MODEL_V",
     apiFormat: "openai_chat",
     baseUrl: "https://api.minimaxi.com/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "MiniMax-M3",
     category: "china",
   },
   {
@@ -428,7 +428,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "QWEN_CODER_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "qwen3.8-max",
     category: "china",
   },
   {
@@ -538,7 +538,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "ZHIPU_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://open.bigmodel.cn/api/anthropic",
-    defaultModel: "claude-fable-5-1",
+    defaultModel: "glm-5.3",
     category: "china",
   },
   {
@@ -548,7 +548,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "ZHIPU_2_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://open.bigmodel.cn",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "glm-5.3",
     category: "china",
   },
   {
@@ -558,7 +558,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "ZHIPU_MODEL",
     apiFormat: "anthropic",
     baseUrl: "https://api.z.ai/api/anthropic",
-    defaultModel: "claude-fable-5-1",
+    defaultModel: "glm-5.3",
     category: "china",
   },
   {
@@ -568,7 +568,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "ZHIPU_EN_2_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://z.ai",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "glm-5.3",
     category: "china",
   },
   {
@@ -588,7 +588,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envModel: "ZHIPU_V_MODEL",
     apiFormat: "openai_chat",
     baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "glm-5.3",
     category: "china",
   },
   // ──────────────── aggregator (routing services) ────────────────

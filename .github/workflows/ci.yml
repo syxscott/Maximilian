@@ -140,6 +140,9 @@ jobs:
       - name: License headers (new files)
         run: pnpm license:check
 
+      - name: Architecture policy
+        run: pnpm architecture:check
+
       - name: Validate commit messages
         if: github.event_name == 'pull_request'
         run: |

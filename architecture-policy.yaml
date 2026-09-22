@@ -1,0 +1,66 @@
+# Architecture policy (ZCode borrowing: machine-checkable module governance).
+#
+# Validated by `pnpm architecture:check` (scripts/architecture-check.mjs):
+#   - every module's publicEntrypoint must exist on disk
+#   - no source file may deep-import another package's internals
+#     (`@max/<mod>/src/...`) — only the package's public entry may be
+#     imported
+#   - apps must not import other apps
+#
+# Rules beyond these are aspirational for now: add them here ONLY together
+# with the checker support, and only when the tree already passes.
+
+version: 1
+
+globals:
+  forbidCycles: true
+  appsMayNotImportApps: true
+  forbidDeepImports: true
+
+modules:
+  - id: core
+    entrypoint: packages/core/src/index.ts
+  - id: agents
+    entrypoint: packages/agents/src/index.ts
+  - id: commander
+    entrypoint: packages/commander/src/index.ts
+  - id: providers
+    entrypoint: packages/providers/src/index.ts
+  - id: tools
+    entrypoint: packages/tools/src/index.ts
+  - id: queue
+    entrypoint: packages/queue/src/index.ts
+  - id: evolution
+    entrypoint: packages/evolution/src/index.ts
+  - id: meta-system
+    entrypoint: packages/meta-system/src/index.ts
+  - id: autonomy
+    entrypoint: packages/autonomy/src/index.ts
+  - id: dags
+    entrypoint: packages/dags/src/index.ts
+  - id: database
+    entrypoint: packages/database/src/index.ts
+  - id: telemetry
+    entrypoint: packages/telemetry/src/index.ts
+  - id: config
+    entrypoint: packages/config/src/index.ts
+  - id: gateway
+    entrypoint: packages/gateway/src/index.ts
+  - id: i18n
+    entrypoint: packages/i18n/src/index.ts
+  - id: workspace
+    entrypoint: packages/workspace/src/index.ts
+  - id: session-store
+    entrypoint: packages/session-store/src/index.ts
+  - id: credential-lease
+    entrypoint: packages/credential-lease/src/index.ts
+  - id: llm
+    entrypoint: packages/llm/src/index.ts
+  - id: sdk
+    entrypoint: packages/sdk/src/client.ts
+  - id: ui-react
+    entrypoint: packages/ui-react/src/index.ts
+  - id: ui-state
+    entrypoint: packages/ui-state/src/index.ts
+  - id: compat-shims
+    entrypoint: packages/compat-shims/src/index.ts
