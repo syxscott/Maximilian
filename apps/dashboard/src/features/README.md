@@ -10,6 +10,7 @@ domain — the dashboard's unit of product:
       ...additional pieces as the domain grows
 
 Rules:
+
 1. A domain may import from `@/components/ui/*` primitives, `@/lib/*`,
    `@/hooks/*`, `@/api`, and OTHER domains' public `index.ts` — never
    another domain's internals.
