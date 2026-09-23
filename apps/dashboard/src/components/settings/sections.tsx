@@ -25,7 +25,17 @@ import { useLocale, t } from "@max/i18n"
 import { systemApi, ProviderListResponseSchema } from "@/api"
 
 export type SettingsSectionId =
-  "appearance" | "language" | "performance" | "flags" | "tenants" | "providers" | "vault" | "oracle"
+  | "appearance"
+  | "language"
+  | "performance"
+  | "flags"
+  | "tenants"
+  | "providers"
+  | "vault"
+  | "oracle"
+  | "subagents"
+  | "usageCharts"
+  | "store"
 
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; titleKey: string }> = [
   { id: "appearance", titleKey: "settings.appearance.title" },
@@ -36,6 +46,9 @@ export const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; titleKey: string 
   { id: "providers", titleKey: "settings.providersHealth.title" },
   { id: "vault", titleKey: "settings.vault.title" },
   { id: "oracle", titleKey: "settings.oracle.title" },
+  { id: "subagents", titleKey: "settingsDeep.subagents.title" },
+  { id: "usageCharts", titleKey: "settingsDeep.usage.title" },
+  { id: "store", titleKey: "settingsDeep.store.title" },
 ]
 
 export function SettingsSectionNav({

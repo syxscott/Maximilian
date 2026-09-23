@@ -24,8 +24,7 @@ function deepMerge(base: Json, override: Json): Json {
   const out: Json = { ...base }
   for (const [key, value] of Object.entries(override)) {
     const existing = out[key]
-    out[key] =
-      isPlainObject(value) && isPlainObject(existing) ? deepMerge(existing, value) : value
+    out[key] = isPlainObject(value) && isPlainObject(existing) ? deepMerge(existing, value) : value
   }
   return out
 }

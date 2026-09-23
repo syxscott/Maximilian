@@ -23,6 +23,11 @@ import {
   OracleLessonsSection,
   type SettingsSectionId,
 } from "./settings/sections"
+import { PresetCatalogBrowser } from "./settings/providers-manager/PresetCatalogBrowser"
+import { ProviderModelTester } from "./settings/providers-manager/ProviderModelTester"
+import { SubagentsDomain } from "./settings/subagents-domain/SubagentsDomain"
+import { UsageDomain } from "./settings/usage-domain/UsageDomain"
+import { SessionStoreStatusCard } from "./settings/store-domain/SessionStoreStatusCard"
 import { useMemo, useState as useReactState } from "react"
 import { t } from "@max/i18n"
 
@@ -141,9 +146,18 @@ export function SettingsPanel() {
         <div className="space-y-4">
           {section === "flags" && <FeatureFlagsSection />}
           {section === "tenants" && <TenantsSection />}
-          {section === "providers" && <ProvidersHealthSection />}
+          {section === "providers" && (
+            <>
+              <ProvidersHealthSection />
+              <PresetCatalogBrowser />
+              <ProviderModelTester />
+            </>
+          )}
           {section === "vault" && <VaultSection />}
           {section === "oracle" && <OracleLessonsSection />}
+          {section === "subagents" && <SubagentsDomain />}
+          {section === "usageCharts" && <UsageDomain />}
+          {section === "store" && <SessionStoreStatusCard />}
         </div>
       )}
       <div className={clientSections ? "space-y-6" : "hidden"}>

@@ -150,6 +150,12 @@ import {
   failoverQueueRemoveRoute,
   autoFailoverRoute,
   setAutoFailoverRoute,
+  providerPresetsRoute,
+  providerTestChatRoute,
+  sessionStoreStatusRoute,
+  providerPresetsHandler,
+  providerTestChatHandler,
+  sessionStoreStatusHandler,
 } from "./routes/system.js"
 import {
   SseReplayBuffer,
@@ -2355,6 +2361,15 @@ if (evolution) {
   api.openapi(oracleTriadRoute, requireAuthMiddleware(), oracleTriadHandler(evoDeps))
   api.openapi(triggerEvolveRoute, requireAuthMiddleware(), evo.triggerEvolve)
 }
+
+// Settings-center deep domains (providers catalog / model tester / store status).
+api.openapi(providerPresetsRoute, requireAuthMiddleware(), providerPresetsHandler())
+api.openapi(providerTestChatRoute, requireAuthMiddleware(), providerTestChatHandler({ registry }))
+api.openapi(
+  sessionStoreStatusRoute,
+  requireAuthMiddleware(),
+  sessionStoreStatusHandler({ store: sessionStore?.store }),
+)
 
 // Session history (SQLite side store, read side of the double-write).
 const sessions = sessionRoutes({ store: sessionStore?.store })
