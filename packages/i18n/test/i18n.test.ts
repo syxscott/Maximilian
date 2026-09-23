@@ -39,8 +39,21 @@ describe("i18n — defaults", () => {
     expect(getLocale()).toBe("zh-CN")
   })
 
-  it("listLocales contains exactly zh-CN and en-US by default", () => {
-    expect(new Set(listLocales())).toEqual(new Set(["zh-CN", "en-US"]))
+  it("listLocales contains the 10 built-in locales by default", () => {
+    expect(new Set(listLocales())).toEqual(
+      new Set([
+        "zh-CN",
+        "en-US",
+        "ja-JP",
+        "ko-KR",
+        "de-DE",
+        "fr-FR",
+        "es-ES",
+        "pt-BR",
+        "ru-RU",
+        "ar-SA",
+      ]),
+    )
   })
 
   it("localeDisplayName renders the locale in its own language", () => {
@@ -120,7 +133,7 @@ describe("i18n — setLocale & persistence", () => {
   })
 
   it("ignores unsupported locales (no crash)", () => {
-    setLocale("fr-FR" as never)
+    setLocale("xx-XX" as never) // not registered by the built-in registry
     expect(getLocale()).toBe("zh-CN") // unchanged
   })
 
@@ -218,7 +231,7 @@ describe("i18n — registerLocale (3+ language support)", () => {
 
   it("setLocale warns on an unregistered locale and keeps the current one", () => {
     const warn = vi.mocked(console.warn)
-    setLocale("ja-JP")
+    setLocale("xx-XX") // not registered by the built-in registry
     expect(getLocale()).toBe("zh-CN")
     expect(warn.mock.calls.some((c) => String(c[0]).includes("unknown locale"))).toBe(true)
   })

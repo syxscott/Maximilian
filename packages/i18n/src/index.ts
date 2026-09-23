@@ -19,6 +19,14 @@
 import { useEffect, useReducer } from "react"
 import dictEn from "./locales/en-US.json" with { type: "json" }
 import dictZh from "./locales/zh-CN.json" with { type: "json" }
+import dictJa from "./locales/ja-JP.json" with { type: "json" }
+import dictKo from "./locales/ko-KR.json" with { type: "json" }
+import dictDe from "./locales/de-DE.json" with { type: "json" }
+import dictFr from "./locales/fr-FR.json" with { type: "json" }
+import dictEs from "./locales/es-ES.json" with { type: "json" }
+import dictPtBr from "./locales/pt-BR.json" with { type: "json" }
+import dictRu from "./locales/ru-RU.json" with { type: "json" }
+import dictAr from "./locales/ar-SA.json" with { type: "json" }
 
 /** BCP-47 locale tag. We accept any string so adding a new language only
  *  requires `registerLocale("ja-JP", jaJson)` from a bootstrap module. */
@@ -29,15 +37,29 @@ export const DEFAULT_LOCALE = "zh-CN"
 const STORAGE_KEY = "maximilian.locale"
 
 type Dict = Record<string, string>
-const dictionaries = new Map<Locale, Dict>([
-  ["zh-CN", dictZh as Dict],
-  ["en-US", dictEn as Dict],
-])
 
-const displayNames = new Map<Locale, string>([
-  ["zh-CN", "中文 (简体)"],
-  ["en-US", "English"],
-])
+/** Locales bundled with the package, in registration order:
+ *  [tag, dictionary, display name in its own language]. */
+const defaultRegistry: Array<[Locale, Dict, string]> = [
+  ["zh-CN", dictZh as Dict, "中文 (简体)"],
+  ["en-US", dictEn as Dict, "English"],
+  ["ja-JP", dictJa as Dict, "日本語"],
+  ["ko-KR", dictKo as Dict, "한국어"],
+  ["de-DE", dictDe as Dict, "Deutsch"],
+  ["fr-FR", dictFr as Dict, "Français"],
+  ["es-ES", dictEs as Dict, "Español"],
+  ["pt-BR", dictPtBr as Dict, "Português (Brasil)"],
+  ["ru-RU", dictRu as Dict, "Русский"],
+  ["ar-SA", dictAr as Dict, "العربية"],
+]
+
+const dictionaries = new Map<Locale, Dict>(
+  defaultRegistry.map(([locale, dict]) => [locale, dict] as const),
+)
+
+const displayNames = new Map<Locale, string>(
+  defaultRegistry.map(([locale, , name]) => [locale, name] as const),
+)
 
 let currentLocale: Locale = DEFAULT_LOCALE
 const listeners = new Set<() => void>()
@@ -346,10 +368,10 @@ export function __resetI18n(): void {
   warnedKeys.clear()
   dictionaries.clear()
   displayNames.clear()
-  dictionaries.set("zh-CN", dictZh as Dict)
-  dictionaries.set("en-US", dictEn as Dict)
-  displayNames.set("zh-CN", "中文 (简体)")
-  displayNames.set("en-US", "English")
+  for (const [locale, dict, name] of defaultRegistry) {
+    dictionaries.set(locale, dict)
+    displayNames.set(locale, name)
+  }
   savePersister = undefined
   removePersister = undefined
   try {
