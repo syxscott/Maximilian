@@ -17,13 +17,15 @@ is a breaking change and needs an ADR.
 
 ## Entries
 
-| symbol                                               | state                                           | since | removal | replacement                   |
-| ---------------------------------------------------- | ----------------------------------------------- | ----- | ------- | ----------------------------- |
-| @max/core#loadProviderCredentialsFromVault           | active                                          | 1.0.0 | —       | —                             |
-| @max/session-store#SessionStore.consumeSteering      | active                                          | 0.1.0 | —       | —                             |
-| @max/session-store#SessionStore.consumeSteeringTexts | active                                          | 1.1.0 | —       | —                             |
-| @max/providers#RemoteCatalogSynchronizer             | active (library; no runtime consumer by design) | 1.1.0 | —       | ModelCatalog built-in refresh |
-| @max/queue#CrashBudget                               | active                                          | 1.1.0 | —       | —                             |
+| symbol                                               | state                                           | since | removal  | replacement                       |
+| ---------------------------------------------------- | ----------------------------------------------- | ----- | -------- | --------------------------------- |
+| @max/core#loadProviderCredentialsFromVault           | active                                          | 1.0.0 | —        | —                                 |
+| @max/session-store#SessionStore.consumeSteering      | active                                          | 0.1.0 | —        | —                                 |
+| @max/session-store#SessionStore.consumeSteeringTexts | active                                          | 1.1.0 | —        | —                                 |
+| @max/providers#RemoteCatalogSynchronizer             | active (library; no runtime consumer by design) | 1.1.0 | —        | ModelCatalog built-in refresh     |
+| @max/queue#CrashBudget                               | active                                          | 1.1.0 | —        | —                                 |
+| @max/providers (legacy in-process surface)           | deprecated                                      | 0.9.0 | Phase 4a | opencode kernel via core-thin-sdk |
+| @max/llm (legacy in-process surface)                 | deprecated                                      | 0.9.0 | Phase 4a | opencode kernel via core-thin-sdk |
 
 Rules:
 
