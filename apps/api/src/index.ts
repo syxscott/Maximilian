@@ -2608,6 +2608,18 @@ api.openapi(opencodeHealthRoute, requireAuthMiddleware(), opencodeRouter.health)
 api.openapi(opencodeEventsRoute, requireAuthMiddleware(), opencodeRouter.events)
 
 // Mount the API routes under both /api/ and /api/v1/
+// Full machine-readable OpenAPI document (opencode httpapi borrowing,
+// foundation for client generation). Path list snapshots live in
+// openapi-paths.json; THIS is the complete schema-carrying document.
+api.doc("/openapi.json", {
+  openapi: "3.0.0",
+  info: {
+    version: "1.0.0",
+    title: "Maximilian API",
+    description: "Typed API surface generated from the zod-openapi route definitions",
+  },
+})
+
 app.route("/api", api)
 app.route("/api/v1", api)
 
