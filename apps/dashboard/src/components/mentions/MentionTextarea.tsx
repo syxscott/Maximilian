@@ -76,7 +76,6 @@ export function MentionTextarea({
   const provider = routed[0] ?? null
   const pool = useMemo(
     () => (match !== null ? poolForTrigger(providers, match.trigger, match.token) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [providers, match?.trigger, match?.token],
   )
   const mention = useMention(pool)

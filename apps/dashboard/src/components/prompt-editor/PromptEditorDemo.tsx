@@ -91,7 +91,6 @@ export function PromptEditorDemo({
         label: v.title,
         description: slashKindLabel(v.kind),
       })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [slashPickOpen],
   )
 
