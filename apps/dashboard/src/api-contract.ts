@@ -64,8 +64,10 @@ export const API_PATHS = [
   "GET /subscriptions",
   "GET /system/failover/auto",
   "GET /system/failover/queue",
+  "GET /system/provider-presets",
   "GET /system/providers/{id}/circuit-breaker/stats",
   "GET /system/providers/{id}/health",
+  "GET /system/session-store",
   "GET /system/vault",
   "GET /tenants",
   "GET /tenants/{id}",
@@ -103,6 +105,7 @@ export const API_PATHS = [
   "POST /system/failover/queue/add",
   "POST /system/failover/queue/remove",
   "POST /system/providers/{id}/circuit-breaker/reset",
+  "POST /system/providers/{id}/test-chat",
   "POST /tenants",
   "POST /workflows/run",
   "PUT /meta/governance/config",
@@ -115,5 +118,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 102. */
-export const API_PATH_COUNT = 102
+/** Number of routes in the backend contract: 105. */
+export const API_PATH_COUNT = 105
