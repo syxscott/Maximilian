@@ -17,6 +17,7 @@ import { ChatPanel } from "./components/ChatPanel"
 import { SubagentsPanel } from "./components/SubagentsPanel"
 import { TrajectoryPanel } from "./components/TrajectoryPanel"
 import { FileChangesPanel } from "./components/FileChangesPanel"
+import { SessionsPanel } from "./components/SessionsPanel"
 import { AgentPanel } from "./components/AgentPanel"
 import { TaskPanel } from "./components/TaskPanel"
 import { OutputPanel } from "./components/OutputPanel"
@@ -614,6 +615,7 @@ export function App() {
                     <SubagentsPanel events={events} />
                     <TrajectoryPanel events={events} taskIds={eventTaskIds} />
                     <FileChangesPanel events={events} />
+                    <SessionsPanel workspaceId={workspace?.id} />
                     {workspace?.review ? (
                       <ReviewPanel workspace={workspace} />
                     ) : (

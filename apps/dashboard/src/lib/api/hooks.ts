@@ -30,6 +30,8 @@ export const queryKeys = {
   usageSummary: (range: UsageRange) => ["usage-summary", range] as const,
   usageDaily: (range: UsageRange) => ["usage-daily", range] as const,
   usageWindows: () => ["usage-windows"] as const,
+  sessions: ["sessions"] as const,
+  sessionMessages: (id: string) => ["session-messages", id] as const,
 }
 
 // ── Health ───────────────────────────────────────────────────────────────

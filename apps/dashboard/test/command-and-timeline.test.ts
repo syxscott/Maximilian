@@ -9,12 +9,7 @@
  * the model is unit-tested, the presentation is not).
  */
 import { describe, it, expect } from "vitest"
-import {
-  COMMANDS,
-  commandsWithKeybinds,
-  filterCommands,
-  formatKeybind,
-} from "../src/lib/commands"
+import { COMMANDS, commandsWithKeybinds, filterCommands, formatKeybind } from "../src/lib/commands"
 import {
   summarizeToolInput,
   toolInputRows,
@@ -107,7 +102,9 @@ describe("buildTimelineItems", () => {
       error: null,
     } as unknown as Workspace
     const items = buildTimelineItems(events, ws)
-    expect(items.map((i) => i.kind)).toEqual(["user", "task", "task", "failed" /* ws not failed */].slice(0, 3))
+    expect(items.map((i) => i.kind)).toEqual(
+      ["user", "task", "task", "failed" /* ws not failed */].slice(0, 3),
+    )
     const t1 = items.find((i) => i.taskId === "t1")!
     expect(t1.status).toBe("completed")
     expect(t1.toolCalls).toHaveLength(1)

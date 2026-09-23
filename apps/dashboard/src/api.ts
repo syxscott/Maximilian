@@ -938,6 +938,65 @@ export const chatApi = {
 
 // ── Usage API ──────────────────────────────────────────────────────────────
 
+export const sessionsApi = {
+  list: (opts?: { workspaceId?: string; limit?: number }, signal?: AbortSignal) => {
+    const params = new URLSearchParams()
+    if (opts?.workspaceId) params.set("workspaceId", opts.workspaceId)
+    if (opts?.limit != null) params.set("limit", String(opts.limit))
+    const qs = params.toString()
+    return fetchJson(
+      `${BASE}/sessions${qs ? `?${qs}` : ""}`,
+      { headers: authHeaders(), signal },
+      z.object({
+        sessions: z.array(
+          z.object({
+            id: z.string(),
+            workspaceId: z.string().nullable(),
+            title: z.string().nullable(),
+            createdAt: z.string().nullable(),
+            updatedAt: z.string().nullable(),
+          }),
+        ),
+      }),
+    )
+  },
+
+  messages: (id: string, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/sessions/${encodeURIComponent(id)}/messages`,
+      { headers: authHeaders(), signal },
+      z.object({
+        sessionId: z.string(),
+        messages: z.array(
+          z.object({
+            id: z.string(),
+            role: z.string(),
+            content: z.string(),
+            createdAt: z.string().nullable(),
+          }),
+        ),
+      }),
+    ),
+
+  timeline: (id: string, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/sessions/${encodeURIComponent(id)}/timeline`,
+      { headers: authHeaders(), signal },
+      z.object({
+        sessionId: z.string(),
+        turns: z.array(
+          z.object({
+            id: z.string(),
+            role: z.string(),
+            turnOrdinal: z.number().nullable(),
+            createdAt: z.string(),
+            deleted: z.boolean(),
+          }),
+        ),
+      }),
+    ),
+}
+
 export const usageApi = {
   summary: (range: string, signal?: AbortSignal) =>
     fetchJson(

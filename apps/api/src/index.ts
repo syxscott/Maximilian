@@ -2337,6 +2337,12 @@ if (evolution) {
   api.openapi(triggerEvolveRoute, requireAuthMiddleware(), evo.triggerEvolve)
 }
 
+// Session history (SQLite side store, read side of the double-write).
+const sessions = sessionRoutes({ store: sessionStore?.store })
+api.openapi(listSessionsRoute, requireAuthMiddleware(), sessions.listSessions)
+api.openapi(getMessagesRoute, requireAuthMiddleware(), sessions.getMessages)
+api.openapi(getTimelineRoute, requireAuthMiddleware(), sessions.getTimeline)
+
 // Phase 5.7 — Learning Dashboard
 if (learningApi) {
   const lr = learningRoutes({ api: learningApi })

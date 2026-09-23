@@ -399,5 +399,10 @@
   "command.openPalette": "打开命令面板",
   "command.stopStream": "停止当前执行（仅界面）",
   "command.stopStream.desc": "断开事件流并取消浏览器内请求；服务端继续执行",
-  "command.toggleSidebar": "切换侧栏"
+  "command.toggleSidebar": "切换侧栏",
+  "sessions.title": "会话历史",
+  "sessions.loading": "加载中…",
+  "sessions.empty": "暂无持久化会话 — 运行时双写开启后自动累积",
+  "sessions.loadFailed": "会话消息加载失败",
+  "sessions.noMessages": "该会话暂无消息"
 }

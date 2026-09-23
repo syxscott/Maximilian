@@ -399,5 +399,10 @@
   "command.openPalette": "Open command palette",
   "command.stopStream": "Stop current run (UI only)",
   "command.stopStream.desc": "Detach the event stream and cancel the in-browser request; the server keeps running",
-  "command.toggleSidebar": "Toggle sidebar"
+  "command.toggleSidebar": "Toggle sidebar",
+  "sessions.title": "Session history",
+  "sessions.loading": "Loading…",
+  "sessions.empty": "No persisted sessions yet — they accumulate once the runtime double-write is on",
+  "sessions.loadFailed": "Failed to load session messages",
+  "sessions.noMessages": "No messages in this session"
 }
