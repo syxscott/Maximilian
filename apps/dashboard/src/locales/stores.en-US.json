@@ -1,0 +1,27 @@
+{
+  "stores": {
+    "composer": {
+      "draftPlaceholder": "Keep typing… (drafts are saved per workspace)",
+      "draftRestored": "Unsent draft restored",
+      "draftSaved": "Draft saved",
+      "draftCleared": "Draft cleared"
+    },
+    "commands": {
+      "recent": "Recent",
+      "historyEmpty": "No commands executed yet",
+      "disabled": "Disabled",
+      "disabledCount": "{count} commands disabled"
+    },
+    "taskSelection": {
+      "noSelection": "No task selected",
+      "selectedFromTimeline": "Selected from trajectory",
+      "selectedFromTaskPanel": "Selected from task panel"
+    },
+    "session": {
+      "noEvents": "No session events yet",
+      "eventCount": "{count} events",
+      "runningCount": "{count} tasks running",
+      "lastActivity": "Last activity: {time}"
+    }
+  }
+}

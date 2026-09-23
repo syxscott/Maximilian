@@ -1,0 +1,83 @@
+{
+  "aiElements": {
+    "code": {
+      "noLanguage": "code",
+      "copy": "Copy",
+      "copied": "Copied",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "empty": "(empty code block)",
+      "hiddenLines": "Show {count} more lines"
+    },
+    "reasoning": {
+      "title": "Reasoning",
+      "meta": "{duration} · {chars} chars",
+      "metaChars": "{chars} chars"
+    },
+    "attachment": {
+      "type": "Type: {type}",
+      "sizeUnknown": "size unknown",
+      "remove": "Remove attachment",
+      "variant": {
+        "image": "Image",
+        "audio": "Audio",
+        "video": "Video",
+        "pdf": "PDF document",
+        "code": "Code file",
+        "archive": "Archive",
+        "spreadsheet": "Spreadsheet",
+        "json": "JSON file",
+        "text": "Text file",
+        "file": "File"
+      }
+    },
+    "citation": {
+      "ordinal": "[{n}]",
+      "ariaSource": "Citation source",
+      "untitled": "(untitled)"
+    },
+    "keyValue": {
+      "empty": "No metadata"
+    },
+    "image": {
+      "unavailable": "Image preview unavailable",
+      "ariaPreview": "Message image preview",
+      "zoomHint": "Click to zoom"
+    },
+    "error": {
+      "unknown": "An unknown error occurred",
+      "showStack": "Show stack trace"
+    },
+    "usage": {
+      "unknown": "token usage unknown",
+      "aria": "Token usage (input/output/cache)",
+      "in": "in",
+      "out": "out",
+      "cache": "cache"
+    },
+    "latency": {
+      "fast": "fast · {duration}",
+      "moderate": "slowish · {duration}",
+      "slow": "slow · {duration}"
+    },
+    "status": {
+      "pending": "Pending",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "streaming": {
+      "cursor": "Response is streaming"
+    },
+    "document": {
+      "title": "Document · {lines} lines",
+      "empty": "(empty document)",
+      "collapse": "Collapse",
+      "hiddenLines": "Show {count} more lines"
+    },
+    "markdown": {
+      "empty": "(no content)"
+    }
+  }
+}

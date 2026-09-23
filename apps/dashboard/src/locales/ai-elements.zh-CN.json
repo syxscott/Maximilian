@@ -1,0 +1,83 @@
+{
+  "aiElements": {
+    "code": {
+      "noLanguage": "代码",
+      "copy": "复制",
+      "copied": "已复制",
+      "expand": "展开",
+      "collapse": "折叠",
+      "empty": "（空代码块）",
+      "hiddenLines": "展开剩余 {count} 行"
+    },
+    "reasoning": {
+      "title": "思考过程",
+      "meta": "耗时 {duration} · {chars} 字",
+      "metaChars": "{chars} 字"
+    },
+    "attachment": {
+      "type": "类型：{type}",
+      "sizeUnknown": "大小未知",
+      "remove": "移除附件",
+      "variant": {
+        "image": "图片",
+        "audio": "音频",
+        "video": "视频",
+        "pdf": "PDF 文档",
+        "code": "代码文件",
+        "archive": "压缩包",
+        "spreadsheet": "表格",
+        "json": "JSON 文件",
+        "text": "文本文件",
+        "file": "文件"
+      }
+    },
+    "citation": {
+      "ordinal": "[{n}]",
+      "ariaSource": "引用来源",
+      "untitled": "（无标题）"
+    },
+    "keyValue": {
+      "empty": "暂无元数据"
+    },
+    "image": {
+      "unavailable": "无法预览该图片",
+      "ariaPreview": "消息图片预览",
+      "zoomHint": "点击放大"
+    },
+    "error": {
+      "unknown": "发生未知错误",
+      "showStack": "查看堆栈"
+    },
+    "usage": {
+      "unknown": "token 用量未知",
+      "aria": "token 用量（输入/输出/缓存）",
+      "in": "输入",
+      "out": "输出",
+      "cache": "缓存"
+    },
+    "latency": {
+      "fast": "快速 · {duration}",
+      "moderate": "较慢 · {duration}",
+      "slow": "缓慢 · {duration}"
+    },
+    "status": {
+      "pending": "等待中",
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "skipped": "已跳过"
+    },
+    "streaming": {
+      "cursor": "正在生成回复"
+    },
+    "document": {
+      "title": "文档 · {lines} 行",
+      "empty": "（空文档）",
+      "collapse": "收起",
+      "hiddenLines": "展开剩余 {count} 行"
+    },
+    "markdown": {
+      "empty": "（无内容）"
+    }
+  }
+}
