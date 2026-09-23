@@ -446,5 +446,15 @@
   "artifacts.title": "产物文件",
   "artifacts.noWorkspace": "先选择或创建一个工作区",
   "artifacts.empty": "暂无产物 — agent 写入文件后在这里浏览",
-  "artifacts.loadFailed": "产物内容加载失败"
+  "artifacts.loadFailed": "产物内容加载失败",
+  "timeline.find": "查找",
+  "timeline.findPlaceholder": "在时间线中查找…",
+  "timeline.matchCount": "处匹配",
+  "timeline.prevTurn": "上一任务",
+  "timeline.nextTurn": "下一任务",
+  "timeline.share": "复制为 Markdown",
+  "timeline.copied": "已复制",
+  "timeline.loadEarlier": "加载更早的 {count} 条",
+  "tabs.close": "关闭",
+  "tabs.more": "更多"
 }

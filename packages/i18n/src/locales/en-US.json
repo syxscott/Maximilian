@@ -446,5 +446,15 @@
   "artifacts.title": "Artifacts",
   "artifacts.noWorkspace": "Select or create a workspace first",
   "artifacts.empty": "No artifacts yet — files the agents write appear here",
-  "artifacts.loadFailed": "Failed to load artifact content"
+  "artifacts.loadFailed": "Failed to load artifact content",
+  "timeline.find": "Find",
+  "timeline.findPlaceholder": "Search the timeline…",
+  "timeline.matchCount": "matches",
+  "timeline.prevTurn": "prev task",
+  "timeline.nextTurn": "next task",
+  "timeline.share": "Copy as Markdown",
+  "timeline.copied": "Copied",
+  "timeline.loadEarlier": "Load {count} earlier entries",
+  "tabs.close": "Close",
+  "tabs.more": "more"
 }

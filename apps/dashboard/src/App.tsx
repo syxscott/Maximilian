@@ -25,6 +25,7 @@ import {
 } from "./components/observability/panels"
 import { WorkflowRunsPanel } from "./components/WorkflowRunsPanel"
 import { ArtifactsExplorer } from "./components/ArtifactsExplorer"
+import { WorkspaceTabStrip } from "./components/WorkspaceTabStrip"
 import { AgentPanel } from "./components/AgentPanel"
 import { TaskPanel } from "./components/TaskPanel"
 import { OutputPanel } from "./components/OutputPanel"
@@ -579,6 +580,15 @@ export function App() {
           <ThemeToggle />
         </div>
       </header>
+
+      {/* Multi-workspace tab strip (ZCode titlebar borrowing) */}
+      <WorkspaceTabStrip
+        workspaces={workspaceList?.items ?? []}
+        activeId={workspace?.id}
+        onPick={(id) => {
+          if (id !== workspace?.id) pickWorkspace(id)
+        }}
+      />
 
       {/* Tab bar */}
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
