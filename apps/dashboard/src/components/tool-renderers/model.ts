@@ -60,9 +60,97 @@ export function summarizeToolInput(tool: string, input: unknown): string {
       return head(str(obj.tool) ?? "")
     case "lsp":
       return head(str(obj.method) ?? "")
-    default:
+    default: {
+      // Dedicated renderers expose a headline extractor (see renderers/)
+      // — reuse it so collapsed lines read as a target, not raw JSON.
+      const extractor = HEADLINE_EXTRACTORS[tool]
+      if (extractor) {
+        const headline = extractor(obj).headline
+        if (headline.length > 0) return head(headline)
+      }
       return head(Object.keys(obj).length > 0 ? JSON.stringify(obj) : tool)
+    }
   }
+}
+
+// Headline extractors for the per-tool renderers (same family model files
+// the bodies use). Ordered map — presentation never touches raw fields.
+import { extractWebfetch, extractSearch, extractMcp } from "./renderers/web.model"
+import {
+  extractAgent,
+  extractTask,
+  extractTaskOutput,
+  extractTaskStop,
+  extractExplore,
+  extractPlanGuidance,
+} from "./renderers/agent.model"
+import {
+  extractAskQuestion,
+  extractGoal,
+  extractEscalate,
+  extractTodo,
+  extractSkill,
+  extractSendMessage,
+  extractSubmitResult,
+  extractSwitchMode,
+  extractListModels,
+  extractReadSessionContext,
+  extractRespondToCoordinator,
+} from "./renderers/coordination.model"
+import { extractCronCreate, extractOffpeakCreate } from "./renderers/schedule.model"
+import { extractNodeRepl, extractNodeReplImageGrid } from "./renderers/repl.model"
+import {
+  extractCreateWorkflow,
+  extractSaveWorkflow,
+  extractGetWorkflowRun,
+  extractListSavedWorkflows,
+  extractListWorkflowRuns,
+  extractResumeWorkflowRun,
+  extractResolveWorkflowQuestion,
+  extractGetWorkflowRunRoster,
+  extractGetWorkflowRunSituation,
+  extractEvalWorkflowSnippet,
+  extractWorkflowDiagnostics,
+} from "./renderers/workflow.model"
+
+type HeadlineExtractor = (input: unknown) => { headline: string }
+
+const HEADLINE_EXTRACTORS: Record<string, HeadlineExtractor> = {
+  webfetch: extractWebfetch,
+  search: extractSearch,
+  mcp: extractMcp,
+  agent: extractAgent,
+  task: extractTask,
+  "task-output": extractTaskOutput,
+  "task-stop": extractTaskStop,
+  explore: extractExplore,
+  "plan-guidance": extractPlanGuidance,
+  "ask-question": extractAskQuestion,
+  goal: extractGoal,
+  escalate: extractEscalate,
+  todo: extractTodo,
+  skill: extractSkill,
+  "send-message": extractSendMessage,
+  "submit-result": extractSubmitResult,
+  "switch-mode": extractSwitchMode,
+  "list-models": extractListModels,
+  "read-session-context": extractReadSessionContext,
+  "respond-to-coordinator": extractRespondToCoordinator,
+  "cron-create": extractCronCreate,
+  "offpeak-create": extractOffpeakCreate,
+  "node-repl": extractNodeRepl,
+  "node-repl-image-grid": extractNodeReplImageGrid,
+  "create-workflow": extractCreateWorkflow,
+  "save-workflow": extractSaveWorkflow,
+  "get-workflow-run": extractGetWorkflowRun,
+  "list-saved-workflows": extractListSavedWorkflows,
+  "list-workflow-runs": extractListWorkflowRuns,
+  "resume-workflow-run": extractResumeWorkflowRun,
+  "resolve-workflow-question": extractResolveWorkflowQuestion,
+  "get-workflow-run-roster": extractGetWorkflowRunRoster,
+  "get-workflow-run-situation": extractGetWorkflowRunSituation,
+  "eval-workflow-snippet": extractEvalWorkflowSnippet,
+  "workflow-diagnostics": extractWorkflowDiagnostics,
 }
 
 export function toolInputRows(tool: string, input: unknown): ToolInputRows {

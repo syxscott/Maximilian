@@ -13,6 +13,7 @@
 
 import { useState, type ComponentType } from "react"
 import { Badge } from "@/components/ui/badge"
+import { RENDERERS } from "./renderers"
 import { summarizeToolInput, toolInputRows } from "./model"
 
 export interface ToolCallProps {
@@ -25,7 +26,7 @@ export interface ToolCallProps {
   defaultOpen?: boolean
 }
 
-interface ToolRendererDef {
+export interface ToolRendererDef {
   /** Small glyph for the collapsed row. */
   glyph: string
   /** Optional custom body; default renders the extracted key/value rows. */
@@ -48,19 +49,12 @@ function DefaultBody({ tool, input }: ToolCallProps) {
   )
 }
 
-const RENDERERS: Record<string, ToolRendererDef> = {
-  bash: { glyph: "$" },
-  read: { glyph: "›" },
-  write: { glyph: "+" },
-  edit: { glyph: "±" },
-  glob: { glyph: "*" },
-  grep: { glyph: "=" },
-  permission: { glyph: "-key" },
-  lsp: { glyph: "◇" },
-}
+// RENDERERS lives in ./renderers/index.ts — one glyph + Body per ZCode
+// ToolCallBlocks category; unlisted tools fall back to the generic view.
+const FALLBACK_RENDERER: ToolRendererDef = { glyph: "·" }
 
 export function resolveToolRenderer(tool: string): ToolRendererDef {
-  return RENDERERS[tool] ?? { glyph: "·" }
+  return RENDERERS[tool] ?? FALLBACK_RENDERER
 }
 
 export function ToolCallBlock(props: ToolCallProps) {
