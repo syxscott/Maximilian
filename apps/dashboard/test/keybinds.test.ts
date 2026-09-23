@@ -50,6 +50,21 @@ describe("matchKeybind", () => {
     expect(matchKeybind(ev({ key: "k", metaKey: true }), kb, "mac")).toBe(true)
   })
 
+  it("a mod-less bind does not fire while ctrl/meta is held", () => {
+    const plain: Keybind = { key: "c" }
+    expect(matchKeybind(ev({ key: "c" }), plain, "other")).toBe(true)
+    expect(matchKeybind(ev({ key: "c", ctrlKey: true }), plain, "other")).toBe(false)
+    expect(matchKeybind(ev({ key: "c", metaKey: true }), plain, "mac")).toBe(false)
+  })
+
+  it("rejects binds when the wrong modifier rides along", () => {
+    const withMod: Keybind = { mod: true, key: "c" }
+    expect(matchKeybind(ev({ key: "c", altKey: true, ctrlKey: true }), withMod, "other")).toBe(
+      false,
+    )
+    expect(matchKeybind(ev({ key: "c", ctrlKey: true }), withMod, "other")).toBe(true)
+  })
+
   it("requires exact modifier parity", () => {
     expect(matchKeybind(ev({ key: "k" }), kb)).toBe(false)
     expect(matchKeybind(ev({ key: "k", ctrlKey: true, shiftKey: true }), kb)).toBe(false)

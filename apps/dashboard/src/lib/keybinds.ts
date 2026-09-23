@@ -69,6 +69,10 @@ export function matchKeybind(
   platform: KeyPlatform = "other",
 ): boolean {
   if (normalizeKey(e.key) !== normalizeKey(kb.key)) return false
+  // A bind without `mod` must NOT fire while a mod key is held on the
+  // platform's non-mod modifier either (Ctrl held on macOS must not turn
+  // the plain bind "C" into a match).
+  if (!kb.mod && (e.ctrlKey || e.metaKey)) return false
   if (!!kb.mod !== modHeld(e, platform)) return false
   if (!!kb.shift !== !!e.shiftKey) return false
   if (!!kb.alt !== !!e.altKey) return false
