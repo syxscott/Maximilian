@@ -350,6 +350,34 @@ describe("CredentialAuthMachine.handleUnauthorized", () => {
     expect(await first.machine.getStatus()).toMatchObject({ generation: 2 })
   })
 
+  it("a second login's authorizing epoch adopts the committed generation (no regression)", async () => {
+    // Deterministic regression for the CI race: machine B's authorizing
+    // write used to land OUTSIDE the lock, clobbering machine A's
+    // just-committed authenticated generation back down. The authorizing
+    // write now runs under the lock after a reload, so it must carry
+    // A's generation, and B's commit must be the next one.
+    const stateDir = await makeTempDir("credential-lease-machine-")
+    const first = await makeHarness({ stateDir })
+    await loginOnce(first, "tok-a")
+
+    const stateFile = path.join(stateDir, "auth-state.json")
+    let generationDuringAuthorizing: number | undefined
+    const second = await makeHarness({ stateDir })
+    await second.machine.login(async () => {
+      const persisted = JSON.parse(await readFile(stateFile, "utf8")) as {
+        generation?: number
+      }
+      generationDuringAuthorizing = persisted.generation
+      return grantFor(second, "tok-b", 60_000)
+    })
+
+    expect(generationDuringAuthorizing).toBe(1)
+    expect(await second.machine.getStatus()).toMatchObject({
+      status: "authenticated",
+      generation: 2,
+    })
+  })
+
   it("serializes concurrent logins across machines sharing one state directory", async () => {
     const stateDir = await makeTempDir("credential-lease-machine-")
     const first = await makeHarness({ stateDir })

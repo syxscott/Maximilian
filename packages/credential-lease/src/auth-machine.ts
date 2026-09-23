@@ -242,7 +242,20 @@ export class CredentialAuthMachine {
     if (this.usableLease(0)) {
       return { status: "authenticated", generation: this.state.generation }
     }
-    await this.transition({ ...this.baseState("authorizing") })
+    // Enter the authorizing epoch UNDER the cross-process lock. Writing it
+    // outside the lock (the previous shape) let a concurrent machine's
+    // just-committed authenticated state be clobbered back to our older
+    // generation — a second login then computed the same generation as the
+    // first and the shared epoch regressed ([1,1] instead of [1,2]).
+    // The network dance (perform) stays OUTSIDE the lock by design.
+    await withFileLock(
+      this.lockPath,
+      async () => {
+        await this.reloadIfNewer()
+        await this.transition({ ...this.baseState("authorizing") })
+      },
+      this.lockOptions,
+    )
     try {
       const grant = await perform()
       return await withFileLock(
@@ -261,10 +274,20 @@ export class CredentialAuthMachine {
         this.lockOptions,
       )
     } catch (error) {
-      if (this.state.status === "authorizing") {
-        this.accessToken = undefined
-        await this.transition({ ...this.baseState("error") })
-      }
+      // Failure teardown is also locked, and guarded: if another machine
+      // committed a newer epoch while we were performing, the disk state is
+      // no longer our authorizing epoch and must not be torn down.
+      await withFileLock(
+        this.lockPath,
+        async () => {
+          await this.reloadIfNewer()
+          if (this.state.status === "authorizing") {
+            this.accessToken = undefined
+            await this.transition({ ...this.baseState("error") })
+          }
+        },
+        this.lockOptions,
+      )
       throw error
     }
   }
