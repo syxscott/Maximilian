@@ -19,6 +19,7 @@ export const API_PATHS = [
   "GET /evolution/leaderboard/{role}",
   "GET /evolution/metrics",
   "GET /evolution/metrics/{taskId}",
+  "GET /evolution/oracle-lessons",
   "GET /evolution/versions/{role}",
   "GET /evolution/versions/{role}/decisions",
   "GET /executions",
@@ -64,6 +65,7 @@ export const API_PATHS = [
   "GET /system/failover/queue",
   "GET /system/providers/{id}/circuit-breaker/stats",
   "GET /system/providers/{id}/health",
+  "GET /system/vault",
   "GET /tenants",
   "GET /tenants/{id}",
   "GET /workflows/:runId",
@@ -111,5 +113,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 98. */
-export const API_PATH_COUNT = 98
+/** Number of routes in the backend contract: 100. */
+export const API_PATH_COUNT = 100

@@ -2342,6 +2342,8 @@ const sessions = sessionRoutes({ store: sessionStore?.store })
 api.openapi(listSessionsRoute, requireAuthMiddleware(), sessions.listSessions)
 api.openapi(getMessagesRoute, requireAuthMiddleware(), sessions.getMessages)
 api.openapi(getTimelineRoute, requireAuthMiddleware(), sessions.getTimeline)
+api.openapi(vaultStatusRoute, requireAuthMiddleware(), vaultStatusHandler())
+api.openapi(oracleLessonsRoute, requireAuthMiddleware(), oracleLessonsHandler())
 
 // Phase 5.7 — Learning Dashboard
 if (learningApi) {

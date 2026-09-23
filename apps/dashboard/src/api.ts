@@ -938,6 +938,93 @@ export const chatApi = {
 
 // ── Usage API ──────────────────────────────────────────────────────────────
 
+export const systemApi = {
+  listFlags: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/flags`,
+      { headers: authHeaders(), signal },
+      z.object({
+        flags: z.array(
+          z.object({
+            name: z.string(),
+            enabled: z.boolean(),
+            defaultValue: z.boolean(),
+            rolloutPercentage: z.number().optional(),
+            description: z.string().optional(),
+          }),
+        ),
+      }),
+    ),
+
+  setFlagOverride: (name: string, value: boolean, reason?: string) =>
+    fetchJson(
+      `${BASE}/flags/${encodeURIComponent(name)}/override`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ value, ...(reason ? { reason } : {}) }),
+      },
+      z
+        .object({
+          ok: z.boolean().optional(),
+          name: z.string().optional(),
+          value: z.boolean().optional(),
+        })
+        .partial()
+        .passthrough(),
+    ),
+
+  listTenants: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/tenants`,
+      { headers: authHeaders(), signal },
+      z.object({
+        items: z.array(
+          z.object({
+            id: z.string(),
+            name: z.string(),
+            slug: z.string(),
+            status: z.string(),
+            plan: z.string().optional(),
+            createdAt: z.string(),
+          }),
+        ),
+      }),
+    ),
+
+  vaultStatus: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/system/vault`,
+      { headers: authHeaders(), signal },
+      z.object({
+        configured: z.boolean(),
+        path: z.string().nullable(),
+        open: z.boolean(),
+        entries: z.array(
+          z.object({
+            title: z.string(),
+            createdAt: z.string(),
+            providerPreset: z.string().nullable(),
+          }),
+        ),
+      }),
+    ),
+
+  oracleLessons: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/evolution/oracle-lessons`,
+      { headers: authHeaders(), signal },
+      z.object({
+        configured: z.boolean(),
+        dir: z.string().nullable(),
+        lessons: z.array(z.object({ role: z.string(), content: z.string(), bytes: z.number() })),
+      }),
+    ),
+
+  providersHealth: (signal?: AbortSignal) =>
+    fetchJson(`${BASE}/providers`, { headers: authHeaders(), signal }, ProviderListResponseSchema),
+}
+
 export const sessionsApi = {
   list: (opts?: { workspaceId?: string; limit?: number }, signal?: AbortSignal) => {
     const params = new URLSearchParams()

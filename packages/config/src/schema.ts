@@ -104,6 +104,10 @@ export const ConfigSchema = z.object({
   // (direct / few-shot / oracle + PGR). Unset = triad route answers 503.
   EVOLUTION_ORACLE_LESSONS_DIR: z.string().optional(),
 
+  // Encrypted credential vault (hermes borrowing) — see loadProviderCredentialsFromVault.
+  MAXIMILIAN_VAULT_PATH: z.string().optional(),
+  MAXIMILIAN_VAULT_PASSPHRASE: z.string().optional(),
+
   // Inter-agent handoff budget (C2C borrowing): hard cap on the priorResults
   // bundle / replanner snippet injected into downstream agents, in estimated
   // tokens. Communication text is a first-class cost item and becomes a net

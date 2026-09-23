@@ -14,6 +14,16 @@ import { Button } from "@/components/ui/button"
 import { ColorPicker } from "@max/ui-react"
 import { Monitor, Moon, Sun, Cpu, Zap, Gauge, Languages, Palette } from "lucide-react"
 import { PermissionsMatrix } from "./PermissionsMatrix"
+import {
+  SettingsSectionNav,
+  FeatureFlagsSection,
+  TenantsSection,
+  ProvidersHealthSection,
+  VaultSection,
+  OracleLessonsSection,
+  type SettingsSectionId,
+} from "./settings/sections"
+import { useMemo, useState as useReactState } from "react"
 import { t } from "@max/i18n"
 
 // ── Accent color ────────────────────────────────────────────────────────────
@@ -116,134 +126,152 @@ export function SettingsPanel() {
     writeAccent(DEFAULT_ACCENT)
   }
 
-  return (
-    <div className="max-w-2xl mx-auto p-4 space-y-6">
-      <h2 className="text-lg font-semibold text-foreground">{t("settings.title")}</h2>
+  // Settings center v2: segmented domains (ZCode settings/ borrowing).
+  const [section, setSection] = useReactState<SettingsSectionId>("appearance")
+  const clientSections = useMemo(
+    () => new Set(["appearance", "language", "performance"] as const).has(section as never),
+    [section],
+  )
 
-      {/* Theme */}
-      <Card className="bg-muted/30">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-base text-foreground">
-            {t("settings.appearance.title")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="py-3 px-4 space-y-3">
-          <p className="text-sm text-muted-foreground">{t("settings.appearance.description")}</p>
-          <div className="flex gap-2">
-            {THEME_OPTIONS.map((opt) => {
-              const Icon = opt.icon
-              const selected = themeMode === opt.mode
-              return (
-                <Button
-                  key={opt.mode}
-                  variant={selected ? "default" : "secondary"}
-                  onClick={() => setThemeMode(opt.mode)}
-                  data-testid={`theme-option-${opt.mode}`}
-                >
-                  <Icon className="h-4 w-4 mr-2" />
-                  {t(`settings.appearance.${opt.mode}`)}
-                </Button>
-              )
-            })}
-          </div>
-          <div className="pt-2 border-t border-border/60 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Palette className="h-4 w-4" />
-              Accent color
+  return (
+    <div className="max-w-3xl mx-auto p-4 space-y-4">
+      <h2 className="text-lg font-semibold text-foreground">{t("settings.title")}</h2>
+      <SettingsSectionNav active={section} onSelect={setSection} />
+      {!clientSections && (
+        <div className="space-y-4">
+          {section === "flags" && <FeatureFlagsSection />}
+          {section === "tenants" && <TenantsSection />}
+          {section === "providers" && <ProvidersHealthSection />}
+          {section === "vault" && <VaultSection />}
+          {section === "oracle" && <OracleLessonsSection />}
+        </div>
+      )}
+      <div className={clientSections ? "space-y-6" : "hidden"}>
+        {/* Theme */}
+        <Card className="bg-muted/30">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-base text-foreground">
+              {t("settings.appearance.title")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="py-3 px-4 space-y-3">
+            <p className="text-sm text-muted-foreground">{t("settings.appearance.description")}</p>
+            <div className="flex gap-2">
+              {THEME_OPTIONS.map((opt) => {
+                const Icon = opt.icon
+                const selected = themeMode === opt.mode
+                return (
+                  <Button
+                    key={opt.mode}
+                    variant={selected ? "default" : "secondary"}
+                    onClick={() => setThemeMode(opt.mode)}
+                    data-testid={`theme-option-${opt.mode}`}
+                  >
+                    <Icon className="h-4 w-4 mr-2" />
+                    {t(`settings.appearance.${opt.mode}`)}
+                  </Button>
+                )
+              })}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Override the dashboard accent. Applies to buttons, links, and focus rings across the
-              app.
+            <div className="pt-2 border-t border-border/60 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Palette className="h-4 w-4" />
+                Accent color
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Override the dashboard accent. Applies to buttons, links, and focus rings across the
+                app.
+              </p>
+              <div className="flex flex-wrap items-start gap-3">
+                <ColorPicker
+                  value={accent}
+                  onChange={handleAccentChange}
+                  showInput
+                  showAlpha={false}
+                  data-testid="accent-picker"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAccentReset}
+                  data-testid="accent-reset"
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Performance */}
+        <Card className="bg-muted/30">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-base text-foreground">
+              {t("settings.performance.title")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="py-3 px-4 space-y-3">
+            <p className="text-sm text-muted-foreground">{t("settings.performance.description")}</p>
+            <div className="flex gap-2 flex-wrap">
+              {TIER_OPTIONS.map((opt) => {
+                const Icon = opt.icon
+                const selected = tierMode === opt.mode
+                return (
+                  <Button
+                    key={opt.mode}
+                    variant={selected ? "default" : "secondary"}
+                    onClick={() => setTierMode(opt.mode)}
+                    data-testid={`perf-option-${opt.mode}`}
+                  >
+                    <Icon className="h-4 w-4 mr-2" />
+                    {t(opt.key)}
+                  </Button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground" data-testid="perf-effective">
+              Effective tier: <strong>{effective}</strong>
+              {tierMode === "auto" && effective !== "high" && (
+                <span> · detected as {effective} on this device</span>
+              )}
             </p>
-            <div className="flex flex-wrap items-start gap-3">
-              <ColorPicker
-                value={accent}
-                onChange={handleAccentChange}
-                showInput
-                showAlpha={false}
-                data-testid="accent-picker"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAccentReset}
-                data-testid="accent-reset"
-              >
-                Reset
+          </CardContent>
+        </Card>
+
+        {/* Language */}
+        <Card className="bg-muted/30">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-base text-foreground flex items-center gap-2">
+              <Languages className="h-4 w-4" />
+              {t("settings.language.title")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="py-3 px-4 space-y-3">
+            <p className="text-sm text-muted-foreground">{t("settings.language.description")}</p>
+            <div className="flex gap-2 flex-wrap items-center">
+              {listLocales().map((l) => {
+                const selected = locale === l
+                return (
+                  <Button
+                    key={l}
+                    variant={selected ? "default" : "secondary"}
+                    onClick={() => setLocale(l)}
+                    data-testid={`locale-option-${l}`}
+                  >
+                    {localeDisplayName(l)}
+                  </Button>
+                )
+              })}
+              <Button variant="outline" onClick={reset} data-testid="locale-reset">
+                {t("settings.language.followSystem")}
               </Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Performance */}
-      <Card className="bg-muted/30">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-base text-foreground">
-            {t("settings.performance.title")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="py-3 px-4 space-y-3">
-          <p className="text-sm text-muted-foreground">{t("settings.performance.description")}</p>
-          <div className="flex gap-2 flex-wrap">
-            {TIER_OPTIONS.map((opt) => {
-              const Icon = opt.icon
-              const selected = tierMode === opt.mode
-              return (
-                <Button
-                  key={opt.mode}
-                  variant={selected ? "default" : "secondary"}
-                  onClick={() => setTierMode(opt.mode)}
-                  data-testid={`perf-option-${opt.mode}`}
-                >
-                  <Icon className="h-4 w-4 mr-2" />
-                  {t(opt.key)}
-                </Button>
-              )
-            })}
-          </div>
-          <p className="text-xs text-muted-foreground" data-testid="perf-effective">
-            Effective tier: <strong>{effective}</strong>
-            {tierMode === "auto" && effective !== "high" && (
-              <span> · detected as {effective} on this device</span>
-            )}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Language */}
-      <Card className="bg-muted/30">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-base text-foreground flex items-center gap-2">
-            <Languages className="h-4 w-4" />
-            {t("settings.language.title")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="py-3 px-4 space-y-3">
-          <p className="text-sm text-muted-foreground">{t("settings.language.description")}</p>
-          <div className="flex gap-2 flex-wrap items-center">
-            {listLocales().map((l) => {
-              const selected = locale === l
-              return (
-                <Button
-                  key={l}
-                  variant={selected ? "default" : "secondary"}
-                  onClick={() => setLocale(l)}
-                  data-testid={`locale-option-${l}`}
-                >
-                  {localeDisplayName(l)}
-                </Button>
-              )
-            })}
-            <Button variant="outline" onClick={reset} data-testid="locale-reset">
-              {t("settings.language.followSystem")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Permissions */}
-      <PermissionsMatrix />
+        {/* Permissions */}
+        <PermissionsMatrix />
+      </div>
     </div>
   )
 }
