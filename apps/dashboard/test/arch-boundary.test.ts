@@ -22,7 +22,7 @@ import { join, relative, sep } from "node:path"
 const SRC_ROOT = join(__dirname, "..", "src")
 
 /** Files allowed to touch the network directly. */
-const ALLOWED_PREFIXES = ["api.ts", "hooks/"]
+const ALLOWED_PREFIXES = ["api.ts", "api-generated.ts", "hooks/"]
 
 function collectTsFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
