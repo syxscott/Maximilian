@@ -95,6 +95,44 @@ const getMessagesRoute = createRoute({
   },
 })
 
+const searchMessagesRoute = createRoute({
+  method: "get",
+  path: "/sessions/search",
+  tags: ["sessions"],
+  request: {
+    query: z.object({
+      q: z.string().min(1).max(200),
+      workspaceId: z.string().optional(),
+      limit: z.coerce.number().int().positive().max(500).optional(),
+    }),
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            query: z.string(),
+            results: z.array(
+              z.object({
+                sessionId: z.string(),
+                workspaceId: z.string().nullable(),
+                role: z.string(),
+                content: z.string(),
+                createdAt: z.string().nullable(),
+              }),
+            ),
+          }),
+        },
+      },
+      description: "Cross-session message search hits, newest first (literal substring match)",
+    },
+    503: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Session store disabled",
+    },
+  },
+})
+
 const getTimelineRoute = createRoute({
   method: "get",
   path: "/sessions/{id}/timeline",
@@ -166,6 +204,21 @@ export function sessionRoutes(deps: SessionRouteDeps) {
       return c.json({ sessionId: id, messages })
     },
 
+    searchMessages: async (c: Context) => {
+      const store = requireStore(c)
+      if (!store) return
+      const q = c.req.valid("query" as never) as {
+        q: string
+        workspaceId?: string
+        limit?: number
+      }
+      const results = store.searchMessages(q.q, {
+        limit: q.limit ?? 50,
+        workspaceId: q.workspaceId,
+      })
+      return c.json({ query: q.q, results })
+    },
+
     getTimeline: async (c: Context) => {
       const store = requireStore(c)
       if (!store) return
@@ -182,4 +235,4 @@ export function sessionRoutes(deps: SessionRouteDeps) {
   }
 }
 
-export { listSessionsRoute, getMessagesRoute, getTimelineRoute }
+export { listSessionsRoute, getMessagesRoute, searchMessagesRoute, getTimelineRoute }

@@ -1,0 +1,11 @@
+{
+  "sessionQuery.title": "Session search",
+  "sessionQuery.placeholder": "Search messages across sessions…",
+  "sessionQuery.idle": "Type to search message history across sessions",
+  "sessionQuery.searching": "Searching…",
+  "sessionQuery.empty": "No messages matched",
+  "sessionQuery.error": "Search failed",
+  "sessionQuery.resultCount": "{count} results",
+  "sessionQuery.groupHits": "{count} hits",
+  "sessionQuery.openSession": "Open in session"
+}

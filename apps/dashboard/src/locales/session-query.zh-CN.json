@@ -1,0 +1,11 @@
+{
+  "sessionQuery.title": "会话搜索",
+  "sessionQuery.placeholder": "搜索所有会话消息…",
+  "sessionQuery.idle": "输入关键词，跨会话搜索历史消息",
+  "sessionQuery.searching": "搜索中…",
+  "sessionQuery.empty": "没有匹配的消息",
+  "sessionQuery.error": "搜索失败",
+  "sessionQuery.resultCount": "{count} 条结果",
+  "sessionQuery.groupHits": "{count} 条命中",
+  "sessionQuery.openSession": "在会话中打开"
+}

@@ -49,6 +49,7 @@
   "GET /providers",
   "GET /ready",
   "GET /sessions",
+  "GET /sessions/search",
   "GET /sessions/{id}/messages",
   "GET /sessions/{id}/timeline",
   "GET /subscriptions",

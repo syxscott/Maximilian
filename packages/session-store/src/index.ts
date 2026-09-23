@@ -51,6 +51,15 @@ export interface MessageRow {
   createdAt: string | null
 }
 
+/** One cross-session search hit: a message row plus its session's workspace context. */
+export interface MessageSearchHit {
+  sessionId: string
+  workspaceId: string | null
+  role: string
+  content: string
+  createdAt: string | null
+}
+
 /** A persisted event row (camelCase mirror of the `events` table). */
 export interface EventRow {
   id: number
@@ -375,6 +384,48 @@ export class SessionStore {
       content: row.content,
       createdAt: row.created_at,
     }))
+  }
+
+  /**
+   * Search messages across sessions (case-insensitive substring). Joins
+   * the sessions table so results carry workspace context. The query is
+   * treated as LITERAL text: `%` and `_` are escaped, so "100%" finds
+   * the literal percent sign instead of matching every row. Soft-deleted
+   * (rewound) messages are excluded.
+   */
+  searchMessages(
+    query: string,
+    opts?: { limit?: number; workspaceId?: string },
+  ): MessageSearchHit[] {
+    const limit = opts?.limit ?? 50
+    // Escape the LIKE metacharacters (backslash first — it is the ESCAPE
+    // character itself — then the two wildcards), then wrap in %...%.
+    const pattern = `%${query.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`
+    const withWorkspace = opts?.workspaceId !== undefined
+    const rows = (
+      withWorkspace
+        ? this.statement(
+            "searchMessagesWorkspace",
+            `SELECT m.session_id AS sessionId, s.workspace_id AS workspaceId, m.role AS role, m.content AS content, m.created_at AS createdAt
+             FROM messages m JOIN sessions s ON s.id = m.session_id
+             WHERE m.deleted_at IS NULL AND s.workspace_id = ? AND m.content LIKE ? ESCAPE '\\'
+             ORDER BY m.created_at DESC, m.id DESC LIMIT ?`,
+          ).all(opts?.workspaceId, pattern, limit)
+        : this.statement(
+            "searchMessagesAll",
+            `SELECT m.session_id AS sessionId, s.workspace_id AS workspaceId, m.role AS role, m.content AS content, m.created_at AS createdAt
+             FROM messages m JOIN sessions s ON s.id = m.session_id
+             WHERE m.deleted_at IS NULL AND m.content LIKE ? ESCAPE '\\'
+             ORDER BY m.created_at DESC, m.id DESC LIMIT ?`,
+          ).all(pattern, limit)
+    ) as Array<{
+      sessionId: string
+      workspaceId: string | null
+      role: string
+      content: string
+      createdAt: string | null
+    }>
+    return rows
   }
 
   /**
