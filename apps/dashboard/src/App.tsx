@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, useEffect, useRef, useCallback } from "react"
+import { Suspense, lazy, useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   Select,
@@ -14,6 +14,9 @@ import { useLocale, t } from "@max/i18n"
 import { chatApi, openWorkspaceStream } from "./api"
 import type { Workspace, RuntimeEvent, WorkspaceStreamHandle } from "./api"
 import { ChatPanel } from "./components/ChatPanel"
+import { SubagentsPanel } from "./components/SubagentsPanel"
+import { TrajectoryPanel } from "./components/TrajectoryPanel"
+import { FileChangesPanel } from "./components/FileChangesPanel"
 import { AgentPanel } from "./components/AgentPanel"
 import { TaskPanel } from "./components/TaskPanel"
 import { OutputPanel } from "./components/OutputPanel"
@@ -115,6 +118,27 @@ export function App() {
   //   - the `done` event handler didn't reset submitting at all, leaving
   //     the Send button disabled until the next interaction.
   const tokenRef = useRef(0)
+
+  // @mention suggestions (ZCode prompt-editor borrowing): the agent roles
+  // in play for this workspace, falling back to the built-in quartet.
+  const mentionSuggestions = useMemo(() => {
+    const roles = new Set<string>()
+    for (const task of workspace?.plan?.tasks ?? []) {
+      if (task.agentRole) roles.add(task.agentRole)
+    }
+    if (roles.size === 0) for (const r of ["general", "backend", "frontend", "review"]) roles.add(r)
+    return [...roles].map((token) => ({ token, description: t("mention.agentRole") }))
+  }, [workspace?.plan?.tasks])
+
+  // Task ids seen on this workspace's stream (trajectory filter options).
+  const eventTaskIds = useMemo(() => {
+    const ids: string[] = []
+    for (const e of events) {
+      const id = (e as { taskId?: unknown }).taskId
+      if (typeof id === "string" && !ids.includes(id)) ids.push(id)
+    }
+    return ids
+  }, [events])
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
@@ -540,6 +564,9 @@ export function App() {
                 onAbort={abortSubmission}
                 submitting={submitting}
                 workspace={workspace}
+                mentionSuggestions={mentionSuggestions}
+                onOpenProviders={() => setTab("providers")}
+                onOpenPalette={() => setCommandOpen(true)}
                 sidebar={
                   <div className="flex flex-col gap-4">
                     <AgentPanel
@@ -551,6 +578,9 @@ export function App() {
                       }
                     />
                     <TaskPanel workspace={workspace} />
+                    <SubagentsPanel events={events} />
+                    <TrajectoryPanel events={events} taskIds={eventTaskIds} />
+                    <FileChangesPanel events={events} />
                     {workspace?.review ? (
                       <ReviewPanel workspace={workspace} />
                     ) : (

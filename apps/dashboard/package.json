@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "contract:gen": "node scripts/generate-api-contract.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

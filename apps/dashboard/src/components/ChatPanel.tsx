@@ -3,6 +3,8 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { useMention, type MentionSuggestion } from "@/hooks/useMention"
+import { EmptyState } from "./EmptyState"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { useLocale, t } from "@max/i18n"
@@ -17,6 +19,9 @@ export function ChatPanel({
   workspace,
   sidebar,
   sidebarHidden,
+  mentionSuggestions = [],
+  onOpenProviders,
+  onOpenPalette,
 }: {
   onSubmit: (message: string) => void
   /** Abort the in-flight submission + close the SSE stream. When omitted
@@ -32,6 +37,10 @@ export function ChatPanel({
   sidebar?: React.ReactNode
   /** Hide the sidebar even when `sidebar` is passed (e.g. on small screens). */
   sidebarHidden?: boolean
+  /** @mention suggestions (agent roles) for the prompt editor. */
+  mentionSuggestions?: MentionSuggestion[]
+  onOpenProviders?: () => void
+  onOpenPalette?: () => void
 }) {
   useLocale()
   const chatSchema = z.object({
@@ -55,6 +64,8 @@ export function ChatPanel({
   })
 
   const messageValue = watch("message")
+  const messageRegister = register("message")
+  const mention = useMention(mentionSuggestions)
 
   function submit(text?: string) {
     if (text) {
@@ -90,7 +101,11 @@ export function ChatPanel({
       <div className="flex flex-col h-full min-w-0">
         <h2 className="text-lg font-semibold mb-2 text-foreground">{t("chat.title")}</h2>
 
-        {!workspace && <p className="text-muted-foreground text-sm mb-2">{t("chat.empty")}</p>}
+        {!workspace && (
+          <div className="mb-2">
+            <EmptyState onOpenProviders={onOpenProviders} onOpenPalette={onOpenPalette} />
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto py-2 space-y-2">
           {workspace?.userRequest && (
@@ -132,15 +147,42 @@ export function ChatPanel({
         </div>
 
         <div className="pt-2 border-t border-border">
-          <Textarea
-            {...register("message")}
-            rows={3}
-            placeholder={t("chat.inputPlaceholder")}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit()
-            }}
-            className="resize-none bg-muted/50"
-          />
+          <div className="relative">
+            <Textarea
+              {...messageRegister}
+              rows={3}
+              placeholder={t("chat.inputPlaceholder")}
+              onChange={(e) => {
+                messageRegister.onChange(e)
+                mention.onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
+              }}
+              onKeyDown={(e) => {
+                if (mention.onKeyDown(e)) return
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit()
+              }}
+              className="resize-none bg-muted/50"
+            />
+            {mention.suggestions.length > 0 && (
+              <ul
+                className="absolute bottom-full left-0 mb-1 z-10 w-64 rounded-md border border-border bg-popover p-1 shadow-md"
+                data-testid="mention-popup"
+              >
+                {mention.suggestions.map((s, i) => (
+                  <li
+                    key={s.token}
+                    className={`flex items-baseline gap-2 rounded px-2 py-1 text-xs ${
+                      i === mention.highlighted ? "bg-accent" : ""
+                    }`}
+                  >
+                    <span className="font-mono font-medium">@{s.token}</span>
+                    {s.description && (
+                      <span className="truncate text-muted-foreground">{s.description}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {errors.message && (
             <p className="text-sm text-destructive mt-1">{errors.message.message}</p>
           )}
