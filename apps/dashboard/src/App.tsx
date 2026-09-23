@@ -26,6 +26,7 @@ import { LocaleSwitcher } from "./components/LocaleSwitcher"
 import { LiveUsagePill } from "./components/LiveUsagePill"
 import { PermissionDialog } from "./components/PermissionDialog"
 import { AppCommandPalette } from "./components/AppCommandPalette"
+import { commandsWithKeybinds, type Keybind } from "./lib/commands"
 import { permissionsApi, type PendingPermission } from "./lib/permissions"
 import { usePerfTier } from "./lib/perf-tier"
 import { useTheme } from "./lib/theme"
@@ -78,6 +79,7 @@ export function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [events, setEvents] = useState<RuntimeEvent[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [sidebarHidden, setSidebarHidden] = useState(false)
   // Holds the active stream handle returned by `openWorkspaceStream`.
   // The implementation switched from native EventSource to fetch +
   // ReadableStream so the Authorization bearer token can ride along;
@@ -140,6 +142,9 @@ export function App() {
     return ids
   }, [events])
 
+  // Ref bridge so the global keyboard layer (mounted once) can invoke the
+  // latest abortSubmission without re-binding its listener.
+  const abortSubmissionRef = useRef<() => void>(() => {})
   const stopStream = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.close()
@@ -165,6 +170,7 @@ export function App() {
     tokenRef.current++
     setSubmitting(false)
   }, [stopStream])
+  abortSubmissionRef.current = abortSubmission
 
   useEffect(() => () => stopStream(), [stopStream])
 
@@ -464,12 +470,28 @@ export function App() {
   // textarea, or contenteditable so the keystroke isn't hijacked while the
   // user is editing.
   useEffect(() => {
+    // Full command keyboard layer (ZCode useAppKeyboard borrowing): every
+    // keybind in the command registry works globally, skipping keystrokes
+    // aimed at editable targets.
+    function matches(kb: Keybind, e: KeyboardEvent): boolean {
+      const mod = e.metaKey || e.ctrlKey
+      if (kb.mod !== undefined && kb.mod !== mod) return false
+      if (kb.mod === undefined && mod) return false
+      if (Boolean(kb.shift) !== e.shiftKey) {
+        // A plain-letter keybind must not fire for Shift+letter combos.
+        if (kb.key.length === 1 ? e.shiftKey !== Boolean(kb.shift) : true) return false
+      }
+      if (Boolean(kb.alt) !== e.altKey) return false
+      return e.key.toLowerCase() === kb.key.toLowerCase()
+    }
     function onKeyDown(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return
-      // Reject when other modifier keys are also pressed (Shift / Alt) so the
-      // shortcut doesn't hijack combinations the OS or other apps reserve
-      // (e.g. Cmd+Shift+K is bound by many browsers / terminals).
-      if (e.altKey || e.shiftKey) return
+      // Cmd/Ctrl+K toggles the palette even from editable targets ONLY when
+      // no other modifiers ride along — palette muscle memory wins here.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        setCommandOpen((prev) => !prev)
+        return
+      }
       const target = e.target as Element | null
       if (target) {
         const tag = target.tagName.toLowerCase()
@@ -477,8 +499,16 @@ export function App() {
           return
         }
       }
-      e.preventDefault()
-      setCommandOpen((prev) => !prev)
+      for (const command of commandsWithKeybinds()) {
+        const kb = command.keybind!
+        if (!matches(kb, e)) continue
+        e.preventDefault()
+        if (command.navigateTo) setTab(command.navigateTo)
+        if (command.action === "open-palette") setCommandOpen(true)
+        if (command.action === "toggle-sidebar") setSidebarHidden((h) => !h)
+        if (command.action === "stop-stream") abortSubmissionRef.current()
+        return
+      }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
@@ -567,6 +597,9 @@ export function App() {
                 mentionSuggestions={mentionSuggestions}
                 onOpenProviders={() => setTab("providers")}
                 onOpenPalette={() => setCommandOpen(true)}
+                events={events}
+                live={submitting}
+                sidebarHidden={sidebarHidden}
                 sidebar={
                   <div className="flex flex-col gap-4">
                     <AgentPanel

@@ -392,5 +392,12 @@
   "onboarding.step3": "观察右侧子代理与调用轨迹，审批权限请求，查看最终评审",
   "onboarding.configureProviders": "配置模型服务商",
   "onboarding.openPalette": "打开命令面板",
-  "mention.agentRole": "agent 角色"
+  "mention.agentRole": "agent 角色",
+  "timeline.reviewTitle": "评审完成",
+  "timeline.empty": "提交任务后，这里实时展示多智能体的完整执行时间线",
+  "timeline.jumpToLatest": "跳到最新",
+  "command.openPalette": "打开命令面板",
+  "command.stopStream": "停止当前执行（仅界面）",
+  "command.stopStream.desc": "断开事件流并取消浏览器内请求；服务端继续执行",
+  "command.toggleSidebar": "切换侧栏"
 }

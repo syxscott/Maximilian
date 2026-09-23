@@ -4,7 +4,9 @@ import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useMention, type MentionSuggestion } from "@/hooks/useMention"
+import type { RuntimeEvent } from "@/api"
 import { EmptyState } from "./EmptyState"
+import { ConversationTimeline } from "./ConversationTimeline"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { useLocale, t } from "@max/i18n"
@@ -22,6 +24,8 @@ export function ChatPanel({
   mentionSuggestions = [],
   onOpenProviders,
   onOpenPalette,
+  events = [],
+  live = false,
 }: {
   onSubmit: (message: string) => void
   /** Abort the in-flight submission + close the SSE stream. When omitted
@@ -41,6 +45,10 @@ export function ChatPanel({
   mentionSuggestions?: MentionSuggestion[]
   onOpenProviders?: () => void
   onOpenPalette?: () => void
+  /** Live runtime events for the conversation timeline. */
+  events?: RuntimeEvent[]
+  /** true while a run is in flight (enables timeline auto-tail). */
+  live?: boolean
 }) {
   useLocale()
   const chatSchema = z.object({
@@ -107,44 +115,7 @@ export function ChatPanel({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto py-2 space-y-2">
-          {workspace?.userRequest && (
-            <Card className="border-blue-800/50 bg-blue-950/30">
-              <CardContent className="py-2 px-3 text-sm">
-                <Badge variant="outline" className="mr-2 border-blue-500 text-blue-400">
-                  {t("chat.you")}
-                </Badge>
-                <span className="text-foreground">{workspace.userRequest}</span>
-              </CardContent>
-            </Card>
-          )}
-
-          {workspace?.status === "completed" && workspace?.review && (
-            <Card className="border-green-800/50 bg-green-950/30">
-              <CardContent className="py-2 px-3 text-sm">
-                <Badge variant="outline" className="mr-2 border-green-500 text-green-400">
-                  {t("chat.commander")}
-                </Badge>
-                <span className="text-foreground">
-                  {t("chat.completed", { score: String(workspace.review.score) })}
-                </span>
-              </CardContent>
-            </Card>
-          )}
-
-          {workspace?.status === "failed" && (
-            <Card className="border-red-800/50 bg-red-950/30">
-              <CardContent className="py-2 px-3 text-sm">
-                <Badge variant="destructive" className="mr-2">
-                  {t("chat.error")}
-                </Badge>
-                <span className="text-foreground">
-                  {t("chat.failed", { error: workspace.error ?? t("common.unknown") })}
-                </span>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+        <ConversationTimeline events={events} workspace={workspace} live={live} />
 
         <div className="pt-2 border-t border-border">
           <div className="relative">
