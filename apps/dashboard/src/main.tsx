@@ -1,14 +1,16 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { initLocale } from "@max/i18n"
+import { initLocale, getDictionary } from "@max/i18n"
 import { App } from "./App"
 import "./index.css"
+import { applyDashboardDictionaries } from "./locales/index"
 
 // Initialize the active UI locale (zh-CN default, navigator fallback).
 // Done once before mounting so the first render already shows the right language.
 initLocale()
 
+applyDashboardDictionaries(getDictionary("zh-CN") ?? {}, getDictionary("en-US") ?? {})
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

@@ -82,6 +82,12 @@ export function getLocale(): Locale {
  * Call from a side-effecting import or before `initLocale()` to make
  * the locale selectable.
  */
+/** Read a registered dictionary (for hosts that merge feature-domain keys
+ *  before re-registering — see the dashboard's lib/i18n-merge). */
+export function getDictionary(locale: Locale): Dict | undefined {
+  return dictionaries.get(locale)
+}
+
 export function registerLocale(locale: Locale, dict: Dict, displayName?: string): void {
   dictionaries.set(locale, dict)
   if (displayName) displayNames.set(locale, displayName)

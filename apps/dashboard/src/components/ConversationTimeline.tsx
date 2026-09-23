@@ -18,6 +18,15 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { Input } from "@/components/ui/input"
+import {
+  filterByQuery,
+  matchIndices,
+  windowItems,
+  turnAnchors,
+  adjacentAnchor,
+  toShareMarkdown,
+} from "@/lib/timeline-view"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
@@ -165,6 +174,45 @@ export function ConversationTimeline({
   const items = useMemo(() => buildTimelineItems(events, workspace), [events, workspace])
   const scrollRef = useRef<HTMLDivElement>(null)
   const [detached, setDetached] = useState(false)
+  const [query, setQuery] = useState("")
+  const [visibleCount, setVisibleCount] = useState(50)
+  const [cursor, setCursor] = useState(-1)
+  const [showFind, setShowFind] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const matches = useMemo(() => matchIndices(items, query), [items, query])
+  const filtered = useMemo(
+    () => (query.trim() ? filterByQuery(items, query) : items),
+    [items, query],
+  )
+  const anchors = useMemo(() => turnAnchors(filtered), [filtered])
+  const { window: rendered, hiddenAbove } = useMemo(
+    () => windowItems(filtered, visibleCount),
+    [filtered, visibleCount],
+  )
+
+  const jumpTo = (index: number) => {
+    const el = scrollRef.current?.querySelector(`[data-timeline-index="${index}"]`)
+    el?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
+  const navigateTurn = (direction: 1 | -1) => {
+    const next = adjacentAnchor(anchors, cursor, direction)
+    setCursor(next)
+    jumpTo(next)
+  }
+
+  const copyShare = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        toShareMarkdown(items, workspace?.userRequest?.slice(0, 60)),
+      )
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
 
   // Auto-tail: stick to the bottom while live, unless the user scrolled up.
   useEffect(() => {
@@ -182,14 +230,89 @@ export function ConversationTimeline({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="mb-2 flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => setShowFind(!showFind)}
+          aria-expanded={showFind}
+        >
+          ⌕ {t("timeline.find")}
+        </Button>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => navigateTurn(-1)}
+            aria-label={t("timeline.prevTurn")}
+          >
+            ↑ {t("timeline.prevTurn")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => navigateTurn(1)}
+            aria-label={t("timeline.nextTurn")}
+          >
+            ↓ {t("timeline.nextTurn")}
+          </Button>
+        </div>
+        <div className="ml-auto">
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={copyShare}>
+            {copied ? `✓ ${t("timeline.copied")}` : t("timeline.share")}
+          </Button>
+        </div>
+      </div>
+      {showFind && (
+        <div className="mb-2">
+          <Input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setCursor(-1)
+            }}
+            placeholder={t("timeline.findPlaceholder")}
+            aria-label={t("timeline.find")}
+            className="h-8 text-xs"
+            data-testid="timeline-find"
+          />
+          {query.trim() && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {matches.length} {t("timeline.matchCount")}
+            </p>
+          )}
+        </div>
+      )}
       <div
         ref={scrollRef}
         onScroll={onScroll}
         className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
         data-testid="conversation-timeline"
       >
-        {items.map((item) => (
-          <div key={item.key} className="rounded-lg border border-border bg-card/60 p-3">
+        {hiddenAbove > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-full text-xs"
+            onClick={() => setVisibleCount((v) => v + 50)}
+            data-testid="load-earlier"
+          >
+            ↑ {t("timeline.loadEarlier", { count: String(hiddenAbove) })}
+          </Button>
+        )}
+        {rendered.map((item, renderIndex) => (
+          <div
+            key={item.key}
+            data-timeline-index={
+              visibleCount < filtered.length ? hiddenAbove + renderIndex : renderIndex
+            }
+            className={`rounded-lg border bg-card/60 p-3 ${
+              query.trim() ? "border-amber-500/60" : "border-border"
+            }`}
+          >
             <div className="flex items-center gap-2">
               {item.kind === "user" && (
                 <Badge variant="outline" className="border-blue-500 text-blue-400">
