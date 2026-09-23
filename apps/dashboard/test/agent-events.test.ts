@@ -8,11 +8,7 @@
  * runs / file changes) that power the three ZCode-borrowed panels.
  */
 import { describe, it, expect } from "vitest"
-import {
-  deriveTrajectory,
-  deriveAgentRuns,
-  deriveFileChanges,
-} from "../src/lib/agent-events"
+import { deriveTrajectory, deriveAgentRuns, deriveFileChanges } from "../src/lib/agent-events"
 import type { RuntimeEvent } from "../src/api"
 
 const ev = (over: Record<string, unknown>): RuntimeEvent =>
@@ -53,17 +49,21 @@ describe("deriveTrajectory", () => {
       ev({ type: "task-start", taskId: "t2", agentRole: "frontend" }),
       ev({ type: "tool-end", taskId: "t1", toolName: "edit", ok: false, durationMs: 1 }),
     ]
-    expect(deriveTrajectory(events, "t1").map((t) => t.event)).toEqual([
-      "task-start",
-      "tool-end",
-    ])
+    expect(deriveTrajectory(events, "t1").map((t) => t.event)).toEqual(["task-start", "tool-end"])
     expect(deriveTrajectory(events)).toHaveLength(3)
   })
 
   it("marks failed tools/tasks and tolerates malformed events", () => {
     const events = [
       ev({ type: "task-failed", taskId: "t1", error: "boom" }),
-      ev({ type: "tool-end", taskId: "t1", toolName: "bash", ok: false, durationMs: 5, error: "denied" }),
+      ev({
+        type: "tool-end",
+        taskId: "t1",
+        toolName: "bash",
+        ok: false,
+        durationMs: 5,
+        error: "denied",
+      }),
       ev({ type: "llm-retry-status", taskId: "t1", phase: "exhausted", attempt: 3 }),
     ]
     const traj = deriveTrajectory(events)
