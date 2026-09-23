@@ -24,6 +24,7 @@ import {
   OracleTriadConsole,
 } from "./components/observability/panels"
 import { WorkflowRunsPanel } from "./components/WorkflowRunsPanel"
+import { ArtifactsExplorer } from "./components/ArtifactsExplorer"
 import { AgentPanel } from "./components/AgentPanel"
 import { TaskPanel } from "./components/TaskPanel"
 import { OutputPanel } from "./components/OutputPanel"
@@ -622,6 +623,7 @@ export function App() {
                     <TrajectoryPanel events={events} taskIds={eventTaskIds} />
                     <FileChangesPanel events={events} />
                     <SessionsPanel workspaceId={workspace?.id} />
+                    <ArtifactsExplorer workspaceId={workspace?.id} />
                     {workspace?.review ? (
                       <ReviewPanel workspace={workspace} />
                     ) : (

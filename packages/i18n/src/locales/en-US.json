@@ -442,5 +442,9 @@
   "observability.oracle.run": "Run triad",
   "observability.oracle.corpusMissing": "corpus missing",
   "workflows.title": "Workflow runs",
-  "workflows.empty": "No runs yet — POST /api/workflows/run starts an LLM pipeline"
+  "workflows.empty": "No runs yet — POST /api/workflows/run starts an LLM pipeline",
+  "artifacts.title": "Artifacts",
+  "artifacts.noWorkspace": "Select or create a workspace first",
+  "artifacts.empty": "No artifacts yet — files the agents write appear here",
+  "artifacts.loadFailed": "Failed to load artifact content"
 }

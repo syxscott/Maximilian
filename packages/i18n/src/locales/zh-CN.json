@@ -442,5 +442,9 @@
   "observability.oracle.run": "运行三元组",
   "observability.oracle.corpusMissing": "语料缺失",
   "workflows.title": "工作流运行",
-  "workflows.empty": "暂无运行记录 — POST /api/workflows/run 启动一个 LLM 管线"
+  "workflows.empty": "暂无运行记录 — POST /api/workflows/run 启动一个 LLM 管线",
+  "artifacts.title": "产物文件",
+  "artifacts.noWorkspace": "先选择或创建一个工作区",
+  "artifacts.empty": "暂无产物 — agent 写入文件后在这里浏览",
+  "artifacts.loadFailed": "产物内容加载失败"
 }
