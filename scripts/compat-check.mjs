@@ -130,9 +130,14 @@ for (const entry of manifest) {
 }
 
 // 2. In-source @deprecated symbols must be listed in the manifest.
+//    Package-scope manifest entries (e.g. "@max/llm (legacy surface)")
+//    cover every deprecation inside that package.
 const manifestNames = new Set(manifest.map((m) => m.symbol.split("#").pop()))
 for (const dep of sourceDeprecations) {
-  if (!manifestNames.has(dep.symbol)) {
+  const packageCovered = manifest.some(
+    (m) => m.symbol.includes(dep.pkg) && m.state.toLowerCase() === "deprecated",
+  )
+  if (!manifestNames.has(dep.symbol) && !packageCovered) {
     warnings.push(
       `@deprecated ${dep.symbol} (${dep.file}:${dep.line}) is not in docs/compat-manifest.md — add an entry with its replacement and removal milestone`,
     )
