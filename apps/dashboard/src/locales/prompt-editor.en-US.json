@@ -1,0 +1,17 @@
+{
+  "promptEditor.attach.add": "Attach files",
+  "promptEditor.attach.hint": "Upload API not wired yet — attachments stay local to this draft",
+  "promptEditor.attach.limit": "Attachment limit reached ({max}); {rejected} ignored",
+  "promptEditor.attach.remove": "Remove attachment {name}",
+  "promptEditor.attach.untitled": "unnamed file",
+  "promptEditor.slash.open": "Slash commands",
+  "promptEditor.slash.empty": "No matching commands",
+  "promptEditor.slash.badge.navigate": "Navigate",
+  "promptEditor.slash.badge.action": "Action",
+  "promptEditor.mention.insert": "Insert a mention (@)",
+  "promptEditor.demo.title": "Prompt editor demo",
+  "promptEditor.demo.description": "Combined preview of PromptToolbar + MentionTextarea + slash commands + QuickPick",
+  "promptEditor.demo.send": "Send",
+  "promptEditor.demo.sent": "Sent: {text}",
+  "promptEditor.demo.placeholder": "Type a message — “/” for commands, “@” for roles, “#” for workspaces…"
+}

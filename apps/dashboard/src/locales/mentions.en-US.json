@@ -1,0 +1,13 @@
+{
+  "mentions.roles.title": "Agent roles",
+  "mentions.roles.planner.desc": "Plans task breakdown and execution order",
+  "mentions.roles.coder.desc": "Implements and modifies code",
+  "mentions.roles.reviewer.desc": "Reviews code and decisions",
+  "mentions.roles.researcher.desc": "Researches the codebase and external sources",
+  "mentions.skills.title": "Skills",
+  "mentions.skills.placeholderDesc": "Static placeholder list (skill discovery API not wired)",
+  "mentions.skills.empty": "No skills enabled by feature flags — this list is a static placeholder",
+  "mentions.workspaces.title": "Workspaces",
+  "mentions.workspaces.empty": "No workspaces available",
+  "mentions.workspaces.desc": "Mention this workspace in the message"
+}

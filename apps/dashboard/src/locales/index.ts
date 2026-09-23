@@ -17,6 +17,16 @@ import aiElementsZh from "./ai-elements.zh-CN.json"
 import aiElementsEn from "./ai-elements.en-US.json"
 import storesZh from "./stores.zh-CN.json"
 import storesEn from "./stores.en-US.json"
+import promptEditorZh from "./prompt-editor.zh-CN.json"
+import promptEditorEn from "./prompt-editor.en-US.json"
+import mentionsZh from "./mentions.zh-CN.json"
+import mentionsEn from "./mentions.en-US.json"
+import quickpickZh from "./quickpick.zh-CN.json"
+import quickpickEn from "./quickpick.en-US.json"
+import shortcutsZh from "./shortcuts.zh-CN.json"
+import shortcutsEn from "./shortcuts.en-US.json"
+import settingsDeepZh from "./settings-deep.zh-CN.json"
+import settingsDeepEn from "./settings-deep.en-US.json"
 import { mergeAndRegister } from "@/lib/i18n-merge"
 
 type Json = Record<string, unknown>
@@ -41,12 +51,22 @@ const ZH: Record<string, string> = {
   ...flattenTree(toolRenderersZh as Json),
   ...flattenTree(aiElementsZh as Json),
   ...flattenTree(storesZh as Json),
+  ...flattenTree(promptEditorZh as Json),
+  ...flattenTree(mentionsZh as Json),
+  ...flattenTree(quickpickZh as Json),
+  ...flattenTree(shortcutsZh as Json),
+  ...flattenTree(settingsDeepZh as Json),
 }
 
 const EN: Record<string, string> = {
   ...flattenTree(toolRenderersEn as Json),
   ...flattenTree(aiElementsEn as Json),
   ...flattenTree(storesEn as Json),
+  ...flattenTree(promptEditorEn as Json),
+  ...flattenTree(mentionsEn as Json),
+  ...flattenTree(quickpickEn as Json),
+  ...flattenTree(shortcutsEn as Json),
+  ...flattenTree(settingsDeepEn as Json),
 }
 
 let applied = false

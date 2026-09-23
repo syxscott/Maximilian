@@ -1,0 +1,13 @@
+{
+  "mentions.roles.title": "智能体角色",
+  "mentions.roles.planner.desc": "规划任务拆解与执行顺序",
+  "mentions.roles.coder.desc": "实现与修改代码",
+  "mentions.roles.reviewer.desc": "评审代码与决策",
+  "mentions.roles.researcher.desc": "调研代码库与外部资料",
+  "mentions.skills.title": "技能",
+  "mentions.skills.placeholderDesc": "静态占位列表（技能发现 API 未接）",
+  "mentions.skills.empty": "feature flags 未启用任何技能——此处为静态占位",
+  "mentions.workspaces.title": "工作区",
+  "mentions.workspaces.empty": "暂无可用工作区",
+  "mentions.workspaces.desc": "在消息中提及此工作区"
+}

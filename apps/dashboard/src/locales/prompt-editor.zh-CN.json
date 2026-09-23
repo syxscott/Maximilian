@@ -1,0 +1,17 @@
+{
+  "promptEditor.attach.add": "添加附件",
+  "promptEditor.attach.hint": "上传 API 未接，附件仅本地暂存",
+  "promptEditor.attach.limit": "附件已达上限（{max} 个），已忽略 {rejected} 个",
+  "promptEditor.attach.remove": "移除附件 {name}",
+  "promptEditor.attach.untitled": "未命名文件",
+  "promptEditor.slash.open": "斜杠命令",
+  "promptEditor.slash.empty": "没有匹配的命令",
+  "promptEditor.slash.badge.navigate": "导航",
+  "promptEditor.slash.badge.action": "动作",
+  "promptEditor.mention.insert": "插入提及（@）",
+  "promptEditor.demo.title": "提示词编辑器演示",
+  "promptEditor.demo.description": "PromptToolbar + MentionTextarea + 斜杠命令 + QuickPick 的组合预览",
+  "promptEditor.demo.send": "发送",
+  "promptEditor.demo.sent": "已发送：{text}",
+  "promptEditor.demo.placeholder": "输入消息：“/”呼出命令，“@”提及角色，“#”提及工作区…"
+}

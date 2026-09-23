@@ -1,0 +1,6 @@
+{
+  "quickpick.placeholder": "输入以筛选…",
+  "quickpick.empty": "无匹配结果",
+  "quickpick.hint": "↑↓ 选择 · Enter 确认 · Esc 关闭",
+  "quickpick.ungrouped": "其他"
+}

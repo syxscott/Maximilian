@@ -1,0 +1,15 @@
+{
+  "shortcuts.title": "Keyboard shortcuts",
+  "shortcuts.description": "Click a binding to record a new combo; Esc cancels. Overrides are stored in this browser only.",
+  "shortcuts.record.start": "Click to record",
+  "shortcuts.record.recording": "Press a key combo… (Esc cancels)",
+  "shortcuts.record.cancelled": "Recording cancelled",
+  "shortcuts.record.captured": "Recorded {key}",
+  "shortcuts.conflict": "Conflicts with “{command}”",
+  "shortcuts.reset": "Reset to default",
+  "shortcuts.resetAll": "Reset all",
+  "shortcuts.section.navigation": "Navigation",
+  "shortcuts.section.actions": "Actions",
+  "shortcuts.section.view": "View",
+  "shortcuts.saved": "Overrides saved locally"
+}

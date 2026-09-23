@@ -1,0 +1,15 @@
+{
+  "shortcuts.title": "键盘快捷键",
+  "shortcuts.description": "点击绑定录制新的组合键，Esc 取消；覆盖仅保存在本地浏览器。",
+  "shortcuts.record.start": "点击录制",
+  "shortcuts.record.recording": "请按下组合键…（Esc 取消）",
+  "shortcuts.record.cancelled": "已取消录制",
+  "shortcuts.record.captured": "已录制 {key}",
+  "shortcuts.conflict": "与「{command}」冲突",
+  "shortcuts.reset": "恢复默认",
+  "shortcuts.resetAll": "全部恢复默认",
+  "shortcuts.section.navigation": "导航",
+  "shortcuts.section.actions": "动作",
+  "shortcuts.section.view": "视图",
+  "shortcuts.saved": "覆盖已保存到本地"
+}
