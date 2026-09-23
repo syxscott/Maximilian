@@ -1,0 +1,19 @@
+{
+  "deliverables.title": "交付产出",
+  "deliverables.description": "按任务列出最终产出，可一键导出为 Markdown",
+  "deliverables.loading": "加载中…",
+  "deliverables.error": "加载失败",
+  "deliverables.retry": "重试",
+  "deliverables.empty": "暂无交付产出（产出为空的任务不会列出）",
+  "deliverables.export": "导出全部为 Markdown",
+  "deliverables.stats": "共 {total} 项产出 · {tasks} 个任务 · {roles} 类角色",
+  "deliverables.roleCount": "{count} 项",
+  "deliverables.reviewScore": "评审得分 {score}",
+  "deliverables.reviewIssues": "{issues} 个问题",
+  "deliverables.expand": "展开",
+  "deliverables.collapse": "收起",
+  "deliverables.hiddenLines": "+{lines} 行",
+  "deliverables.copied": "已复制 Markdown 到剪贴板",
+  "deliverables.copyFailed": "剪贴板不可用——请在下方手动复制",
+  "deliverables.manualHint": "选中全部文本后复制"
+}

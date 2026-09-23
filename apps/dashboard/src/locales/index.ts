@@ -27,6 +27,8 @@ import shortcutsZh from "./shortcuts.zh-CN.json"
 import shortcutsEn from "./shortcuts.en-US.json"
 import settingsDeepZh from "./settings-deep.zh-CN.json"
 import settingsDeepEn from "./settings-deep.en-US.json"
+import sessionQueryZh from "./session-query.zh-CN.json"
+import sessionQueryEn from "./session-query.en-US.json"
 import { mergeAndRegister } from "@/lib/i18n-merge"
 
 type Json = Record<string, unknown>
@@ -56,6 +58,7 @@ const ZH: Record<string, string> = {
   ...flattenTree(quickpickZh as Json),
   ...flattenTree(shortcutsZh as Json),
   ...flattenTree(settingsDeepZh as Json),
+  ...flattenTree(sessionQueryZh as Json),
 }
 
 const EN: Record<string, string> = {
@@ -67,6 +70,7 @@ const EN: Record<string, string> = {
   ...flattenTree(quickpickEn as Json),
   ...flattenTree(shortcutsEn as Json),
   ...flattenTree(settingsDeepEn as Json),
+  ...flattenTree(sessionQueryEn as Json),
 }
 
 let applied = false

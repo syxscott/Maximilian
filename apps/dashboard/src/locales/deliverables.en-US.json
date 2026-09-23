@@ -1,0 +1,19 @@
+{
+  "deliverables.title": "Deliverables",
+  "deliverables.description": "Final outputs per task, exportable as one Markdown document",
+  "deliverables.loading": "Loading…",
+  "deliverables.error": "Failed to load",
+  "deliverables.retry": "Retry",
+  "deliverables.empty": "No deliverables yet (tasks with empty output are not listed)",
+  "deliverables.export": "Export all as Markdown",
+  "deliverables.stats": "{total} deliverable(s) · {tasks} task(s) · {roles} role(s)",
+  "deliverables.roleCount": "{count} item(s)",
+  "deliverables.reviewScore": "Review score {score}",
+  "deliverables.reviewIssues": "{issues} issue(s)",
+  "deliverables.expand": "Expand",
+  "deliverables.collapse": "Collapse",
+  "deliverables.hiddenLines": "+{lines} lines",
+  "deliverables.copied": "Markdown copied to clipboard",
+  "deliverables.copyFailed": "Clipboard unavailable — copy manually below",
+  "deliverables.manualHint": "Select all text, then copy"
+}
