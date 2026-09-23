@@ -938,6 +938,98 @@ export const chatApi = {
 
 // ── Usage API ──────────────────────────────────────────────────────────────
 
+export interface TruthReportData {
+  windowStart?: string
+  windowEnd?: string
+  totalMeasurements?: number
+  meanAbsoluteError?: {
+    costDelta?: number
+    latencyDeltaMs?: number
+    qualityDelta?: number
+    riskDelta?: number
+  }
+  verdictCounts?: Record<string, number>
+}
+
+export interface OracleTriadData {
+  role?: string
+  direct?: { quality?: number }
+  fewShot?: { quality?: number }
+  oracle?: { quality?: number }
+  pgr?: number
+  oracleCorpusMissing?: boolean
+  interpretation?: string
+}
+
+export const evolutionApi = {
+  leaderboard: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/evolution/leaderboard`,
+      { headers: authHeaders(), signal },
+      z
+        .object({
+          entries: z.array(
+            z
+              .object({
+                role: z.string(),
+                blueprintId: z.string().optional(),
+                runs: z.number().optional(),
+                avgScore: z.number().optional(),
+                acceptance: z.number().optional(),
+              })
+              .passthrough(),
+          ),
+        })
+        .passthrough(),
+    ),
+}
+
+export const workflowApi = {
+  list: (signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/workflows`,
+      { headers: authHeaders(), signal },
+      z.object({
+        runs: z.array(
+          z.object({
+            runId: z.string(),
+            completedSteps: z.number(),
+            failedSteps: z.number(),
+            totalEntries: z.number(),
+            scriptHash: z.string().optional(),
+          }),
+        ),
+      }),
+    ),
+}
+
+export const truthApi = {
+  report: async (signal?: AbortSignal): Promise<TruthReportData> => {
+    const res = await fetch(`${BASE}/meta/truth-report`, { headers: authHeaders(), signal })
+    if (!res.ok) throw new Error(`truth report unavailable (${res.status})`)
+    return (await res.json()) as TruthReportData
+  },
+}
+
+export const oracleTriadApi = {
+  run: async (input: {
+    role: string
+    taskDescription: string
+    requireOracle?: boolean
+  }): Promise<OracleTriadData> => {
+    const res = await fetch(`${BASE}/evolution/oracle-triad`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(input),
+    })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `oracle triad failed (${res.status})`)
+    }
+    return (await res.json()) as OracleTriadData
+  },
+}
+
 export const systemApi = {
   listFlags: (signal?: AbortSignal) =>
     fetchJson(

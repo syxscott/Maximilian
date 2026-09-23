@@ -76,6 +76,18 @@ export const workflowRunRoute = createRoute({
   },
 })
 
+export const workflowListRoute = createRoute({
+  method: "get",
+  path: "/workflows",
+  tags: ["workflows"],
+  responses: {
+    200: {
+      content: { "application/json": { schema: z.unknown() } },
+      description: "Known runs in this process (journal summaries)",
+    },
+  },
+})
+
 export const workflowGetRoute = createRoute({
   method: "get",
   path: "/workflows/:runId",
@@ -120,6 +132,21 @@ function makeExecutor(provider: Provider) {
 
 export function workflowRoutes(deps: { getDefaultProvider: () => Provider }) {
   return {
+    list: async (c: Context) => {
+      const runs = [...journals.entries()].map(([runId, entries]) => {
+        const stepEntries = entries.filter((e) => e.siteId !== "__script_hash__")
+        const hashEntry = entries.find((e) => e.siteId === "__script_hash__")
+        return {
+          runId,
+          completedSteps: stepEntries.filter((e) => e.ok).length,
+          failedSteps: stepEntries.filter((e) => !e.ok).length,
+          totalEntries: entries.length,
+          scriptHash: typeof hashEntry?.output === "string" ? hashEntry.output.slice(0, 12) : undefined,
+        }
+      })
+      return c.json({ runs })
+    },
+
     run: async (c: Context) => {
       const body = c.req.valid("json" as never) as RunRequest
       const runId = body.runId ?? `wf-${randomUUID().slice(0, 8)}`

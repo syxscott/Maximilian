@@ -102,7 +102,12 @@ import {
   TruthCalibrator,
 } from "@max/meta-system"
 import { postChat, postChatRoute } from "./routes/chat.js"
-import { workflowRoutes, workflowRunRoute, workflowGetRoute } from "./routes/workflows.js"
+import {
+  workflowRoutes,
+  workflowRunRoute,
+  workflowGetRoute,
+  workflowListRoute,
+} from "./routes/workflows.js"
 import { oracleTriadRoute, oracleTriadHandler } from "./routes/evolution.js"
 import {
   getWorkspace,
@@ -1828,6 +1833,7 @@ if (db && config.JWT_SECRET) {
 
 const workflowHandlers = workflowRoutes({ getDefaultProvider })
 
+api.openapi(workflowListRoute, requireAuthMiddleware(), workflowHandlers.list)
 api.openapi(workflowRunRoute, requireAuthMiddleware(), workflowHandlers.run)
 api.openapi(workflowGetRoute, requireAuthMiddleware(), workflowHandlers.get)
 
@@ -2380,6 +2386,12 @@ if (metaOrchestrator && metaGovernance && metaOrgMemory && metaSimulation) {
   api.openapi(getCapabilityRoute, requireAuthMiddleware(), mr.getCapability)
   api.openapi(listProposalsRoute, requireAuthMiddleware(), mr.listProposals)
   api.openapi(runCycleRoute, requireAuthMiddleware(), mr.runCycle)
+  api.openapi(truthReportRoute, requireAuthMiddleware(), async (c) => {
+    if (!metaOrchestrator) return c.json({ error: "meta agent disabled" }, 503)
+    const report = await metaOrchestrator.truthReport()
+    if (!report) return c.json({ error: "truth audit not wired" }, 503)
+    return c.json(report as Record<string, unknown>)
+  })
   api.openapi(listEventsRoute, requireAuthMiddleware(), mr.listEvents)
   api.openapi(countEventsRoute, requireAuthMiddleware(), mr.countEvents)
   api.openapi(checkGovernanceRoute, requireAuthMiddleware(), mr.checkGovernance)

@@ -252,6 +252,22 @@ interface MetaRouteDeps {
   discovery: CapabilityDiscoveryEngine
 }
 
+export const truthReportRoute = createRoute({
+  method: "get",
+  path: "/meta/truth-report",
+  tags: ["meta"],
+  responses: {
+    200: {
+      content: { "application/json": { schema: z.unknown() } },
+      description: "Global prediction-vs-reality calibration report",
+    },
+    503: {
+      content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      description: "Truth audit not wired",
+    },
+  },
+})
+
 export function metaRoutes(deps: MetaRouteDeps) {
   const { orchestrator, governance, organizationMemory, simulation, registry, discovery } = deps
 
@@ -283,6 +299,15 @@ export function metaRoutes(deps: MetaRouteDeps) {
       const rec = await registry.get(id)
       if (!rec) return c.json({ error: "not_found" }, 404)
       return c.json(rec)
+    },
+
+    truthReport: async (c: Context) => {
+      if (!deps.orchestrator.truthReport) {
+        return c.json({ error: "truth audit not wired" }, 503)
+      }
+      const report = await deps.orchestrator.truthReport()
+      if (!report) return c.json({ error: "truth audit not wired" }, 503)
+      return c.json(report as Record<string, unknown>)
     },
 
     listProposals: async (c: Context) => {

@@ -40,6 +40,7 @@ export const API_PATHS = [
   "GET /meta/events/count",
   "GET /meta/governance/config",
   "GET /meta/proposals",
+  "GET /meta/truth-report",
   "GET /obs/evolutions",
   "GET /obs/executions",
   "GET /obs/graph/{executionId}",
@@ -68,6 +69,7 @@ export const API_PATHS = [
   "GET /system/vault",
   "GET /tenants",
   "GET /tenants/{id}",
+  "GET /workflows",
   "GET /workflows/:runId",
   "GET /workspaces",
   "GET /workspaces/{id}",
@@ -113,5 +115,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 100. */
-export const API_PATH_COUNT = 100
+/** Number of routes in the backend contract: 102. */
+export const API_PATH_COUNT = 102

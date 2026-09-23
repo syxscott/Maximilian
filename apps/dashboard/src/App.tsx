@@ -18,6 +18,12 @@ import { SubagentsPanel } from "./components/SubagentsPanel"
 import { TrajectoryPanel } from "./components/TrajectoryPanel"
 import { FileChangesPanel } from "./components/FileChangesPanel"
 import { SessionsPanel } from "./components/SessionsPanel"
+import {
+  LeaderboardTable,
+  TruthReportPanel,
+  OracleTriadConsole,
+} from "./components/observability/panels"
+import { WorkflowRunsPanel } from "./components/WorkflowRunsPanel"
 import { AgentPanel } from "./components/AgentPanel"
 import { TaskPanel } from "./components/TaskPanel"
 import { OutputPanel } from "./components/OutputPanel"
@@ -628,7 +634,10 @@ export function App() {
           </TabsContent>
           <TabsContent value="executions">
             <Suspense fallback={<TabFallback label={t("nav.executions")} />}>
-              <ExecutionCanvas />
+              <div className="space-y-4">
+                <ExecutionCanvas />
+                <WorkflowRunsPanel />
+              </div>
             </Suspense>
           </TabsContent>
           <TabsContent value="governance">
@@ -638,7 +647,12 @@ export function App() {
           </TabsContent>
           <TabsContent value="evolution">
             <Suspense fallback={<TabFallback label={t("nav.evolution")} />}>
-              <EvolutionTree />
+              <div className="space-y-4">
+                <EvolutionTree />
+                <LeaderboardTable />
+                <TruthReportPanel />
+                <OracleTriadConsole />
+              </div>
             </Suspense>
           </TabsContent>
           <TabsContent value="providers">
