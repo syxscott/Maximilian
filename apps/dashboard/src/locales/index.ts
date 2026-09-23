@@ -27,6 +27,10 @@ import shortcutsZh from "./shortcuts.zh-CN.json"
 import shortcutsEn from "./shortcuts.en-US.json"
 import settingsDeepZh from "./settings-deep.zh-CN.json"
 import settingsDeepEn from "./settings-deep.en-US.json"
+import modelPickerZh from "./model-picker.zh-CN.json"
+import modelPickerEn from "./model-picker.en-US.json"
+import deliverablesZh from "./deliverables.zh-CN.json"
+import deliverablesEn from "./deliverables.en-US.json"
 import sessionQueryZh from "./session-query.zh-CN.json"
 import sessionQueryEn from "./session-query.en-US.json"
 import { mergeAndRegister } from "@/lib/i18n-merge"
@@ -58,6 +62,8 @@ const ZH: Record<string, string> = {
   ...flattenTree(quickpickZh as Json),
   ...flattenTree(shortcutsZh as Json),
   ...flattenTree(settingsDeepZh as Json),
+  ...flattenTree(modelPickerZh as Json),
+  ...flattenTree(deliverablesZh as Json),
   ...flattenTree(sessionQueryZh as Json),
 }
 
@@ -70,6 +76,8 @@ const EN: Record<string, string> = {
   ...flattenTree(quickpickEn as Json),
   ...flattenTree(shortcutsEn as Json),
   ...flattenTree(settingsDeepEn as Json),
+  ...flattenTree(modelPickerEn as Json),
+  ...flattenTree(deliverablesEn as Json),
   ...flattenTree(sessionQueryEn as Json),
 }
 
