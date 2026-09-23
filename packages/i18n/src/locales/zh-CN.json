@@ -456,5 +456,11 @@
   "timeline.copied": "已复制",
   "timeline.loadEarlier": "加载更早的 {count} 条",
   "tabs.close": "关闭",
-  "tabs.more": "更多"
+  "tabs.more": "更多",
+  "modelPicker.title": "模型选择",
+  "deliverables.title": "交付物",
+  "sessionQuery.title": "会话搜索",
+  "settingsDeep.subagents.title": "子代理角色",
+  "settingsDeep.usage.title": "用量图表",
+  "settingsDeep.store.title": "会话库状态"
 }

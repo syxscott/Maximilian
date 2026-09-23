@@ -456,5 +456,11 @@
   "timeline.copied": "Copied",
   "timeline.loadEarlier": "Load {count} earlier entries",
   "tabs.close": "Close",
-  "tabs.more": "more"
+  "tabs.more": "more",
+  "modelPicker.title": "Model picker",
+  "deliverables.title": "Deliverables",
+  "sessionQuery.title": "Session search",
+  "settingsDeep.subagents.title": "Subagent roles",
+  "settingsDeep.usage.title": "Usage charts",
+  "settingsDeep.store.title": "Session store"
 }

@@ -11,7 +11,7 @@ import { render, screen, fireEvent } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 import { EmptyState } from "../src/components/EmptyState"
 import { SubagentsPanel } from "../src/components/SubagentsPanel"
-import { TrajectoryPanel } from "../src/components/TrajectoryPanel"
+import { TrajectoryPanel } from "../src/features/trajectory"
 import { FileChangesPanel } from "../src/components/FileChangesPanel"
 import type { RuntimeEvent } from "../src/api"
 

@@ -1,0 +1,6 @@
+// Copyright (c) 2026 Maximilian contributors
+// SPDX-License-Identifier: MIT
+//
+// Licensed under the MIT License. See LICENSE in the project root.
+
+export { TrajectoryPanel } from "./TrajectoryPanel"

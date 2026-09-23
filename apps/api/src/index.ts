@@ -113,6 +113,7 @@ import {
   sessionRoutes,
   listSessionsRoute,
   getMessagesRoute,
+  searchMessagesRoute,
   getTimelineRoute,
 } from "./routes/sessions.js"
 import {
@@ -2376,6 +2377,7 @@ const sessions = sessionRoutes({ store: sessionStore?.store })
 api.openapi(listSessionsRoute, requireAuthMiddleware(), sessions.listSessions)
 api.openapi(getMessagesRoute, requireAuthMiddleware(), sessions.getMessages)
 api.openapi(getTimelineRoute, requireAuthMiddleware(), sessions.getTimeline)
+api.openapi(searchMessagesRoute, requireAuthMiddleware(), sessions.searchMessages)
 api.openapi(vaultStatusRoute, requireAuthMiddleware(), vaultStatusHandler())
 api.openapi(oracleLessonsRoute, requireAuthMiddleware(), oracleLessonsHandler())
 

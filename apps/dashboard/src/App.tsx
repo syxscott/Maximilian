@@ -15,7 +15,7 @@ import { chatApi, openWorkspaceStream } from "./api"
 import type { Workspace, RuntimeEvent, WorkspaceStreamHandle } from "./api"
 import { ChatPanel } from "./components/ChatPanel"
 import { SubagentsPanel } from "./components/SubagentsPanel"
-import { TrajectoryPanel } from "./components/TrajectoryPanel"
+import { TrajectoryPanel } from "./features/trajectory"
 import { FileChangesPanel } from "./components/FileChangesPanel"
 import { SessionsPanel } from "./components/SessionsPanel"
 import {
