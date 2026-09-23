@@ -110,6 +110,19 @@ import {
 } from "./routes/workflows.js"
 import { oracleTriadRoute, oracleTriadHandler } from "./routes/evolution.js"
 import {
+  sessionRoutes,
+  listSessionsRoute,
+  getMessagesRoute,
+  getTimelineRoute,
+} from "./routes/sessions.js"
+import {
+  vaultStatusRoute,
+  vaultStatusHandler,
+  oracleLessonsRoute,
+  oracleLessonsHandler,
+} from "./routes/admin-status.js"
+import { truthReportRoute } from "./routes/meta.js"
+import {
   getWorkspace,
   listWorkspaces,
   listArtifacts,
