@@ -147,10 +147,20 @@ export function formatIntervalMs(ms: number | null): string | null {
   return `${Number.isInteger(h) ? h : h.toFixed(1)}h`
 }
 
+/**
+ * Dispatch kind of a create-form draft: "none" keeps the record-only
+ * executor, "workspace" makes every fire enqueue a real BullMQ workspace
+ * job carrying `message`.
+ */
+export type JobDraftKind = "none" | "workspace"
+
 export interface JobDraft {
   name: string
   schedule: string
   description: string
+  kind: JobDraftKind
+  /** Required when kind = "workspace" — the instruction each fire carries. */
+  message: string
   payloadJson: string
 }
 
@@ -158,20 +168,28 @@ export const EMPTY_JOB_DRAFT: JobDraft = {
   name: "",
   schedule: "",
   description: "",
+  kind: "none",
+  message: "",
   payloadJson: "",
 }
 
-export type JobDraftError = { field: "name" | "schedule" | "payloadJson"; key: string } | null
+export type JobDraftError = {
+  field: "name" | "schedule" | "message" | "payloadJson"
+  key: string
+} | null
 
 /**
  * Client-side pre-validation mirroring the API contract. Schedule
  * semantics (cron/interval parse) stay server-side; the client checks
- * presence + payload JSON syntax only.
+ * presence + payload JSON syntax + the kind=workspace message rule only.
  */
 export function validateJobDraft(draft: JobDraft): JobDraftError {
   if (draft.name.trim().length === 0) return { field: "name", key: "jobs.errors.nameRequired" }
   if (draft.schedule.trim().length === 0) {
     return { field: "schedule", key: "jobs.errors.scheduleRequired" }
+  }
+  if (draft.kind === "workspace" && draft.message.trim().length === 0) {
+    return { field: "message", key: "jobs.errors.messageRequired" }
   }
   if (draft.payloadJson.trim().length > 0) {
     if (parsePayloadJson(draft.payloadJson).ok === false) {
@@ -192,6 +210,19 @@ export function parsePayloadJson(text: string): PayloadParseResult {
   } catch (err) {
     return { ok: false, error: (err as Error).message }
   }
+}
+
+/**
+ * Build the POST /jobs payload from a validated draft:
+ *   kind "workspace" → { kind, message } (real BullMQ workspace dispatch);
+ *   kind "none"      → the legacy free-form JSON textarea value, if any
+ *                      (record-only, backward compatible).
+ */
+export function buildJobPayload(draft: JobDraft): PayloadParseResult {
+  if (draft.kind === "workspace") {
+    return { ok: true, value: { kind: "workspace", message: draft.message.trim() } }
+  }
+  return parsePayloadJson(draft.payloadJson)
 }
 
 export type SlotBadgeKind = "idle" | "pending" | "unknown"

@@ -20,6 +20,7 @@ import { getDictionary, registerLocale, setLocale } from "@max/i18n"
 import jobsEn from "../src/locales/jobs.en-US.json"
 import {
   EMPTY_JOB_DRAFT,
+  buildJobPayload,
   filterJobs,
   formatIntervalMs,
   formatTimestamp,
@@ -164,15 +165,97 @@ describe("jobs-domain model", () => {
       field: "name",
       key: "jobs.errors.nameRequired",
     })
-    expect(validateJobDraft({ name: "x", schedule: "", description: "", payloadJson: "" })).toEqual(
-      { field: "schedule", key: "jobs.errors.scheduleRequired" },
-    )
     expect(
-      validateJobDraft({ name: "x", schedule: "*", description: "", payloadJson: "{bad" }),
+      validateJobDraft({
+        name: "x",
+        schedule: "",
+        description: "",
+        kind: "none",
+        message: "",
+        payloadJson: "",
+      }),
+    ).toEqual({ field: "schedule", key: "jobs.errors.scheduleRequired" })
+    expect(
+      validateJobDraft({
+        name: "x",
+        schedule: "*",
+        description: "",
+        kind: "none",
+        message: "",
+        payloadJson: "{bad",
+      }),
     ).toEqual({ field: "payloadJson", key: "jobs.errors.payloadInvalidJson" })
     expect(
-      validateJobDraft({ name: "x", schedule: "*", description: "", payloadJson: "1" }),
+      validateJobDraft({
+        name: "x",
+        schedule: "*",
+        description: "",
+        kind: "none",
+        message: "",
+        payloadJson: "1",
+      }),
     ).toBeNull()
+  })
+
+  it("defaults the draft to record-only dispatch", () => {
+    expect(EMPTY_JOB_DRAFT.kind).toBe("none")
+    expect(EMPTY_JOB_DRAFT.message).toBe("")
+  })
+
+  it("requires the message for workspace-kind drafts", () => {
+    const base = { name: "x", schedule: "*", description: "", payloadJson: "" }
+    expect(validateJobDraft({ ...base, kind: "workspace", message: "   " })).toEqual({
+      field: "message",
+      key: "jobs.errors.messageRequired",
+    })
+    expect(validateJobDraft({ ...base, kind: "workspace", message: "go" })).toBeNull()
+    // Record-only drafts never need a message.
+    expect(validateJobDraft({ ...base, kind: "none", message: "" })).toBeNull()
+  })
+
+  it("builds the POST payload from the draft kind", () => {
+    expect(
+      buildJobPayload({
+        name: "j",
+        schedule: "*",
+        description: "",
+        kind: "workspace",
+        message: "  sweep  ",
+        payloadJson: "",
+      }),
+    ).toEqual({ ok: true, value: { kind: "workspace", message: "sweep" } })
+    // Record-only: legacy textarea passthrough (or nothing).
+    expect(
+      buildJobPayload({
+        name: "j",
+        schedule: "*",
+        description: "",
+        kind: "none",
+        message: "",
+        payloadJson: '{"a":1}',
+      }),
+    ).toEqual({ ok: true, value: { a: 1 } })
+    expect(
+      buildJobPayload({
+        name: "j",
+        schedule: "*",
+        description: "",
+        kind: "none",
+        message: "",
+        payloadJson: "",
+      }),
+    ).toEqual({ ok: true, value: undefined })
+    // Invalid JSON in the textarea surfaces through the none-path too.
+    expect(
+      buildJobPayload({
+        name: "j",
+        schedule: "*",
+        description: "",
+        kind: "none",
+        message: "",
+        payloadJson: "{nope",
+      }),
+    ).toMatchObject({ ok: false })
   })
 
   it("maps slot payloads to badge states", () => {
@@ -295,6 +378,50 @@ describe("JobsPanel render smoke", () => {
       name: "pulse",
       schedule: "*/1 * * * *",
       payload: { workspaceId: "ws_1" },
+    })
+  })
+
+  it("kind=workspace swaps the payload textarea for a message input and enqueues a dispatch payload", async () => {
+    const create = vi.fn().mockImplementation((_input, opts) => opts?.onSuccess?.({}))
+    mocked.useCreateJob.mockReturnValue({ mutate: create, isPending: false } as never)
+    mocked.useJobs.mockReturnValue(
+      q({ isLoading: false, isError: false, refetch: vi.fn(), data: { jobs: [] } }) as never,
+    )
+    renderWithQuery(<JobsPanel />)
+    const form = screen.getByTestId("jobs-create")
+
+    // Default kind is record-only → textarea visible, no message input.
+    expect(screen.getByLabelText("Payload JSON (optional)")).toBeTruthy()
+    expect(screen.queryByTestId("jobs-create-message")).toBeNull()
+
+    fireEvent.change(screen.getByTestId("jobs-create-kind"), {
+      target: { value: "workspace" },
+    })
+    // Workspace kind → message input appears, textarea folds away.
+    expect(screen.queryByLabelText("Payload JSON (optional)")).toBeNull()
+    const message = screen.getByTestId("jobs-create-message")
+    expect(message).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "pulse" } })
+    fireEvent.change(screen.getByLabelText("Schedule (cron or intervalMs)"), {
+      target: { value: "0 2 * * *" },
+    })
+    // Missing message → blocked client-side, no mutation.
+    fireEvent.submit(form)
+    expect(create).not.toHaveBeenCalled()
+    expect(screen.getByTestId("jobs-create-error").textContent).toBe(
+      "Message is required for workspace jobs",
+    )
+
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "  rotate the reports  " },
+    })
+    fireEvent.submit(form)
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]?.[0]).toEqual({
+      name: "pulse",
+      schedule: "0 2 * * *",
+      payload: { kind: "workspace", message: "rotate the reports" },
     })
   })
 })

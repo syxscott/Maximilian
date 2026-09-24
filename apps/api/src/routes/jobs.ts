@@ -16,11 +16,25 @@
  * `recoverOrphans()` so every stale slot is recovered EXACTLY ONCE via
  * the normal dispatch path — never N times.
  *
- * HONEST EXECUTOR BOUNDARY (v0): "dispatch" currently means recording
- * `lastTriggeredAt` + appending to the per-job event log. Jobs are NOT
- * yet forwarded to BullMQ or the agent runtime — nothing leaves this
- * process. The slot machinery, schedule parsing and recovery are real;
- * the execution backend is the planned next step.
+ * EXECUTOR BOUNDARY (dispatch semantics, honest by construction):
+ *
+ *   payload.kind = "none" (the default)  → record-only. The fire updates
+ *     `lastTriggeredAt` + the event log; nothing leaves the process.
+ *   payload.kind = "workspace"           → the fire enqueues a REAL job
+ *     onto the BullMQ WORKSPACE_QUEUE via the same producer path POST
+ *     /api/chat uses (Queue.add("execute", …)). The enqueued data is the
+ *     standard WorkspaceJobData shape plus the scheduler's message; the
+ *     worker consumes it through its normal WORKSPACE_QUEUE loop (extra
+ *     fields are ignored by the current processor — materializing a
+ *     workspace FROM the message is the deliberate follow-up).
+ *
+ * Degradation is equally honest: when the queue is not configured
+ * (TASK_QUEUE_ENABLED=false or no REDIS_URL) the workspace dispatch
+ * degrades to recording a `dispatched` event with `queued:false
+ * (queue unavailable)` instead of pretending anything was sent. A BullMQ
+ * add() rejection records a `dispatch-failed` event with the error. The
+ * slot's markPending/clear bracket the enqueue either way, so a dead
+ * dispatch leaves recoverable evidence (exactly-once semantics).
  *
  * Storage is in-memory (Map<jobId, JobRecord>) like the subscriptions
  * route; durability is a deliberate follow-up (swap the registry's Map
@@ -32,6 +46,7 @@ import { createRoute } from "@hono/zod-openapi"
 import type { Context } from "hono"
 import { z } from "zod"
 import { PendingSlotManager, type PendingSlotPersistence, type PendingSlotRecord } from "@max/core"
+import { WORKSPACE_QUEUE } from "@max/queue"
 import { ErrorSchema } from "../schemas.js"
 
 // ── Schedule parsing (cron 5-field or plain intervalMs) ────────────────────
@@ -190,10 +205,19 @@ export function nextRunAtMs(parsed: ParsedSchedule, fromMs: number): string | nu
 
 export type TriggerKind = "manual-trigger" | "scheduled-trigger" | "recovered-trigger"
 
+/** Executor event kinds appended after a trigger entry. */
+export type DispatchEventKind = "dispatched" | "dispatch-failed"
+
 export interface JobEventEntry {
   at: string
-  kind: TriggerKind
+  kind: TriggerKind | DispatchEventKind
   note?: string
+  /** "dispatched" entries: the BullMQ job id when the enqueue succeeded. */
+  workspaceJobId?: string | null
+  /** "dispatched" entries: false when degraded (queue unavailable). */
+  queued?: boolean
+  /** "dispatch-failed" entries: the BullMQ add() error message. */
+  error?: string
 }
 
 export interface JobRecord {
@@ -243,6 +267,120 @@ export function jobSlotKey(jobId: string): string {
   return `job:${jobId}`
 }
 
+// ── Payload + real-dispatch port ─────────────────────────────────────────────
+
+/**
+ * Job payload, validated at create time (see `validateJobPayload`):
+ *   { kind: "workspace", message, source? } — fires enqueue a real BullMQ
+ *     workspace job (see the EXECUTOR BOUNDARY note in the header).
+ *   { kind: "none" }                        — record-only (same as no payload).
+ * A payload object WITHOUT a kind is a legacy v0 record-only payload and is
+ * kept as-is for backward compatibility; it is never dispatched.
+ */
+export type WorkspaceDispatchPayload = {
+  kind: "workspace"
+  message: string
+  source?: string
+}
+
+export type JobPayload = WorkspaceDispatchPayload | { kind: "none" } | Record<string, unknown>
+
+const MAX_PAYLOAD_MESSAGE = 8_000
+const MAX_PAYLOAD_SOURCE = 200
+
+export type PayloadValidationResult =
+  { ok: true; value: JobPayload | undefined } | { ok: false; error: string }
+
+/**
+ * Validate a create-time payload. Undefined/null → record-only (backward
+ * compatible default). Non-objects are rejected; an explicit `kind` must be
+ * "workspace" or "none"; kind "workspace" requires a non-empty `message`.
+ */
+export function validateJobPayload(payload: unknown): PayloadValidationResult {
+  if (payload === undefined || payload === null) return { ok: true, value: undefined }
+  if (typeof payload !== "object" || Array.isArray(payload)) {
+    return {
+      ok: false,
+      error: 'payload must be an object with kind "none" or "workspace"',
+    }
+  }
+  const kind = (payload as { kind?: unknown }).kind
+  if (kind === undefined) {
+    // Legacy v0 record-only payload — kept verbatim, never dispatched.
+    return { ok: true, value: payload as Record<string, unknown> }
+  }
+  if (kind === "none") return { ok: true, value: payload as { kind: "none" } }
+  if (kind !== "workspace") {
+    return { ok: false, error: 'payload.kind must be "workspace" or "none"' }
+  }
+  const message = (payload as { message?: unknown }).message
+  if (typeof message !== "string" || message.trim().length === 0) {
+    return { ok: false, error: 'payload.message is required (min 1 char) when kind is "workspace"' }
+  }
+  if (message.length > MAX_PAYLOAD_MESSAGE) {
+    return { ok: false, error: `payload.message must be <= ${MAX_PAYLOAD_MESSAGE} chars` }
+  }
+  const source = (payload as { source?: unknown }).source
+  if (source !== undefined) {
+    if (
+      typeof source !== "string" ||
+      source.trim().length === 0 ||
+      source.length > MAX_PAYLOAD_SOURCE
+    ) {
+      return { ok: false, error: `payload.source must be a 1-${MAX_PAYLOAD_SOURCE} char string` }
+    }
+  }
+  return { ok: true, value: payload as WorkspaceDispatchPayload }
+}
+
+/**
+ * Defensive read side: which executor path does a stored payload take?
+ * Returns the workspace dispatch payload only when it is fully valid —
+ * anything else (none/legacy/malformed) is record-only by construction.
+ */
+export function asDispatchPayload(payload: unknown): WorkspaceDispatchPayload | null {
+  const result = validateJobPayload(payload)
+  if (!result.ok) return null
+  const value = result.value
+  if (value !== undefined && (value as WorkspaceDispatchPayload).kind === "workspace") {
+    return value as WorkspaceDispatchPayload
+  }
+  return null
+}
+
+/** Data enqueued onto the BullMQ WORKSPACE_QUEUE for one scheduled fire. */
+export interface ScheduledWorkspaceJobData {
+  /** Deterministic per-fire target (`ws-sched-<jobId>-<n>`); the worker's
+   * normal consumer reads it — today it skips unknown workspaces, and
+   * materializing a workspace from `message` is the planned follow-up. */
+  workspaceId: string
+  mode: "commander"
+  /** The scheduler's instruction (payload.message). */
+  message: string
+  /** Optional payload.source passthrough. */
+  source?: string
+  /** The firing job — lets the worker correlate back to /jobs. */
+  jobId: string
+  /** ISO instant of the fire. */
+  scheduledAt: string
+}
+
+/**
+ * Minimal producer port over the BullMQ workspace queue (the API's own
+ * `Queue.add("execute", …)` path, passed in by index.ts). Untyped return —
+ * only the BullMQ job id is consumed.
+ */
+export interface JobsQueuePort {
+  /** False when the queue is not configured → dispatch degrades honestly. */
+  readonly available: boolean
+  add(data: ScheduledWorkspaceJobData): Promise<{ id?: string }>
+}
+
+/** Deterministic per-fire workspace id for a scheduled fire. */
+export function scheduledWorkspaceId(jobId: string, fireCount: number): string {
+  return `ws-sched-${jobId}-${fireCount}`
+}
+
 export interface JobCreateInput {
   name: string
   schedule: string
@@ -263,6 +401,12 @@ export interface JobsRegistryOptions {
   persistence?: SlotPersistenceWithKeys
   /** Wall-clock period of the auto-fire ticker (default 1s). */
   schedulerTickMs?: number
+  /**
+   * BullMQ workspace-queue producer port. When absent/unavailable,
+   * kind=workspace fires degrade to a recorded `dispatched` event with
+   * queued:false — the same honest boundary as TASK_QUEUE_ENABLED=false.
+   */
+  queue?: JobsQueuePort
 }
 
 export interface JobsRegistry {
@@ -272,7 +416,8 @@ export interface JobsRegistry {
   remove(id: string): boolean
   /**
    * Fire a job once through the pending-slot lifecycle:
-   * markPending → dispatch (record-only, see header) → clear.
+   * markPending → dispatch (real BullMQ enqueue for kind=workspace
+   * payloads, record-only otherwise) → clear.
    */
   trigger(id: string, kind?: TriggerKind): Promise<JobRecord | undefined>
   /** Current pending slot for a job, if the manager holds one. */
@@ -293,6 +438,7 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
   const idFactory = options.idFactory ?? (() => `job_${randomUUID().slice(0, 8)}`)
   const persistence = options.persistence ?? createInMemorySlotPersistence()
   const slots = new PendingSlotManager(persistence, { now })
+  const queue = options.queue
   const jobs = new Map<string, JobRecord>()
   let scheduler: ReturnType<typeof setInterval> | undefined
   let ticking = false
@@ -328,6 +474,62 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
     return nextRunAtMs(parsed.parsed, now())
   }
 
+  /**
+   * The executor step of a fire. kind=workspace payloads enqueue a real
+   * BullMQ workspace job (or degrade honestly when the queue is missing /
+   * add() fails); everything else stays record-only. Runs INSIDE the
+   * slot's mark/clear bracket so a dead enqueue leaves recoverable
+   * evidence (exactly-once semantics).
+   */
+  async function runExecutor(job: JobRecord, at: string): Promise<void> {
+    const payload = asDispatchPayload(job.payload)
+    if (payload === null) {
+      // kind "none" / legacy payload — record-only by configuration.
+      pushEvent(job, {
+        at,
+        kind: "dispatched",
+        queued: false,
+        note: 'record-only (payload.kind="none" or absent — no dispatch configured)',
+      })
+      return
+    }
+    if (!queue || !queue.available) {
+      pushEvent(job, {
+        at,
+        kind: "dispatched",
+        queued: false,
+        note: "queued:false (queue unavailable) — workspace dispatch degraded to record-only",
+      })
+      return
+    }
+    const data: ScheduledWorkspaceJobData = {
+      workspaceId: scheduledWorkspaceId(job.id, job.triggerCount),
+      mode: "commander",
+      message: payload.message,
+      jobId: job.id,
+      scheduledAt: at,
+      ...(payload.source !== undefined ? { source: payload.source } : {}),
+    }
+    try {
+      const enqueued = await queue.add(data)
+      const workspaceJobId = enqueued?.id ?? null
+      pushEvent(job, {
+        at,
+        kind: "dispatched",
+        queued: true,
+        workspaceJobId,
+        note: `queued:${workspaceJobId ?? "no-id"} on ${WORKSPACE_QUEUE} (${data.workspaceId})`,
+      })
+    } catch (err) {
+      pushEvent(job, {
+        at,
+        kind: "dispatch-failed",
+        error: err instanceof Error ? err.message : String(err),
+        note: "BullMQ add failed — fire recorded but NOT enqueued (slot recovered by design)",
+      })
+    }
+  }
+
   async function dispatch(
     id: string,
     kind: TriggerKind,
@@ -340,16 +542,12 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
     // the fire.
     const at = new Date(now()).toISOString()
     await slots.markPending(jobSlotKey(id), at)
-    // v0 executor boundary: dispatch == record. No BullMQ/runtime call yet.
     job.lastTriggeredAt = at
     job.triggerCount += 1
     job.nextRunAt = computeNextRun(job)
-    pushEvent(job, {
-      at,
-      kind,
-      note:
-        note ?? `executor v0: dispatch is record-only (slot ${jobSlotKey(id)} marked then cleared)`,
-    })
+    pushEvent(job, { at, kind, ...(note ? { note } : {}) })
+    // Executor step — still inside the mark/clear bracket.
+    await runExecutor(job, at)
     await slots.clear(jobSlotKey(id))
     return job
   }
@@ -358,6 +556,8 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
     create(input) {
       const parsed = parseSchedule(input.schedule)
       if (!parsed.ok) return { ok: false, error: parsed.error }
+      const payload = validateJobPayload(input.payload)
+      if (!payload.ok) return { ok: false, error: payload.error }
       const ts = new Date(now()).toISOString()
       const job: JobRecord = {
         id: idFactory(),
@@ -366,7 +566,7 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
         scheduleKind: parsed.parsed.kind,
         intervalMs: parsed.parsed.kind === "interval" ? parsed.parsed.intervalMs : null,
         description: input.description ?? null,
-        payload: input.payload,
+        payload: payload.value,
         createdAt: ts,
         updatedAt: ts,
         lastTriggeredAt: null,
@@ -459,18 +659,51 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
 
 // ── OpenAPI schemas ─────────────────────────────────────────────────────────
 
+/**
+ * Mirrors `validateJobPayload` for the HTTP contract: kind defaults to
+ * "none" (record-only) when omitted; kind=workspace requires message.
+ */
+export const JobPayloadSchema = z
+  .object({
+    /** "workspace" = fires enqueue a real BullMQ workspace job; "none" = record-only. */
+    kind: z.enum(["workspace", "none"]).optional(),
+    /** Required when kind = "workspace" — the instruction the fire carries. */
+    message: z.string().min(1).max(8_000).optional(),
+    /** Optional provenance passthrough on the enqueued job. */
+    source: z.string().min(1).max(200).optional(),
+  })
+  .passthrough()
+  .superRefine((val, ctx) => {
+    if (
+      val.kind === "workspace" &&
+      (val.message === undefined || val.message.trim().length === 0)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["message"],
+        message: 'message is required (min 1 char) when payload.kind = "workspace"',
+      })
+    }
+  })
+
 export const JobCreateSchema = z.object({
   name: z.string().min(1).max(120),
   /** Cron expression (5 fields) or intervalMs as a digit string. */
   schedule: z.string().min(1).max(120),
   description: z.string().max(500).optional(),
-  payload: z.unknown().optional(),
+  payload: JobPayloadSchema.optional(),
 })
 
 export const JobEventSchema = z.object({
   at: z.string(),
   kind: z.string(),
   note: z.string().optional(),
+  /** "dispatched" entries: BullMQ job id when the enqueue succeeded. */
+  workspaceJobId: z.string().nullable().optional(),
+  /** "dispatched" entries: false when degraded (queue unavailable). */
+  queued: z.boolean().optional(),
+  /** "dispatch-failed" entries: the BullMQ add() error message. */
+  error: z.string().optional(),
 })
 
 export const JobSchema = z.object({
@@ -563,7 +796,8 @@ export const jobTriggerRoute = createRoute({
   responses: {
     200: {
       content: { "application/json": { schema: JobTriggerResponseSchema } },
-      description: "Trigger dispatched (record-only in v0)",
+      description:
+        "Trigger dispatched — real BullMQ workspace enqueue for kind=workspace payloads, honest record-only degradation otherwise",
     },
     404: { content: { "application/json": { schema: ErrorSchema } }, description: "Unknown job" },
   },

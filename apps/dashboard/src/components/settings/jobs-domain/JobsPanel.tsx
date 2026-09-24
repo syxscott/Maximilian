@@ -5,9 +5,9 @@
 
 /**
  * JobsPanel — operational view over the /jobs API: list + create form +
- * delete + manual trigger + per-job pending-slot badge. The v0 executor
- * is record-only (the API stores lastTriggeredAt + an event log), so the
- * trigger button is labeled accordingly — no task dispatch happens yet.
+ * delete + manual trigger + per-job pending-slot badge. The create form
+ * picks the dispatch kind: "none" stays record-only, "workspace" makes
+ * every fire enqueue a real BullMQ workspace job with the given message.
  */
 
 import { useMemo, useState } from "react"
@@ -27,15 +27,16 @@ import {
 } from "@/hooks/useJobsQueries"
 import {
   EMPTY_JOB_DRAFT,
+  buildJobPayload,
   filterJobs,
   formatIntervalMs,
   formatTimestamp,
-  parsePayloadJson,
   sortJobs,
   toJobViews,
   toSlotBadge,
   validateJobDraft,
   windowList,
+  type JobDraftKind,
   type JobSortKey,
 } from "./model"
 
@@ -88,13 +89,17 @@ export function JobsPanel() {
       setDraftError(t(draftValidation.key))
       return
     }
-    const payload = parsePayloadJson(draft.payloadJson)
+    const payload = buildJobPayload(draft)
+    if (!payload.ok) {
+      setDraftError(t("jobs.errors.payloadInvalidJson"))
+      return
+    }
     createJob.mutate(
       {
         name: draft.name.trim(),
         schedule: draft.schedule.trim(),
         ...(draft.description.trim() ? { description: draft.description.trim() } : {}),
-        ...(payload.ok && payload.value !== undefined ? { payload: payload.value } : {}),
+        ...(payload.value !== undefined ? { payload: payload.value } : {}),
       },
       {
         onSuccess: () => {
@@ -256,7 +261,23 @@ export function JobsPanel() {
           }}
         >
           <p className="text-xs font-medium">{t("jobs.create.title")}</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-[10px]" htmlFor="jobs-create-kind">
+                {t("jobs.create.kind")}
+              </Label>
+              <select
+                id="jobs-create-kind"
+                value={draft.kind}
+                onChange={(e) => setDraft({ ...draft, kind: e.target.value as JobDraftKind })}
+                aria-label={t("jobs.create.kind")}
+                className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                data-testid="jobs-create-kind"
+              >
+                <option value="none">{t("jobs.create.kindNone")}</option>
+                <option value="workspace">{t("jobs.create.kindWorkspace")}</option>
+              </select>
+            </div>
             <div className="space-y-1">
               <Label className="text-[10px]" htmlFor="jobs-create-name">
                 {t("jobs.create.name")}
@@ -293,18 +314,35 @@ export function JobsPanel() {
               />
             </div>
           </div>
-          <div className="space-y-1">
-            <Label className="text-[10px]" htmlFor="jobs-create-payload">
-              {t("jobs.create.payload")}
-            </Label>
-            <Textarea
-              id="jobs-create-payload"
-              value={draft.payloadJson}
-              onChange={(e) => setDraft({ ...draft, payloadJson: e.target.value })}
-              placeholder='{"workspaceId": "ws_1"}'
-              className="min-h-16 font-mono text-xs"
-            />
-          </div>
+          {draft.kind === "workspace" && (
+            <div className="space-y-1">
+              <Label className="text-[10px]" htmlFor="jobs-create-message">
+                {t("jobs.create.message")}
+              </Label>
+              <Input
+                id="jobs-create-message"
+                value={draft.message}
+                onChange={(e) => setDraft({ ...draft, message: e.target.value })}
+                placeholder={t("jobs.create.messagePlaceholder")}
+                className="h-8 w-full text-xs"
+                data-testid="jobs-create-message"
+              />
+            </div>
+          )}
+          {draft.kind === "none" && (
+            <div className="space-y-1">
+              <Label className="text-[10px]" htmlFor="jobs-create-payload">
+                {t("jobs.create.payload")}
+              </Label>
+              <Textarea
+                id="jobs-create-payload"
+                value={draft.payloadJson}
+                onChange={(e) => setDraft({ ...draft, payloadJson: e.target.value })}
+                placeholder='{"workspaceId": "ws_1"}'
+                className="min-h-16 font-mono text-xs"
+              />
+            </div>
+          )}
           {draftError !== null && (
             <p className="text-xs text-destructive" data-testid="jobs-create-error">
               {draftError}

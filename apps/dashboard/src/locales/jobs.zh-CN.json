@@ -1,7 +1,7 @@
 {
   "jobs": {
     "title": "作业调度",
-    "description": "基于 PendingSlot 恰好一次语义的进程内作业（执行器 v0：仅记录触发，不做真实任务派发）。",
+    "description": "基于 PendingSlot 恰好一次语义的进程内作业（kind=workspace 的触发会向 BullMQ 入队真实工作区任务，其余仅记录）。",
     "searchPlaceholder": "搜索名称或表达式…",
     "sortLabel": "排序方式",
     "sort": {
@@ -46,12 +46,18 @@
       "schedule": "调度（cron 或 intervalMs）",
       "description": "描述（可选）",
       "payload": "载荷 JSON（可选）",
-      "submit": "创建"
+      "submit": "创建",
+      "kind": "派发类型",
+      "kindNone": "仅记录",
+      "kindWorkspace": "工作区任务",
+      "message": "任务消息",
+      "messagePlaceholder": "每次触发携带的指令"
     },
     "errors": {
       "nameRequired": "名称不能为空",
       "scheduleRequired": "调度表达式不能为空",
-      "payloadInvalidJson": "载荷不是合法的 JSON"
+      "payloadInvalidJson": "载荷不是合法的 JSON",
+      "messageRequired": "工作区任务必须填写消息"
     }
   }
 }

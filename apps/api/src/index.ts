@@ -2389,10 +2389,19 @@ api.openapi(getTimelineRoute, requireAuthMiddleware(), sessions.getTimeline)
 api.openapi(searchMessagesRoute, requireAuthMiddleware(), sessions.searchMessages)
 
 // ---------------------------------------------------------------------------
-// Jobs domain — PendingSlotManager host (in-process scheduler; v0 executor
-// is record-only: lastTriggeredAt + event log, no real task dispatch).
+// Jobs domain — PendingSlotManager host (in-process scheduler). Real
+// dispatch: kind=workspace fires enqueue onto the BullMQ WORKSPACE_QUEUE
+// through the same producer path as POST /api/chat; when the queue is
+// unconfigured the registry degrades to honest record-only events.
 // ---------------------------------------------------------------------------
-const jobsRegistry = createJobsRegistry()
+const jobsRegistry = createJobsRegistry({
+  queue: queue
+    ? {
+        available: true,
+        add: (data) => queue.add("execute", data).then((j) => ({ id: j.id })),
+      }
+    : undefined,
+})
 const jobs = jobsRoutes({ registry: jobsRegistry })
 api.openapi(jobCreateRoute, requireAuthMiddleware(), jobs.create)
 api.openapi(jobListRoute, requireAuthMiddleware(), jobs.list)
@@ -2400,7 +2409,8 @@ api.openapi(jobDeleteRoute, requireAuthMiddleware(), jobs.remove)
 api.openapi(jobTriggerRoute, requireAuthMiddleware(), jobs.trigger)
 api.openapi(jobSlotsRoute, requireAuthMiddleware(), jobs.slots)
 // Startup: recover orphan pending slots exactly once, then auto-fire due
-// jobs (record-only dispatch). Stop the scheduler on shutdown.
+// jobs (real BullMQ dispatch for kind=workspace payloads). Stop the
+// scheduler on shutdown.
 await jobsRegistry.recoverOrphans()
 jobsRegistry.startScheduler()
 api.openapi(vaultStatusRoute, requireAuthMiddleware(), vaultStatusHandler())

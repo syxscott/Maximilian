@@ -1,7 +1,7 @@
 {
   "jobs": {
     "title": "Job scheduler",
-    "description": "In-process jobs with PendingSlot exactly-once semantics (executor v0: record-only dispatch, no real task execution yet).",
+    "description": "In-process jobs with PendingSlot exactly-once semantics (kind=workspace fires enqueue a real BullMQ workspace job; the rest stay record-only).",
     "searchPlaceholder": "Search name or expression…",
     "sortLabel": "Sort by",
     "sort": {
@@ -46,12 +46,18 @@
       "schedule": "Schedule (cron or intervalMs)",
       "description": "Description (optional)",
       "payload": "Payload JSON (optional)",
-      "submit": "Create"
+      "submit": "Create",
+      "kind": "Dispatch kind",
+      "kindNone": "Record only",
+      "kindWorkspace": "Workspace task",
+      "message": "Message",
+      "messagePlaceholder": "Instruction carried by every fire"
     },
     "errors": {
       "nameRequired": "Name is required",
       "scheduleRequired": "Schedule is required",
-      "payloadInvalidJson": "Payload is not valid JSON"
+      "payloadInvalidJson": "Payload is not valid JSON",
+      "messageRequired": "Message is required for workspace jobs"
     }
   }
 }

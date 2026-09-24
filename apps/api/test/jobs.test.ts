@@ -4,19 +4,26 @@
  * and the route handlers called DIRECTLY with fake Hono contexts (no
  * HTTP, no server boot; smoke.test.ts pattern).
  *
- * The honest v0 executor boundary is part of the contract here: trigger()
- * records lastTriggeredAt + event log and never leaves a slot behind.
+ * The dispatch contract is tested here too: kind=workspace fires enqueue
+ * a real job through the mocked JobsQueuePort, queue-less deployments
+ * degrade to honest `queued:false` events, BullMQ add() failures record
+ * `dispatch-failed`, and payload validation gates the create path.
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest"
 import {
+  asDispatchPayload,
   createJobsRegistry,
   createInMemorySlotPersistence,
   jobSlotKey,
   jobsRoutes,
   nextRunAtMs,
   parseSchedule,
+  scheduledWorkspaceId,
+  validateJobPayload,
   type JobRecord,
+  type JobsQueuePort,
+  type ScheduledWorkspaceJobData,
 } from "../src/routes/jobs"
 
 afterEach(() => {
@@ -116,7 +123,7 @@ describe("nextRunAtMs", () => {
 
 // ── Registry + PendingSlotManager lifecycle ──────────────────────────────────
 
-function makeRegistry(overrides: { now?: () => number } = {}) {
+function makeRegistry(overrides: { now?: () => number; queue?: JobsQueuePort } = {}) {
   const persistence = createInMemorySlotPersistence()
   const registry = createJobsRegistry({
     persistence,
@@ -127,6 +134,21 @@ function makeRegistry(overrides: { now?: () => number } = {}) {
     ...overrides,
   })
   return { registry, persistence }
+}
+
+/** Mock JobsQueuePort recording every enqueue. */
+function makeQueue(overrides: Partial<JobsQueuePort> = {}) {
+  const added: ScheduledWorkspaceJobData[] = []
+  const queue: JobsQueuePort & { added: ScheduledWorkspaceJobData[] } = {
+    available: true,
+    added,
+    add: async (data) => {
+      added.push(data)
+      return { id: `bull-${added.length}` }
+    },
+    ...overrides,
+  }
+  return queue
 }
 
 describe("jobs registry", () => {
@@ -253,6 +275,278 @@ describe("jobs registry", () => {
     const before = job.triggerCount
     await vi.advanceTimersByTimeAsync(5_000)
     expect((registry.get("job_test-1") as JobRecord).triggerCount).toBe(before)
+  })
+})
+
+// ── Payload validation ───────────────────────────────────────────────────────
+
+describe("validateJobPayload", () => {
+  it("treats absent payloads as record-only", () => {
+    expect(validateJobPayload(undefined)).toEqual({ ok: true, value: undefined })
+    expect(validateJobPayload(null)).toEqual({ ok: true, value: undefined })
+  })
+
+  it("accepts kind none and explicit workspace payloads", () => {
+    expect(validateJobPayload({ kind: "none" })).toMatchObject({ ok: true })
+    expect(
+      validateJobPayload({ kind: "workspace", message: "sweep the queue", source: "cron" }),
+    ).toMatchObject({ ok: true, value: { kind: "workspace", message: "sweep the queue" } })
+  })
+
+  it("rejects kind=workspace without a non-empty message", () => {
+    expect(validateJobPayload({ kind: "workspace" })).toMatchObject({ ok: false })
+    expect(validateJobPayload({ kind: "workspace", message: "   " })).toMatchObject({ ok: false })
+    expect(validateJobPayload({ kind: "workspace", message: 42 })).toMatchObject({ ok: false })
+  })
+
+  it("rejects unknown kinds and non-object payloads", () => {
+    expect(validateJobPayload({ kind: "email" })).toMatchObject({ ok: false })
+    expect(validateJobPayload("record me")).toMatchObject({ ok: false })
+    expect(validateJobPayload(42)).toMatchObject({ ok: false })
+    expect(validateJobPayload(["workspace"])).toMatchObject({ ok: false })
+  })
+
+  it("keeps legacy kind-less payloads verbatim (backward compat)", () => {
+    const legacy = { workspaceId: "ws_1" }
+    const r = validateJobPayload(legacy)
+    expect(r).toEqual({ ok: true, value: legacy })
+  })
+
+  it("asDispatchPayload dispatches only valid workspace payloads", () => {
+    expect(asDispatchPayload({ kind: "workspace", message: "go" })).toEqual({
+      kind: "workspace",
+      message: "go",
+    })
+    expect(asDispatchPayload(undefined)).toBeNull()
+    expect(asDispatchPayload({ kind: "none" })).toBeNull()
+    expect(asDispatchPayload({ workspaceId: "ws_1" })).toBeNull()
+    expect(asDispatchPayload({ kind: "workspace" })).toBeNull()
+  })
+
+  it("rejects oversized or malformed source fields", () => {
+    expect(validateJobPayload({ kind: "workspace", message: "m", source: "" })).toMatchObject({
+      ok: false,
+    })
+    expect(
+      validateJobPayload({ kind: "workspace", message: "m", source: "x".repeat(201) }),
+    ).toMatchObject({ ok: false })
+  })
+})
+
+// ── Real dispatch (BullMQ workspace queue) ───────────────────────────────────
+
+describe("jobs real dispatch", () => {
+  it("enqueues a real workspace job on trigger and records the dispatch event", async () => {
+    const queue = makeQueue()
+    const { registry, persistence } = makeRegistry({ queue })
+    const created = registry.create({
+      name: "nightly",
+      schedule: "60000",
+      payload: { kind: "workspace", message: "rotate the reports", source: "ops" },
+    })
+    expect(created.ok).toBe(true)
+    const id = created.ok ? created.job.id : ""
+    const job = await registry.trigger(id)
+    // One real enqueue with the scheduler's message.
+    expect(queue.added).toHaveLength(1)
+    expect(queue.added[0]).toMatchObject({
+      workspaceId: scheduledWorkspaceId(id, 1),
+      mode: "commander",
+      message: "rotate the reports",
+      source: "ops",
+      jobId: id,
+    })
+    // Event log: trigger entry + dispatched entry with the BullMQ id.
+    expect(job?.events).toHaveLength(2)
+    expect(job?.events[1]).toMatchObject({
+      kind: "dispatched",
+      queued: true,
+      workspaceJobId: "bull-1",
+    })
+    // Slot bracket is balanced after the enqueue.
+    expect(persistence.keys()).toEqual([])
+    expect(await registry.slotFor(id)).toBeUndefined()
+  })
+
+  it("degrades honestly when the queue is not configured", async () => {
+    const { registry } = makeRegistry() // no queue passed
+    const created = registry.create({
+      name: "j",
+      schedule: "60000",
+      payload: { kind: "workspace", message: "hello" },
+    })
+    const id = created.ok ? created.job.id : ""
+    const job = await registry.trigger(id)
+    expect(job?.events).toHaveLength(2)
+    expect(job?.events[1]).toMatchObject({ kind: "dispatched", queued: false })
+    expect(job?.events[1]?.note).toContain("queued:false (queue unavailable)")
+    expect(job?.events[1]?.workspaceJobId).toBeUndefined()
+  })
+
+  it("degrades honestly when the queue port reports unavailable", async () => {
+    const queue = makeQueue({ available: false })
+    const { registry } = makeRegistry({ queue })
+    const created = registry.create({
+      name: "j",
+      schedule: "60000",
+      payload: { kind: "workspace", message: "hello" },
+    })
+    const id = created.ok ? created.job.id : ""
+    const job = await registry.trigger(id)
+    expect(queue.added).toHaveLength(0)
+    expect(job?.events[1]).toMatchObject({ kind: "dispatched", queued: false })
+  })
+
+  it("records dispatch-failed when BullMQ add rejects, slot still cleared", async () => {
+    const queue = makeQueue({
+      add: async () => {
+        throw new Error("redis connection refused")
+      },
+    })
+    const { registry, persistence } = makeRegistry({ queue })
+    const created = registry.create({
+      name: "j",
+      schedule: "60000",
+      payload: { kind: "workspace", message: "hello" },
+    })
+    const id = created.ok ? created.job.id : ""
+    const job = await registry.trigger(id)
+    expect(job?.events).toHaveLength(2)
+    expect(job?.events[1]).toMatchObject({
+      kind: "dispatch-failed",
+      error: "redis connection refused",
+    })
+    expect(job?.triggerCount).toBe(1)
+    expect(persistence.keys()).toEqual([])
+  })
+
+  it("holds the pending slot while the enqueue is in flight (exactly-once)", async () => {
+    let release!: (v: { id?: string }) => void
+    const gate = new Promise<{ id?: string }>((resolve) => {
+      release = resolve
+    })
+    const queue = makeQueue({ add: () => gate })
+    const { registry } = makeRegistry({ queue })
+    const created = registry.create({
+      name: "j",
+      schedule: "60000",
+      payload: { kind: "workspace", message: "hello" },
+    })
+    const id = created.ok ? created.job.id : ""
+    const pending = registry.trigger(id)
+    // Mid-flight: the slot is armed (crash here = recoverable evidence).
+    const slot = await registry.slotFor(id)
+    expect(slot?.scheduledAt).toBeTruthy()
+    release({ id: "bull-late" })
+    const job = await pending
+    expect(job?.events[1]).toMatchObject({
+      kind: "dispatched",
+      queued: true,
+      workspaceJobId: "bull-late",
+    })
+    expect(await registry.slotFor(id)).toBeUndefined()
+  })
+
+  it("keeps record-only jobs record-only even with a queue configured", async () => {
+    const queue = makeQueue()
+    const { registry } = makeRegistry({ queue })
+    const created = registry.create({ name: "j", schedule: "60000" })
+    const id = created.ok ? created.job.id : ""
+    const job = await registry.trigger(id)
+    expect(queue.added).toHaveLength(0)
+    expect(job?.events).toHaveLength(2)
+    expect(job?.events[1]).toMatchObject({ kind: "dispatched", queued: false })
+    expect(job?.events[1]?.note).toContain('payload.kind="none"')
+  })
+
+  it("legacy kind-less payloads never dispatch (backward compat)", async () => {
+    const queue = makeQueue()
+    const { registry } = makeRegistry({ queue })
+    const created = registry.create({
+      name: "j",
+      schedule: "60000",
+      payload: { workspaceId: "ws_1" },
+    })
+    expect(created.ok).toBe(true)
+    const id = created.ok ? created.job.id : ""
+    const job = await registry.trigger(id)
+    expect(queue.added).toHaveLength(0)
+    expect(job?.events[1]).toMatchObject({ kind: "dispatched", queued: false })
+  })
+
+  it("scheduled ticks enqueue workspace jobs exactly like manual triggers", async () => {
+    let t = new Date("2026-09-24T10:00:00.000Z").getTime()
+    const queue = makeQueue()
+    const { registry } = makeRegistry({ now: () => t, queue })
+    const created = registry.create({
+      name: "due",
+      schedule: "5000",
+      payload: { kind: "workspace", message: "tick work" },
+    })
+    expect(created.ok).toBe(true)
+    t += 6_000
+    expect(await registry.tick()).toBe(1)
+    expect(queue.added).toHaveLength(1)
+    const job = registry.get("job_test-1") as JobRecord
+    expect(job.events.map((e) => e.kind)).toEqual(["scheduled-trigger", "dispatched"])
+    expect(job.events[1]).toMatchObject({ queued: true, workspaceJobId: "bull-1" })
+  })
+
+  it("workspaceJobId derives a deterministic per-fire workspace id", () => {
+    expect(scheduledWorkspaceId("job_ab12", 3)).toBe("ws-sched-job_ab12-3")
+    expect(scheduledWorkspaceId("job_ab12", 4)).not.toBe(scheduledWorkspaceId("job_ab12", 3))
+  })
+
+  it("create rejects invalid payloads with a precise error (400 via handler)", async () => {
+    const { registry } = makeRegistry()
+    const h = jobsRoutes({ registry })
+    const bad = await h.create(
+      fakeContext({ json: { name: "x", schedule: "60000", payload: { kind: "email" } } }),
+    )
+    expect(bad.status).toBe(400)
+    expect((await bodyOf(bad as Response)).error).toMatch(/payload\.kind/)
+
+    const noMessage = await h.create(
+      fakeContext({ json: { name: "x", schedule: "60000", payload: { kind: "workspace" } } }),
+    )
+    expect(noMessage.status).toBe(400)
+    expect(await bodyOf(noMessage as Response)).toHaveProperty("error")
+
+    const ok = await h.create(
+      fakeContext({
+        json: {
+          name: "x",
+          schedule: "60000",
+          payload: { kind: "workspace", message: "run the sweep" },
+        },
+      }),
+    )
+    expect(ok.status).toBe(201)
+    const created = (await bodyOf(ok as Response)) as { payload: { kind: string } }
+    expect(created.payload).toEqual({ kind: "workspace", message: "run the sweep" })
+  })
+
+  it("trigger route returns dispatched events for workspace jobs", async () => {
+    const queue = makeQueue()
+    const { registry } = makeRegistry({ queue })
+    const h = jobsRoutes({ registry })
+    const created = await h.create(
+      fakeContext({
+        json: {
+          name: "j",
+          schedule: "60000",
+          payload: { kind: "workspace", message: "via route" },
+        },
+      }),
+    )
+    const { id } = (await bodyOf(created as Response)) as { id: string }
+    const fired = await h.trigger(fakeContext({ param: { id } }))
+    expect(fired.status).toBe(200)
+    const payload = await bodyOf(fired as Response)
+    const job = payload.job as { events: Array<{ kind: string; queued?: boolean }> }
+    expect(job.events.map((e) => e.kind)).toEqual(["manual-trigger", "dispatched"])
+    expect(job.events[1]).toMatchObject({ queued: true, workspaceJobId: "bull-1" })
+    expect(queue.added[0]?.message).toBe("via route")
   })
 })
 
