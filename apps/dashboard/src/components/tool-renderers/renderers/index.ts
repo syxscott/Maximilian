@@ -193,4 +193,8 @@ export const RENDERERS: Record<string, ToolRendererDef> = {
 /** Every tool name with a dedicated renderer (test convenience). */
 export const RENDERED_TOOLS: string[] = Object.keys(RENDERERS)
 
+/** Field-verification matrix for the table (source-file audit, round 3). */
+export { RENDERER_FIELD_AUDIT, LOW_DENSITY_RENDERERS } from "./audit"
+export type { RendererDensity, RendererFieldAuditEntry } from "./audit"
+
 export { EDIT_INLINE_DIFF_MAX_LINES }

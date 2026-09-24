@@ -55,6 +55,19 @@
  * The domain dictionaries are registered here directly (the aggregator
  * in src/locales/index.ts is main-session-owned), which also lets us
  * assert zh/en key parity.
+ *
+ * The "round-3 field audit" completes the real-event verification pass:
+ * RENDERER_FIELD_AUDIT (renderers/audit.ts) maps every registry key's
+ * extracted fields to the real source they were checked against — the
+ * packages/tools/src input schemas, the core runtime passthrough
+ * (tool-integration.ts forwards ToolCall.input verbatim) and the workflow
+ * engine's payload shapes — and marks the sub-3-field bodies. The audit
+ * surfaced five mismatches, each fixed with fixtures here: permission's
+ * pattern row and bash's explicit-timeout row were dropped on otherwise-
+ * empty payloads, todo mis-read the runtime's fourth status ("cancelled",
+ * packages/core/src/types.ts TodoItem), create/save-workflow ignored the
+ * script + declared-args payload, and eval-workflow-snippet dropped the
+ * path form.
  */
 
 import { describe, it, expect, afterEach } from "vitest"
@@ -72,6 +85,10 @@ import {
 } from "../src/components/tool-renderers/registry"
 import { summarizeToolInput, toolInputRows } from "../src/components/tool-renderers/model"
 import { RENDERED_TOOLS, RENDERERS } from "../src/components/tool-renderers/renderers/index"
+import {
+  LOW_DENSITY_RENDERERS,
+  RENDERER_FIELD_AUDIT,
+} from "../src/components/tool-renderers/renderers/audit"
 import {
   extractWebfetch,
   extractSearch,
@@ -2657,7 +2674,7 @@ describe("remaining fixtures — create-workflow", () => {
   })
 
   it("an opaque payload degrades to the raw JSON preview", () => {
-    renderPair(toolStart("create-workflow", { script: "top secret" }), toolEnd("create-workflow"))
+    renderPair(toolStart("create-workflow", { opaque: 42 }), toolEnd("create-workflow"))
     expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
   })
 })
@@ -3502,5 +3519,265 @@ describe("completion fixtures — todo read/write", () => {
     setLocale("en-US")
     renderInput("cua-action", { action: "click", target: "#x" })
     expect(screen.getByTestId("tool-title")).toHaveTextContent("Computer action")
+  })
+})
+
+// ── round-3 field audit — RENDERER_FIELD_AUDIT over all 62 registry keys ────
+
+describe("renderer field audit — full verification matrix", () => {
+  it("covers exactly the RENDERERS keys — no renderer unaudited, no stale entry", () => {
+    expect(Object.keys(RENDERER_FIELD_AUDIT).sort()).toEqual(Object.keys(RENDERERS).sort())
+    expect(Object.keys(RENDERER_FIELD_AUDIT)).toHaveLength(62)
+  })
+
+  it("every entry maps each field to a real repo source with a density verdict", () => {
+    for (const [tool, entry] of Object.entries(RENDERER_FIELD_AUDIT)) {
+      const fieldKeys = Object.keys(entry.fields)
+      expect(fieldKeys.length, tool).toBeGreaterThan(0)
+      for (const [field, source] of Object.entries(entry.fields)) {
+        expect(field.length, `${tool}.${field}`).toBeGreaterThan(0)
+        expect(source, `${tool}.${field}`).toMatch(/^packages\/[a-z-]+\/src/)
+      }
+      expect(entry.source, tool).toMatch(/^packages\//)
+      expect(["full", "primary-plus-fallback", "schema-complete"], tool).toContain(entry.density)
+    }
+  })
+
+  it("the six core tools cite their packages/tools/src input schemas", () => {
+    const expected: Record<string, string> = {
+      bash: "packages/tools/src/bash.ts",
+      read: "packages/tools/src/read.ts",
+      glob: "packages/tools/src/glob.ts",
+      grep: "packages/tools/src/grep.ts",
+      permission: "packages/tools/src/permission-service.ts",
+      lsp: "packages/tools/src/lsp.ts",
+    }
+    for (const [tool, source] of Object.entries(expected)) {
+      expect(RENDERER_FIELD_AUDIT[tool]?.source, tool).toBe(source)
+      for (const source of Object.values(RENDERER_FIELD_AUDIT[tool]!.fields)) {
+        expect(source, tool).toBe(source)
+      }
+    }
+    // edit/write cite the file-change schemas too.
+    expect(RENDERER_FIELD_AUDIT.edit?.fields.path).toBe("packages/tools/src/edit.ts")
+    expect(RENDERER_FIELD_AUDIT.write?.fields.content).toBe("packages/tools/src/write.ts")
+  })
+
+  it("the workflow family cites the engine/evolution payload shapes", () => {
+    for (const tool of [
+      "create-workflow",
+      "save-workflow",
+      "amend-workflow",
+      "get-workflow-run",
+      "resume-workflow-run",
+      "get-workflow-run-situation",
+      "workflow-diagnostics",
+      "get-workflow-run-roster-card",
+    ]) {
+      expect(RENDERER_FIELD_AUDIT[tool]?.source, tool).toContain("packages/workflow-engine")
+    }
+    expect(RENDERER_FIELD_AUDIT["get-workflow-run"]?.fields.runId).toContain("workflow-engine")
+  })
+
+  it("todo's audit cites the runtime enum (status includes cancelled)", () => {
+    const todo = RENDERER_FIELD_AUDIT.todo
+    expect(todo?.source).toContain("packages/core/src/types.ts")
+    expect(todo?.fields.status).toContain("packages/core/src/types.ts")
+  })
+
+  it("marks exactly the sub-3-field bodies (primary + structured fallback)", () => {
+    expect(LOW_DENSITY_RENDERERS.sort()).toEqual(
+      [
+        "edit", // inline diff is the payload; file/replaceAll rows ride beside it
+        "todo", // count/summary rows + the normalized checklist
+        "todo-read",
+        "todo-write",
+        "skill", // schema-complete: the real surface is exactly { skill, args }
+        "exit-plan-mode", // plan document block + lines/prompts rows
+        "eval-workflow-snippet", // snippet block + timeout/assertion/path rows
+        "list-apps", // count row + numbered roster block (no input fields exist)
+      ].sort(),
+    )
+    for (const tool of LOW_DENSITY_RENDERERS) {
+      expect(RENDERERS[tool]?.Body, tool).toBeDefined()
+    }
+  })
+})
+
+// ── round-3 fixes — mismatches found by the audit, each with fixtures ───────
+
+describe("audit fixes — permission pattern field no longer dropped", () => {
+  it("a pattern-only payload renders the always-rule row (PermissionRequestInput)", () => {
+    const vm = extractPermission({ pattern: "rm -rf *" })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual(["toolRenderers.fields.pattern"])
+    expect(vm.rows[0]?.value).toBe("rm -rf *")
+  })
+
+  it("renders the pattern beside the event-level ids", () => {
+    renderPair(
+      toolStart("permission", { requestId: "req-4", pattern: "git push*" }),
+      toolEnd("permission"),
+    )
+    expect(rowValue("ID")).toBe("req-4")
+    expect(rowValue("Pattern")).toBe("git push*")
+  })
+})
+
+describe("audit fixes — bash explicit timeout-only payload", () => {
+  it("an explicit timeout is a schema field and renders its row", () => {
+    const vm = extractBash({ timeout: 5000 })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual(["toolRenderers.fields.timeout"])
+    expect(vm.rows[0]?.value).toBe("5000")
+    expect(extractBash({ workdir: "apps/dashboard" }).isEmpty).toBe(false)
+    expect(extractBash({ unrelated: true }).isEmpty).toBe(true)
+  })
+
+  it("event fixture: timeout-only input still shows the row, default omitted", () => {
+    renderPair(toolStart("bash", { timeout: 30_000 }), toolEnd("bash"))
+    expect(rowValue("Timeout")).toBe("30000")
+    expect(rowValue("Timeout (default)")).toBeUndefined()
+  })
+})
+
+describe("audit fixes — todo cancelled status (runtime TodoItem enum)", () => {
+  it("normalizes the fourth runtime status instead of mis-reading it as pending", () => {
+    const vm = extractTodo({
+      todos: [
+        { content: "superseded step", status: "cancelled" },
+        { content: "us spelling", status: "canceled" },
+        { content: "open step", status: "pending" },
+      ],
+    })
+    expect(vm.items.map((i) => i.status)).toEqual(["cancelled", "cancelled", "pending"])
+  })
+
+  it("renders the ✕ glyph with strikethrough and the localized label", () => {
+    renderPair(
+      toolStart("todo", {
+        todos: [
+          { content: "drop this", status: "cancelled" },
+          { content: "keep this", status: "pending" },
+        ],
+      }),
+      toolEnd("todo"),
+    )
+    const items = screen.getAllByTestId("todo-item")
+    expect(items[0]?.textContent).toContain("✕")
+    expect(items[0]?.querySelector("span[aria-label]")).toHaveAttribute("aria-label", "Cancelled")
+    expect(items[0]?.querySelector("span.line-through")).not.toBeNull()
+    expect(items[1]?.textContent).toContain("○")
+  })
+
+  it("localizes the cancelled label under zh-CN", () => {
+    setLocale("zh-CN")
+    renderPair(
+      toolStart("todo", { todos: [{ content: "放弃", status: "cancelled" }] }),
+      toolEnd("todo"),
+    )
+    expect(screen.getByTestId("todo-item").querySelector("span[aria-label]")).toHaveAttribute(
+      "aria-label",
+      "已取消",
+    )
+  })
+})
+
+describe("audit fixes — create-workflow carries script + declared args", () => {
+  it("script-only payloads render the source block instead of the JSON fallback", () => {
+    const vm = extractCreateWorkflow({ script: 'phase("build")\nreturn done' })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual(["toolRenderers.fields.lines"])
+    expect(vm.rows[0]?.value).toBe("2")
+    expect(vm.code?.text).toBe('phase("build")\nreturn done')
+    // args count lands on its own row; opaque payloads stay empty.
+    expect(
+      extractCreateWorkflow({ args: { pr: { type: "number" }, tag: {} } }).rows.some(
+        (r) => r.labelKey === "toolRenderers.fields.args",
+      ),
+    ).toBe(true)
+    expect(extractCreateWorkflow({ args: {} }).isEmpty).toBe(true)
+  })
+
+  it("event fixture: name + steps + script + args compose one body", () => {
+    renderPair(
+      toolStart("create-workflow", {
+        name: "pr-review",
+        steps: [{ ask: "review" }],
+        script: "const a = 1\nconst b = 2",
+        args: { pr: { type: "number" } },
+      }),
+      toolEnd("create-workflow", true, 30),
+    )
+    expect(rowValue("Name")).toBe("pr-review")
+    expect(rowValue("Steps")).toBe("1")
+    expect(rowValue("Lines")).toBe("2")
+    expect(rowValue("Args")).toBe("1")
+    // The script (not the numbered steps) takes the primary block.
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("const b = 2")
+  })
+
+  it("event fixture: whenToUse feeds the description row", () => {
+    renderPair(
+      toolStart("create-workflow", { name: "bench", whenToUse: "nightly benches" }),
+      toolEnd("create-workflow"),
+    )
+    expect(rowValue("Description")).toBe("nightly benches")
+  })
+})
+
+describe("audit fixes — save-workflow carries script + declared args", () => {
+  it("script and args extend the name/scope/description/force rows", () => {
+    const vm = extractSaveWorkflow({
+      name: "bench",
+      scope: "global",
+      script: 'log("hi")\nlog("bye")\nlog("end")',
+      args: { suite: { type: "string" } },
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.name",
+      "toolRenderers.fields.scope",
+      "toolRenderers.fields.lines",
+      "toolRenderers.fields.args",
+    ])
+    expect(vm.code?.text).toBe('log("hi")\nlog("bye")\nlog("end")')
+    expect(extractSaveWorkflow({ whenToUse: "reuse me" }).isEmpty).toBe(false)
+  })
+
+  it("event fixture: the saved script renders as the block with its line count", () => {
+    renderPair(
+      toolStart("save-workflow", { name: "nightly", script: "step one\nstep two\nstep three" }),
+      toolEnd("save-workflow", true, 12),
+    )
+    expect(rowValue("Name")).toBe("nightly")
+    expect(rowValue("Lines")).toBe("3")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("step three")
+    expect(screen.queryByTestId("tool-json-preview")).toBeNull()
+  })
+})
+
+describe("audit fixes — eval-workflow-snippet accepts the path form", () => {
+  it("a path-only snippet names its file instead of degrading to JSON", () => {
+    const vm = extractEvalWorkflowSnippet({ path: ".zcode/workflows/pr.dwf.ts", timeoutMs: 60_000 })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.timeout",
+      "toolRenderers.fields.path",
+    ])
+    expect(vm.headline).toBe(".zcode/workflows/pr.dwf.ts")
+    expect(vm.code).toBeUndefined()
+    expect(
+      extractEvalWorkflowSnippet({ snippetPath: "s.ts" }).rows.some((r) => r.value === "s.ts"),
+    ).toBe(true)
+  })
+
+  it("event fixture: code+path exclusivity keeps the code block primary", () => {
+    renderPair(
+      toolStart("eval-workflow-snippet", { code: "const a = 1", timeoutMs: 1000 }),
+      toolEnd("eval-workflow-snippet"),
+    )
+    expect(rowValue("Timeout")).toBe("1000")
+    expect(rowValue("Path")).toBeUndefined()
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("const a = 1")
   })
 })

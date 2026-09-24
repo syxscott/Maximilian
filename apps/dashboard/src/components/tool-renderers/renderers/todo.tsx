@@ -7,10 +7,10 @@
  * todo renderer — the todo-list surface shared by the todo / todo-read /
  * todo-write tool names. Beyond the count/summary rows the body renders
  * the NORMALIZED items (coordination.model.ts) as a real checklist:
- * status glyph (○ pending / ◐ in progress / ✓ completed), content text,
- * optional priority badge. The localized title follows the concrete tool
- * name; falls back to the generic JSON preview when the payload carries
- * no todo-like array.
+ * status glyph (○ pending / ◐ in progress / ✓ completed / ✕ cancelled),
+ * content text, optional priority badge. The localized title follows the
+ * concrete tool name; falls back to the generic JSON preview when the
+ * payload carries no todo-like array.
  */
 
 import { useLocale, t } from "@max/i18n"
@@ -24,6 +24,7 @@ const STATUS_GLYPHS: Record<TodoStatus, string> = {
   pending: "○",
   in_progress: "◐",
   completed: "✓",
+  cancelled: "✕",
 }
 
 function statusKey(status: TodoStatus): string {
@@ -49,7 +50,9 @@ function TodoRow({ item, index }: { item: TodoItem; index: number }) {
       </span>
       <span
         className={`min-w-0 flex-1 break-words ${
-          item.status === "completed" ? "text-muted-foreground line-through" : ""
+          item.status === "completed" || item.status === "cancelled"
+            ? "text-muted-foreground line-through"
+            : ""
         }`}
       >
         {item.content}

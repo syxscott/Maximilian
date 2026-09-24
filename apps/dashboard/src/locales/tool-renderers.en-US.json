@@ -151,6 +151,7 @@
   "toolRenderers.todo.status.pending": "Pending",
   "toolRenderers.todo.status.in_progress": "In progress",
   "toolRenderers.todo.status.completed": "Completed",
+  "toolRenderers.todo.status.cancelled": "Cancelled",
   "toolRenderers.todo.empty": "(empty list)",
   "toolRenderers.askQuestion.multiSelect": "multi-select",
   "toolRenderers.askQuestion.noText": "(no question text)",

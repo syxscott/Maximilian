@@ -39,7 +39,12 @@ import {
 
 // ── todo ─────────────────────────────────────────────────────────────────────
 
-export type TodoStatus = "pending" | "in_progress" | "completed"
+/**
+ * Status set mirrors the runtime TodoItem enum (packages/core/src/types.ts):
+ * pending | in_progress | completed | cancelled — "cancelled" was added in
+ * the round-3 field audit; an unknown spelling still lands on "pending".
+ */
+export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled"
 
 export interface TodoItem {
   content: string
@@ -58,6 +63,7 @@ function normalizeStatus(raw: unknown): TodoStatus {
   if (["in_progress", "in-progress", "inprogress", "active", "running", "current"].includes(s)) {
     return "in_progress"
   }
+  if (["cancelled", "canceled", "abandoned", "dropped"].includes(s)) return "cancelled"
   return "pending"
 }
 

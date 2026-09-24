@@ -84,16 +84,26 @@ export function extractCreateWorkflow(input: unknown): ToolViewModel {
   const name = pickStr(obj, ["name", "workflowName", "label", "title"])
   const description = pickStr(obj, ["description", "desc", "whenToUse"])
   const steps = pickArray(obj, ["steps", "phases", "stages", "asks"])
-  if (!name && !description && steps === undefined) return emptyVm()
+  // The script is the byte-identical source the engine journals its
+  // scriptHash over — the primary payload, shown as the clamped block
+  // (round-3 audit: it was previously dropped to the JSON fallback).
+  const script = pickStr(obj, ["script", "source"])
+  // Declared workflow arguments ({ name: { type, … } }) → key count.
+  const argsCount = Object.keys(asRecord(obj["args"])).length
+  if (!name && !description && steps === undefined && script === undefined && argsCount === 0) {
+    return emptyVm()
+  }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.name, name),
     row(FIELDS.description, description),
     steps === undefined ? undefined : row(FIELDS.steps, steps.length),
+    script === undefined ? undefined : row(FIELDS.lines, script.split("\n").length),
+    argsCount > 0 ? row(FIELDS.args, argsCount) : undefined,
   ]
   return vmFrom(
     rows.filter((r) => r !== undefined),
     oneLine(name ?? ""),
-    numberedBlock(steps ?? []),
+    script === undefined ? numberedBlock(steps ?? []) : { text: script, maxLines: 20 },
   )
 }
 
@@ -101,18 +111,33 @@ export function extractSaveWorkflow(input: unknown): ToolViewModel {
   const obj = asRecord(input)
   const name = pickStr(obj, ["name", "workflowName", "label", "title"])
   const scope = pickStr(obj, ["scope", "visibility"])
-  const description = pickStr(obj, ["description", "desc"])
+  // whenToUse is the facade's discovery alias for description.
+  const description = pickStr(obj, ["description", "desc", "whenToUse"])
   const force = pickBool(obj, ["force", "overwrite"])
-  if (!name && !scope && !description && force === undefined) return emptyVm()
+  const script = pickStr(obj, ["script", "source"])
+  const argsCount = Object.keys(asRecord(obj["args"])).length
+  if (
+    !name &&
+    !scope &&
+    !description &&
+    force === undefined &&
+    script === undefined &&
+    argsCount === 0
+  ) {
+    return emptyVm()
+  }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.name, name),
     row(FIELDS.scope, scope),
     row(FIELDS.description, description),
     force === undefined ? undefined : row(FIELDS.force, force ? "true" : "false", true),
+    script === undefined ? undefined : row(FIELDS.lines, script.split("\n").length),
+    argsCount > 0 ? row(FIELDS.args, argsCount) : undefined,
   ]
   return vmFrom(
     rows.filter((r) => r !== undefined),
     oneLine(name ?? ""),
+    script === undefined ? undefined : { text: script, maxLines: 20 },
   )
 }
 
@@ -252,20 +277,26 @@ export function extractGetWorkflowRunSituation(input: unknown): ToolViewModel {
 export function extractEvalWorkflowSnippet(input: unknown): ToolViewModel {
   const obj = asRecord(input)
   const code = pickStr(obj, ["code", "snippet", "script", "source"])
+  // code|path are exclusive (the facade takes one or the other) — a
+  // path-only snippet still names its file (round-3 audit addition).
+  const path = pickStr(obj, ["path", "snippetPath", "snippet_path"])
   const timeout = pickNum(obj, ["timeoutMs", "timeout_ms", "timeout"])
   const assertionEntries = pickArray(obj, ["assertions", "expects", "checks"])
   const assertions =
     assertionEntries !== undefined
       ? assertionEntries.length
       : pickNum(obj, ["assertionCount", "assertion_count", "expectCount"])
-  if (!code && timeout === undefined && assertions === undefined) return emptyVm()
+  if (!code && path === undefined && timeout === undefined && assertions === undefined) {
+    return emptyVm()
+  }
   const rows: Array<RendererRow | undefined> = [
     timeout === undefined ? undefined : row(FIELDS.timeout, timeout),
     assertions === undefined ? undefined : row(FIELDS.assertions, assertions),
+    path === undefined ? undefined : row(FIELDS.path, path, true),
   ]
   return vmFrom(
     rows.filter((r) => r !== undefined),
-    oneLine(code ?? ""),
+    oneLine(code ?? path ?? ""),
     codeBlock(obj, ["code", "snippet", "script", "source"]),
   )
 }

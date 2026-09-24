@@ -151,6 +151,7 @@
   "toolRenderers.todo.status.pending": "待处理",
   "toolRenderers.todo.status.in_progress": "进行中",
   "toolRenderers.todo.status.completed": "已完成",
+  "toolRenderers.todo.status.cancelled": "已取消",
   "toolRenderers.todo.empty": "（空列表）",
   "toolRenderers.askQuestion.multiSelect": "可多选",
   "toolRenderers.askQuestion.noText": "（无题干）",

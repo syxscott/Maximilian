@@ -66,7 +66,17 @@ export function extractBash(input: unknown): ToolViewModel {
   // Schema default when absent; clamped to the schema max when present.
   const timeout =
     rawTimeout === undefined ? BASH_DEFAULT_TIMEOUT_MS : Math.min(rawTimeout, BASH_MAX_TIMEOUT_MS)
-  if (command === undefined && description === undefined && workdir === undefined) return emptyVm()
+  // An explicit timeout IS a schema field — an timeout-only payload renders
+  // its row instead of degrading to the JSON fallback (same rule as the
+  // glob/grep limit fields).
+  if (
+    command === undefined &&
+    description === undefined &&
+    workdir === undefined &&
+    rawTimeout === undefined
+  ) {
+    return emptyVm()
+  }
   const rows = rowsOf([
     row(FIELDS.description, description),
     row(FIELDS.workdir, workdir, true),
@@ -165,6 +175,7 @@ export function extractPermission(input: unknown): ToolViewModel {
     tool === undefined &&
     target === undefined &&
     requestId === undefined &&
+    alwaysPattern === undefined &&
     timeoutMs === undefined
   ) {
     return emptyVm()
