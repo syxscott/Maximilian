@@ -10,6 +10,7 @@
     "splitter": "拖动调整大小",
     "empty": "没有打开的面板——先添加一个吧",
     "addPanel": "添加面板",
+    "resetLayout": "重置布局",
     "addPanelMenu": {
       "allDocked": "所有面板均已打开"
     }

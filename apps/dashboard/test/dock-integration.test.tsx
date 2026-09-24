@@ -14,14 +14,26 @@
  *     including into a fully-emptied dock (dock-empty state);
  *   - persisted documents rehydrate, and hand-edited layouts with
  *     unknown panel ids render without crashing.
+ *
+ * The workspace MAIN area is dock-hosted too (WorkspaceDockArea): the
+ * conversation is the shell dock's resident "chat" leaf — locked (no
+ * close affordance), re-inserted when a stale document lost it, and kept
+ * by the persisted document across reloads; the seven-panel sidebar
+ * stays an independent dock in the trailing column, and "Reset layout"
+ * restores both trees.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { getDictionary, setLocale } from "@max/i18n"
 import { applyDashboardDictionaries } from "../src/locales/index"
-import { flattenPanels, parseDockModel } from "../src/components/layout/dockModel"
-import { DOCK_LAYOUT_STORAGE_KEY } from "../src/components/layout/useDockLayout"
+import {
+  DOCK_MAIN_PANEL_ID,
+  createDefaultDockModel,
+  flattenPanels,
+  parseDockModel,
+} from "../src/components/layout/dockModel"
+import { DOCK_LAYOUT_STORAGE_KEY, useDockLayoutStore } from "../src/components/layout/useDockLayout"
 import {
   WORKSPACE_DOCK_STORAGE_KEY,
   WORKSPACE_PANELS,
@@ -29,6 +41,7 @@ import {
   createWorkspaceDockModel,
   useWorkspaceDockStore,
 } from "../src/components/layout/WorkspaceDockSidebar"
+import { WorkspaceDockArea } from "../src/components/layout/WorkspaceDockArea"
 
 // Register the aggregated dashboard dictionaries exactly like main.tsx so
 // t() resolves the layout.* keys (setup.ts pins the locale to en-US).
@@ -41,6 +54,12 @@ const resetStore = () =>
     maximizedId: null,
   })
 
+const resetShellStore = () =>
+  useDockLayoutStore.setState({
+    model: createDefaultDockModel(),
+    maximizedId: null,
+  })
+
 beforeEach(() => {
   for (const key of [WORKSPACE_DOCK_STORAGE_KEY, DOCK_LAYOUT_STORAGE_KEY]) {
     try {
@@ -50,6 +69,7 @@ beforeEach(() => {
     }
   }
   resetStore()
+  resetShellStore()
 })
 
 afterEach(() => {
@@ -198,5 +218,143 @@ describe("WorkspaceDockSidebar — dock residency", () => {
     // the raw id as the header title instead of throwing.
     expect(screen.getByTestId("dock-panel-ghost")).toBeTruthy()
     expect(screen.getByTestId("dock-header-ghost").textContent).toBe("ghost")
+  })
+})
+
+// ── WorkspaceDockArea — the shell dock hosts the main conversation grid ─────
+
+const renderArea = (props?: Partial<Parameters<typeof WorkspaceDockArea>[0]>) => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <WorkspaceDockArea
+        workspace={null}
+        events={[]}
+        live={false}
+        submitting={false}
+        onSubmit={() => {}}
+        {...props}
+      />
+    </QueryClientProvider>,
+  )
+}
+
+const shellIds = () => flattenPanels(useDockLayoutStore.getState().model.root).map((l) => l.id)
+
+describe("WorkspaceDockArea — dock engine hosts the main conversation grid", () => {
+  it("renders the conversation as the resident locked chat leaf (no close affordance)", () => {
+    renderArea()
+    // The chat leaf docks with its translated header and the real
+    // conversation column inside (composer textarea present).
+    expect(screen.getByTestId("dock-panel-chat")).toBeTruthy()
+    expect(screen.getByTestId("dock-header-chat").textContent).toBe("Conversation")
+    expect(screen.getByPlaceholderText(/enter your request/i)).toBeTruthy()
+    // Locked: the close affordance is gone, maximize still offered.
+    expect(screen.queryByTestId("dock-close-chat")).toBeNull()
+    expect(screen.getByTestId("dock-maximize-chat")).toBeTruthy()
+    // The default second leaf (timeline) docks beside it.
+    expect(screen.getByTestId("dock-panel-timeline")).toBeTruthy()
+    expect(DOCK_MAIN_PANEL_ID).toBe("chat")
+  })
+
+  it("re-inserts the resident leaf when a stale persisted document lacks it (pure transform)", () => {
+    localStorage.setItem(
+      DOCK_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        v: 1,
+        activeId: null,
+        root: { kind: "leaf", id: "timeline", titleKey: "layout.panel.timeline" },
+      }),
+    )
+    act(() => {
+      useDockLayoutStore.setState({
+        model: parseDockModel(JSON.parse(localStorage.getItem(DOCK_LAYOUT_STORAGE_KEY)!)),
+        maximizedId: null,
+      })
+    })
+    renderArea()
+    // Render-time ensureResidentLeaf: the conversation is back, in front.
+    expect(screen.getByTestId("dock-panel-chat")).toBeTruthy()
+    expect(screen.getByTestId("dock-panel-timeline")).toBeTruthy()
+    // The transform is pure — the store document stays untouched.
+    expect(shellIds()).toEqual(["timeline"])
+  })
+
+  it("closing the timeline leaf persists the shell layout and keeps the chat across a reload", () => {
+    const { unmount } = renderArea()
+    fireEvent.click(screen.getByTestId("dock-close-timeline"))
+    expect(shellIds()).toEqual(["chat"])
+    // The persisted document keeps the resident main leaf.
+    const persisted = flattenPanels(
+      parseDockModel(JSON.parse(localStorage.getItem(DOCK_LAYOUT_STORAGE_KEY) as string)).root,
+    ).map((l) => l.id)
+    expect(persisted).toEqual(["chat"])
+    unmount()
+
+    // Simulated reload: the conversation survives, the closed leaf is gone.
+    act(() => {
+      useDockLayoutStore.setState({
+        model: parseDockModel(JSON.parse(localStorage.getItem(DOCK_LAYOUT_STORAGE_KEY)!)),
+        maximizedId: null,
+      })
+    })
+    renderArea()
+    expect(screen.getByTestId("dock-panel-chat")).toBeTruthy()
+    expect(screen.queryByTestId("dock-panel-timeline")).toBeNull()
+  })
+
+  it("Reset layout restores the default conversation grid and the full sidebar dock", () => {
+    renderArea()
+    // Scatter both trees first: close the timeline leaf + two sidebar leaves.
+    fireEvent.click(screen.getByTestId("dock-close-timeline"))
+    fireEvent.click(screen.getByTestId("dock-close-files"))
+    fireEvent.click(screen.getByTestId("dock-close-trajectory"))
+    expect(shellIds()).toEqual(["chat"])
+    expect(dockedIds()).toHaveLength(WORKSPACE_PANELS.length - 2)
+
+    fireEvent.click(screen.getByTestId("workspace-dock-reset-layout"))
+    // Shell dock: default 2-pane grid; sidebar dock: all seven panels.
+    expect(shellIds()).toEqual(["chat", "timeline"])
+    expect(dockedIds()).toEqual(WORKSPACE_PANELS.map((p) => p.id))
+    // Both reset trees are mirrored to their storage documents.
+    expect(
+      flattenPanels(
+        parseDockModel(JSON.parse(localStorage.getItem(DOCK_LAYOUT_STORAGE_KEY)!)).root,
+      ).map((l) => l.id),
+    ).toEqual(["chat", "timeline"])
+    expect(
+      flattenPanels(
+        parseDockModel(JSON.parse(localStorage.getItem(WORKSPACE_DOCK_STORAGE_KEY)!)).root,
+      ).map((l) => l.id),
+    ).toEqual(WORKSPACE_PANELS.map((p) => p.id))
+    // The restored chat leaf is locked again.
+    expect(screen.queryByTestId("dock-close-chat")).toBeNull()
+  })
+
+  it("the sidebar column toggles off without touching either dock tree", () => {
+    const view = renderArea()
+    expect(screen.getByTestId("workspace-sidebar-aside")).toBeTruthy()
+    expect(screen.getByTestId("workspace-dock-add-toggle")).toBeTruthy()
+
+    // The sidebarHidden pref path (pref store / keyboard toggle) hides the
+    // column; the shell dock keeps the resident conversation + timeline.
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspaceDockArea
+          workspace={null}
+          events={[]}
+          live={false}
+          submitting={false}
+          onSubmit={() => {}}
+          sidebarHidden
+        />
+      </QueryClientProvider>,
+    )
+    expect(screen.queryByTestId("workspace-sidebar-aside")).toBeNull()
+    expect(screen.queryByTestId("workspace-dock-add-toggle")).toBeNull()
+    expect(screen.getByTestId("dock-panel-chat")).toBeTruthy()
+    expect(screen.getByTestId("dock-panel-timeline")).toBeTruthy()
   })
 })

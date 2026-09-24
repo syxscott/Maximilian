@@ -3,8 +3,11 @@
     "notify": {
       "workspaceSwitchFailed": "Failed to open workspace {workspaceId}",
       "steeringRejected": "Steering rejected — the run continues without it",
+      "steeringApplied": "Steering applied to {task}",
       "permissionFailed": "Failed to deliver the permission decision",
       "jobCreated": "Job \"{name}\" created",
+      "jobTriggered": "Job \"{name}\" finished a run",
+      "jobRunFailed": "Job \"{name}\" run failed{error}",
       "dismiss": "Dismiss notification"
     },
     "onboarding": {

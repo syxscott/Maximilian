@@ -14,6 +14,7 @@
  */
 import { create } from "zustand"
 import { useShallow } from "zustand/react/shallow"
+import { useNotificationStore } from "@/stores/notificationStore"
 
 export type JobKind = "scheduled" | "background"
 export type JobState = "idle" | "running" | "succeeded" | "failed"
@@ -125,6 +126,24 @@ export function sortJobs(jobs: readonly JobRecord[], key: JobSortKey, asc: boole
   })
 }
 
+/**
+ * Did this snapshot record a FINISHED run for a previously-known job?
+ * True when the lastRun timestamp advanced or a running job reached a
+ * terminal state. Brand-new ids (first sighting = creation, notified by
+ * the jobs domain section) and unchanged re-injected snapshots are not
+ * trigger completions.
+ */
+export function jobRunFinished(prev: JobRecord | undefined, next: JobRecord): boolean {
+  if (!prev) return false
+  if (
+    next.lastRunAt !== undefined &&
+    (prev.lastRunAt === undefined || next.lastRunAt > prev.lastRunAt)
+  ) {
+    return true
+  }
+  return prev.state === "running" && (next.state === "succeeded" || next.state === "failed")
+}
+
 interface JobsState {
   jobs: JobRecord[]
   sortKey: JobSortKey
@@ -137,12 +156,35 @@ interface JobsState {
   clear: () => void
 }
 
-export const useJobsStore = create<JobsState>((set) => ({
+export const useJobsStore = create<JobsState>((set, get) => ({
   jobs: [],
   sortKey: "nextRunAt",
   sortAsc: true,
   filter: "all",
-  setJobs: (payload) => set({ jobs: parseJobs(payload) }),
+  setJobs: (payload) => {
+    const next = parseJobs(payload)
+    // Real trigger-completion notifications: diff the snapshot against
+    // the previous one and push through notificationStore (ToastHost
+    // + durable list) when a known job finished a run. Done outside the
+    // set() updater so the notification store write never nests.
+    const prevById = new Map(get().jobs.map((j) => [j.id, j]))
+    for (const job of next) {
+      if (!jobRunFinished(prevById.get(job.id), job)) continue
+      if (job.state === "failed") {
+        useNotificationStore.getState().push("error", "shell.notify.jobRunFailed", {
+          name: job.name,
+          // The {error} placeholder is always substituted (t() leaves
+          // unknown placeholders literal) — empty when no detail exists.
+          error: job.error ? `: ${job.error.slice(0, 120)}` : "",
+        })
+      } else {
+        useNotificationStore.getState().push("success", "shell.notify.jobTriggered", {
+          name: job.name,
+        })
+      }
+    }
+    set({ jobs: next })
+  },
   setSort: (key) =>
     set((s) => ({
       // Clicking the active column flips direction; a new column starts asc.

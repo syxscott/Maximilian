@@ -23,6 +23,8 @@ export interface DockPanelProps {
   active?: boolean
   /** Maximized panels show the restore affordance. */
   maximized?: boolean
+  /** false hides the close affordance (resident leaves, e.g. the chat). */
+  closable?: boolean
   onClose?: (id: string) => void
   onToggleMaximize?: (id: string) => void
   onFocus?: (id: string) => void
@@ -34,6 +36,7 @@ export function DockPanel({
   titleKey,
   active = false,
   maximized = false,
+  closable = true,
   onClose,
   onToggleMaximize,
   onFocus,
@@ -77,7 +80,7 @@ export function DockPanel({
             )}
           </button>
         )}
-        {onClose && (
+        {onClose && closable && (
           <button
             type="button"
             data-testid={`dock-close-${id}`}

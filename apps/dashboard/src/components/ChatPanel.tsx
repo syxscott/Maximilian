@@ -28,6 +28,7 @@ export function ChatPanel({
   onOpenPalette,
   events = [],
   live = false,
+  showHeading = true,
 }: {
   onSubmit: (message: string) => void
   /** Abort the in-flight submission + close the SSE stream. When omitted
@@ -51,6 +52,11 @@ export function ChatPanel({
   events?: RuntimeEvent[]
   /** true while a run is in flight (enables timeline auto-tail). */
   live?: boolean
+  /**
+   * Hide the inner heading when the panel is dock-hosted (the dock leaf
+   * header already names the panel). Defaults to true for standalone use.
+   */
+  showHeading?: boolean
 }) {
   useLocale()
   const chatSchema = z.object({
@@ -126,7 +132,9 @@ export function ChatPanel({
     >
       {/* Main conversation column */}
       <div className="flex flex-col h-full min-w-0">
-        <h2 className="text-lg font-semibold mb-2 text-foreground">{t("chat.title")}</h2>
+        {showHeading && (
+          <h2 className="text-lg font-semibold mb-2 text-foreground">{t("chat.title")}</h2>
+        )}
 
         {!workspace && (
           <div className="mb-2">

@@ -13,7 +13,6 @@ import { useHealth, useWorkspaces } from "@/lib/api/hooks"
 import { useLocale, t } from "@max/i18n"
 import { chatApi, openWorkspaceStream } from "./api"
 import type { Workspace, RuntimeEvent, WorkspaceStreamHandle, Health } from "./api"
-import { ChatPanel } from "./components/ChatPanel"
 import {
   LeaderboardTable,
   TruthReportPanel,
@@ -21,7 +20,7 @@ import {
 } from "./components/observability/panels"
 import { WorkflowRunsPanel } from "./components/WorkflowRunsPanel"
 import { WorkspaceTabStrip } from "./components/WorkspaceTabStrip"
-import { WorkspaceDockSidebar } from "./components/layout/WorkspaceDockSidebar"
+import { WorkspaceDockArea } from "./components/layout/WorkspaceDockArea"
 import { ThemeToggle } from "./components/ThemeToggle"
 import { LocaleSwitcher } from "./components/LocaleSwitcher"
 import { LiveUsagePill } from "./components/LiveUsagePill"
@@ -41,6 +40,7 @@ import {
 import { useSessionProjectionStore } from "./stores/sessionProjectionStore"
 import { useWorkspacePrefs, useWorkspacePrefsStore } from "./stores/workspacePrefsStore"
 import { useNotificationStore } from "./stores/notificationStore"
+import { notifySteeringApplied } from "./stores/runtimeNotifications"
 
 /** Prefs key for shell-level state before any workspace is active. */
 const SHELL_PREFS_KEY = "__app__"
@@ -410,6 +410,12 @@ export function App() {
                 next.delete(requestId)
                 return next
               })
+            } else if (ev.type === "steering-applied") {
+              // Real notification (notificationStore → ToastHost): a
+              // steering wave landed on the running task(s). The timeline
+              // already logs it; the durable notification makes it visible
+              // outside the workspace tab too.
+              notifySteeringApplied(ev.taskIds ?? ev.taskId)
             }
           } else if (data.type === "done") {
             // Tear the stream down. The fetch+ReadableStream impl does
@@ -709,32 +715,29 @@ export function App() {
         <main className="flex-1 overflow-auto p-6">
           <TabsContent value="workspace">
             <div className="h-[calc(100vh-8rem)] rounded-lg border border-border bg-card overflow-hidden">
-              <ChatPanel
+              {/* The workspace main area is the shell dock: the
+                  conversation (submit / stop / mention / drafts) is the
+                  resident "chat" leaf — never closable, re-inserted when
+                  a stale persisted document lost it — with the live
+                  timeline as the second default leaf. The seven-panel
+                  sidebar dock keeps its independent persisted tree in the
+                  trailing column; sidebarHidden (pref / keyboard toggle)
+                  collapses that column without touching either tree. */}
+              <WorkspaceDockArea
+                workspace={workspace}
+                events={events}
+                live={submitting}
+                submitting={submitting}
                 onSubmit={handleSubmit}
                 onAbort={abortSubmission}
-                submitting={submitting}
-                workspace={workspace}
                 mentionSuggestions={mentionSuggestions}
                 onOpenProviders={() => setTab("providers")}
                 onOpenPalette={() => setCommandOpen(true)}
-                events={events}
-                live={submitting}
                 sidebarHidden={sidebarHidden}
-                sidebar={
-                  // The workspace sidebar is a dock-resident panel system:
-                  // agent/tasks/subagents/trajectory/files/sessions/artifacts
-                  // render as DockContainer leaves with stable ids, persisted
-                  // via useDockLayout; closed leaves come back through the
-                  // sidebar's add-panel menu.
-                  <WorkspaceDockSidebar
-                    workspace={workspace}
-                    events={events}
-                    parkedTaskIds={
-                      pendingPermissions.size > 0
-                        ? new Set(Array.from(pendingPermissions.values()).map((p) => p.taskId))
-                        : undefined
-                    }
-                  />
+                parkedTaskIds={
+                  pendingPermissions.size > 0
+                    ? new Set(Array.from(pendingPermissions.values()).map((p) => p.taskId))
+                    : undefined
                 }
               />
             </div>

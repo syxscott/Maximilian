@@ -22,6 +22,12 @@
  *   8. taskSelectionStore     ↔ TaskPanel click → TrajectoryPanel filter
  *   9. searchStore            ↔ AppCommandPalette recent history
  *  10. notificationStore      ↔ ToastHost render + dismiss
+ *  11. notificationStore      ↔ runtimeNotifications bridge: steering-applied
+ *                               stream events land a durable, rendered toast
+ *  12. jobsStore              ↔ snapshot diff → job trigger-completion
+ *                               notifications (success + failure, silent no-ops)
+ *  13. trajectoryStore        ↔ pane window knobs (windowSize/expanded)
+ *                               size the trajectory visible window
  */
 
 import { beforeAll, beforeEach, afterEach, describe, it, expect, vi } from "vitest"
@@ -73,6 +79,12 @@ import { useSearchStore, SEARCH_STORAGE_KEY } from "../src/stores/searchStore"
 import { useSettingsUiStore } from "../src/stores/settingsUiStore"
 import { useJobsStore } from "../src/stores/jobsStore"
 import { useNotificationStore } from "../src/stores/notificationStore"
+import { notifySteeringApplied } from "../src/stores/runtimeNotifications"
+import {
+  TRAJECTORY_WINDOW_DEFAULT,
+  useTrajectoryStore,
+  windowTrajectoryEntries,
+} from "../src/stores/trajectoryStore"
 
 // ── Harness ─────────────────────────────────────────────────────────────────
 
@@ -103,6 +115,7 @@ beforeEach(() => {
   useSettingsUiStore.getState().reset()
   useJobsStore.setState({ jobs: [], sortKey: "nextRunAt", sortAsc: true, filter: "all" })
   useNotificationStore.getState().clear()
+  useTrajectoryStore.getState().reset()
 })
 
 function renderWithQuery(ui: ReactElement) {
@@ -537,5 +550,157 @@ describe("notification wiring (ToastHost)", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// ── 11. notificationStore ↔ runtimeNotifications bridge (steering-applied) ──
+
+describe("steering wiring (runtime event → notificationStore → ToastHost)", () => {
+  it("a steering-applied stream event lands a durable notification that renders", () => {
+    // Same call the App-level SSE handler makes for ev.type === "steering-applied".
+    act(() => notifySteeringApplied(["t1", "t2"]))
+    const item = useNotificationStore
+      .getState()
+      .items.find((n) => n.messageKey === "shell.notify.steeringApplied")
+    expect(item?.kind).toBe("info")
+    expect(item?.params?.task).toBe("t1, t2")
+
+    // The ToastHost consumer renders the bridged notification.
+    render(<ToastHost />)
+    expect(screen.getByTestId("toast-info").textContent).toContain("t1, t2")
+  })
+
+  it("defensive param shaping: junk payloads degrade instead of rendering undefined", () => {
+    act(() => notifySteeringApplied(undefined))
+    expect(
+      useNotificationStore
+        .getState()
+        .items.find((n) => n.messageKey === "shell.notify.steeringApplied")?.params?.task,
+    ).toBe("?")
+    act(() => notifySteeringApplied(["  ", 42, "t9"]))
+    expect(
+      useNotificationStore.getState().items.find((n) => n.params?.task?.includes("t9"))?.params
+        ?.task,
+    ).toBe("t9")
+  })
+})
+
+// ── 12. jobsStore ↔ snapshot diff → trigger-completion notifications ────────
+
+describe("job trigger wiring (jobsStore snapshot diff → notificationStore)", () => {
+  it("a known job finishing a run notifies; failures use the error key", () => {
+    // First sighting = creation — no trigger notification (the jobs
+    // domain section owns the created-notification).
+    useJobsStore.getState().setJobs({
+      jobs: [{ id: "j1", name: "Nightly scrape", schedule: "* * * * *", state: "idle" }],
+    })
+    expect(
+      useNotificationStore
+        .getState()
+        .items.filter((n) => n.messageKey.startsWith("shell.notify.job")),
+    ).toEqual([])
+
+    // Trigger completed: lastRunAt advanced → success notification.
+    act(() => {
+      useJobsStore.getState().setJobs({
+        jobs: [
+          {
+            id: "j1",
+            name: "Nightly scrape",
+            schedule: "* * * * *",
+            state: "succeeded",
+            lastRunAt: 1_000,
+          },
+        ],
+      })
+    })
+    const done = useNotificationStore
+      .getState()
+      .items.find((n) => n.messageKey === "shell.notify.jobTriggered")
+    expect(done?.kind).toBe("success")
+    expect(done?.params?.name).toBe("Nightly scrape")
+
+    // A later failed run flips to the error notification with the detail.
+    act(() => {
+      useJobsStore.getState().setJobs({
+        jobs: [
+          {
+            id: "j1",
+            name: "Nightly scrape",
+            schedule: "* * * * *",
+            state: "failed",
+            lastRunAt: 2_000,
+            error: "boom",
+          },
+        ],
+      })
+    })
+    const failed = useNotificationStore
+      .getState()
+      .items.find((n) => n.messageKey === "shell.notify.jobRunFailed")
+    expect(failed?.kind).toBe("error")
+    expect(failed?.params?.error).toContain("boom")
+  })
+
+  it("unchanged snapshots and running → running transitions stay silent", () => {
+    const runningJob = {
+      id: "j2",
+      name: "Sync",
+      schedule: "* * * * *",
+      state: "running" as const,
+      lastRunAt: 5_000,
+    }
+    act(() => useJobsStore.getState().setJobs({ jobs: [runningJob] }))
+    const countAfterFirst = useNotificationStore.getState().items.length
+
+    // Re-injected identical snapshot (query refetch) — no new notification.
+    act(() => useJobsStore.getState().setJobs({ jobs: [runningJob] }))
+    expect(useNotificationStore.getState().items.length).toBe(countAfterFirst)
+
+    // A job with no prior record never notifies (creation, not completion).
+    act(() =>
+      useJobsStore.getState().setJobs({
+        jobs: [runningJob, { id: "j3", name: "Fresh", schedule: "@daily", state: "idle" }],
+      }),
+    )
+    expect(useNotificationStore.getState().items.length).toBe(countAfterFirst)
+  })
+})
+
+// ── 13. trajectoryStore ↔ trajectory pane window knobs ──────────────────────
+
+describe("trajectory window wiring (store knobs size the visible window)", () => {
+  const entries = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+  it("windowSize caps the visible tail; expanded lifts the cap", () => {
+    // Default window (50) shows everything the stream derived.
+    expect(windowTrajectoryEntries(entries, TRAJECTORY_WINDOW_DEFAULT, false)).toEqual(entries)
+    // The store's window knob drives the slice (replaces the pane's
+    // former in-component useState pair).
+    act(() => useTrajectoryStore.getState().setWindowSize(10))
+    expect(useTrajectoryStore.getState().windowSize).toBe(10)
+    expect(
+      windowTrajectoryEntries(entries, useTrajectoryStore.getState().windowSize, false),
+    ).toEqual([3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    // Expanding the pane shows every entry again.
+    act(() => useTrajectoryStore.getState().toggleExpanded())
+    expect(useTrajectoryStore.getState().expanded).toBe(true)
+    expect(
+      windowTrajectoryEntries(entries, useTrajectoryStore.getState().windowSize, true),
+    ).toEqual(entries)
+  })
+
+  it("junk window sizes clamp and reset restores the pane defaults", () => {
+    act(() => useTrajectoryStore.getState().setWindowSize(Number.NaN))
+    expect(useTrajectoryStore.getState().windowSize).toBe(TRAJECTORY_WINDOW_DEFAULT)
+    // Sub-floor requests clamp to the renderable minimum (10).
+    act(() => useTrajectoryStore.getState().setWindowSize(2))
+    expect(useTrajectoryStore.getState().windowSize).toBe(10)
+    expect(windowTrajectoryEntries(entries, 10, false).length).toBe(10)
+    act(() => useTrajectoryStore.getState().toggleExpanded())
+    act(() => useTrajectoryStore.getState().reset())
+    expect(useTrajectoryStore.getState().expanded).toBe(false)
+    expect(useTrajectoryStore.getState().windowSize).toBe(TRAJECTORY_WINDOW_DEFAULT)
+    expect(windowTrajectoryEntries(entries, TRAJECTORY_WINDOW_DEFAULT, false)).toEqual(entries)
   })
 })

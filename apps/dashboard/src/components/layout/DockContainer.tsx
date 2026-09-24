@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
 import {
   type DockDirection,
   type DockLeaf,
+  type DockModel,
   type DockNode,
   type DockSplit,
   findLeaf,
@@ -38,6 +39,18 @@ export interface DockContainerProps {
    * docks (e.g. the workspace sidebar) pass their own instance.
    */
   store?: DockLayoutStore
+  /**
+   * Leaf ids that never get the close affordance (resident leaves, e.g.
+   * the main conversation). The store action stays available to code,
+   * but the UI cannot remove a locked panel.
+   */
+  lockedPanelIds?: ReadonlySet<string>
+  /**
+   * Optional view transform applied to the store model before rendering
+   * (e.g. ensureResidentLeaf repairing a stale document). Pure — the
+   * store state itself is never written.
+   */
+  transformModel?: (model: DockModel) => DockModel
   className?: string
 }
 
@@ -50,6 +63,7 @@ interface NodeViewProps {
   onToggleMaximize: (id: string) => void
   onFocus: (id: string) => void
   onResizeSplit: (splitId: string, ratio: number) => void
+  lockedPanelIds?: ReadonlySet<string>
 }
 
 function LeafView({
@@ -60,6 +74,7 @@ function LeafView({
   onClose,
   onToggleMaximize,
   onFocus,
+  lockedPanelIds,
 }: {
   leaf: DockLeaf
   active: boolean
@@ -68,14 +83,18 @@ function LeafView({
   onClose: (id: string) => void
   onToggleMaximize: (id: string) => void
   onFocus: (id: string) => void
+  lockedPanelIds?: ReadonlySet<string>
 }) {
+  // Locked leaves drop the close affordance entirely (closable=false).
+  const closable = !(lockedPanelIds && lockedPanelIds.has(leaf.id))
   return (
     <DockPanel
       id={leaf.id}
       titleKey={leaf.titleKey}
       active={active}
       maximized={maximized}
-      onClose={onClose}
+      closable={closable}
+      onClose={closable ? onClose : undefined}
       onToggleMaximize={onToggleMaximize}
       onFocus={onFocus}
     >
@@ -95,6 +114,7 @@ function NodeView({ node, ...rest }: NodeViewProps) {
         onClose={rest.onClose}
         onToggleMaximize={rest.onToggleMaximize}
         onFocus={rest.onFocus}
+        lockedPanelIds={rest.lockedPanelIds}
       />
     )
   }
@@ -187,10 +207,17 @@ function SplitView({ node, ...rest }: { node: DockSplit } & Omit<NodeViewProps, 
   )
 }
 
-export function DockContainer({ renderPanel, store, className }: DockContainerProps) {
+export function DockContainer({
+  renderPanel,
+  store,
+  lockedPanelIds,
+  transformModel,
+  className,
+}: DockContainerProps) {
   // The shell dock is the default; scoped docks pass their own store.
   const dock = store ?? useDockLayoutStore
-  const model = useStore(dock, (s) => s.model)
+  const rawModel = useStore(dock, (s) => s.model)
+  const model = transformModel ? transformModel(rawModel) : rawModel
   const maximizedId = useStore(dock, (s) => s.maximizedId)
   const removePanel = useStore(dock, (s) => s.removePanel)
   const toggleMaximize = useStore(dock, (s) => s.toggleMaximize)
@@ -211,6 +238,7 @@ export function DockContainer({ renderPanel, store, className }: DockContainerPr
             onClose={removePanel}
             onToggleMaximize={toggleMaximize}
             onFocus={setActive}
+            lockedPanelIds={lockedPanelIds}
           />
         </div>
       )
@@ -242,6 +270,7 @@ export function DockContainer({ renderPanel, store, className }: DockContainerPr
         onToggleMaximize={toggleMaximize}
         onFocus={setActive}
         onResizeSplit={resizeSplit}
+        lockedPanelIds={lockedPanelIds}
       />
     </div>
   )

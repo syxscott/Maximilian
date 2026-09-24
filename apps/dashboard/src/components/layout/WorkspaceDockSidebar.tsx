@@ -15,7 +15,7 @@
  * wraps them.
  */
 import { useMemo, useState } from "react"
-import { ListPlus } from "lucide-react"
+import { ListPlus, RotateCcw } from "lucide-react"
 import { t, useLocale } from "@max/i18n"
 import type { RuntimeEvent, Workspace } from "@/api"
 import {
@@ -23,7 +23,7 @@ import {
   createStackedDockModel,
   flattenPanels,
 } from "@/components/layout/dockModel"
-import { createDockLayoutStore } from "@/components/layout/useDockLayout"
+import { createDockLayoutStore, useDockLayoutStore } from "@/components/layout/useDockLayout"
 import { DockContainer } from "@/components/layout/DockContainer"
 import { AgentPanel } from "@/components/AgentPanel"
 import { TaskPanel } from "@/components/TaskPanel"
@@ -82,6 +82,7 @@ export function WorkspaceDockSidebar({
   useLocale() // re-render on locale switches (leaf headers + menu)
   const model = useWorkspaceDockStore((s) => s.model)
   const openPanel = useWorkspaceDockStore((s) => s.openPanel)
+  const resetWorkspaceDock = useWorkspaceDockStore((s) => s.resetLayout)
   const [menuOpen, setMenuOpen] = useState(false)
   const closedPanels = useMemo(() => {
     const docked = new Set(flattenPanels(model.root).map((l) => l.id))
@@ -114,8 +115,25 @@ export function WorkspaceDockSidebar({
   return (
     <div data-testid="workspace-dock-sidebar" className="flex h-full min-h-0 flex-col gap-2">
       {/* Add-panel menu (top of the sidebar): lists every registered panel
-          that is not currently docked; picking one reopens its leaf. */}
-      <div className="relative flex shrink-0 items-center justify-end">
+          that is not currently docked; picking one reopens its leaf. Next
+          to it, "Reset layout" restores both persisted trees — the seven
+          registry panels here and the shell dock's default conversation
+          grid (chat | timeline) — and mirrors the reset to storage. */}
+      <div className="relative flex shrink-0 items-center justify-end gap-2">
+        <button
+          type="button"
+          data-testid="workspace-dock-reset-layout"
+          aria-label={t("layout.resetLayout")}
+          title={t("layout.resetLayout")}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          onClick={() => {
+            useDockLayoutStore.getState().resetLayout()
+            resetWorkspaceDock()
+          }}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          {t("layout.resetLayout")}
+        </button>
         <button
           type="button"
           data-testid="workspace-dock-add-toggle"

@@ -3,8 +3,11 @@
     "notify": {
       "workspaceSwitchFailed": "打开工作区 {workspaceId} 失败",
       "steeringRejected": "已拒绝转向指令，运行将继续",
+      "steeringApplied": "已向 {task} 应用转向指令",
       "permissionFailed": "权限决定发送失败",
       "jobCreated": "任务「{name}」已创建",
+      "jobTriggered": "任务「{name}」完成一次运行",
+      "jobRunFailed": "任务「{name}」运行失败{error}",
       "dismiss": "关闭通知"
     },
     "onboarding": {

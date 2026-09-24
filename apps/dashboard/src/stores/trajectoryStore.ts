@@ -35,6 +35,24 @@ export function clampWindowSize(size: number): number {
   return Math.min(TRAJECTORY_WINDOW_MAX, Math.max(TRAJECTORY_WINDOW_MIN, Math.round(size)))
 }
 
+/**
+ * Pure visible-window math for the trajectory pane: the store's
+ * windowSize caps how many of the derived entries the pane shows (the
+ * tail wins), the expanded flag lifts the cap entirely. This replaces
+ * the pane's former in-component useState pair (window slice + expand),
+ * so the visible window survives pane remounts and other surfaces (dock
+ * leaf headers, keyboard affordances) can drive the same knobs.
+ */
+export function windowTrajectoryEntries<T>(
+  entries: readonly T[],
+  windowSize: number,
+  expanded: boolean,
+): T[] {
+  if (expanded) return [...entries]
+  const size = clampWindowSize(windowSize)
+  return entries.slice(Math.max(0, entries.length - size))
+}
+
 /** Pure filter predicate — unknown task fields never match a non-all filter. */
 export function matchesFilter(
   task: { state?: unknown; label?: unknown },
@@ -54,6 +72,8 @@ interface TrajectoryState {
   stateFilter: TrajectoryStateFilter
   /** How many entries the visible window shows. */
   windowSize: number
+  /** Expanded pane shows every derived entry (window cap lifted). */
+  expanded: boolean
   /** The task whose timeline the pane is browsing (view-local). */
   selectedTaskId: string | null
   setQuery: (query: string) => void
@@ -61,6 +81,7 @@ interface TrajectoryState {
   setWindowSize: (size: number) => void
   /** Grow the window (the "show more" affordance) by a delta. */
   showMore: (delta: number) => void
+  toggleExpanded: () => void
   selectTask: (taskId: string | null) => void
   /** Reset query + filter back to defaults (window size and selection stay). */
   clearFilters: () => void
@@ -71,6 +92,7 @@ export const useTrajectoryStore = create<TrajectoryState>((set) => ({
   query: "",
   stateFilter: "all",
   windowSize: TRAJECTORY_WINDOW_DEFAULT,
+  expanded: false,
   selectedTaskId: null,
   setQuery: (query) => set({ query: query.slice(0, 300) }),
   setStateFilter: (filter) =>
@@ -80,6 +102,7 @@ export const useTrajectoryStore = create<TrajectoryState>((set) => ({
     set((s) => ({
       windowSize: clampWindowSize(s.windowSize + (Number.isFinite(delta) ? delta : 0)),
     })),
+  toggleExpanded: () => set((s) => ({ expanded: !s.expanded })),
   selectTask: (taskId) => set({ selectedTaskId: taskId === "" ? null : taskId }),
   clearFilters: () => set({ query: "", stateFilter: "all" }),
   reset: () =>
@@ -87,6 +110,7 @@ export const useTrajectoryStore = create<TrajectoryState>((set) => ({
       query: "",
       stateFilter: "all",
       windowSize: TRAJECTORY_WINDOW_DEFAULT,
+      expanded: false,
       selectedTaskId: null,
     }),
 }))
@@ -99,5 +123,7 @@ export const useTrajectoryFilter = (): TrajectoryStateFilter =>
   useTrajectoryStore((s) => s.stateFilter)
 
 export const useTrajectoryWindowSize = (): number => useTrajectoryStore((s) => s.windowSize)
+
+export const useTrajectoryExpanded = (): boolean => useTrajectoryStore((s) => s.expanded)
 
 export const useTrajectoryTaskId = (): string | null => useTrajectoryStore((s) => s.selectedTaskId)

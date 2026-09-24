@@ -336,6 +336,36 @@ export function deserializeDockModel(raw: string | null | undefined): DockModel 
   return model.root === null ? createDefaultDockModel() : model
 }
 
+// ── Resident (locked) main leaf ─────────────────────────────────────────────
+
+/** The main conversation leaf — resident: the UI never offers to close it. */
+export const DOCK_MAIN_PANEL_ID = "chat"
+export const DOCK_MAIN_PANEL_TITLE_KEY = "layout.panel.chat"
+
+/**
+ * Guarantee the resident main leaf is present: stale or hand-edited
+ * persisted documents that lost it get it re-inserted as the visually
+ * leading panel (a horizontal split in front of the existing tree, or
+ * the whole tree when the dock was emptied). Serialization keeps the
+ * main leaf simply because the default/reset layouts contain it and the
+ * locked UI can never remove it — this helper only repairs documents
+ * that predate the lock. Pure: already-present (the common case) returns
+ * the same model reference, so render-time use never churns split ids.
+ */
+export function ensureResidentLeaf(
+  model: DockModel,
+  id: string = DOCK_MAIN_PANEL_ID,
+  titleKey: string = DOCK_MAIN_PANEL_TITLE_KEY,
+): DockModel {
+  if (findLeaf(model.root, id) !== null) return model
+  const leaf = makeLeaf(id, titleKey)
+  if (model.root === null) return { root: leaf, activeId: model.activeId ?? id }
+  return {
+    root: makeSplit("horizontal", leaf, model.root, 0.5),
+    activeId: model.activeId ?? id,
+  }
+}
+
 /**
  * Drag math: pointer position → split ratio. Horizontal splits map the
  * x offset inside the split's rect, vertical ones the y offset. Degenerate
