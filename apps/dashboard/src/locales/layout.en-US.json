@@ -1,0 +1,14 @@
+{
+  "layout": {
+    "panel": {
+      "close": "Close panel",
+      "maximize": "Maximize panel",
+      "restore": "Restore panel",
+      "chat": "Conversation",
+      "timeline": "Timeline"
+    },
+    "splitter": "Drag to resize",
+    "empty": "No panels open — add one to get started",
+    "addPanel": "Add panel"
+  }
+}

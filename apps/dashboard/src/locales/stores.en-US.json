@@ -22,6 +22,87 @@
       "eventCount": "{count} events",
       "runningCount": "{count} tasks running",
       "lastActivity": "Last activity: {time}"
+    },
+    "notification": {
+      "title": "Notifications",
+      "empty": "You're all caught up",
+      "markAllRead": "Mark all as read",
+      "clear": "Clear all",
+      "unreadCount": "{count} unread",
+      "remove": "Dismiss notification"
+    },
+    "search": {
+      "placeholder": "Search tasks, sessions, files…",
+      "scopeAll": "All",
+      "scopeTasks": "Tasks",
+      "scopeSessions": "Sessions",
+      "scopeFiles": "Files",
+      "scopeSettings": "Settings",
+      "recent": "Recent searches",
+      "recentEmpty": "No recent searches",
+      "clearRecent": "Clear search history",
+      "resultCount": "{count} results",
+      "staleResults": "Press Enter to search"
+    },
+    "settingsUi": {
+      "unsavedBadge": "Unsaved changes",
+      "discardAll": "Discard all",
+      "sectionGeneral": "General",
+      "sectionProviders": "Providers",
+      "sectionShortcuts": "Shortcuts",
+      "sectionPermissions": "Permissions",
+      "sectionAppearance": "Appearance"
+    },
+    "jobs": {
+      "title": "Jobs",
+      "empty": "No jobs registered",
+      "filterAll": "All",
+      "filterRunning": "Running",
+      "filterFailed": "Failed",
+      "sortByNextRun": "Next run",
+      "sortByLastRun": "Last run",
+      "sortByName": "Name",
+      "neverRun": "Never run",
+      "stateIdle": "Idle",
+      "stateRunning": "Running",
+      "stateSucceeded": "Succeeded",
+      "stateFailed": "Failed"
+    },
+    "trajectory": {
+      "queryPlaceholder": "Filter timeline entries…",
+      "filterAll": "All",
+      "filterRunning": "Running",
+      "filterCompleted": "Completed",
+      "filterFailed": "Failed",
+      "showMore": "Show more",
+      "windowSize": "Showing {count} entries",
+      "noTaskSelected": "Select a task to browse its timeline"
+    },
+    "workspacePrefs": {
+      "sidebarShow": "Show sidebar",
+      "sidebarHide": "Hide sidebar",
+      "sortRecent": "Sort by recent",
+      "sortAlpha": "Sort alphabetically",
+      "lastVisited": "Last visited: {time}"
+    },
+    "onboarding": {
+      "skipTour": "Skip tour",
+      "restartTour": "Restart tour",
+      "progress": "Step {current} of {total}",
+      "stepWelcome": "Welcome",
+      "stepConnect": "Connect the API",
+      "stepWorkspace": "Open a workspace",
+      "stepFirstTask": "Run your first task"
+    },
+    "connection": {
+      "status": {
+        "reachable": "Connected",
+        "degraded": "Degraded",
+        "unreachable": "Offline"
+      },
+      "lastError": "Last error: {message}",
+      "retryCount": "{count} retries",
+      "retry": "Retry now"
     }
   }
 }

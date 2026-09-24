@@ -1,0 +1,14 @@
+{
+  "layout": {
+    "panel": {
+      "close": "关闭面板",
+      "maximize": "最大化面板",
+      "restore": "还原面板",
+      "chat": "会话",
+      "timeline": "时间线"
+    },
+    "splitter": "拖动调整大小",
+    "empty": "没有打开的面板——先添加一个吧",
+    "addPanel": "添加面板"
+  }
+}
