@@ -84,6 +84,15 @@ export class PendingSlotManager {
   }
 
   /**
+   * Read the current pending slot for a key WITHOUT touching it —
+   * observability only (dashboards surface "fire armed" state). Never
+   * used for dispatch decisions.
+   */
+  async peek(key: string): Promise<PendingSlotRecord | undefined> {
+    return this.persistence.get(key)
+  }
+
+  /**
    * Recover a slot left by a dead owner. Rules (hermes):
    *  - a slot held by a LIVE owner (same machineId, recent heartbeat) is
    *    left alone;

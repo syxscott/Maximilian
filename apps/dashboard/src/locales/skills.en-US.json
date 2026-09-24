@@ -1,0 +1,27 @@
+{
+  "skills": {
+    "title": "Skill catalog",
+    "description": "Built-in capability catalog (static snapshot, grouped by ToolKind, with source provenance).",
+    "sourceNote": "Data source: static snapshot of the built-in tools in packages/tools; the backend does not yet expose a dynamic tool registry or SKILL.md (loadClaudeSkills) HTTP endpoint — the dynamic registry API is pending.",
+    "searchPlaceholder": "Search capabilities…",
+    "state": {
+      "noMatch": "No matching capabilities"
+    },
+    "kind": {
+      "read": "Read",
+      "edit": "Edit",
+      "search": "Search",
+      "execute": "Execute"
+    },
+    "tools": {
+      "bash": "Run commands in a controlled shell",
+      "bashStream": "Run commands with streamed output",
+      "read": "Read files and directory entries",
+      "write": "Write or create files",
+      "edit": "Make precise edits to files",
+      "glob": "Match file paths by pattern",
+      "grep": "Search file contents by regex",
+      "lsp": "Language-server diagnostics and symbol queries"
+    }
+  }
+}

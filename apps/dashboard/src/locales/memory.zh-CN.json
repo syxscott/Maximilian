@@ -1,0 +1,22 @@
+{
+  "memory": {
+    "title": "角色记忆",
+    "description": "只读查看各角色的记忆桶（数据源：GET /api/evolution/agents，facade.profiles）。",
+    "roleSelector": "选择角色",
+    "version": "版本",
+    "totalEntries": "记忆条目共 {count} 条",
+    "bucketEmpty": "该桶暂无条目",
+    "state": {
+      "loading": "加载中…",
+      "error": "加载失败",
+      "retry": "重试",
+      "empty": "还没有带记忆的角色档案"
+    },
+    "bucket": {
+      "userFeedback": "用户反馈",
+      "reviewSuggestions": "评审建议",
+      "commonErrors": "常见错误",
+      "goodExamples": "优秀示例"
+    }
+  }
+}

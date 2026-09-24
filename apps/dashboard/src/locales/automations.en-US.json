@@ -1,0 +1,43 @@
+{
+  "automations": {
+    "title": "Automations",
+    "description": "Manage jobs as automations: switch-style enable toggles, create dialog and delete confirmation.",
+    "summary": "{total} total · {enabled} enabled · {disabled} disabled",
+    "searchPlaceholder": "Search automations…",
+    "create": "New automation",
+    "createTitle": "New automation",
+    "createHint": "Creates an underlying job (schedule: cron expression or intervalMs milliseconds).",
+    "deleteTitle": "Delete automation",
+    "deleteHint": "Delete \"{name}\"? This cannot be undone.",
+    "deleteConfirm": "Delete",
+    "toggleNote": "Toggles are page-local only (the jobs API has no enabled field yet): a disabled automation hides manual triggers here; server-side scheduling is unaffected.",
+    "state": {
+      "loading": "Loading…",
+      "error": "Failed to load",
+      "retry": "Retry",
+      "empty": "No automations yet — create one with \"New automation\".",
+      "noMatch": "No matching automations"
+    },
+    "row": {
+      "fires": "Fires:",
+      "delete": "Delete",
+      "toggle": "Enable/disable"
+    },
+    "trigger": {
+      "cron": "Runs on a cron plan",
+      "interval": "Runs at a fixed interval",
+      "unknown": "Unknown schedule"
+    },
+    "form": {
+      "name": "Name",
+      "schedule": "Schedule",
+      "description": "Description (optional)",
+      "cancel": "Cancel",
+      "submit": "Create"
+    },
+    "errors": {
+      "nameRequired": "Name is required",
+      "scheduleRequired": "Schedule is required"
+    }
+  }
+}

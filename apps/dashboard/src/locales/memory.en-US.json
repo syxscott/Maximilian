@@ -1,0 +1,22 @@
+{
+  "memory": {
+    "title": "Role memory",
+    "description": "Read-only per-role memory buckets (source: GET /api/evolution/agents, facade.profiles).",
+    "roleSelector": "Select role",
+    "version": "Version",
+    "totalEntries": "{count} memory entries",
+    "bucketEmpty": "No entries in this bucket",
+    "state": {
+      "loading": "Loading…",
+      "error": "Failed to load",
+      "retry": "Retry",
+      "empty": "No role profiles with memory yet"
+    },
+    "bucket": {
+      "userFeedback": "User feedback",
+      "reviewSuggestions": "Review suggestions",
+      "commonErrors": "Common errors",
+      "goodExamples": "Good examples"
+    }
+  }
+}

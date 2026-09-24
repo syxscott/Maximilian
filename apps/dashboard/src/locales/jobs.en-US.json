@@ -1,0 +1,57 @@
+{
+  "jobs": {
+    "title": "Job scheduler",
+    "description": "In-process jobs with PendingSlot exactly-once semantics (executor v0: record-only dispatch, no real task execution yet).",
+    "searchPlaceholder": "Search name or expression…",
+    "sortLabel": "Sort by",
+    "sort": {
+      "createdAt": "Created",
+      "name": "Name",
+      "nextRunAt": "Next run"
+    },
+    "state": {
+      "loading": "Loading…",
+      "error": "Failed to load",
+      "retry": "Retry",
+      "empty": "No jobs yet — create the first one with the form below.",
+      "showing": "Showing {shown} of {total} jobs"
+    },
+    "kind": {
+      "cron": "cron",
+      "interval": "interval",
+      "unknown": "unknown"
+    },
+    "row": {
+      "nextRun": "Next:",
+      "fires": "Fires:",
+      "trigger": "Trigger",
+      "delete": "Delete"
+    },
+    "detail": {
+      "slot": "Execution slot:",
+      "lastTriggered": "Last triggered:",
+      "payload": "Payload:",
+      "payloadPresent": "attached",
+      "payloadNone": "none"
+    },
+    "slot": {
+      "pending": "pending",
+      "idle": "idle",
+      "unknown": "?"
+    },
+    "create": {
+      "title": "Create job",
+      "name": "Name",
+      "namePlaceholder": "nightly check",
+      "schedule": "Schedule (cron or intervalMs)",
+      "description": "Description (optional)",
+      "payload": "Payload JSON (optional)",
+      "submit": "Create"
+    },
+    "errors": {
+      "nameRequired": "Name is required",
+      "scheduleRequired": "Schedule is required",
+      "payloadInvalidJson": "Payload is not valid JSON"
+    }
+  }
+}

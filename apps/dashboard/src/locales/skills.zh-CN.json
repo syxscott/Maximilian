@@ -1,0 +1,27 @@
+{
+  "skills": {
+    "title": "技能目录",
+    "description": "系统内置能力清单（静态快照，按 ToolKind 分组，附来源文件）。",
+    "sourceNote": "数据源说明：本清单是 packages/tools 内置工具的静态快照；后端尚未提供动态工具注册表 / SKILL.md（loadClaudeSkills）的 HTTP 端点，动态注册表 API 待接。",
+    "searchPlaceholder": "搜索能力…",
+    "state": {
+      "noMatch": "没有匹配的能力"
+    },
+    "kind": {
+      "read": "读取",
+      "edit": "写入",
+      "search": "搜索",
+      "execute": "执行"
+    },
+    "tools": {
+      "bash": "在受控 shell 中执行命令",
+      "bashStream": "流式执行命令并实时回传输出",
+      "read": "读取文件与目录条目",
+      "write": "写入/创建文件",
+      "edit": "对文件做精确编辑",
+      "glob": "按模式匹配文件路径",
+      "grep": "按正则搜索文件内容",
+      "lsp": "语言服务器诊断与符号查询"
+    }
+  }
+}

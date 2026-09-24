@@ -1,0 +1,43 @@
+{
+  "automations": {
+    "title": "自动化",
+    "description": "把作业当作自动化管理：开关式启用、创建对话框与删除确认。",
+    "summary": "共 {total} 个 · 启用 {enabled} · 停用 {disabled}",
+    "searchPlaceholder": "搜索自动化…",
+    "create": "新建自动化",
+    "createTitle": "新建自动化",
+    "createHint": "创建一个底层作业（调度：cron 表达式或 intervalMs 毫秒数）。",
+    "deleteTitle": "删除自动化",
+    "deleteHint": "确定要删除 “{name}” 吗？该操作不可撤销。",
+    "deleteConfirm": "确认删除",
+    "toggleNote": "开关仅保存在本页（作业 API 暂无 enabled 字段）：停用后本界面不再提供手动触发，服务端调度不受影响。",
+    "state": {
+      "loading": "加载中…",
+      "error": "加载失败",
+      "retry": "重试",
+      "empty": "还没有自动化，点击“新建自动化”创建。",
+      "noMatch": "没有匹配的自动化"
+    },
+    "row": {
+      "fires": "触发：",
+      "delete": "删除",
+      "toggle": "启用/停用"
+    },
+    "trigger": {
+      "cron": "按 cron 计划触发",
+      "interval": "按固定间隔触发",
+      "unknown": "未知调度"
+    },
+    "form": {
+      "name": "名称",
+      "schedule": "调度",
+      "description": "描述（可选）",
+      "cancel": "取消",
+      "submit": "创建"
+    },
+    "errors": {
+      "nameRequired": "名称不能为空",
+      "scheduleRequired": "调度不能为空"
+    }
+  }
+}

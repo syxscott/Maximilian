@@ -1,0 +1,57 @@
+{
+  "jobs": {
+    "title": "作业调度",
+    "description": "基于 PendingSlot 恰好一次语义的进程内作业（执行器 v0：仅记录触发，不做真实任务派发）。",
+    "searchPlaceholder": "搜索名称或表达式…",
+    "sortLabel": "排序方式",
+    "sort": {
+      "createdAt": "按创建时间",
+      "name": "按名称",
+      "nextRunAt": "按下次执行"
+    },
+    "state": {
+      "loading": "加载中…",
+      "error": "加载失败",
+      "retry": "重试",
+      "empty": "还没有作业，用下方表单创建第一个。",
+      "showing": "显示 {shown} / {total} 个作业"
+    },
+    "kind": {
+      "cron": "cron",
+      "interval": "间隔",
+      "unknown": "未知"
+    },
+    "row": {
+      "nextRun": "下次：",
+      "fires": "触发次数：",
+      "trigger": "手动触发",
+      "delete": "删除"
+    },
+    "detail": {
+      "slot": "执行槽：",
+      "lastTriggered": "上次触发：",
+      "payload": "载荷：",
+      "payloadPresent": "已附带",
+      "payloadNone": "无"
+    },
+    "slot": {
+      "pending": "待执行",
+      "idle": "空闲",
+      "unknown": "未知"
+    },
+    "create": {
+      "title": "创建作业",
+      "name": "名称",
+      "namePlaceholder": "夜间巡检",
+      "schedule": "调度（cron 或 intervalMs）",
+      "description": "描述（可选）",
+      "payload": "载荷 JSON（可选）",
+      "submit": "创建"
+    },
+    "errors": {
+      "nameRequired": "名称不能为空",
+      "scheduleRequired": "调度表达式不能为空",
+      "payloadInvalidJson": "载荷不是合法的 JSON"
+    }
+  }
+}
