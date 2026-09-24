@@ -923,6 +923,13 @@ export interface WindowTurnsOpts {
   visibleTurns?: number
   /** Scroll anchor: pin the window head to this turn id. */
   anchorTurnId?: string | null
+  /**
+   * Precomputed turn depths (estimateTurnDepth over the FULL unit
+   * stream). The window may render a filtered unit subset (find mode) —
+   * regrouping that subset alone would re-derive nested depths from
+   * missing parents, so the caller can pin the full-stream depths.
+   */
+  depth?: Map<string, number>
 }
 
 export interface TurnWindow {
@@ -945,7 +952,7 @@ export interface TurnWindow {
  * matches no turn degrades to the tail window.
  */
 export function windowTurns(units: ConversationUnit[], opts: WindowTurnsOpts = {}): TurnWindow {
-  const turns = groupUnitsByTurn(units)
+  const turns = groupUnitsByTurn(units, opts.depth)
   if (turns.length === 0) return { turns: [], hiddenBefore: 0, anchorOffset: undefined }
 
   const requested = opts.visibleTurns
@@ -1269,6 +1276,35 @@ function textRowCount(text: string): number {
     .reduce((n, seg) => n + Math.max(1, Math.ceil(seg.length / TEXT_WRAP_COLUMNS)), 0)
 }
 
+/** Estimated pixel height of ONE unit; 0 for malformed entries. */
+function unitPixelHeight(unit: ConversationUnit, height: number): number {
+  if (unit === null || typeof unit !== "object") return 0
+  if (unit.kind === "text") return textRowCount(unit.text) * height
+  return (UNIT_ROW_WEIGHT[unit.kind] ?? 1) * height
+}
+
+/**
+ * Per-unit pixel heights, aligned 1:1 with the input stream — the
+ * virtualized-window budget a placeholder bar renders per card (its sum
+ * IS estimateVirtualHeight). Defensive: malformed entries contribute 0;
+ * a missing / non-finite / negative rowHeight falls back to
+ * VIRTUAL_ROW_HEIGHT.
+ */
+export function perItemHeight(
+  units: ConversationUnit[],
+  rowHeight: number = VIRTUAL_ROW_HEIGHT,
+): number[] {
+  const height =
+    typeof rowHeight === "number" && Number.isFinite(rowHeight) && rowHeight > 0
+      ? rowHeight
+      : VIRTUAL_ROW_HEIGHT
+  if (!Array.isArray(units)) return []
+  return units.map((unit) => unitPixelHeight(unit, height))
+}
+
+/** Total-pixel threshold above which the timeline surfaces the estimate. */
+export const VIRTUAL_HEIGHT_THRESHOLD = 8000
+
 /**
  * Total pixel height a virtualized conversation container needs:
  * per-unit row weights (text scales with wrapped-line estimate), times
@@ -1279,21 +1315,20 @@ export function estimateVirtualHeight(
   units: ConversationUnit[],
   rowHeight: number = VIRTUAL_ROW_HEIGHT,
 ): number {
-  const height =
-    typeof rowHeight === "number" && Number.isFinite(rowHeight) && rowHeight > 0
-      ? rowHeight
-      : VIRTUAL_ROW_HEIGHT
-  if (!Array.isArray(units)) return 0
-  let rows = 0
-  for (const unit of units) {
-    if (unit === null || typeof unit !== "object") continue
-    if (unit.kind === "text") {
-      rows += textRowCount(unit.text)
-    } else {
-      rows += UNIT_ROW_WEIGHT[unit.kind] ?? 1
-    }
-  }
-  return rows * height
+  return perItemHeight(units, rowHeight).reduce((sum, h) => sum + h, 0)
+}
+
+/**
+ * Human-readable pixel estimate for the windowing affordance: plain
+ * pixels under a thousand, one-decimal k-pixels above. Defensive:
+ * non-finite / non-positive input collapses to "0 px".
+ */
+export function formatEstimatedHeight(px: number): string {
+  if (!Number.isFinite(px) || px <= 0) return "0 px"
+  if (px < 1000) return `${Math.round(px)} px`
+  const k = px / 1000
+  const value = k >= 100 ? Math.round(k) : Math.round(k * 10) / 10
+  return `${value}k px`
 }
 
 // ── Presentation helpers (pure, shared by the components) ───────────────────

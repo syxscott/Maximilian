@@ -14,12 +14,23 @@
  *   via ToolCallBlock, retry waves collapsed) → completion/failure →
  *   review verdict.
  *
+ * The window is ConversationWindow (windowTurns): turn-unit windows
+ * hugging the tail, a "load earlier" affordance, and anchor semantics —
+ * the prev/next turn navigator SETS the anchor, so the window pins
+ * itself at the target turn (and can reach turns hidden above the
+ * current window, which the old scroll-by-index could not).
+ *
  * Retained surface capabilities, all driven by the pipeline:
  *   - find: buildConversationFindIndex interval matches, filtered to
  *     matching turns with <mark> ranges inside text units;
- *   - turn navigation: anchors on task turns, adjacentAnchor semantics;
- *   - windowing: newest 50 turns + "load earlier";
- *   - share: the pipeline's toConversationMarkdown.
+ *   - turn navigation: anchors on task turns, adjacentAnchor semantics
+ *     expressed as window anchors;
+ *   - live-tail: liveTailState frozen count on the jump affordance;
+ *   - share: the pipeline's toConversationMarkdown;
+ *   - virtual-height estimation: over VIRTUAL_HEIGHT_THRESHOLD the
+ *     load-earlier label carries the estimated pixel height and each
+ *     card renders a placeholder bar (perItemHeight) so the scrollbar
+ *     ratio stays real.
  *
  * Timeline discipline: newest at the bottom, auto-tail (sticks to the
  * bottom while the run is live unless the user scrolled up), and a
@@ -28,8 +39,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
-import { adjacentAnchor, turnAnchors, windowItems } from "@/lib/timeline-view"
-import { liveTailState } from "@/components/conversation/model"
+import { adjacentAnchor, turnAnchors } from "@/lib/timeline-view"
+import {
+  estimateTurnDepth,
+  estimateVirtualHeight,
+  formatEstimatedHeight,
+  liveTailState,
+  perItemHeight,
+  VIRTUAL_HEIGHT_THRESHOLD,
+} from "@/components/conversation/model"
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
 import type { RuntimeEvent, Workspace } from "@/api"
@@ -41,7 +59,7 @@ import {
   type ConversationUnit,
   type FindHit,
 } from "@/components/conversation/model"
-import { TurnGroup } from "@/components/conversation/TurnGroup"
+import { ConversationWindow } from "@/components/conversation/ConversationWindow"
 
 /** Unit-key → matched ranges inside the unit's text (find highlight). */
 function textHighlightMap(matches: ReturnType<typeof buildConversationFindIndex>) {
@@ -67,6 +85,14 @@ function matchedTurnIdSet(
   return new Set(matches.map((match) => units[match.unitIndex]?.turnId ?? match.turnId))
 }
 
+/** A turn's placeholder height: the sum of its units' estimates. */
+function turnEstimatedHeight(
+  turn: ReturnType<typeof groupUnitsByTurn>[number],
+  heights: ReturnType<typeof perItemHeight>,
+): number {
+  return heights.reduce((sum, h) => sum + h, 0)
+}
+
 export function ConversationTimeline({
   events,
   workspace,
@@ -81,11 +107,14 @@ export function ConversationTimeline({
   // The pipeline: events → paired/retry-folded units → turn groups.
   const units = useMemo(() => buildTurnFlowItems(events, workspace), [events, workspace])
   const turns = useMemo(() => groupUnitsByTurn(units), [units])
+  // Full-stream depths — pinned through windowing so a find-filtered
+  // window regroups without re-deriving nested depths from lost parents.
+  const turnDepth = useMemo(() => estimateTurnDepth(units), [units])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const [detached, setDetached] = useState(false)
   const [query, setQuery] = useState("")
-  const [visibleCount, setVisibleCount] = useState(50)
+  const [anchorTurnId, setAnchorTurnId] = useState<string | null>(null)
   const [cursor, setCursor] = useState(-1)
   const [showFind, setShowFind] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -100,25 +129,41 @@ export function ConversationTimeline({
   )
   const highlights = useMemo(() => textHighlightMap(findMatches), [findMatches])
 
-  const displayed = useMemo(
-    () => (query.trim() ? turns.filter((turn) => matchedTurnIds.has(turn.turnId)) : turns),
-    [turns, query, matchedTurnIds],
+  // The windowed stream: unfiltered, or cut down to matching turns under
+  // an active find (the window then windows only what matched).
+  const findActiveQuery = findActive(query)
+  const displayedUnits = useMemo(
+    () => (findActiveQuery ? units.filter((u) => matchedTurnIds.has(u.turnId)) : units),
+    [units, findActiveQuery, matchedTurnIds],
   )
-  const anchors = useMemo(() => turnAnchors(displayed), [displayed])
-  const { window: rendered, hiddenAbove } = useMemo(
-    () => windowItems(displayed, visibleCount),
-    [displayed, visibleCount],
+  const displayedTurns = useMemo(
+    () => groupUnitsByTurn(displayedUnits, turnDepth),
+    [displayedUnits, turnDepth],
   )
+  const anchors = useMemo(() => turnAnchors(displayedTurns), [displayedTurns])
 
-  const jumpTo = (index: number) => {
-    const el = scrollRef.current?.querySelector(`[data-timeline-index="${index}"]`)
-    el?.scrollIntoView({ behavior: "smooth", block: "start" })
-  }
+  // Virtual-height budget: the estimated pixel height of the render
+  // area, surfaced once it crosses the threshold — a hint on the
+  // windowing affordance plus a per-card placeholder bar so the
+  // scrollbar ratio stays real while only a window renders.
+  const estimatedHeight = useMemo(() => estimateVirtualHeight(displayedUnits), [displayedUnits])
+  const overHeightBudget = estimatedHeight > VIRTUAL_HEIGHT_THRESHOLD
+  const turnHeights = useMemo(() => {
+    if (!overHeightBudget) return undefined
+    const map = new Map<string, number>()
+    for (const turn of displayedTurns) {
+      map.set(turn.turnId, turnEstimatedHeight(turn, perItemHeight(turn.units)))
+    }
+    return map
+  }, [overHeightBudget, displayedTurns])
 
+  // Turn navigation IS anchor setting: the adjacent task anchor becomes
+  // the window anchor, so ConversationWindow pins its head there and
+  // scrolls it into view — reaching turns hidden above the window too.
   const navigateTurn = (direction: 1 | -1) => {
     const next = adjacentAnchor(anchors, cursor, direction)
     setCursor(next)
-    jumpTo(next)
+    setAnchorTurnId(displayedTurns[next]?.turnId ?? null)
   }
 
   const copyShare = async () => {
@@ -146,9 +191,11 @@ export function ConversationTimeline({
 
   useEffect(() => {
     const el = scrollRef.current
-    if (!el || !live || detached) return
+    // An anchored window scrolls to ITS anchor — never fight it with the
+    // tail snap.
+    if (!el || !live || detached || anchorTurnId !== null) return
     el.scrollTop = el.scrollHeight
-  }, [units.length, live, detached])
+  }, [units.length, live, detached, anchorTurnId])
 
   const onScroll = () => {
     const el = scrollRef.current
@@ -158,8 +205,6 @@ export function ConversationTimeline({
     if (atBottom) setFrozenAt(null)
     else if (frozenAt === null) setFrozenAt(units.length)
   }
-
-  const findActiveQuery = findActive(query)
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -225,26 +270,26 @@ export function ConversationTimeline({
         className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
         data-testid="conversation-timeline"
       >
-        {hiddenAbove > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-full text-xs"
-            onClick={() => setVisibleCount((v) => v + 50)}
-            data-testid="load-earlier"
-          >
-            ↑ {t("timeline.loadEarlier", { count: String(hiddenAbove) })}
-          </Button>
+        {turns.length > 0 && displayedUnits.length > 0 && (
+          <ConversationWindow
+            units={displayedUnits}
+            visibleTurns={50}
+            loadStep={50}
+            anchorTurnId={anchorTurnId}
+            onClearAnchor={() => setAnchorTurnId(null)}
+            turnDepth={turnDepth}
+            highlightTurnIds={findActiveQuery ? matchedTurnIds : undefined}
+            textHighlights={findActiveQuery ? highlights : undefined}
+            turnHeights={turnHeights}
+            loadEarlierHint={
+              overHeightBudget
+                ? t("conversation.window.estimatedHeight", {
+                    height: formatEstimatedHeight(estimatedHeight),
+                  })
+                : undefined
+            }
+          />
         )}
-        {rendered.map((turn, renderIndex) => (
-          <div key={turn.turnId} data-timeline-index={hiddenAbove + renderIndex}>
-            <TurnGroup
-              turn={turn}
-              highlighted={findActiveQuery && matchedTurnIds.has(turn.turnId)}
-              textHighlights={findActiveQuery ? highlights : undefined}
-            />
-          </div>
-        ))}
         {turns.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground">{t("timeline.empty")}</p>
         )}
@@ -257,6 +302,7 @@ export function ConversationTimeline({
           className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-md"
           onClick={() => {
             setDetached(false)
+            setAnchorTurnId(null)
             const el = scrollRef.current
             if (el) el.scrollTop = el.scrollHeight
           }}

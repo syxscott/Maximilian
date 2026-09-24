@@ -36,7 +36,8 @@
     "window": {
       "empty": "No turns to window yet",
       "loadEarlier": "Load {count} earlier turns",
-      "jumpLatest": "Back to latest"
+      "jumpLatest": "Back to latest",
+      "estimatedHeight": "≈ {height} est."
     },
     "textUnit": {
       "user": "Request",

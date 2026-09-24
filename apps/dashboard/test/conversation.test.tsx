@@ -24,14 +24,17 @@ import {
   estimateTurnDepth,
   estimateVirtualHeight,
   formatDuration,
+  formatEstimatedHeight,
   groupRetryWaves,
   groupUnitsByTurn,
   liveTailState,
   pairToolCalls,
+  perItemHeight,
   shareSections,
   textUnits,
   toConversationMarkdown,
   toShareMarkdown,
+  VIRTUAL_HEIGHT_THRESHOLD,
   windowTurns,
   type ConversationUnit,
   type ExtractedTextUnit,
@@ -873,7 +876,7 @@ describe("ConversationTimeline rendering", () => {
     expect(screen.queryByTestId("turn-group")).not.toBeInTheDocument()
   })
 
-  it("navigates task turns with prev/next around the task anchors", () => {
+  it("turn navigation sets the window anchor and clamps at the anchors", () => {
     let scrolled: Element[] = []
     const original = Element.prototype.scrollIntoView
     Element.prototype.scrollIntoView = function (this: Element) {
@@ -885,13 +888,64 @@ describe("ConversationTimeline rendering", () => {
       const prev = screen.getByRole("button", { name: "prev task" })
       fireEvent.click(next)
       fireEvent.click(next)
-      // Anchors are the task turns (indices 1 and 2 of the turn list).
-      expect(scrolled.map((el) => el.getAttribute("data-timeline-index"))).toEqual(["1", "2"])
+      // Navigation IS anchor setting: the window pins its head at the
+      // task anchor and scrolls THAT row into view (window indices are
+      // the anchor's full-list position).
+      expect(scrolled.map((el) => el.getAttribute("data-window-index"))).toEqual(["1", "2"])
       fireEvent.click(prev)
-      expect(scrolled.at(-1)?.getAttribute("data-timeline-index")).toBe("1")
+      expect(scrolled.at(-1)?.getAttribute("data-window-index")).toBe("1")
       // Clamped at the first anchor.
       fireEvent.click(prev)
-      expect(scrolled.at(-1)?.getAttribute("data-timeline-index")).toBe("1")
+      expect(scrolled.at(-1)?.getAttribute("data-window-index")).toBe("1")
+    } finally {
+      Element.prototype.scrollIntoView = original
+      scrolled = []
+    }
+  })
+
+  it("releasing the navigation anchor returns the window to tail-following", () => {
+    render(<ConversationTimeline events={flowEvents()} workspace={ws()} live={false} />)
+    const windowEl = () => screen.getByTestId("conversation-window")
+    fireEvent.click(screen.getByRole("button", { name: "next task" }))
+    expect(windowEl()).toHaveAttribute("data-anchor-offset", "1")
+    expect(windowEl().querySelectorAll("[data-window-index]")[0]).toHaveAttribute(
+      "data-window-index",
+      "1",
+    )
+    expect(screen.getByTestId("window-clear-anchor")).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("window-clear-anchor"))
+    expect(windowEl()).not.toHaveAttribute("data-anchor-offset")
+    expect(screen.queryByTestId("window-clear-anchor")).not.toBeInTheDocument()
+    // Tail window again: the first rendered row is full-list index 0.
+    expect(windowEl().querySelectorAll("[data-window-index]")[0]).toHaveAttribute(
+      "data-window-index",
+      "0",
+    )
+  })
+
+  it("anchor navigation reaches task turns hidden above the window", () => {
+    let scrolled: Element[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this)
+    }
+    try {
+      // 60 task turns — the tail window renders only the newest 50, so
+      // task-0 lives above the window. The first "next" targets it by
+      // anchor; the window must re-pin to materialize it.
+      const many: RuntimeEvent[] = Array.from({ length: 60 }, (_, i) =>
+        ev({ type: "task-complete", taskId: `task-${i}` }),
+      )
+      render(<ConversationTimeline events={many} workspace={null} live={false} />)
+      expect(screen.getAllByTestId("turn-group")[0]).toHaveAttribute("data-turn-id", "task-task-10")
+      fireEvent.click(screen.getByRole("button", { name: "next task" }))
+      expect(scrolled.at(-1)?.getAttribute("data-window-index")).toBe("0")
+      const groups = screen.getAllByTestId("turn-group")
+      expect(groups[0]).toHaveAttribute("data-turn-id", "task-task-0")
+      expect(groups).toHaveLength(50) // still a bounded window, re-pinned
+      fireEvent.click(screen.getByRole("button", { name: "next task" }))
+      expect(scrolled.at(-1)?.getAttribute("data-window-index")).toBe("1")
+      expect(screen.getAllByTestId("turn-group")[0]).toHaveAttribute("data-turn-id", "task-task-1")
     } finally {
       Element.prototype.scrollIntoView = original
       scrolled = []
@@ -921,16 +975,36 @@ describe("ConversationTimeline rendering", () => {
     expect(await screen.findByText(/copied/i)).toBeInTheDocument()
   })
 
-  it("windows to the newest 50 turns with a load-earlier affordance", () => {
+  it("windows to the newest 50 turns via ConversationWindow with load-earlier", () => {
     const many: RuntimeEvent[] = Array.from({ length: 60 }, (_, i) =>
       ev({ type: "task-complete", taskId: `task-${i}` }),
     )
     render(<ConversationTimeline events={many} workspace={null} live={false} />)
     expect(screen.getAllByTestId("turn-group")).toHaveLength(50)
-    expect(screen.getByTestId("load-earlier")).toHaveTextContent("Load 10 earlier entries")
-    fireEvent.click(screen.getByTestId("load-earlier"))
+    expect(screen.getByTestId("window-load-earlier")).toHaveTextContent("Load 10 earlier turns")
+    // Under the virtual-height budget: no hint on the affordance, no bars.
+    expect(screen.queryByTestId("window-height-spacer")).not.toBeInTheDocument()
+    expect(screen.getByTestId("window-load-earlier").textContent).not.toContain("est.")
+    fireEvent.click(screen.getByTestId("window-load-earlier"))
     expect(screen.getAllByTestId("turn-group")).toHaveLength(60)
-    expect(screen.queryByTestId("load-earlier")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("window-load-earlier")).not.toBeInTheDocument()
+  })
+
+  it("over the virtual budget it hints the estimated height and renders placeholder bars", () => {
+    // 400 one-line message turns → 400 × 28px = 11200px > 8000px budget.
+    const many = msgTurnEvents(400)
+    expect(estimateVirtualHeight(buildTurnFlowItems(many, null))).toBeGreaterThan(
+      VIRTUAL_HEIGHT_THRESHOLD,
+    )
+    render(<ConversationTimeline events={many} workspace={null} live={false} />)
+    // The windowing affordance carries the human-readable estimate…
+    expect(screen.getByTestId("window-load-earlier")).toHaveTextContent("≈ 11.2k px est.")
+    // …and every rendered card gets a placeholder bar of its item height,
+    // so the scrollbar ratio stays real while only a window renders.
+    const spacers = screen.getAllByTestId("window-height-spacer")
+    expect(spacers).toHaveLength(50)
+    expect(spacers[0]).toHaveAttribute("data-spacer-height", "28")
+    expect(spacers[0]).toHaveStyle({ height: "28px" })
   })
 })
 
@@ -1015,6 +1089,28 @@ describe("windowTurns", () => {
         anchorTurnId: 42 as unknown as string,
       }).anchorOffset,
     ).toBeUndefined()
+  })
+
+  it("honors caller-pinned depths instead of re-deriving them from the window", () => {
+    // commander → worker nest: full-stream depths are 1 and 2.
+    const nested = [
+      taskStart("commander", "general"),
+      taskStart("worker", "backend"),
+      toolStart("worker", "bash"),
+      toolEnd("worker", "bash", { ok: true }),
+      taskComplete("worker"),
+      taskComplete("commander"),
+    ]
+    const units = buildTurnFlowItems(nested, null)
+    const depth = estimateTurnDepth(units)
+    // Filtering to the worker's units alone would lose the open parent
+    // and re-derive depth 1 — the pinned map keeps 2.
+    const workerOnly = units.filter((u) => u.turnId === "task-worker")
+    const win = windowTurns(workerOnly, { visibleTurns: 5, depth })
+    expect(win.turns.map((t) => t.depth)).toEqual([2])
+    expect(windowTurns(workerOnly, { visibleTurns: 5 }).turns[0]?.depth).toBe(1)
+    // The unfiltered stream windows identically with the map passed.
+    expect(windowTurns(units, { visibleTurns: 2, depth }).turns.map((t) => t.depth)).toEqual([1, 2])
   })
 })
 
@@ -1294,6 +1390,78 @@ describe("estimateVirtualHeight", () => {
   })
 })
 
+// ── perItemHeight (per-unit virtual-height estimate) ────────────────────────
+
+describe("perItemHeight", () => {
+  it("aligns 1:1 with the input and sums to estimateVirtualHeight", () => {
+    const units = buildTurnFlowItems(
+      [
+        taskStart("t1"),
+        textEv("a note", "t1"),
+        toolStart("t1", "bash"),
+        toolEnd("t1", "bash", { ok: true }),
+      ],
+      null,
+    )
+    const heights = perItemHeight(units, 10)
+    expect(heights).toHaveLength(units.length)
+    expect(heights.reduce((sum, h) => sum + h, 0)).toBe(estimateVirtualHeight(units, 10))
+  })
+
+  it("scales text units by their wrapped-line estimate", () => {
+    const oneLine: ConversationUnit = {
+      kind: "text",
+      key: "a",
+      turnId: "user",
+      role: "user",
+      index: 0,
+      text: "short",
+    }
+    expect(perItemHeight([oneLine], 12)).toEqual([12])
+    const wrapped = { ...oneLine, text: "x".repeat(160) } // 2 wrapped rows
+    expect(perItemHeight([wrapped], 12)).toEqual([24])
+  })
+
+  it("weights structural units by kind (tool 2 rows, marker 1)", () => {
+    const heights = perItemHeight(
+      buildTurnFlowItems([taskStart("t1"), toolStart("t1", "bash"), toolEnd("t1", "bash")], null),
+      10,
+    )
+    expect(heights).toEqual([10, 20]) // task marker, folded tool
+  })
+
+  it("counts malformed entries as 0 without breaking alignment", () => {
+    const junk = [null, 42, "junk"] as unknown as ConversationUnit[]
+    expect(perItemHeight(junk, 28)).toEqual([0, 0, 0])
+    expect(perItemHeight(undefined as unknown as ConversationUnit[], 28)).toEqual([])
+  })
+
+  it("falls back to the default row height for invalid heights", () => {
+    const units = buildTurnFlowItems(msgTurnEvents(2), null)
+    expect(perItemHeight(units, -4)).toEqual([28, 28])
+    expect(perItemHeight(units, Number.NaN)).toEqual([28, 28])
+    expect(perItemHeight(units)).toEqual([28, 28])
+  })
+})
+
+// ── formatEstimatedHeight (human-readable pixel estimate) ───────────────────
+
+describe("formatEstimatedHeight", () => {
+  it("keeps sub-kilopixel estimates in plain pixels", () => {
+    expect(formatEstimatedHeight(0)).toBe("0 px")
+    expect(formatEstimatedHeight(28)).toBe("28 px")
+    expect(formatEstimatedHeight(999.6)).toBe("1000 px")
+  })
+
+  it("renders kilopixel estimates with one decimal and defends garbage", () => {
+    expect(formatEstimatedHeight(11200)).toBe("11.2k px")
+    expect(formatEstimatedHeight(8000)).toBe("8k px")
+    expect(formatEstimatedHeight(123456)).toBe("123k px")
+    expect(formatEstimatedHeight(-5)).toBe("0 px")
+    expect(formatEstimatedHeight(Number.NaN)).toBe("0 px")
+  })
+})
+
 // ── ConversationWindow rendering ────────────────────────────────────────────
 
 describe("ConversationWindow rendering", () => {
@@ -1313,6 +1481,29 @@ describe("ConversationWindow rendering", () => {
     const units = buildTurnFlowItems(msgTurnEvents(4), null)
     render(<ConversationWindow units={units} visibleTurns={3} loadStep={10} />)
     expect(screen.getByTestId("window-load-earlier")).toHaveTextContent("Load 1 earlier turns")
+  })
+
+  it("renders per-turn placeholder bars and the height hint from the timeline's budget", () => {
+    const units = buildTurnFlowItems(msgTurnEvents(4), null)
+    const turnHeights = new Map<string, number>(
+      groupUnitsByTurn(units).map((turn) => [turn.turnId, perItemHeight(turn.units)[0] ?? 0]),
+    )
+    render(
+      <ConversationWindow
+        units={units}
+        visibleTurns={3}
+        turnHeights={turnHeights}
+        loadEarlierHint="≈ 112 px est."
+      />,
+    )
+    // One bar per RENDERED turn (the window, not the full list), each
+    // sized to that turn's estimated height.
+    const spacers = screen.getAllByTestId("window-height-spacer")
+    expect(spacers).toHaveLength(3)
+    expect(spacers[0]).toHaveAttribute("data-spacer-height", "28")
+    expect(spacers[0]).toHaveStyle({ height: "28px" })
+    expect(spacers[0]).toHaveAttribute("aria-hidden", "true")
+    expect(screen.getByTestId("window-load-earlier")).toHaveTextContent("≈ 112 px est.")
   })
 
   it("shows the empty state for an empty stream", () => {

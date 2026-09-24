@@ -9,14 +9,16 @@
  * the newest turns by default, or a window pinned at `anchorTurnId`
  * (scroll-anchored deep dive). Older turns materialize through the
  * "load earlier" affordance; an anchor can be released back to
- * tail-following. All windowing arithmetic lives in the model — this
- * component only renders and interacts.
+ * tail-following. The timeline drives find (highlight turn ids + text
+ * ranges) and virtual-height placeholders through props; all windowing
+ * arithmetic lives in the model — this component only renders and
+ * interacts.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, t } from "@max/i18n"
 import { Button } from "@/components/ui/button"
-import type { ConversationUnit } from "./model"
+import type { ConversationUnit, FindHit } from "./model"
 import { DEFAULT_WINDOW_TURNS, windowTurns } from "./model"
 import { TurnGroup } from "./TurnGroup"
 
@@ -26,6 +28,11 @@ export function ConversationWindow({
   anchorTurnId = null,
   loadStep = 10,
   onClearAnchor,
+  turnDepth,
+  highlightTurnIds,
+  textHighlights,
+  turnHeights,
+  loadEarlierHint,
 }: {
   units: ConversationUnit[]
   /** Initial window size in turns (default 30). */
@@ -36,13 +43,25 @@ export function ConversationWindow({
   loadStep?: number
   /** Called when the user releases the anchor back to tail-following. */
   onClearAnchor?: () => void
+  /** Full-stream turn depths (see WindowTurnsOpts.depth). */
+  turnDepth?: Map<string, number>
+  /** Turn ids carrying a find match — amber border on their cards. */
+  highlightTurnIds?: Set<string>
+  /** Unit key → matched ranges inside the unit's text (find highlight). */
+  textHighlights?: Map<string, FindHit[]>
+  /** Turn id → estimated pixel height — renders a placeholder bar per
+   *  card so the scrollbar ratio stays real while windowed. */
+  turnHeights?: Map<string, number>
+  /** Appended to the load-earlier label (the estimated-height hint). */
+  loadEarlierHint?: string
 }) {
   useLocale()
   const [extra, setExtra] = useState(0)
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const { turns, hiddenBefore, anchorOffset } = useMemo(
-    () => windowTurns(units, { visibleTurns: visibleTurns + extra, anchorTurnId }),
-    [units, visibleTurns, extra, anchorTurnId],
+    () =>
+      windowTurns(units, { visibleTurns: visibleTurns + extra, anchorTurnId, depth: turnDepth }),
+    [units, visibleTurns, extra, anchorTurnId, turnDepth],
   )
 
   // Scroll the anchored turn into view whenever the anchor changes —
@@ -84,17 +103,34 @@ export function ConversationWindow({
           {t("conversation.window.loadEarlier", {
             count: String(Math.min(loadStep, hiddenBefore)),
           })}
+          {loadEarlierHint !== undefined && ` · ${loadEarlierHint}`}
         </Button>
       )}
-      {turns.map((turn, renderIndex) => (
-        <div
-          key={turn.turnId}
-          ref={anchorOffset !== undefined && renderIndex === 0 ? anchorRef : undefined}
-          data-window-index={hiddenBefore + renderIndex}
-        >
-          <TurnGroup turn={turn} />
-        </div>
-      ))}
+      {turns.map((turn, renderIndex) => {
+        const spacer = turnHeights?.get(turn.turnId)
+        return (
+          <div
+            key={turn.turnId}
+            ref={anchorOffset !== undefined && renderIndex === 0 ? anchorRef : undefined}
+            data-window-index={hiddenBefore + renderIndex}
+          >
+            <TurnGroup
+              turn={turn}
+              highlighted={highlightTurnIds?.has(turn.turnId) ?? false}
+              textHighlights={textHighlights}
+            />
+            {spacer !== undefined && (
+              <div
+                aria-hidden
+                className="pointer-events-none w-full rounded-sm bg-border/50"
+                style={{ height: spacer }}
+                data-testid="window-height-spacer"
+                data-spacer-height={spacer}
+              />
+            )}
+          </div>
+        )
+      })}
       {anchorOffset !== undefined && (
         <Button
           variant="secondary"
