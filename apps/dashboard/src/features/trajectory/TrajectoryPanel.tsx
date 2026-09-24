@@ -17,6 +17,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
 import { deriveTrajectory, type TrajectoryEntry } from "@/lib/agent-events"
+import {
+  useTrajectoryExpanded,
+  useTrajectoryToggleExpanded,
+  useTrajectoryWindowSize,
+  windowTrajectoryEntries,
+} from "@/stores/trajectoryStore"
 import type { RuntimeEvent } from "@/api"
 import { useSessionProjectionStore } from "@/stores/sessionProjectionStore"
 import { useTaskSelectionStore, useSelectedTaskId } from "@/stores/taskSelectionStore"
@@ -60,12 +66,14 @@ export function TrajectoryPanel({
   // this pane's timeline. Picking a task here records a "timeline" source;
   // picking "all" clears the shared selection.
   const selectedTaskId = useSelectedTaskId()
-  const [expanded, setExpanded] = useState(false)
+  const expanded = useTrajectoryExpanded()
+  const toggleExpanded = useTrajectoryToggleExpanded()
+  const windowSize = useTrajectoryWindowSize()
   const filter = selectedTaskId ?? "all"
 
   const entries = useMemo(() => {
     const all = deriveTrajectory(events, filter === "all" ? undefined : filter)
-    return expanded ? all : all.slice(-40)
+    return windowTrajectoryEntries(all, windowSize, expanded)
   }, [events, filter, expanded])
 
   const onFilterChange = (value: string) => {
@@ -132,7 +140,7 @@ export function TrajectoryPanel({
                 variant="ghost"
                 size="sm"
                 className="mt-2 h-6 text-xs"
-                onClick={() => setExpanded(!expanded)}
+                onClick={toggleExpanded}
               >
                 {expanded ? t("trajectory.collapse") : t("trajectory.expand")}
               </Button>

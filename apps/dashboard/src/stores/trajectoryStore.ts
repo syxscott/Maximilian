@@ -126,4 +126,7 @@ export const useTrajectoryWindowSize = (): number => useTrajectoryStore((s) => s
 
 export const useTrajectoryExpanded = (): boolean => useTrajectoryStore((s) => s.expanded)
 
+export const useTrajectoryToggleExpanded = (): (() => void) =>
+  useTrajectoryStore((s) => s.toggleExpanded)
+
 export const useTrajectoryTaskId = (): string | null => useTrajectoryStore((s) => s.selectedTaskId)
