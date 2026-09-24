@@ -15,5 +15,12 @@
   "deliverables.hiddenLines": "+{lines} 行",
   "deliverables.copied": "已复制 Markdown 到剪贴板",
   "deliverables.copyFailed": "剪贴板不可用——请在下方手动复制",
-  "deliverables.manualHint": "选中全部文本后复制"
+  "deliverables.manualHint": "选中全部文本后复制",
+  "deliverables.filterRole": "按角色过滤",
+  "deliverables.filterAll": "全部角色",
+  "deliverables.filterEmpty": "角色「{role}」暂无交付产出",
+  "deliverables.exportJson": "导出为 JSON",
+  "deliverables.jsonCopied": "已复制 JSON 到剪贴板",
+  "deliverables.reviewBadge": "评审 {score}",
+  "deliverables.taskReview": "任务评审 {score}"
 }

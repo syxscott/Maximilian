@@ -7,10 +7,14 @@
  * DeliverablesPanel — final task outputs as a first-class list (deepseek
  * ui-deliverables borrowing: deliverables are listed whether or not the
  * closing prose remembered them). Rows are grouped by agent role with a
- * collapsed 12-line output preview each, and an "export all as Markdown"
- * button that assembles the document in the browser and copies it via
- * navigator.clipboard — degrading to a visible manual-copy block when the
- * clipboard API is unavailable or refuses.
+ * collapsed 12-line output preview each, a role filter narrows the list
+ * to one agent role, and two export buttons assemble the documents in
+ * the browser (Markdown of the whole set, JSON of the filtered rows)
+ * copying via navigator.clipboard — degrading to a visible manual-copy
+ * block when the clipboard API is unavailable or refuses. Every row
+ * shows its review score when one can be associated (result
+ * `metadata.review`, else the workspace-level review) — no score, no
+ * badge, nothing invented.
  *
  * Data is either passed in via the `workspace` prop or fetched by
  * `workspaceId` through chatApi.getWorkspace (api.ts is the arch-mandated
@@ -29,14 +33,24 @@ import {
   canUseClipboard,
   copyText,
   deliverableStats,
+  filterByRole,
   groupByRole,
   previewLines,
+  reviewPerTask,
   reviewSummary,
   toDeliverableViews,
+  toDeliverablesJson,
   toDeliverablesMarkdown,
 } from "./model"
+import type { DeliverableView, TaskReviewLink } from "./model"
 
-type ExportState = "idle" | "copied" | "manual"
+type ExportFormat = "markdown" | "json"
+
+interface ExportResult {
+  format: ExportFormat
+  status: "copied" | "manual"
+  text: string
+}
 
 export function DeliverablesPanel({
   workspaceId,
@@ -49,8 +63,8 @@ export function DeliverablesPanel({
 }) {
   useLocale()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [exportState, setExportState] = useState<ExportState>("idle")
-  const [manualMarkdown, setManualMarkdown] = useState("")
+  const [roleFilter, setRoleFilter] = useState("")
+  const [exportResult, setExportResult] = useState<ExportResult | null>(null)
 
   const fetchEnabled =
     workspace === undefined && typeof workspaceId === "string" && workspaceId !== ""
@@ -63,9 +77,20 @@ export function DeliverablesPanel({
 
   const source = workspace !== undefined ? workspace : workspaceQuery.data
   const views = useMemo(() => toDeliverableViews(source), [source])
-  const groups = useMemo(() => groupByRole(views), [views])
-  const stats = useMemo(() => deliverableStats(views), [views])
+  const roles = useMemo(() => groupByRole(views).map((g) => g.role), [views])
+  const visibleViews = useMemo(() => filterByRole(views, roleFilter), [views, roleFilter])
+  const groups = useMemo(() => groupByRole(visibleViews), [visibleViews])
+  const stats = useMemo(() => deliverableStats(visibleViews), [visibleViews])
   const review = useMemo(() => reviewSummary(source), [source])
+  const reviewLinks = useMemo(
+    () => reviewPerTask(visibleViews, review && review.score !== null ? review.score : null),
+    [visibleViews, review],
+  )
+  const reviewByView = useMemo(() => {
+    const map = new Map<DeliverableView, TaskReviewLink>()
+    visibleViews.forEach((view, i) => map.set(view, reviewLinks[i]))
+    return map
+  }, [visibleViews, reviewLinks])
 
   const toggle = (key: string) => {
     setExpanded((prev) => {
@@ -76,16 +101,16 @@ export function DeliverablesPanel({
     })
   }
 
-  const exportAll = () => {
-    const markdown = toDeliverablesMarkdown(source)
-    setManualMarkdown(markdown)
+  const exportAs = (format: ExportFormat) => {
+    const text =
+      format === "markdown" ? toDeliverablesMarkdown(source) : toDeliverablesJson(visibleViews)
     if (!canUseClipboard()) {
-      setExportState("manual")
+      setExportResult({ format, status: "manual", text })
       return
     }
-    copyText(markdown).then(
-      () => setExportState("copied"),
-      () => setExportState("manual"),
+    copyText(text).then(
+      () => setExportResult({ format, status: "copied", text }),
+      () => setExportResult({ format, status: "manual", text }),
     )
   }
 
@@ -96,9 +121,25 @@ export function DeliverablesPanel({
           <CardTitle className="text-sm font-medium">{t("deliverables.title")}</CardTitle>
           <p className="text-xs text-muted-foreground">{t("deliverables.description")}</p>
         </div>
-        <Button size="sm" variant="outline" onClick={exportAll} disabled={views.length === 0}>
-          {t("deliverables.export")}
-        </Button>
+        <div className="flex shrink-0 gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => exportAs("markdown")}
+            disabled={views.length === 0}
+          >
+            {t("deliverables.export")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => exportAs("json")}
+            disabled={visibleViews.length === 0}
+            data-testid="deliverables-export-json"
+          >
+            {t("deliverables.exportJson")}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {workspace !== undefined ? null : workspaceQuery.isLoading ? (
@@ -138,14 +179,31 @@ export function DeliverablesPanel({
                   {t("deliverables.reviewIssues", { issues: review.issues })}
                 </Badge>
               )}
+              <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                {t("deliverables.filterRole")}
+                <select
+                  className="h-7 rounded-md border border-border-default bg-background px-1.5 text-xs"
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.currentTarget.value)}
+                  data-testid="deliverables-role-filter"
+                  aria-label={t("deliverables.filterRole")}
+                >
+                  <option value="">{t("deliverables.filterAll")}</option>
+                  {roles.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
-            {exportState === "copied" && (
+            {exportResult?.format === "markdown" && exportResult.status === "copied" && (
               <p className="text-xs text-muted-foreground" data-testid="deliverables-copied">
                 {t("deliverables.copied")}
               </p>
             )}
-            {exportState === "manual" && (
+            {exportResult?.format === "markdown" && exportResult.status === "manual" && (
               <div
                 className="space-y-1 rounded border border-amber-500/50 p-2"
                 data-testid="deliverables-manual"
@@ -155,7 +213,30 @@ export function DeliverablesPanel({
                 </p>
                 <Textarea
                   readOnly
-                  value={manualMarkdown}
+                  value={exportResult.text}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="min-h-32 font-mono text-[10px]"
+                  aria-label={t("deliverables.manualHint")}
+                />
+                <p className="text-[10px] text-muted-foreground">{t("deliverables.manualHint")}</p>
+              </div>
+            )}
+            {exportResult?.format === "json" && exportResult.status === "copied" && (
+              <p className="text-xs text-muted-foreground" data-testid="deliverables-json-copied">
+                {t("deliverables.jsonCopied")}
+              </p>
+            )}
+            {exportResult?.format === "json" && exportResult.status === "manual" && (
+              <div
+                className="space-y-1 rounded border border-amber-500/50 p-2"
+                data-testid="deliverables-json-manual"
+              >
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {t("deliverables.copyFailed")}
+                </p>
+                <Textarea
+                  readOnly
+                  value={exportResult.text}
                   onFocus={(e) => e.currentTarget.select()}
                   className="min-h-32 font-mono text-[10px]"
                   aria-label={t("deliverables.manualHint")}
@@ -164,62 +245,85 @@ export function DeliverablesPanel({
               </div>
             )}
 
-            <div className="space-y-3" data-testid="deliverables-groups">
-              {groups.map((group) => (
-                <div key={group.role} className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                      {group.role}
-                    </Badge>
-                    <span className="text-[10px] text-muted-foreground">
-                      {t("deliverables.roleCount", { count: group.items.length })}
-                    </span>
-                  </div>
-                  <ul className="space-y-1">
-                    {group.items.map((item, i) => {
-                      const key = `${group.role}:${i}`
-                      const open = expanded.has(key)
-                      const preview = previewLines(item.output)
-                      return (
-                        <li
-                          key={key}
-                          className="rounded border"
-                          data-testid={`deliverable-${item.taskId || i}`}
-                        >
-                          <button
-                            type="button"
-                            className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
-                            onClick={() => toggle(key)}
-                            aria-expanded={open}
+            {visibleViews.length === 0 ? (
+              <p className="text-xs text-muted-foreground" data-testid="deliverables-filter-empty">
+                {t("deliverables.filterEmpty", { role: roleFilter })}
+              </p>
+            ) : (
+              <div className="space-y-3" data-testid="deliverables-groups">
+                {groups.map((group) => (
+                  <div key={group.role} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                        {group.role}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        {t("deliverables.roleCount", { count: group.items.length })}
+                      </span>
+                    </div>
+                    <ul className="space-y-1">
+                      {group.items.map((item, i) => {
+                        const key = `${group.role}:${i}`
+                        const open = expanded.has(key)
+                        const preview = previewLines(item.output)
+                        return (
+                          <li
+                            key={key}
+                            className="rounded border"
+                            data-testid={`deliverable-${item.taskId || i}`}
                           >
-                            <span className="min-w-0 truncate font-mono text-xs">
-                              {item.taskId || `#${i + 1}`}
-                            </span>
-                            <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
-                              {open ? (
-                                t("deliverables.collapse")
-                              ) : (
-                                <>
-                                  {t("deliverables.expand")}
-                                  {preview.hidden > 0 && (
-                                    <span>
-                                      {t("deliverables.hiddenLines", { lines: preview.hidden })}
-                                    </span>
-                                  )}
-                                </>
-                              )}
-                            </span>
-                          </button>
-                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t px-2 py-1.5 text-xs">
-                            {open ? item.output : preview.text}
-                          </pre>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </div>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
+                              onClick={() => toggle(key)}
+                              aria-expanded={open}
+                            >
+                              <span className="min-w-0 truncate font-mono text-xs">
+                                {item.taskId || `#${i + 1}`}
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
+                                {(() => {
+                                  const link = reviewByView.get(item)
+                                  if (!link || link.score === null) return null
+                                  const badgeText =
+                                    link.source === "metadata"
+                                      ? t("deliverables.taskReview", { score: link.score })
+                                      : t("deliverables.reviewBadge", { score: link.score })
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className="h-4 px-1 text-[10px]"
+                                      data-testid={`deliverable-review-${item.taskId || i}`}
+                                    >
+                                      {badgeText}
+                                    </Badge>
+                                  )
+                                })()}
+                                {open ? (
+                                  t("deliverables.collapse")
+                                ) : (
+                                  <>
+                                    {t("deliverables.expand")}
+                                    {preview.hidden > 0 && (
+                                      <span>
+                                        {t("deliverables.hiddenLines", { lines: preview.hidden })}
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                              </span>
+                            </button>
+                            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t px-2 py-1.5 text-xs">
+                              {open ? item.output : preview.text}
+                            </pre>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </CardContent>

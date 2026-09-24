@@ -5,8 +5,9 @@
 
 /**
  * Deliverables feature domain (deepseek ui-deliverables borrowing):
- * per-task final outputs with role grouping, stats, and a pure-Markdown
- * export. Public surface only — consumers import from here, never from
+ * per-task final outputs with role grouping, stats, role filtering,
+ * Markdown + JSON exports, and per-deliverable review-score badges.
+ * Public surface only — consumers import from here, never from
  * domain internals.
  */
 
@@ -16,10 +17,13 @@ export {
   canUseClipboard,
   copyText,
   deliverableStats,
+  filterByRole,
   groupByRole,
   previewLines,
+  reviewPerTask,
   reviewSummary,
   toDeliverableViews,
+  toDeliverablesJson,
   toDeliverablesMarkdown,
 } from "./model"
 export type {
@@ -27,6 +31,8 @@ export type {
   DeliverableStats,
   DeliverableView,
   PreviewedOutput,
+  ReviewScoreSource,
   ReviewSummaryView,
   RoleGroup,
+  TaskReviewLink,
 } from "./model"

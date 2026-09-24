@@ -217,8 +217,10 @@ describe("deliverables render smoke", () => {
     renderWithQuery(<DeliverablesPanel workspace={WORKSPACE} />)
     expect(screen.getByTestId("deliverables-panel")).toBeTruthy()
     expect(screen.getByTestId("deliverables-stats").textContent).toContain("2 deliverable(s)")
-    expect(screen.getByText("planner")).toBeTruthy()
-    expect(screen.getByText("executor")).toBeTruthy()
+    // The role name appears as the group badge and again in the role
+    // filter's option — assert on the (at least) badge occurrence.
+    expect(screen.getAllByText("planner").length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText("executor").length).toBeGreaterThanOrEqual(1)
     // Collapsed: only the first 12 lines of the long output.
     expect(screen.getByTestId("deliverable-task-2").textContent).not.toContain("line 15")
     expect(screen.getByText("+3 lines")).toBeTruthy()

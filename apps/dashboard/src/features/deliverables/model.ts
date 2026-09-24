@@ -198,6 +198,79 @@ function statsLine(views: DeliverableView[]): string {
   return `_${stats.total} deliverable(s) across ${stats.roles} role(s), ${stats.tasks} task(s)._`
 }
 
+// ── Role filter / JSON export / per-task review links ──────────────────────
+
+/**
+ * Keep only the rows of one agent role. An empty (or whitespace-only)
+ * `role` means "no filter" and returns every view. Views are copied,
+ * never mutated; the input order is preserved.
+ */
+export function filterByRole(views: DeliverableView[], role: string): DeliverableView[] {
+  if (!hasText(role)) return [...views]
+  return views.filter((v) => v.agentRole === role)
+}
+
+/**
+ * Serialize the deliverable set as pretty-printed JSON for export.
+ * Pure and deterministic (no timestamps) so tests can pin the output;
+ * metadata passes through as-is.
+ */
+export function toDeliverablesJson(views: DeliverableView[]): string {
+  const payload = {
+    deliverables: views.map((v) => ({
+      taskId: v.taskId,
+      agentRole: v.agentRole,
+      output: v.output,
+      metadata: v.metadata ?? {},
+    })),
+    count: views.length,
+  }
+  return JSON.stringify(payload, null, 2) + "\n"
+}
+
+/** Where a deliverable's review score came from — disclosed in the UI. */
+export type ReviewScoreSource = "metadata" | "workspace" | null
+
+/** One deliverable row joined with its review score. */
+export interface TaskReviewLink {
+  taskId: string
+  score: number | null
+  source: ReviewScoreSource
+}
+
+/**
+ * Associate a review score with every deliverable. The score comes from
+ * the result's own `metadata.review` (object with a numeric `score`, or
+ * a bare number) when present; otherwise it falls back to the
+ * workspace-level review score passed by the caller (or
+ * `reviewSummary(workspace)?.score`). Rows without either carry a null
+ * score — the UI simply shows no badge, it never invents one.
+ */
+export function reviewPerTask(
+  views: DeliverableView[],
+  workspaceScore: number | null = null,
+): TaskReviewLink[] {
+  return views.map((view) => {
+    const meta = view.metadata
+    if (meta != null && typeof meta === "object" && !Array.isArray(meta)) {
+      const review = (meta as Record<string, unknown>).review
+      if (typeof review === "number" && Number.isFinite(review)) {
+        return { taskId: view.taskId, score: review, source: "metadata" }
+      }
+      if (review != null && typeof review === "object" && !Array.isArray(review)) {
+        const score = (review as Record<string, unknown>).score
+        if (typeof score === "number" && Number.isFinite(score)) {
+          return { taskId: view.taskId, score, source: "metadata" }
+        }
+      }
+    }
+    if (typeof workspaceScore === "number" && Number.isFinite(workspaceScore)) {
+      return { taskId: view.taskId, score: workspaceScore, source: "workspace" }
+    }
+    return { taskId: view.taskId, score: null, source: null }
+  })
+}
+
 // ── Clipboard (isolated so components stay testable) ────────────────────────
 
 /** Structural clipboard shape — loose so garbage runtimes degrade cleanly. */

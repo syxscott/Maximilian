@@ -15,5 +15,12 @@
   "deliverables.hiddenLines": "+{lines} lines",
   "deliverables.copied": "Markdown copied to clipboard",
   "deliverables.copyFailed": "Clipboard unavailable — copy manually below",
-  "deliverables.manualHint": "Select all text, then copy"
+  "deliverables.manualHint": "Select all text, then copy",
+  "deliverables.filterRole": "Filter by role",
+  "deliverables.filterAll": "All roles",
+  "deliverables.filterEmpty": "No deliverables for role \"{role}\"",
+  "deliverables.exportJson": "Export as JSON",
+  "deliverables.jsonCopied": "JSON copied to clipboard",
+  "deliverables.reviewBadge": "review {score}",
+  "deliverables.taskReview": "task review {score}"
 }
