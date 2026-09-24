@@ -1,8 +1,16 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { getDictionary, setLocale } from "@max/i18n"
 import { ChatPanel } from "../src/components/ChatPanel"
+import { applyDashboardDictionaries } from "../src/locales/index"
 import type { Workspace } from "../src/api"
+
+// The timeline renders conversation.* strings from the dashboard domain
+// dictionaries — register them exactly like main.tsx does (setup.ts pins
+// the locale to en-US).
+applyDashboardDictionaries(getDictionary("zh-CN") ?? {}, getDictionary("en-US") ?? {})
+setLocale("en-US")
 
 const baseWorkspace: Workspace = {
   id: "ws-1",
@@ -82,8 +90,9 @@ describe("ChatPanel", () => {
     }
     render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={ws} />)
     expect(screen.getByText(/Build a todo app/)).toBeInTheDocument()
-    expect(screen.getByText(/Execution complete/i)).toBeInTheDocument()
-    expect(screen.getByText(/9\/10/)).toBeInTheDocument()
+    // The timeline's review turn carries the verdict (pipeline wording).
+    expect(screen.getByText(/Review complete/i)).toBeInTheDocument()
+    expect(screen.getByText(/score 9/)).toBeInTheDocument()
   })
 
   it("shows error message when workspace failed", () => {

@@ -11,10 +11,11 @@
  * (subagent turns nest under their open parent).
  */
 
+import type { ReactNode } from "react"
 import { useLocale, t } from "@max/i18n"
 import { Badge } from "@/components/ui/badge"
 import { ToolCallBlock } from "@/components/tool-renderers/registry"
-import type { ConversationUnit, TurnModel } from "./model"
+import type { ConversationUnit, FindHit, TurnModel } from "./model"
 import { formatDuration } from "./model"
 import { RetryWaveGroup } from "./RetryWaveGroup"
 
@@ -95,7 +96,31 @@ function PermissionLine({ unit }: { unit: Extract<ConversationUnit, { kind: "per
   )
 }
 
-function TurnUnitView({ unit }: { unit: ConversationUnit }) {
+/**
+ * Render `text` with the find hits' occurrence ranges wrapped in
+ * <mark> — the interval semantics come straight from
+ * buildConversationFindIndex (start/end per field).
+ */
+function HighlightedText({ text, hits }: { text: string; hits: FindHit[] | undefined }) {
+  if (!hits || hits.length === 0) return <>{text}</>
+  const nodes: ReactNode[] = []
+  let cursor = 0
+  hits.forEach((hit, i) => {
+    if (hit.start > cursor) nodes.push(text.slice(cursor, hit.start))
+    nodes.push(<mark key={i}>{text.slice(hit.start, hit.end)}</mark>)
+    cursor = hit.end
+  })
+  if (cursor < text.length) nodes.push(text.slice(cursor))
+  return <>{nodes}</>
+}
+
+function TurnUnitView({
+  unit,
+  textHighlights,
+}: {
+  unit: ConversationUnit
+  textHighlights?: Map<string, FindHit[]>
+}) {
   switch (unit.kind) {
     case "task":
       // Turn-opening marker — the TurnGroup header above IS its render.
@@ -106,7 +131,7 @@ function TurnUnitView({ unit }: { unit: ConversationUnit }) {
           className={`whitespace-pre-wrap text-sm ${unit.role === "user" ? "text-foreground" : "text-foreground/90"}`}
           data-testid="turn-text"
         >
-          {unit.text}
+          <HighlightedText text={unit.text} hits={textHighlights?.get(unit.key)} />
         </p>
       )
     case "tool":
@@ -162,11 +187,21 @@ function TurnUnitView({ unit }: { unit: ConversationUnit }) {
   }
 }
 
-export function TurnGroup({ turn }: { turn: TurnModel }) {
+export function TurnGroup({
+  turn,
+  highlighted = false,
+  textHighlights,
+}: {
+  turn: TurnModel
+  /** Find-active marker — amber border on turns that contain a match. */
+  highlighted?: boolean
+  /** Unit key → matched ranges inside the unit's text (find highlight). */
+  textHighlights?: Map<string, FindHit[]>
+}) {
   useLocale()
   return (
     <section
-      className="rounded-lg border bg-card/60 p-3"
+      className={`rounded-lg border bg-card/60 p-3 ${highlighted ? "border-amber-500/60" : "border-border"}`}
       style={{ marginLeft: (turn.depth - 1) * 16 }}
       data-testid="turn-group"
       data-turn-id={turn.turnId}
@@ -195,7 +230,7 @@ export function TurnGroup({ turn }: { turn: TurnModel }) {
       {turn.units.length > 0 && (
         <div className="mt-2 space-y-1">
           {turn.units.map((unit) => (
-            <TurnUnitView key={unit.key} unit={unit} />
+            <TurnUnitView key={unit.key} unit={unit} textHighlights={textHighlights} />
           ))}
         </div>
       )}

@@ -4,21 +4,19 @@
 // Licensed under the MIT License. See LICENSE in the project root.
 
 /**
- * Model-layer tests for the command registry, the tool-renderer model
- * and the conversation-timeline projection (ZCode/opencode discipline:
- * the model is unit-tested, the presentation is not).
+ * Model-layer tests for the command registry and the tool-renderer
+ * model (ZCode/opencode discipline: the model is unit-tested, the
+ * presentation is not). The timeline projection tests live in
+ * timeline-view.test.ts (turn-unit pipeline semantics).
  */
 import { describe, it, expect } from "vitest"
 import { COMMANDS, commandsWithKeybinds, filterCommands, formatKeybind } from "../src/lib/commands"
 import {
   summarizeToolInput,
   toolInputRows,
-  utf8Length,
   lineCount,
 } from "../src/components/tool-renderers/model"
 import { resolveToolRenderer } from "../src/components/tool-renderers/registry"
-import { buildTimelineItems } from "../src/components/ConversationTimeline"
-import type { RuntimeEvent, Workspace } from "../src/api"
 
 describe("command registry", () => {
   it("covers every tab with a unique id and mod+N keybinds", () => {
@@ -71,57 +69,11 @@ describe("tool renderer model", () => {
   })
 
   it("helpers", () => {
-    expect(utf8Length("héllo")).toBe(6)
     expect(lineCount("a\nb\nc")).toBe(3)
   })
 
   it("registry resolves glyphs and always falls back", () => {
     expect(resolveToolRenderer("bash").glyph).toBe("$")
     expect(resolveToolRenderer("mystery-tool").glyph).toBe("·")
-  })
-})
-
-describe("buildTimelineItems", () => {
-  const ev = (over: Record<string, unknown>): RuntimeEvent =>
-    ({ workspaceId: "ws1", ...over }) as RuntimeEvent
-
-  it("groups tool calls under their task and closes groups", () => {
-    const events = [
-      ev({ type: "task-start", taskId: "t1", agentRole: "backend" }),
-      ev({ type: "tool-start", taskId: "t1", toolName: "bash", input: { command: "ls" } }),
-      ev({ type: "tool-end", taskId: "t1", toolName: "bash", ok: true, durationMs: 7 }),
-      ev({ type: "task-complete", taskId: "t1" }),
-      ev({ type: "task-failed", taskId: "t2", error: "kaput" }),
-    ]
-    const ws = {
-      userRequest: "build it",
-      status: "running",
-      plan: null,
-      results: [],
-      review: null,
-      error: null,
-    } as unknown as Workspace
-    const items = buildTimelineItems(events, ws)
-    expect(items.map((i) => i.kind)).toEqual(
-      ["user", "task", "task", "failed" /* ws not failed */].slice(0, 3),
-    )
-    const t1 = items.find((i) => i.taskId === "t1")!
-    expect(t1.status).toBe("completed")
-    expect(t1.toolCalls).toHaveLength(1)
-    expect(t1.toolCalls![0]).toMatchObject({ ok: true, durationMs: 7 })
-    expect(items.find((i) => i.taskId === "t2")!.error).toBe("kaput")
-  })
-
-  it("appends the review item with its score", () => {
-    const ws = {
-      userRequest: "q",
-      status: "completed",
-      plan: null,
-      results: [],
-      review: { score: 8.5 },
-      error: null,
-    } as unknown as Workspace
-    const items = buildTimelineItems([], ws)
-    expect(items.at(-1)).toMatchObject({ kind: "review", score: 8.5 })
   })
 })

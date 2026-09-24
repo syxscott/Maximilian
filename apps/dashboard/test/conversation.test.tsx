@@ -10,8 +10,8 @@
  * export — plus render smokes for TurnGroup / RetryWaveGroup /
  * ConversationUnitsPreview.
  */
-import { afterEach, describe, expect, it } from "vitest"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { getDictionary, setLocale } from "@max/i18n"
 import { applyDashboardDictionaries } from "../src/locales/index"
 
@@ -30,6 +30,7 @@ import {
 import { TurnGroup } from "../src/components/conversation/TurnGroup"
 import { RetryWaveGroup } from "../src/components/conversation/RetryWaveGroup"
 import { ConversationUnitsPreview } from "../src/components/conversation/ConversationUnitsPreview"
+import { ConversationTimeline } from "../src/components/ConversationTimeline"
 import type { RuntimeEvent, Workspace } from "../src/api"
 
 // Register the aggregated dashboard dictionaries exactly like main.tsx so
@@ -773,5 +774,149 @@ describe("TurnGroup / RetryWaveGroup rendering", () => {
     render(<TurnGroup turn={userTurn} />)
     expect(screen.getByText("你")).toBeInTheDocument()
     expect(getDictionary("zh-CN")?.["conversation.preview.stats"]).toContain("个回合")
+  })
+})
+
+// ── ConversationTimeline (the pipeline-driven surface) ──────────────────────
+
+describe("ConversationTimeline rendering", () => {
+  const flowEvents = (): RuntimeEvent[] => [
+    taskStart("t1", "backend", 1000),
+    toolStart("t1", "bash", { command: "grep Login src/auth.ts" }, 1100),
+    toolEnd("t1", "bash", { ok: true, durationMs: 20 }, 1120),
+    retryEv("waiting", 1, 1000),
+    taskComplete("t1", 2500),
+    taskStart("t2", "frontend"),
+    taskFailed("t2", "selector not found"),
+  ]
+
+  it("renders the pipeline's turn groups: user request, tasks, retry wave, review", () => {
+    render(
+      <ConversationTimeline
+        events={flowEvents()}
+        workspace={ws({ status: "completed", review: REVIEW })}
+        live={false}
+      />,
+    )
+    const groups = screen.getAllByTestId("turn-group")
+    expect(groups.map((g) => g.getAttribute("data-turn-id"))).toEqual([
+      "user",
+      "task-t1",
+      "task-t2",
+      "review",
+    ])
+    // User request card semantics preserved (user text turn).
+    expect(screen.getByText("Build the login page")).toBeInTheDocument()
+    // Tool calls render through the single registry path, running state folded.
+    expect(screen.getByTestId("tool-call-bash")).toBeInTheDocument()
+    expect(screen.queryByTestId("tool-running")).not.toBeInTheDocument()
+    // Consecutive same-phase retries fold into ONE wave inside their turn.
+    expect(screen.getAllByTestId("retry-wave")).toHaveLength(1)
+    expect(screen.getByTestId("retry-summary")).toHaveTextContent("retry waiting ×1")
+    // Failed task keeps its destructive error, review keeps its verdict.
+    expect(screen.getByTestId("turn-task-error")).toHaveTextContent("selector not found")
+    expect(screen.getByTestId("turn-review")).toHaveTextContent("Review complete · score 8")
+  })
+
+  it("shows the empty state for an empty stream", () => {
+    render(<ConversationTimeline events={[]} workspace={null} live={false} />)
+    expect(screen.getByText(/Submit a task/)).toBeInTheDocument()
+    expect(screen.queryByTestId("turn-group")).not.toBeInTheDocument()
+  })
+
+  it("find filters to matching turns and highlights the matched ranges", () => {
+    const { container } = render(
+      <ConversationTimeline
+        events={flowEvents()}
+        workspace={ws({ userRequest: "Build the login page" })}
+        live={false}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    // Before any query every turn is displayed, nothing highlighted.
+    // (ws() carries no review — user + task-t1 + task-t2.)
+    expect(screen.getAllByTestId("turn-group")).toHaveLength(3)
+    expect(container.querySelectorAll("mark")).toHaveLength(0)
+
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "login" } })
+    // "login" hits the user text unit AND the bash tool's input JSON.
+    expect(screen.getByText("2 matches")).toBeInTheDocument()
+    expect(screen.getAllByTestId("turn-group")).toHaveLength(2) // user + task-t1
+    const marks = container.querySelectorAll("mark")
+    expect(marks).toHaveLength(1) // interval highlight only on the text unit
+    expect(marks[0]?.textContent).toBe("login")
+    // Highlighted turns get the amber find border.
+    expect(screen.getAllByTestId("turn-group")[0]).toHaveAttribute(
+      "class",
+      expect.stringContaining("border-amber-500/60"),
+    )
+  })
+
+  it("find reports zero matches without dropping the turn list", () => {
+    render(<ConversationTimeline events={flowEvents()} workspace={ws()} live={false} />)
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "zzz-not-there" } })
+    expect(screen.getByText("0 matches")).toBeInTheDocument()
+    expect(screen.queryByTestId("turn-group")).not.toBeInTheDocument()
+  })
+
+  it("navigates task turns with prev/next around the task anchors", () => {
+    let scrolled: Element[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this)
+    }
+    try {
+      render(<ConversationTimeline events={flowEvents()} workspace={ws()} live={false} />)
+      const next = screen.getByRole("button", { name: "next task" })
+      const prev = screen.getByRole("button", { name: "prev task" })
+      fireEvent.click(next)
+      fireEvent.click(next)
+      // Anchors are the task turns (indices 1 and 2 of the turn list).
+      expect(scrolled.map((el) => el.getAttribute("data-timeline-index"))).toEqual(["1", "2"])
+      fireEvent.click(prev)
+      expect(scrolled.at(-1)?.getAttribute("data-timeline-index")).toBe("1")
+      // Clamped at the first anchor.
+      fireEvent.click(prev)
+      expect(scrolled.at(-1)?.getAttribute("data-timeline-index")).toBe("1")
+    } finally {
+      Element.prototype.scrollIntoView = original
+      scrolled = []
+    }
+  })
+
+  it("copies the pipeline markdown via the share button", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    })
+    render(
+      <ConversationTimeline
+        events={flowEvents()}
+        workspace={ws({ status: "completed", review: REVIEW })}
+        live={false}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /copy as markdown/i }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    const md = writeText.mock.calls[0]?.[0] ?? ""
+    expect(md).toContain("# Maximilian conversation — Build the login page")
+    expect(md).toContain("## backend · t1 (completed)")
+    expect(md).toContain("## review")
+    expect(md).toContain("- retry: waiting ×1 · 1000ms total")
+    expect(await screen.findByText(/copied/i)).toBeInTheDocument()
+  })
+
+  it("windows to the newest 50 turns with a load-earlier affordance", () => {
+    const many: RuntimeEvent[] = Array.from({ length: 60 }, (_, i) =>
+      ev({ type: "task-complete", taskId: `task-${i}` }),
+    )
+    render(<ConversationTimeline events={many} workspace={null} live={false} />)
+    expect(screen.getAllByTestId("turn-group")).toHaveLength(50)
+    expect(screen.getByTestId("load-earlier")).toHaveTextContent("Load 10 earlier entries")
+    fireEvent.click(screen.getByTestId("load-earlier"))
+    expect(screen.getAllByTestId("turn-group")).toHaveLength(60)
+    expect(screen.queryByTestId("load-earlier")).not.toBeInTheDocument()
   })
 })

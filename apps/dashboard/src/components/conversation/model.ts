@@ -6,14 +6,14 @@
 /**
  * Conversation turn-unit pipeline (deepseek ui-conversation borrowing:
  * ConversationTurnRenderUnits / conversationTurnFlowItems / turn-group
- * navigation at the model layer). One step finer than
- * ConversationTimeline's buildTimelineItems: the event stream compiles
- * into a flat stream of RENDER UNITS — paired tool calls (with a running
- * state), folded retry waves, request/resolved permission pairs and text
- * segments — each tagged with the turn (conversation group) it belongs
- * to. Presentation (TurnGroup / RetryWaveGroup /
- * ConversationUnitsPreview) renders the units verbatim; all pairing and
- * folding decisions live here so the UI can never disagree with itself.
+ * navigation at the model layer). The model layer BEHIND
+ * ConversationTimeline: the event stream compiles into a flat stream of
+ * RENDER UNITS — paired tool calls (with a running state), folded retry
+ * waves, request/resolved permission pairs and text segments — each
+ * tagged with the turn (conversation group) it belongs to. Presentation
+ * (TurnGroup / RetryWaveGroup / ConversationUnitsPreview) renders the
+ * units verbatim; all pairing and folding decisions live here so the UI
+ * can never disagree with itself.
  *
  * Pure functions over passthrough payloads: every event field may be
  * missing or the wrong type (the RuntimeEvent schema is
@@ -737,7 +737,7 @@ export interface FindMatch {
   hits: FindHit[]
 }
 
-/** The unit's searchable (field, text) pairs — timeline-view semantics. */
+/** The unit's searchable (field, text) pairs — the find index's corpus. */
 export function unitSearchableFields(
   unit: ConversationUnit,
 ): Array<{ field: string; text: string }> {
@@ -800,7 +800,7 @@ function matchAll(text: string, lowerQuery: string): FindHit[] {
  * Find index for the unit stream (conversationFindIndex borrowing):
  * per unit, every case-insensitive occurrence of the query across its
  * searchable fields — the positions a highlight layer needs. Blank
- * queries yield no matches, like matchIndices in lib/timeline-view.
+ * queries yield no matches.
  */
 export function buildConversationFindIndex(units: ConversationUnit[], query: string): FindMatch[] {
   const q = query.trim().toLowerCase()
@@ -842,10 +842,10 @@ function toolLine(unit: ToolUnit): string {
 }
 
 /**
- * Export the unit stream as a shareable markdown document — finer than
- * toShareMarkdown: per-turn grouping, folded retry-wave stats and tool
- * exit codes/durations. Structural labels stay locale-independent (the
- * model layer never calls t()).
+ * Export the unit stream as a shareable markdown document — per-turn
+ * grouping, folded retry-wave stats and tool exit codes/durations.
+ * Structural labels stay locale-independent (the model layer never
+ * calls t()).
  */
 export function toConversationMarkdown(
   units: ConversationUnit[],
