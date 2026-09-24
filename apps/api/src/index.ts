@@ -110,6 +110,15 @@ import {
 } from "./routes/workflows.js"
 import { oracleTriadRoute, oracleTriadHandler } from "./routes/evolution.js"
 import {
+  jobCreateRoute,
+  jobListRoute,
+  jobDeleteRoute,
+  jobTriggerRoute,
+  jobSlotsRoute,
+  createJobsRegistry,
+  jobsRoutes,
+} from "./routes/jobs.js"
+import {
   sessionRoutes,
   listSessionsRoute,
   getMessagesRoute,
@@ -2378,6 +2387,22 @@ api.openapi(listSessionsRoute, requireAuthMiddleware(), sessions.listSessions)
 api.openapi(getMessagesRoute, requireAuthMiddleware(), sessions.getMessages)
 api.openapi(getTimelineRoute, requireAuthMiddleware(), sessions.getTimeline)
 api.openapi(searchMessagesRoute, requireAuthMiddleware(), sessions.searchMessages)
+
+// ---------------------------------------------------------------------------
+// Jobs domain — PendingSlotManager host (in-process scheduler; v0 executor
+// is record-only: lastTriggeredAt + event log, no real task dispatch).
+// ---------------------------------------------------------------------------
+const jobsRegistry = createJobsRegistry()
+const jobs = jobsRoutes({ registry: jobsRegistry })
+api.openapi(jobCreateRoute, requireAuthMiddleware(), jobs.create)
+api.openapi(jobListRoute, requireAuthMiddleware(), jobs.list)
+api.openapi(jobDeleteRoute, requireAuthMiddleware(), jobs.remove)
+api.openapi(jobTriggerRoute, requireAuthMiddleware(), jobs.trigger)
+api.openapi(jobSlotsRoute, requireAuthMiddleware(), jobs.slots)
+// Startup: recover orphan pending slots exactly once, then auto-fire due
+// jobs (record-only dispatch). Stop the scheduler on shutdown.
+await jobsRegistry.recoverOrphans()
+jobsRegistry.startScheduler()
 api.openapi(vaultStatusRoute, requireAuthMiddleware(), vaultStatusHandler())
 api.openapi(oracleLessonsRoute, requireAuthMiddleware(), oracleLessonsHandler())
 

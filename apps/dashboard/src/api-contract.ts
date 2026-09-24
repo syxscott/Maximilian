@@ -10,6 +10,7 @@
 
 export const API_PATHS = [
   "DELETE /flags/{name}/override",
+  "DELETE /jobs/{id}",
   "DELETE /subscriptions/{id}",
   "DELETE /tenants/{id}",
   "GET /events/stream",
@@ -30,6 +31,8 @@ export const API_PATHS = [
   "GET /flags/{name}",
   "GET /gov/pending",
   "GET /health",
+  "GET /jobs",
+  "GET /jobs/{id}/slots",
   "GET /learning/agents",
   "GET /learning/evolution-history",
   "GET /learning/failure-patterns",
@@ -93,6 +96,8 @@ export const API_PATHS = [
   "POST /flags/evaluate",
   "POST /flags/{name}/override",
   "POST /gov/proposals/{id}/action",
+  "POST /jobs",
+  "POST /jobs/{id}/trigger",
   "POST /learning/mine-failure-patterns",
   "POST /meta/cycle",
   "POST /meta/governance/check",
@@ -119,5 +124,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 106. */
-export const API_PATH_COUNT = 106
+/** Number of routes in the backend contract: 111. */
+export const API_PATH_COUNT = 111
