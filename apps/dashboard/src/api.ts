@@ -971,11 +971,17 @@ export const evolutionApi = {
           entries: z.array(
             z
               .object({
-                role: z.string(),
+                // Real LeaderboardEntry payloads key on agentRole/sampleSize/
+                // userSatisfaction; role/runs/acceptance kept as defensive
+                // aliases so both shapes parse.
+                role: z.string().optional(),
+                agentRole: z.string().optional(),
                 blueprintId: z.string().optional(),
                 runs: z.number().optional(),
+                sampleSize: z.number().optional(),
                 avgScore: z.number().optional(),
                 acceptance: z.number().optional(),
+                userSatisfaction: z.number().optional(),
               })
               .passthrough(),
           ),

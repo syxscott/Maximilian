@@ -141,7 +141,8 @@ export function workflowRoutes(deps: { getDefaultProvider: () => Provider }) {
           completedSteps: stepEntries.filter((e) => e.ok).length,
           failedSteps: stepEntries.filter((e) => !e.ok).length,
           totalEntries: entries.length,
-          scriptHash: typeof hashEntry?.output === "string" ? hashEntry.output.slice(0, 12) : undefined,
+          scriptHash:
+            typeof hashEntry?.output === "string" ? hashEntry.output.slice(0, 12) : undefined,
         }
       })
       return c.json({ runs })

@@ -75,11 +75,11 @@ export function LeaderboardTable() {
                   key={`${entry.role}-${entry.blueprintId ?? i}`}
                   className="border-b last:border-0"
                 >
-                  <td className="py-1.5 pr-2 font-mono">{entry.role}</td>
+                  <td className="py-1.5 pr-2 font-mono">{entry.agentRole ?? entry.role ?? "—"}</td>
                   <td className="py-1.5 pr-2 font-mono text-muted-foreground">
                     {entry.blueprintId ?? "—"}
                   </td>
-                  <td className="py-1.5 pr-2">{entry.runs ?? 0}</td>
+                  <td className="py-1.5 pr-2">{entry.runs ?? entry.sampleSize ?? 0}</td>
                   <td className="py-1.5 pr-2">
                     {entry.avgScore !== undefined
                       ? formatNumber(entry.avgScore, { maximumFractionDigits: 2 })
