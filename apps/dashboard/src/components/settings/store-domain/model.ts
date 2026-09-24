@@ -63,3 +63,80 @@ export function toStoreStatusView(raw: unknown): StoreStatusView {
     tables,
   }
 }
+
+// ── Migration candidates (GET /system/migrations) ───────────────────────────
+
+export interface MigrationsStatusView {
+  /** Routes in the contract snapshot; null = unreadable (honest unknown). */
+  apiRoutes: number | null
+  sessionStore: {
+    available: boolean
+    schemaVersion: number | null
+    tables: StoreTableCount[]
+  }
+  i18n: {
+    locales: number | null
+    coreKeys: number | null
+  }
+}
+
+/** Stable fallback so the card renders before/without the route. */
+export function emptyMigrationsStatus(): MigrationsStatusView {
+  return {
+    apiRoutes: null,
+    sessionStore: { available: false, schemaVersion: null, tables: [] },
+    i18n: { locales: null, coreKeys: null },
+  }
+}
+
+function nullableCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+/** Defensive /system/migrations payload → card view model. */
+export function toMigrationsStatusView(raw: unknown): MigrationsStatusView {
+  if (raw == null || typeof raw !== "object") return emptyMigrationsStatus()
+  const row = raw as Record<string, unknown>
+
+  const api =
+    row.api != null && typeof row.api === "object" ? (row.api as Record<string, unknown>) : {}
+  const sessionStoreRaw =
+    row.sessionStore != null && typeof row.sessionStore === "object"
+      ? (row.sessionStore as Record<string, unknown>)
+      : {}
+  const i18nRaw =
+    row.i18n != null && typeof row.i18n === "object" ? (row.i18n as Record<string, unknown>) : {}
+
+  // Same display-order normalization as toStoreStatusView for the table list.
+  const tables: StoreTableCount[] = []
+  const rawTables =
+    sessionStoreRaw.tables != null && typeof sessionStoreRaw.tables === "object"
+      ? (sessionStoreRaw.tables as Record<string, unknown>)
+      : null
+  if (rawTables) {
+    const entries = Object.entries(rawTables)
+    entries.sort((a, b) => {
+      const ai = (TABLE_ORDER as readonly string[]).indexOf(a[0])
+      const bi = (TABLE_ORDER as readonly string[]).indexOf(b[0])
+      const av = ai === -1 ? TABLE_ORDER.length : ai
+      const bv = bi === -1 ? TABLE_ORDER.length : bi
+      return av - bv
+    })
+    for (const [name, count] of entries) {
+      tables.push({ name, count: nullableCount(count) })
+    }
+  }
+
+  return {
+    apiRoutes: nullableCount(api.openapiRoutes),
+    sessionStore: {
+      available: sessionStoreRaw.available === true,
+      schemaVersion: nullableCount(sessionStoreRaw.schemaVersion),
+      tables,
+    },
+    i18n: {
+      locales: nullableCount(i18nRaw.locales),
+      coreKeys: nullableCount(i18nRaw.coreKeys),
+    },
+  }
+}

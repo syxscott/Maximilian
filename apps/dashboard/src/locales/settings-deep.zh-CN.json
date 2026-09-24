@@ -89,6 +89,17 @@
   "settingsDeep.store.table.usage": "用量",
   "settingsDeep.store.table.steering_queue": "转向队列",
   "settingsDeep.store.disabledHint": "设置 SESSION_STORE_ENABLED=true 以启用会话历史侧存储",
+  "settingsDeep.migrations.title": "迁移候选",
+  "settingsDeep.migrations.description": "API 契约、会话存储与 i18n 核心字典的规模画像（只读）",
+  "settingsDeep.migrations.api": "API 契约",
+  "settingsDeep.migrations.openapiRoutes": "契约路由数",
+  "settingsDeep.migrations.sessionStore": "会话存储",
+  "settingsDeep.migrations.tables": "表数量",
+  "settingsDeep.migrations.i18n": "i18n 核心字典",
+  "settingsDeep.migrations.locales": "语言数",
+  "settingsDeep.migrations.coreKeys": "核心键数",
+  "settingsDeep.migrations.unknown": "未知",
+  "settingsDeep.migrations.hint": "读不到的指标如实显示为未知，不做猜测",
   "settingsDeep": {
     "providers": {
       "category": {

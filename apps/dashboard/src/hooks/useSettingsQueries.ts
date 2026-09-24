@@ -188,3 +188,39 @@ export function useSessionStoreStatus() {
     staleTime: 15_000,
   })
 }
+
+// ── Migration candidates (GET /system/migrations) ──────────────────────────
+
+const MigrationsStatusSchema = z
+  .object({
+    api: z
+      .object({
+        openapiRoutes: z.number().nullable(),
+      })
+      .passthrough(),
+    sessionStore: z
+      .object({
+        available: z.boolean(),
+        schemaVersion: z.number().nullable(),
+        tables: z.record(z.string(), z.number().nullable()),
+      })
+      .passthrough(),
+    i18n: z
+      .object({
+        locales: z.number().nullable(),
+        coreKeys: z.number().nullable(),
+      })
+      .passthrough(),
+  })
+  .passthrough()
+
+export type MigrationsStatus = z.infer<typeof MigrationsStatusSchema>
+
+export function useMigrationCandidates() {
+  return useQuery<MigrationsStatus>({
+    queryKey: [SETTINGS_DEEP_PREFIX, "migrations"],
+    queryFn: ({ signal }) =>
+      fetchSettingsDeepJson("/system/migrations", MigrationsStatusSchema, signal),
+    staleTime: 60_000,
+  })
+}

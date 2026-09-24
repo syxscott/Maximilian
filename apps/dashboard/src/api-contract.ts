@@ -68,6 +68,7 @@ export const API_PATHS = [
   "GET /subscriptions",
   "GET /system/failover/auto",
   "GET /system/failover/queue",
+  "GET /system/migrations",
   "GET /system/provider-presets",
   "GET /system/providers/{id}/circuit-breaker/stats",
   "GET /system/providers/{id}/health",
@@ -124,5 +125,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 111. */
-export const API_PATH_COUNT = 111
+/** Number of routes in the backend contract: 112. */
+export const API_PATH_COUNT = 112

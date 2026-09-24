@@ -26,5 +26,19 @@
       "goodExamples": "High-quality outputs worth reusing",
       "archived": "Archived memories no longer injected"
     }
-  }
+  },
+  "memory.search.label": "Search memory entries",
+  "memory.search.placeholder": "Filter entries across buckets…",
+  "memory.search.matches": "{count} matches",
+  "memory.search.noMatch": "No entries match",
+  "memory.bucket.expand": "Show entries",
+  "memory.bucket.collapse": "Collapse",
+  "memory.entry.at": "Recorded",
+  "memory.entry.timeUnknown": "Time unknown",
+  "memory.efficacy.injectedCount": "Injected",
+  "memory.efficacy.deltaSum": "Δ sum",
+  "memory.efficacy.mean": "Mean",
+  "memory.efficacy.noData": "No injections recorded",
+  "memory.gating.wouldSkip": "would be skipped under enforce",
+  "memory.gating.basis": "Gate: mean < -0.25 with ≥ 3 samples"
 }

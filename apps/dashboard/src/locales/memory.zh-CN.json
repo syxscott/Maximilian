@@ -26,5 +26,19 @@
       "goodExamples": "值得复用的高质量输出",
       "archived": "已归档、不再注入的记忆"
     }
-  }
+  },
+  "memory.search.label": "搜索记忆条目",
+  "memory.search.placeholder": "跨桶搜索内容…",
+  "memory.search.matches": "匹配 {count} 条",
+  "memory.search.noMatch": "没有匹配的条目",
+  "memory.bucket.expand": "展开条目",
+  "memory.bucket.collapse": "收起",
+  "memory.entry.at": "最近时间",
+  "memory.entry.timeUnknown": "时间未知",
+  "memory.efficacy.injectedCount": "注入",
+  "memory.efficacy.deltaSum": "Δ和",
+  "memory.efficacy.mean": "均值",
+  "memory.efficacy.noData": "暂无注入记录",
+  "memory.gating.wouldSkip": "enforce 下会被跳过",
+  "memory.gating.basis": "门控阈值：均值 < -0.25 且样本 ≥ 3"
 }

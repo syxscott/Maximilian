@@ -89,6 +89,17 @@
   "settingsDeep.store.table.usage": "Usage",
   "settingsDeep.store.table.steering_queue": "Steering queue",
   "settingsDeep.store.disabledHint": "Set SESSION_STORE_ENABLED=true to enable the session history side store",
+  "settingsDeep.migrations.title": "Migration candidates",
+  "settingsDeep.migrations.description": "Sizing profile of the API contract, session store and i18n core dictionary (read-only)",
+  "settingsDeep.migrations.api": "API contract",
+  "settingsDeep.migrations.openapiRoutes": "Contract routes",
+  "settingsDeep.migrations.sessionStore": "Session store",
+  "settingsDeep.migrations.tables": "Tables",
+  "settingsDeep.migrations.i18n": "i18n core dictionary",
+  "settingsDeep.migrations.locales": "Locales",
+  "settingsDeep.migrations.coreKeys": "Core keys",
+  "settingsDeep.migrations.unknown": "Unknown",
+  "settingsDeep.migrations.hint": "Unreadable metrics honestly show as unknown — no guessing",
   "settingsDeep": {
     "providers": {
       "category": {
