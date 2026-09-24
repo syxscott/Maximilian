@@ -46,6 +46,11 @@ export interface WorkspacePanelSpec {
   titleKey: string
 }
 
+/** A panel's description key is its title key with the `.title` suffix swapped. */
+function descriptionKeyFor(titleKey: string): string {
+  return `${titleKey.replace(/\.title$/, "")}.description`
+}
+
 /** The resident panel registry — one dock leaf per entry, ids stable. */
 export const WORKSPACE_PANELS: readonly WorkspacePanelSpec[] = [
   { id: "agent", titleKey: "agent.title" },
@@ -188,6 +193,7 @@ export function WorkspaceDockSidebar({
           data-testid="workspace-dock-add-toggle"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
+          title={t("layout.addPanelMenu.hint")}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           onClick={() => setMenuOpen((v) => !v)}
         >
@@ -211,6 +217,7 @@ export function WorkspaceDockSidebar({
                   type="button"
                   role="menuitem"
                   data-testid={`workspace-dock-add-${panel.id}`}
+                  title={t(descriptionKeyFor(panel.titleKey), t(panel.titleKey))}
                   className="block w-full rounded px-2 py-1 text-left hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
                     openPanel(panel.id)

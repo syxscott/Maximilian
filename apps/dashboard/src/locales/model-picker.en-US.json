@@ -38,5 +38,27 @@
   "modelPicker.test.failed": "Test failed",
   "modelPicker.loading": "Loading…",
   "modelPicker.error": "Failed to load",
-  "modelPicker.retry": "Retry"
+  "modelPicker.retry": "Retry",
+  "modelPicker": {
+    "category": {
+      "official": {
+        "description": "First-party official model APIs"
+      },
+      "china": {
+        "description": "Providers reachable from mainland China"
+      },
+      "international": {
+        "description": "Major international providers"
+      },
+      "aggregator": {
+        "description": "Multi-model aggregation and routing gateways"
+      },
+      "cloud": {
+        "description": "Hosted cloud inference platforms"
+      },
+      "custom": {
+        "description": "Bring-your-own endpoints with a custom base URL"
+      }
+    }
+  }
 }

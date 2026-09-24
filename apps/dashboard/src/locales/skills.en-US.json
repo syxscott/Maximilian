@@ -22,6 +22,13 @@
       "glob": "Match file paths by pattern",
       "grep": "Search file contents by regex",
       "lsp": "Language-server diagnostics and symbol queries"
-    }
+    },
+    "toggle": {
+      "hint": "Disabled skills are hidden from @ mentions"
+    },
+    "invoke": {
+      "hint": "Invoke with @skillName in the composer"
+    },
+    "permissionHint": "Invoking a skill still goes through the permission matrix"
   }
 }

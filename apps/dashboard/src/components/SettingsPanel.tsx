@@ -203,11 +203,10 @@ export function SettingsPanel() {
             <div className="pt-2 border-t border-border/60 space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <Palette className="h-4 w-4" />
-                Accent color
+                {t("settings.appearance.accent")}
               </div>
               <p className="text-xs text-muted-foreground">
-                Override the dashboard accent. Applies to buttons, links, and focus rings across the
-                app.
+                {t("settings.appearance.accentDescription")}
               </p>
               <div className="flex flex-wrap items-start gap-3">
                 <ColorPicker

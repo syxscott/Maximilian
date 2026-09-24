@@ -1,0 +1,14 @@
+{
+  "palette": {
+    "heading": {
+      "recent": "Recent",
+      "navigation": "Navigation",
+      "actions": "Actions"
+    },
+    "action": {
+      "toggleTheme": "Toggle theme",
+      "closePalette": "Close palette"
+    },
+    "placeholder": "Type a command or search..."
+  }
+}

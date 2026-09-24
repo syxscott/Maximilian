@@ -1,0 +1,14 @@
+{
+  "palette": {
+    "heading": {
+      "recent": "最近",
+      "navigation": "导航",
+      "actions": "操作"
+    },
+    "action": {
+      "toggleTheme": "切换主题",
+      "closePalette": "关闭命令面板"
+    },
+    "placeholder": "输入命令或搜索…"
+  }
+}

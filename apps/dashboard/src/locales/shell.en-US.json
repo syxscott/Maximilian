@@ -12,6 +12,14 @@
     },
     "onboarding": {
       "skip": "Skip tour"
+    },
+    "tabs": {
+      "new": "New tab",
+      "closeOthers": "Close other tabs",
+      "closeAll": "Close all tabs",
+      "duplicate": "Duplicate tab",
+      "untitled": "Untitled",
+      "switchHint": "Ctrl+Tab to switch tabs"
     }
   }
 }

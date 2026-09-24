@@ -62,13 +62,18 @@ export function UsageDomain() {
         <p className="text-xs text-muted-foreground">{t("settingsDeep.usage.description")}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center gap-1" data-testid="usage-range-picker">
+        <div
+          className="flex items-center gap-1"
+          data-testid="usage-range-picker"
+          title={t("settingsDeep.usage.chartsHint")}
+        >
           <span className="text-xs text-muted-foreground">{t("settingsDeep.usage.range")}</span>
           {RANGES.map((r) => (
             <Button
               key={r}
               size="sm"
               variant={range === r ? "default" : "ghost"}
+              title={t(`settingsDeep.usage.range.${r}.description`)}
               onClick={() => setRange(r)}
             >
               {t(`settingsDeep.usage.range.${r}`)}
@@ -131,7 +136,7 @@ export function UsageDomain() {
               )}
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1" title={t("settingsDeep.usage.tableHint")}>
               <p className="text-xs font-medium">{t("settingsDeep.usage.windowsTitle")}</p>
               <WindowsTable rows={windowRows} />
             </div>

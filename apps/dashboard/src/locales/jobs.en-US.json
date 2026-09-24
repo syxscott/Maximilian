@@ -32,7 +32,8 @@
       "lastTriggered": "Last triggered:",
       "payload": "Payload:",
       "payloadPresent": "attached",
-      "payloadNone": "none"
+      "payloadNone": "none",
+      "payloadHint": "JSON payload handed to the target on trigger"
     },
     "slot": {
       "pending": "pending",
@@ -58,6 +59,12 @@
       "scheduleRequired": "Schedule is required",
       "payloadInvalidJson": "Payload is not valid JSON",
       "messageRequired": "Message is required for workspace jobs"
+    },
+    "schedule": {
+      "hint": "Supports cron expressions and simple intervals"
+    },
+    "runs": {
+      "hint": "Status and duration of each run"
     }
   }
 }

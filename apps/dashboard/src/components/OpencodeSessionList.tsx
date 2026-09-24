@@ -41,45 +41,47 @@ export interface OpencodeSessionListProps {
 // ── small helpers ──────────────────────────────────────────────────────────
 
 function formatRelative(iso: string): string {
-  const t = Date.parse(iso)
-  if (!Number.isFinite(t)) return iso
-  const delta = Math.max(0, Date.now() - t)
-  if (delta < 5_000) return "just now"
-  if (delta < 60_000) return `${Math.floor(delta / 1000)}s ago`
-  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`
-  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h ago`
-  return `${Math.floor(delta / 86_400_000)}d ago`
+  const ts = Date.parse(iso)
+  if (!Number.isFinite(ts)) return iso
+  const delta = Math.max(0, Date.now() - ts)
+  if (delta < 5_000) return t("opencode.sessions.justNow")
+  if (delta < 60_000) return t("opencode.sessions.secondsAgo", { n: Math.floor(delta / 1000) })
+  if (delta < 3_600_000) return t("opencode.sessions.minutesAgo", { n: Math.floor(delta / 60_000) })
+  if (delta < 86_400_000)
+    return t("opencode.sessions.hoursAgo", { n: Math.floor(delta / 3_600_000) })
+  return t("opencode.sessions.daysAgo", { n: Math.floor(delta / 86_400_000) })
 }
 
 const STATUS_VARIANT: Record<
   OpencodeSession["status"],
-  { variant: "default" | "secondary" | "destructive" | "outline"; className: string; label: string }
+  { variant: "default" | "secondary" | "destructive" | "outline"; className: string }
 > = {
   busy: {
     variant: "default",
     className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30",
-    label: "Busy",
   },
-  idle: { variant: "secondary", className: "bg-muted text-muted-foreground", label: "Idle" },
-  retry: {
-    variant: "outline",
-    className: "bg-amber-500/15 text-amber-700 border-amber-500/30",
-    label: "Retry",
-  },
-  error: { variant: "destructive", className: "", label: "Error" },
-  compacting: {
-    variant: "outline",
-    className: "bg-sky-500/15 text-sky-700 border-sky-500/30",
-    label: "Compacting",
-  },
-  unknown: { variant: "outline", className: "", label: "Unknown" },
+  idle: { variant: "secondary", className: "bg-muted text-muted-foreground" },
+  retry: { variant: "outline", className: "bg-amber-500/15 text-amber-700 border-amber-500/30" },
+  error: { variant: "destructive", className: "" },
+  compacting: { variant: "outline", className: "bg-sky-500/15 text-sky-700 border-sky-500/30" },
+  unknown: { variant: "outline", className: "" },
+}
+
+/** Status pill labels live in the dictionary so zh users read them in Chinese. */
+const STATUS_LABEL_KEY: Record<OpencodeSession["status"], string> = {
+  busy: "opencode.sessions.status.busy",
+  idle: "opencode.sessions.status.idle",
+  retry: "opencode.sessions.status.retry",
+  error: "opencode.sessions.status.error",
+  compacting: "opencode.sessions.status.compacting",
+  unknown: "opencode.sessions.status.unknown",
 }
 
 function StatusBadge({ status }: { status: OpencodeSession["status"] }) {
   const cfg = STATUS_VARIANT[status] ?? STATUS_VARIANT.unknown
   return (
     <Badge variant={cfg.variant} className={cn("font-mono text-[10px] uppercase", cfg.className)}>
-      {cfg.label}
+      {t(STATUS_LABEL_KEY[status] ?? STATUS_LABEL_KEY.unknown)}
     </Badge>
   )
 }
@@ -167,7 +169,8 @@ function SessionRow({ session, onToggle, expanded }: SessionRowProps) {
         {session.sessionId}
       </span>
       <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-        {session.messageCount} msg · {session.toolCallCount} tool
+        {t("opencode.sessions.msgCount", { n: session.messageCount })} ·{" "}
+        {t("opencode.sessions.toolCount", { n: session.toolCallCount })}
       </span>
       <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap w-20 text-right">
         {formatRelative(session.lastEventAt)}
@@ -187,19 +190,23 @@ function ExpandedRow({ detail, loading, error }: ExpandedRowProps) {
     return (
       <div className="px-9 py-3 text-xs text-muted-foreground flex items-center gap-2">
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-        Loading events…
+        {t("opencode.sessions.eventsLoading")}
       </div>
     )
   }
   if (error) {
     return (
       <div className="px-9 py-3 text-xs text-destructive">
-        Failed to load events: {error.message}
+        {t("opencode.sessions.eventsFailed", { message: error.message })}
       </div>
     )
   }
   if (!detail || detail.recent.length === 0) {
-    return <div className="px-9 py-3 text-xs text-muted-foreground">No events yet.</div>
+    return (
+      <div className="px-9 py-3 text-xs text-muted-foreground">
+        {t("opencode.sessions.noEvents")}
+      </div>
+    )
   }
   return (
     <ul className="px-9 py-2 space-y-1" data-testid="opencode-session-events">
@@ -281,11 +288,11 @@ export function OpencodeSessionList({
               "inline-flex items-center gap-1 text-[10px] font-mono uppercase",
               live ? "text-emerald-600" : "text-muted-foreground",
             )}
-            title={live ? "SSE live" : "Polling only"}
+            title={live ? t("opencode.sessions.liveSse") : t("opencode.sessions.livePolling")}
             data-testid="opencode-live-indicator"
           >
             <Radio className={cn("h-3 w-3", live && "animate-pulse")} aria-hidden="true" />
-            {live ? "live" : "poll"}
+            {live ? t("opencode.sessions.liveOn") : t("opencode.sessions.liveOff")}
           </span>
         </CardTitle>
         <Button

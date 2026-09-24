@@ -15,16 +15,19 @@
       "duration": "耗时 {duration}"
     },
     "tool": {
-      "running": "执行中"
+      "running": "执行中",
+      "hint": "展开工具调用可查看输入与输出"
     },
     "permission": {
       "pending": "待批准",
       "allowed": "已允许",
-      "denied": "已拒绝"
+      "denied": "已拒绝",
+      "hint": "允许或拒绝后运行才会继续"
     },
     "retry": {
       "summary": "重试 {phase} ×{attempts} · 累计等待 {delay}",
-      "attempt": "第 {attempt} 次 · 等待 {delay}"
+      "attempt": "第 {attempt} 次 · 等待 {delay}",
+      "hint": "失败的回合可以重试"
     },
     "review": {
       "score": "评审完成 · 评分 {score}"

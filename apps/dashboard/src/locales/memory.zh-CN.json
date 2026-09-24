@@ -16,7 +16,15 @@
       "userFeedback": "用户反馈",
       "reviewSuggestions": "评审建议",
       "commonErrors": "常见错误",
-      "goodExamples": "优秀示例"
+      "goodExamples": "优秀示例",
+      "archived": "归档"
+    },
+    "bucketDesc": {
+      "userFeedback": "用户对结果的直接反馈",
+      "reviewSuggestions": "评审环节产出的改进建议",
+      "commonErrors": "反复出现的错误与规避方式",
+      "goodExamples": "值得复用的高质量输出",
+      "archived": "已归档、不再注入的记忆"
     }
   }
 }

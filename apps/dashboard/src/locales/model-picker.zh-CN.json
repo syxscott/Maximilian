@@ -38,5 +38,27 @@
   "modelPicker.test.failed": "测试失败",
   "modelPicker.loading": "加载中…",
   "modelPicker.error": "加载失败",
-  "modelPicker.retry": "重试"
+  "modelPicker.retry": "重试",
+  "modelPicker": {
+    "category": {
+      "official": {
+        "description": "第一方官方模型 API"
+      },
+      "china": {
+        "description": "国内可直连的服务商"
+      },
+      "international": {
+        "description": "国际主流服务商"
+      },
+      "aggregator": {
+        "description": "多模型聚合与路由网关"
+      },
+      "cloud": {
+        "description": "云端托管推理平台"
+      },
+      "custom": {
+        "description": "自定义 Base URL 的接入"
+      }
+    }
+  }
 }

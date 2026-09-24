@@ -5,14 +5,18 @@
       "maximize": "Maximize panel",
       "restore": "Restore panel",
       "chat": "Conversation",
-      "timeline": "Timeline"
+      "timeline": "Timeline",
+      "untitled": "Untitled panel"
     },
     "splitter": "Drag to resize",
     "empty": "No panels open — add one to get started",
     "addPanel": "Add panel",
     "resetLayout": "Reset layout",
     "addPanelMenu": {
-      "allDocked": "All panels are open"
+      "allDocked": "All panels are open",
+      "hint": "Pick a panel to dock in the sidebar",
+      "workspaceSection": "Workspace panels",
+      "shellSection": "Conversation area"
     }
   }
 }

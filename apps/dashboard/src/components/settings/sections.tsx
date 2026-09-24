@@ -40,22 +40,63 @@ import { SkillsDomain } from "./skills-domain/SkillsDomain"
  */
 export type SettingsSectionId = SettingsSection
 
-export const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; titleKey: string }> = [
-  { id: "appearance", titleKey: "settings.appearance.title" },
-  { id: "language", titleKey: "settings.language.title" },
-  { id: "performance", titleKey: "settings.performance.title" },
-  { id: "flags", titleKey: "settings.flags.title" },
-  { id: "tenants", titleKey: "settings.tenants.title" },
-  { id: "providers", titleKey: "settings.providersHealth.title" },
-  { id: "vault", titleKey: "settings.vault.title" },
-  { id: "oracle", titleKey: "settings.oracle.title" },
-  { id: "subagents", titleKey: "settingsDeep.subagents.title" },
-  { id: "usageCharts", titleKey: "settingsDeep.usage.title" },
-  { id: "store", titleKey: "settingsDeep.store.title" },
-  { id: "automations", titleKey: "automations.title" },
-  { id: "jobs", titleKey: "jobs.title" },
-  { id: "memory", titleKey: "memory.title" },
-  { id: "skills", titleKey: "skills.title" },
+export const SETTINGS_SECTIONS: Array<{
+  id: SettingsSectionId
+  titleKey: string
+  /** Nav tooltip describing the section (deep i18n key). */
+  descriptionKey: string
+}> = [
+  {
+    id: "appearance",
+    titleKey: "settings.appearance.title",
+    descriptionKey: "settings.appearance.description",
+  },
+  {
+    id: "language",
+    titleKey: "settings.language.title",
+    descriptionKey: "settings.language.description",
+  },
+  {
+    id: "performance",
+    titleKey: "settings.performance.title",
+    descriptionKey: "settings.performance.description",
+  },
+  { id: "flags", titleKey: "settings.flags.title", descriptionKey: "settings.flags.description" },
+  {
+    id: "tenants",
+    titleKey: "settings.tenants.title",
+    descriptionKey: "settings.tenants.description",
+  },
+  {
+    id: "providers",
+    titleKey: "settings.providersHealth.title",
+    descriptionKey: "settings.providersHealth.description",
+  },
+  { id: "vault", titleKey: "settings.vault.title", descriptionKey: "settings.vault.description" },
+  {
+    id: "oracle",
+    titleKey: "settings.oracle.title",
+    descriptionKey: "settings.oracle.description",
+  },
+  {
+    id: "subagents",
+    titleKey: "settingsDeep.subagents.title",
+    descriptionKey: "settingsDeep.subagents.description",
+  },
+  {
+    id: "usageCharts",
+    titleKey: "settingsDeep.usage.title",
+    descriptionKey: "settingsDeep.usage.description",
+  },
+  {
+    id: "store",
+    titleKey: "settingsDeep.store.title",
+    descriptionKey: "settingsDeep.store.description",
+  },
+  { id: "automations", titleKey: "automations.title", descriptionKey: "automations.description" },
+  { id: "jobs", titleKey: "jobs.title", descriptionKey: "jobs.description" },
+  { id: "memory", titleKey: "memory.title", descriptionKey: "memory.description" },
+  { id: "skills", titleKey: "skills.title", descriptionKey: "skills.description" },
 ]
 
 export function SettingsSectionNav({
@@ -73,6 +114,7 @@ export function SettingsSectionNav({
           key={s.id}
           variant={active === s.id ? "default" : "ghost"}
           size="sm"
+          title={t(s.descriptionKey)}
           onClick={() => onSelect(s.id)}
         >
           {t(s.titleKey)}

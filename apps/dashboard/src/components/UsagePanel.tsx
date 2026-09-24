@@ -41,8 +41,11 @@ export function UsagePanel() {
   return (
     <div className="p-4 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">{t("usage.title")}</h2>
-        <div className="flex gap-1">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">{t("usage.title")}</h2>
+          <p className="text-xs text-muted-foreground">{t("usage.summary.caption")}</p>
+        </div>
+        <div className="flex gap-1" title={t("usage.range.label")}>
           {RANGES.map((r) => (
             <Button
               key={r.key}
@@ -100,6 +103,7 @@ function RollingWindowsCard() {
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {t("usage.windows.title")}
         </CardTitle>
+        <p className="text-xs text-muted-foreground">{t("usage.charts.windows.caption")}</p>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -113,7 +117,9 @@ function RollingWindowsCard() {
                 {w.requests} {t("usage.metric.requests").toLowerCase()}
               </div>
               <div className="text-xs text-muted-foreground">
-                {w.costUsd === null ? `— (${w.unpricedRequests} unpriced)` : formatUsd(w.costUsd)}
+                {w.costUsd === null
+                  ? `— (${t("usage.windows.unpriced", { count: w.unpricedRequests })})`
+                  : formatUsd(w.costUsd)}
               </div>
             </div>
           ))}
@@ -129,6 +135,7 @@ function SummaryCards({ summary }: { summary: UsageSummary }) {
       <MetricCard
         label={t("usage.metric.totalCost")}
         value={summary.totalCostUsdKnown === false ? "—" : formatUsd(summary.totalCostUsd)}
+        hint={t("usage.metric.totalCost.description")}
         sub={
           summary.totalCostUsdKnown === false
             ? t("usage.cost.unpriced", { count: summary.unpricedRequestCount })
@@ -139,28 +146,38 @@ function SummaryCards({ summary }: { summary: UsageSummary }) {
       <MetricCard
         label={t("usage.metric.tokens")}
         value={formatTokens(summary.realTotalTokens)}
+        hint={t("usage.metric.tokens.description")}
         sub={t("usage.metric.tokensCached", { cached: formatTokens(summary.totalCacheReadTokens) })}
       />
       <MetricCard
         label={t("usage.metric.successRate")}
         value={formatPercent(summary.successRate, 1)}
+        hint={t("usage.metric.successRate.description")}
       />
       <MetricCard
         label={t("usage.metric.cacheHitRate")}
         value={formatPercent(summary.cacheHitRate, 1)}
+        hint={t("usage.metric.cacheHitRate.description")}
       />
       <MetricCard
         label={t("usage.metric.inputTokens")}
         value={formatTokens(summary.totalInputTokens)}
+        hint={t("usage.metric.inputTokens.description")}
       />
       <MetricCard
         label={t("usage.metric.outputTokens")}
         value={formatTokens(summary.totalOutputTokens)}
+        hint={t("usage.metric.outputTokens.description")}
       />
-      <MetricCard label={t("usage.metric.requests")} value={String(summary.totalRequests)} />
+      <MetricCard
+        label={t("usage.metric.requests")}
+        value={String(summary.totalRequests)}
+        hint={t("usage.metric.requests.description")}
+      />
       <MetricCard
         label={t("usage.metric.unpriced")}
         value={String(summary.unpricedRequestCount)}
+        hint={t("usage.metric.unpriced.description")}
         alert={summary.unpricedRequestCount > 0}
       />
     </div>
@@ -172,16 +189,21 @@ function MetricCard({
   value,
   sub,
   alert,
+  hint,
 }: {
   label: string
   value: string
   sub?: string
   alert?: boolean
+  /** Optional explanation (i18n) shown as a hover tooltip on the label. */
+  hint?: string
 }) {
   return (
     <Card className={alert ? "bg-destructive/10 border-destructive/30" : "bg-muted/30"}>
       <CardHeader className="py-2 px-3">
-        <CardTitle className="text-xs text-muted-foreground font-normal">{label}</CardTitle>
+        <CardTitle className="text-xs text-muted-foreground font-normal" title={hint}>
+          {label}
+        </CardTitle>
       </CardHeader>
       <CardContent className="py-1 px-3">
         <p className={`text-xl font-semibold ${alert ? "text-destructive" : "text-foreground"}`}>
@@ -206,6 +228,7 @@ function LatencyCard({ latency }: { latency: LatencyStats }) {
     <Card className="bg-muted/30">
       <CardHeader className="py-3 px-4">
         <CardTitle className="text-base text-foreground">{t("usage.latency.title")}</CardTitle>
+        <p className="text-xs text-muted-foreground">{t("usage.charts.latency.caption")}</p>
       </CardHeader>
       <CardContent className="py-2 px-4">
         {latency.sampleCount === 0 ? (
@@ -249,6 +272,7 @@ function DailyTrendCard({ daily, range }: { daily: DailyUsageEntry[]; range: Usa
             {anyDayPartial ? `— (${t("usage.cost.partial")})` : formatUsd(totalCost)}
           </Badge>
         </div>
+        <p className="text-xs text-muted-foreground">{t("usage.charts.daily.caption")}</p>
       </CardHeader>
       <CardContent className="py-2 px-4">
         {daily.length === 0 || totalReq === 0 ? (

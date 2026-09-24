@@ -5,14 +5,18 @@
       "maximize": "最大化面板",
       "restore": "还原面板",
       "chat": "会话",
-      "timeline": "时间线"
+      "timeline": "时间线",
+      "untitled": "未命名面板"
     },
     "splitter": "拖动调整大小",
     "empty": "没有打开的面板——先添加一个吧",
     "addPanel": "添加面板",
     "resetLayout": "重置布局",
     "addPanelMenu": {
-      "allDocked": "所有面板均已打开"
+      "allDocked": "所有面板均已打开",
+      "hint": "选择要停靠到侧栏的面板",
+      "workspaceSection": "工作区面板",
+      "shellSection": "会话区"
     }
   }
 }

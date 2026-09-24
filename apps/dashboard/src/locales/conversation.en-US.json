@@ -15,16 +15,19 @@
       "duration": "took {duration}"
     },
     "tool": {
-      "running": "running"
+      "running": "running",
+      "hint": "Expand a tool call to inspect its input and output"
     },
     "permission": {
       "pending": "pending",
       "allowed": "allowed",
-      "denied": "denied"
+      "denied": "denied",
+      "hint": "The run continues once you allow or deny"
     },
     "retry": {
       "summary": "retry {phase} ×{attempts} · waited {delay} total",
-      "attempt": "attempt {attempt} · waited {delay}"
+      "attempt": "attempt {attempt} · waited {delay}",
+      "hint": "Failed turns can be retried"
     },
     "review": {
       "score": "Review complete · score {score}"

@@ -16,7 +16,15 @@
       "userFeedback": "User feedback",
       "reviewSuggestions": "Review suggestions",
       "commonErrors": "Common errors",
-      "goodExamples": "Good examples"
+      "goodExamples": "Good examples",
+      "archived": "Archived"
+    },
+    "bucketDesc": {
+      "userFeedback": "Direct user feedback about results",
+      "reviewSuggestions": "Improvement suggestions from reviews",
+      "commonErrors": "Recurring mistakes and how to avoid them",
+      "goodExamples": "High-quality outputs worth reusing",
+      "archived": "Archived memories no longer injected"
     }
   }
 }

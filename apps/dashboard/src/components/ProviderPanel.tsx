@@ -164,7 +164,7 @@ function PresetCatalog() {
     return (
       <Card className="bg-muted/20 mb-4">
         <CardContent className="py-4 px-4 text-xs text-muted-foreground">
-          No presets available.
+          {t("provider.presets.empty")}
         </CardContent>
       </Card>
     )

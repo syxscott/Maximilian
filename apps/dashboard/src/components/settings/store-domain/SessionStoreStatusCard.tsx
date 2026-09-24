@@ -79,7 +79,11 @@ export function SessionStoreStatusCard() {
                   data-testid="store-table-grid"
                 >
                   {view.tables.map((tb) => (
-                    <div key={tb.name} className="rounded border px-2 py-1.5">
+                    <div
+                      key={tb.name}
+                      className="rounded border px-2 py-1.5"
+                      title={t(`settingsDeep.store.table.${tb.name}.description`)}
+                    >
                       <p className="text-[10px] text-muted-foreground">
                         {t(`settingsDeep.store.table.${tb.name}`)}
                       </p>

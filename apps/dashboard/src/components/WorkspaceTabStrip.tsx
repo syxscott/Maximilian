@@ -60,7 +60,11 @@ export function WorkspaceTabStrip({
   if (visible.length === 0) return null
 
   return (
-    <div className="flex items-center gap-1 px-4 pt-2" data-testid="workspace-tabs">
+    <div
+      className="flex items-center gap-1 px-4 pt-2"
+      data-testid="workspace-tabs"
+      title={t("shell.tabs.switchHint")}
+    >
       {shown.map((id) => {
         const active = id === activeId
         return (

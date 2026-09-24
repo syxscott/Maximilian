@@ -88,5 +88,100 @@
   "settingsDeep.store.table.events": "事件",
   "settingsDeep.store.table.usage": "用量",
   "settingsDeep.store.table.steering_queue": "转向队列",
-  "settingsDeep.store.disabledHint": "设置 SESSION_STORE_ENABLED=true 以启用会话历史侧存储"
+  "settingsDeep.store.disabledHint": "设置 SESSION_STORE_ENABLED=true 以启用会话历史侧存储",
+  "settingsDeep": {
+    "providers": {
+      "category": {
+        "official": {
+          "description": "第一方官方模型 API"
+        },
+        "china": {
+          "description": "国内可直连的服务商"
+        },
+        "international": {
+          "description": "国际主流服务商"
+        },
+        "aggregator": {
+          "description": "多模型聚合与路由网关"
+        },
+        "cloud": {
+          "description": "云端托管推理平台"
+        },
+        "custom": {
+          "description": "自定义 Base URL 的接入"
+        }
+      },
+      "field": {
+        "apiFormat": {
+          "description": "对话补全协议（OpenAI / Anthropic 兼容）"
+        },
+        "defaultModel": {
+          "description": "未指定模型时使用的默认模型"
+        },
+        "baseUrl": {
+          "description": "API 根地址，留空使用协议默认值"
+        },
+        "envKey": {
+          "description": "存放 API 密钥的环境变量名"
+        },
+        "envModel": {
+          "description": "覆盖默认模型的环境变量名"
+        }
+      },
+      "configuredHint": "已配置指检测到对应密钥环境变量"
+    },
+    "store": {
+      "table": {
+        "sessions": {
+          "description": "会话元数据（id、标题、工作区）"
+        },
+        "messages": {
+          "description": "逐条消息历史"
+        },
+        "events": {
+          "description": "会话事件流（工具、权限、状态）"
+        },
+        "usage": {
+          "description": "按请求的 tokens 与成本记录"
+        },
+        "steering_queue": {
+          "description": "待投递的转向指令"
+        }
+      }
+    },
+    "subagents": {
+      "bucket": {
+        "userFeedback": {
+          "description": "用户对结果的直接反馈"
+        },
+        "reviewSuggestions": {
+          "description": "评审环节产出的改进建议"
+        },
+        "commonErrors": {
+          "description": "反复出现的错误与规避方式"
+        },
+        "goodExamples": {
+          "description": "值得复用的高质量输出"
+        },
+        "archived": {
+          "description": "已归档、不再注入的记忆"
+        }
+      }
+    },
+    "usage": {
+      "range": {
+        "7d": {
+          "description": "最近 7 天，按日聚合"
+        },
+        "30d": {
+          "description": "最近 30 天，按日聚合"
+        }
+      },
+      "chartsHint": "柱状图为按日请求量；悬停查看日期与数值",
+      "tableHint": "滚动窗口的请求、tokens 与成本汇总"
+    },
+    "tester": {
+      "pickModel": "选择要测试的模型"
+    }
+  }
 }

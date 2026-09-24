@@ -12,6 +12,14 @@
     },
     "onboarding": {
       "skip": "跳过引导"
+    },
+    "tabs": {
+      "new": "新建标签页",
+      "closeOthers": "关闭其他标签页",
+      "closeAll": "关闭全部标签页",
+      "duplicate": "复制标签页",
+      "untitled": "未命名",
+      "switchHint": "Ctrl+Tab 切换标签页"
     }
   }
 }

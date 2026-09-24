@@ -32,7 +32,8 @@
       "lastTriggered": "上次触发：",
       "payload": "载荷：",
       "payloadPresent": "已附带",
-      "payloadNone": "无"
+      "payloadNone": "无",
+      "payloadHint": "触发时传给目标的 JSON 负载"
     },
     "slot": {
       "pending": "待执行",
@@ -58,6 +59,12 @@
       "scheduleRequired": "调度表达式不能为空",
       "payloadInvalidJson": "载荷不是合法的 JSON",
       "messageRequired": "工作区任务必须填写消息"
+    },
+    "schedule": {
+      "hint": "支持 cron 表达式与简化间隔"
+    },
+    "runs": {
+      "hint": "每次运行的状态与持续时间"
     }
   }
 }

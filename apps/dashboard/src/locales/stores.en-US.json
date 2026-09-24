@@ -4,7 +4,8 @@
       "draftPlaceholder": "Keep typing… (drafts are saved per workspace)",
       "draftRestored": "Unsent draft restored",
       "draftSaved": "Draft saved",
-      "draftCleared": "Draft cleared"
+      "draftCleared": "Draft cleared",
+      "draftHint": "Drafts are saved per workspace and restored on switch"
     },
     "commands": {
       "recent": "Recent",
@@ -42,7 +43,8 @@
       "recentEmpty": "No recent searches",
       "clearRecent": "Clear search history",
       "resultCount": "{count} results",
-      "staleResults": "Press Enter to search"
+      "staleResults": "Press Enter to search",
+      "staleHint": "Results may be incomplete while the index catches up"
     },
     "settingsUi": {
       "unsavedBadge": "Unsaved changes",
@@ -83,7 +85,8 @@
       "sidebarHide": "Hide sidebar",
       "sortRecent": "Sort by recent",
       "sortAlpha": "Sort alphabetically",
-      "lastVisited": "Last visited: {time}"
+      "lastVisited": "Last visited: {time}",
+      "hint": "Remembers sidebar and sorting preferences"
     },
     "onboarding": {
       "skipTour": "Skip tour",
@@ -102,7 +105,8 @@
       },
       "lastError": "Last error: {message}",
       "retryCount": "{count} retries",
-      "retry": "Retry now"
+      "retry": "Retry now",
+      "statusHint": "Backend health is probed via /health"
     }
   }
 }

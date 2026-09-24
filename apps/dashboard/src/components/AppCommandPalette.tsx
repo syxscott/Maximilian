@@ -23,8 +23,9 @@ export interface AppCommandPaletteProps {
 }
 
 export function AppCommandPalette(props: AppCommandPaletteProps) {
+  // Subscribes the component to locale changes so translated labels
+  // re-resolve; the value itself feeds the memo deps below.
   const locale = useLocale().locale
-  void locale
 
   // Commit an executed command's label into the persisted recent list
   // (searchStore: front-insert, dedupe, cap at 10, localStorage-backed).
@@ -42,7 +43,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
         ? [
             {
               id: "recent",
-              heading: "Recent",
+              heading: t("palette.heading.recent"),
               items: recent.map((label) => ({
                 id: `recent.${label}`,
                 label,
@@ -53,11 +54,12 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
         : []),
       {
         id: "navigation",
-        heading: "Navigation",
+        heading: t("palette.heading.navigation"),
         items: [
           {
             id: "nav.workspace",
             label: t("nav.workspace"),
+            description: t("nav.workspace.description"),
             onSelect: () => {
               recordCommand(t("nav.workspace"))
               props.onNavigate("workspace")
@@ -67,6 +69,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           {
             id: "nav.executions",
             label: t("nav.executions"),
+            description: t("nav.executions.description"),
             onSelect: () => {
               recordCommand(t("nav.executions"))
               props.onNavigate("executions")
@@ -76,6 +79,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           {
             id: "nav.governance",
             label: t("nav.governance"),
+            description: t("nav.governance.description"),
             onSelect: () => {
               recordCommand(t("nav.governance"))
               props.onNavigate("governance")
@@ -85,6 +89,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           {
             id: "nav.evolution",
             label: t("nav.evolution"),
+            description: t("nav.evolution.description"),
             onSelect: () => {
               recordCommand(t("nav.evolution"))
               props.onNavigate("evolution")
@@ -94,6 +99,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           {
             id: "nav.usage",
             label: t("nav.usage"),
+            description: t("nav.usage.description"),
             onSelect: () => {
               recordCommand(t("nav.usage"))
               props.onNavigate("usage")
@@ -104,6 +110,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           {
             id: "nav.providers",
             label: t("nav.providers"),
+            description: t("nav.providers.description"),
             onSelect: () => {
               recordCommand(t("nav.providers"))
               props.onNavigate("providers")
@@ -113,6 +120,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           {
             id: "nav.settings",
             label: t("nav.settings"),
+            description: t("nav.settings.description"),
             onSelect: () => {
               recordCommand(t("nav.settings"))
               props.onNavigate("settings")
@@ -123,7 +131,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
       },
       {
         id: "actions",
-        heading: "Actions",
+        heading: t("palette.heading.actions"),
         items: [
           // Shortcut hints here describe the key that performs the action
           // once the palette is open — Esc is bound by CommandPalette's
@@ -131,30 +139,31 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           // (no "T" key inside the palette actually runs it).
           {
             id: "act.toggleTheme",
-            label: "Toggle theme",
+            label: t("palette.action.toggleTheme"),
             onSelect: () => {
-              recordCommand("Toggle theme")
+              recordCommand(t("palette.action.toggleTheme"))
               props.onToggleTheme()
               props.onOpenChange(false)
             },
           },
           {
             id: "act.closePalette",
-            label: "Close palette",
+            label: t("palette.action.closePalette"),
             onSelect: () => props.onOpenChange(false),
             shortcut: "Esc",
           },
         ],
       },
     ],
-    // Recent history and the recording callback participate in the deps so
-    // the "Recent" group tracks the store, and the memo only re-fires when
-    // one of them actually changes.
+    // Recent history, the active locale, and the recording callback
+    // participate in the deps so the "Recent" group tracks the store and
+    // translated labels re-resolve when the locale changes.
     [
       props.onNavigate,
       props.onOpenChange,
       props.onToggleTheme,
       props.onOpenUsage,
+      locale,
       recent,
       recordCommand,
     ],
@@ -165,7 +174,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
       open={props.open}
       onOpenChange={props.onOpenChange}
       groups={groups}
-      placeholder="Type a command or search..."
+      placeholder={t("palette.placeholder")}
       enableGlobalShortcut={false}
     />
   )

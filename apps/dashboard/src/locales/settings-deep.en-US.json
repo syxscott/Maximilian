@@ -88,5 +88,100 @@
   "settingsDeep.store.table.events": "Events",
   "settingsDeep.store.table.usage": "Usage",
   "settingsDeep.store.table.steering_queue": "Steering queue",
-  "settingsDeep.store.disabledHint": "Set SESSION_STORE_ENABLED=true to enable the session history side store"
+  "settingsDeep.store.disabledHint": "Set SESSION_STORE_ENABLED=true to enable the session history side store",
+  "settingsDeep": {
+    "providers": {
+      "category": {
+        "official": {
+          "description": "First-party official model APIs"
+        },
+        "china": {
+          "description": "Providers reachable from mainland China"
+        },
+        "international": {
+          "description": "Major international providers"
+        },
+        "aggregator": {
+          "description": "Multi-model aggregation and routing gateways"
+        },
+        "cloud": {
+          "description": "Hosted cloud inference platforms"
+        },
+        "custom": {
+          "description": "Bring-your-own endpoints with a custom base URL"
+        }
+      },
+      "field": {
+        "apiFormat": {
+          "description": "Chat completion protocol (OpenAI / Anthropic compatible)"
+        },
+        "defaultModel": {
+          "description": "Model used when none is specified"
+        },
+        "baseUrl": {
+          "description": "API root URL; leave blank for the protocol default"
+        },
+        "envKey": {
+          "description": "Environment variable holding the API key"
+        },
+        "envModel": {
+          "description": "Environment variable overriding the default model"
+        }
+      },
+      "configuredHint": "Configured means the key environment variable was detected"
+    },
+    "store": {
+      "table": {
+        "sessions": {
+          "description": "Session metadata (id, title, workspace)"
+        },
+        "messages": {
+          "description": "Per-message history"
+        },
+        "events": {
+          "description": "Session event stream (tools, permissions, state)"
+        },
+        "usage": {
+          "description": "Per-request token and cost records"
+        },
+        "steering_queue": {
+          "description": "Steering instructions pending delivery"
+        }
+      }
+    },
+    "subagents": {
+      "bucket": {
+        "userFeedback": {
+          "description": "Direct user feedback about results"
+        },
+        "reviewSuggestions": {
+          "description": "Improvement suggestions from reviews"
+        },
+        "commonErrors": {
+          "description": "Recurring mistakes and how to avoid them"
+        },
+        "goodExamples": {
+          "description": "High-quality outputs worth reusing"
+        },
+        "archived": {
+          "description": "Archived memories no longer injected"
+        }
+      }
+    },
+    "usage": {
+      "range": {
+        "7d": {
+          "description": "Last 7 days, aggregated per day"
+        },
+        "30d": {
+          "description": "Last 30 days, aggregated per day"
+        }
+      },
+      "chartsHint": "Bars show daily requests; hover for date and value",
+      "tableHint": "Requests, tokens, and cost per rolling window"
+    },
+    "tester": {
+      "pickModel": "Model to test"
+    }
+  }
 }
