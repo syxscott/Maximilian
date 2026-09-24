@@ -132,17 +132,42 @@ export function ChatPanel({
     >
       {/* Main conversation column */}
       <div className="flex flex-col h-full min-w-0">
-        {showHeading && (
-          <h2 className="text-lg font-semibold mb-2 text-foreground">{t("chat.title")}</h2>
-        )}
-
         {!workspace && (
           <div className="mb-2">
             <EmptyState onOpenProviders={onOpenProviders} onOpenPalette={onOpenPalette} />
           </div>
         )}
 
-        <ConversationTimeline events={events} workspace={workspace} live={live} />
+        {/* 会话顶格渲染: the conversation column no longer spends a full
+            heading row above the timeline. When the panel owns a title
+            (standalone use) it collapses into a small badge placed
+            INSIDE the timeline's toolbar row — the wrapper reserves the
+            left edge of that row (ml on its first child) and overlays
+            the badge on it, so ConversationTimeline gains the ~36px a
+            text-lg heading used to occupy (≈2 more chat lines at
+            1080p). Dock-hosted panels already pass showHeading={false};
+            the jump-to-latest affordance inside the timeline stays as
+            is. */}
+        <div
+          className={`relative flex min-h-0 flex-1 flex-col${
+            showHeading ? " [&>div:first-child>div:first-child]:ml-20" : ""
+          }`}
+          data-testid="chat-timeline-shell"
+        >
+          {showHeading && (
+            <div className="absolute left-0 top-0 z-10 flex h-7 items-center">
+              <Badge
+                variant="secondary"
+                className="h-5 max-w-[72px] truncate px-1.5 text-[10px] font-normal text-muted-foreground"
+                title={t("chat.title")}
+                data-testid="chat-title-badge"
+              >
+                {t("chat.title")}
+              </Badge>
+            </div>
+          )}
+          <ConversationTimeline events={events} workspace={workspace} live={live} />
+        </div>
 
         <div className="pt-2 border-t border-border">
           <div className="relative">

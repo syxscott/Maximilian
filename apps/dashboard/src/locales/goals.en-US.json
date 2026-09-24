@@ -44,5 +44,21 @@
   "goals.summary.failed": "{failed}",
   "goals.summary.remainingLabel": "Remaining",
   "goals.summary.remaining": "{remaining}",
-  "goals.summary.noEta": "Plain arithmetic above (remaining = total − completed); no ETA is estimated"
+  "goals.summary.noEta": "Plain arithmetic above (remaining = total − completed); no ETA is estimated",
+  "goals.evolution.title": "Role performance",
+  "goals.evolution.description": "Real metrics from the evolution leaderboard, matched to this workspace's plan roles",
+  "goals.evolution.runs": "runs",
+  "goals.evolution.avgScore": "avg score",
+  "goals.evolution.acceptance": "acceptance",
+  "goals.evolution.loading": "Loading evolution metrics…",
+  "goals.evolution.unavailable": "Evolution metrics unavailable — the evolution engine may be disabled or unreachable",
+  "goals.evolution.empty": "No leaderboard entries match this workspace's roles yet",
+  "goals.evolution.noRoles": "No plan roles in this workspace — nothing to match against the leaderboard",
+  "goals.evolution.hint": "Select a role to load its evolution detail on demand",
+  "goals.evolution.version": "version",
+  "goals.evolution.versions": "promoted versions",
+  "goals.evolution.decisions": "evolution decisions",
+  "goals.evolution.totalTasks": "total tasks",
+  "goals.evolution.detailLoading": "Loading role detail…",
+  "goals.evolution.detailUnavailable": "Role profile unavailable (no evolution record for this role yet)"
 }

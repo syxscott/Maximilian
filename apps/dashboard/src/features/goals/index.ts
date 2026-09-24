@@ -13,7 +13,15 @@
 
 export { GoalTree } from "./GoalTree"
 export { GoalSummaryCard } from "./GoalSummaryCard"
-export { deriveGoals, dependencyDepths, roleColor } from "./model"
+export { GoalEvolutionPanel } from "./GoalEvolutionPanel"
+export {
+  deriveGoals,
+  dependencyDepths,
+  roleColor,
+  matchRoleEntries,
+  normalizeAcceptance,
+  parseRoleDetail,
+} from "./model"
 export type {
   GoalMilestoneKey,
   GoalMilestoneView,
@@ -24,4 +32,6 @@ export type {
   GoalTaskState,
   GoalTaskView,
   GoalsView,
+  RolePerformanceEntry,
+  RoleEvolutionDetail,
 } from "./model"

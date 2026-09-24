@@ -7,24 +7,64 @@
  * Tests for the goals feature domain: deriveGoals model-layer unit
  * tests (primary-goal completion per workspace status, sub-goals from
  * plan.tasks, dependency depth chains, milestones, defensive payloads)
- * plus render smoke for GoalTree and GoalSummaryCard. The suite pins
- * the honest-data contract: percentages are plain arithmetic over real
- * workspace objects and the view always discloses its sources.
+ * plus render smoke for GoalTree, GoalSummaryCard and the evolution
+ * 视角 GoalEvolutionPanel. The suite pins the honest-data contract:
+ * percentages are plain arithmetic over real workspace objects, the
+ * view always discloses its sources, and the evolution section only
+ * ever shows metrics the leaderboard actually reported — degrading
+ * explicitly when the engine is unavailable.
  */
 
-import { describe, it, expect, beforeAll } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest"
+import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
 
 import goalsEn from "../src/locales/goals.en-US.json"
-import { deriveGoals, dependencyDepths, roleColor } from "../src/features/goals/model"
+import {
+  deriveGoals,
+  dependencyDepths,
+  roleColor,
+  matchRoleEntries,
+  normalizeAcceptance,
+  parseRoleDetail,
+} from "../src/features/goals/model"
 import { GoalTree } from "../src/features/goals/GoalTree"
 import { GoalSummaryCard } from "../src/features/goals/GoalSummaryCard"
+import { GoalEvolutionPanel } from "../src/features/goals/GoalEvolutionPanel"
+import {
+  getEvolutionAgentsByRole,
+  getEvolutionLeaderboard,
+  getEvolutionVersionsByRoleDecisions,
+} from "../src/api-generated"
+
+vi.mock("../src/api-generated", () => ({
+  getEvolutionLeaderboard: vi.fn(),
+  getEvolutionAgentsByRole: vi.fn(),
+  getEvolutionVersionsByRoleDecisions: vi.fn(),
+}))
+
+const mockedLeaderboard = vi.mocked(getEvolutionLeaderboard)
+const mockedAgentsByRole = vi.mocked(getEvolutionAgentsByRole)
+const mockedDecisionsByRole = vi.mocked(getEvolutionVersionsByRoleDecisions)
 
 beforeAll(() => {
   const existing = getDictionary("en-US") ?? {}
   registerLocale("en-US", { ...existing, ...(goalsEn as Record<string, string>) })
   setLocale("en-US")
+})
+
+/** React-query provider wrapper — the evolution panel queries on mount. */
+function renderWithClient(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+}
+
+beforeEach(() => {
+  mockedLeaderboard.mockReset().mockResolvedValue({ entries: [] })
+  mockedAgentsByRole.mockReset()
+  mockedDecisionsByRole.mockReset()
 })
 
 function task(
@@ -339,7 +379,7 @@ describe("deriveGoals — defensive payloads", () => {
 
 describe("goals render smoke", () => {
   it("GoalTree renders the ring, source disclosure, milestones and indented sub-goals", () => {
-    render(<GoalTree workspace={ALL_SUCCESS} />)
+    renderWithClient(<GoalTree workspace={ALL_SUCCESS} />)
     expect(screen.getByTestId("goal-tree")).toBeTruthy()
     expect(screen.getByTestId("goal-sources").textContent).toBe(
       "Data source: user request · plan · task results · review",
@@ -363,11 +403,11 @@ describe("goals render smoke", () => {
   })
 
   it("GoalTree degrades to the empty state and the no-plan hint", () => {
-    const first = render(<GoalTree workspace={null} />)
+    const first = renderWithClient(<GoalTree workspace={null} />)
     expect(screen.getByTestId("goals-empty")).toBeTruthy()
     first.unmount()
 
-    render(
+    renderWithClient(
       <GoalTree workspace={{ userRequest: "Only a request", status: "planning", results: [] }} />,
     )
     expect(screen.queryByTestId("goals-empty")).toBeNull()
@@ -396,5 +436,186 @@ describe("goals render smoke", () => {
     expect(screen.getByTestId("goal-summary-failed").textContent).toBe("1")
     expect(screen.getByTestId("goal-summary-remaining").textContent).toBe("3")
     expect(screen.getByTestId("goal-summary-card").textContent).toContain("no ETA is estimated")
+  })
+})
+
+// ── Evolution视角: model layer ──────────────────────────────────────────────
+
+describe("matchRoleEntries — leaderboard entries matched to plan roles", () => {
+  it("keeps entries whose role matches the plan roles, in plan-role order", () => {
+    const entries = [
+      { role: "reviewer", runs: 5, avgScore: 8.8, acceptance: 92 },
+      { role: "executor", runs: 12, avgScore: 7.4, acceptance: 81 },
+      { role: "planner", runs: 3, avgScore: 9.1, acceptance: 100 },
+    ]
+    const matched = matchRoleEntries(entries, ["planner", "executor"])
+    expect(matched).toEqual([
+      { role: "planner", runs: 3, avgScore: 9.1, acceptance: 100 },
+      { role: "executor", runs: 12, avgScore: 7.4, acceptance: 81 },
+    ])
+  })
+
+  it("normalizes the live payload spelling (agentRole/sampleSize/userSatisfaction) and scales fractional acceptance", () => {
+    // The backend's LeaderboardEntry carries agentRole + sampleSize +
+    // userSatisfaction (0..1); the model maps both spellings honestly.
+    const entries = [
+      { agentRole: "executor", sampleSize: 7, avgScore: 6.5, userSatisfaction: 0.83 },
+    ]
+    expect(matchRoleEntries(entries, ["executor"])).toEqual([
+      { role: "executor", runs: 7, avgScore: 6.5, acceptance: 83 },
+    ])
+    expect(normalizeAcceptance(0.83)).toBe(83)
+    expect(normalizeAcceptance(92)).toBe(92)
+  })
+
+  it("skips garbage entries and keeps missing metrics as null (no fabrication)", () => {
+    const entries = [
+      null,
+      42,
+      { runs: 5 }, // no role → unusable
+      { role: "executor" }, // role, but no metrics reported
+      { role: "", runs: 9 },
+    ]
+    expect(matchRoleEntries(entries, ["executor"])).toEqual([
+      { role: "executor", runs: null, avgScore: null, acceptance: null },
+    ])
+  })
+
+  it("keeps the first entry per role and omits roles the leaderboard lacks", () => {
+    const entries = [
+      { role: "executor", runs: 12, avgScore: 7.4, acceptance: 81 },
+      { role: "executor", runs: 2, avgScore: 3, acceptance: 40 }, // duplicate → ignored
+    ]
+    expect(matchRoleEntries(entries, ["executor", "reviewer"])).toEqual([
+      { role: "executor", runs: 12, avgScore: 7.4, acceptance: 81 },
+    ])
+  })
+
+  it("returns [] for garbage inputs (non-array entries, non-string roles)", () => {
+    expect(matchRoleEntries("nope", ["executor"])).toEqual([])
+    expect(matchRoleEntries([{ role: "executor" }], null)).toEqual([])
+    expect(matchRoleEntries([{ role: "executor" }], [1, null, ""])).toEqual([])
+    expect(matchRoleEntries([], ["executor"])).toEqual([])
+  })
+})
+
+describe("parseRoleDetail — lazy profile + decision-log pair", () => {
+  it("reads version chain, decision count (seed v1 excluded) and total tasks", () => {
+    const profile = { currentVersion: "v3", versions: ["v1", "v2", "v3"], totalTasks: 12 }
+    const decisionLog = {
+      role: "executor",
+      decisions: [
+        { id: "v1", reason: "initial" },
+        { id: "v2", reason: "Addressed 3 failures" },
+        { id: "v3", reason: "Heuristic improvement" },
+      ],
+    }
+    expect(parseRoleDetail(profile, decisionLog)).toEqual({
+      currentVersion: "v3",
+      versionCount: 3,
+      decisionCount: 2,
+      totalTasks: 12,
+    })
+  })
+
+  it("yields nulls (honest dashes) for missing pieces and garbage inputs", () => {
+    expect(parseRoleDetail(null, null)).toEqual({
+      currentVersion: null,
+      versionCount: null,
+      decisionCount: null,
+      totalTasks: null,
+    })
+    // A raw decision array (not wrapped in { decisions }) still counts.
+    expect(parseRoleDetail({ versions: [] }, [{ id: "v2" }])).toEqual({
+      currentVersion: null,
+      versionCount: 0,
+      decisionCount: 1,
+      totalTasks: null,
+    })
+    expect(
+      parseRoleDetail({ currentVersion: "v1" }, { role: "executor", decisions: "junk" }),
+    ).toEqual({
+      currentVersion: "v1",
+      versionCount: null,
+      decisionCount: null,
+      totalTasks: null,
+    })
+  })
+})
+
+// ── Evolution视角: render smoke ─────────────────────────────────────────────
+
+describe("GoalEvolutionPanel render smoke", () => {
+  it("renders real matched metrics in plan-role order and lazily loads detail on click", async () => {
+    const user = userEvent.setup()
+    mockedLeaderboard.mockResolvedValue({
+      entries: [
+        { agentRole: "reviewer", sampleSize: 5, avgScore: 8.8, userSatisfaction: 0.92 },
+        { agentRole: "executor", sampleSize: 12, avgScore: 7.44, userSatisfaction: 0.81 },
+      ],
+    })
+    mockedAgentsByRole.mockResolvedValue({
+      currentVersion: "v3",
+      versions: ["v1", "v2", "v3"],
+      totalTasks: 12,
+    })
+    mockedDecisionsByRole.mockResolvedValue({
+      role: "executor",
+      decisions: [{ id: "v1" }, { id: "v2" }, { id: "v3" }],
+    })
+
+    renderWithClient(<GoalEvolutionPanel roles={["planner", "executor"]} />)
+
+    // Planner has no leaderboard entry → only executor appears (no made-up row).
+    await waitFor(() => expect(screen.getByTestId("goal-evolution-rows")).toBeTruthy())
+    expect(screen.getByTestId("goal-evolution-role-executor").textContent).toContain("executor")
+    expect(screen.getByTestId("goal-evolution-role-executor").textContent).toContain("12")
+    expect(screen.getByTestId("goal-evolution-role-executor").textContent).toContain("7.4")
+    expect(screen.getByTestId("goal-evolution-role-executor").textContent).toContain("81%")
+    expect(screen.queryByTestId("goal-evolution-role-planner")).toBeNull()
+
+    // Detail is lazy: nothing fetched before the click, fetched after.
+    expect(mockedAgentsByRole).not.toHaveBeenCalled()
+    await user.click(screen.getByTestId("goal-evolution-role-executor"))
+    await waitFor(() => expect(screen.getByTestId("goal-evolution-detail")).toBeTruthy())
+    expect(mockedAgentsByRole).toHaveBeenCalledWith("executor", expect.anything())
+    expect(mockedDecisionsByRole).toHaveBeenCalledWith("executor", expect.anything())
+    expect(screen.getByTestId("goal-evolution-detail").textContent).toContain("v3")
+    expect(screen.getByTestId("goal-evolution-detail").textContent).toContain("3") // promoted versions
+    expect(screen.getByTestId("goal-evolution-detail").textContent).toContain("2") // decisions (v1 excluded)
+  })
+
+  it("degrades honestly: unavailable when the engine is off, empty when nothing matches", async () => {
+    // Evolution disabled / route unreachable → explicit degraded note.
+    mockedLeaderboard.mockRejectedValue(new Error("503 evolution disabled"))
+    const failed = renderWithClient(<GoalEvolutionPanel roles={["executor"]} />)
+    await waitFor(() => expect(screen.getByTestId("goal-evolution-unavailable")).toBeTruthy())
+    failed.unmount()
+
+    // Engine answered but no entry matches this workspace's roles.
+    mockedLeaderboard.mockResolvedValue({
+      entries: [{ role: "planner", runs: 3, avgScore: 9.1, acceptance: 100 }],
+    })
+    renderWithClient(<GoalEvolutionPanel roles={["executor"]} />)
+    await waitFor(() => expect(screen.getByTestId("goal-evolution-empty")).toBeTruthy())
+    expect(screen.queryByTestId("goal-evolution-rows")).toBeNull()
+  })
+
+  it("GoalTree embeds the role-performance section under the sub-goals for planned workspaces", async () => {
+    mockedLeaderboard.mockResolvedValue({
+      entries: [{ role: "executor", runs: 12, avgScore: 7.4, acceptance: 81 }],
+    })
+    const mounted = renderWithClient(<GoalTree workspace={ALL_SUCCESS} />)
+    await waitFor(() => expect(screen.getByTestId("goal-evolution-rows")).toBeTruthy())
+    expect(screen.getByTestId("goal-evolution-panel").textContent).toContain("Role performance")
+    mounted.unmount()
+
+    // No plan → no section at all (nothing to match, no speculative fetch).
+    mockedLeaderboard.mockClear()
+    renderWithClient(
+      <GoalTree workspace={{ userRequest: "Request only", status: "planning", results: [] }} />,
+    )
+    expect(screen.queryByTestId("goal-evolution-panel")).toBeNull()
+    expect(mockedLeaderboard).not.toHaveBeenCalled()
   })
 })

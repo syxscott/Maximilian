@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge"
 import { useLocale, t } from "@max/i18n"
 import { deriveGoals, roleColor } from "./model"
 import type { GoalMilestoneView, GoalTaskView } from "./model"
+import { GoalEvolutionPanel } from "./GoalEvolutionPanel"
 
 /** Ring geometry — pure SVG, no chart dependency. */
 const RING_RADIUS = 28
@@ -240,6 +241,13 @@ export function GoalTree({ workspace }: { workspace: unknown }) {
                 </ul>
               )}
             </div>
+
+            {/* Evolution视角: real per-role metrics for the plan's roles.
+                Mounted only when the plan declared roles — the panel's
+                own empty/degraded states cover the rest. */}
+            {view.subGoals.length > 0 && (
+              <GoalEvolutionPanel roles={[...new Set(view.subGoals.map((task) => task.role))]} />
+            )}
           </>
         )}
       </CardContent>

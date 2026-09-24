@@ -44,5 +44,21 @@
   "goals.summary.failed": "{failed}",
   "goals.summary.remainingLabel": "预计剩余",
   "goals.summary.remaining": "{remaining}",
-  "goals.summary.noEta": "以上为简单算术统计（剩余 = 总数 − 已完成），不预估完成时间"
+  "goals.summary.noEta": "以上为简单算术统计（剩余 = 总数 − 已完成），不预估完成时间",
+  "goals.evolution.title": "角色表现",
+  "goals.evolution.description": "来自 evolution 排行榜的真实指标，按本工作区计划涉及的角色匹配",
+  "goals.evolution.runs": "运行数",
+  "goals.evolution.avgScore": "平均分",
+  "goals.evolution.acceptance": "采纳率",
+  "goals.evolution.loading": "正在加载 evolution 指标…",
+  "goals.evolution.unavailable": "evolution 指标不可用——evolution 引擎可能未开启或无法访问",
+  "goals.evolution.empty": "排行榜暂无匹配本工作区角色的条目",
+  "goals.evolution.noRoles": "本工作区计划未涉及角色，无可匹配的排行榜数据",
+  "goals.evolution.hint": "点击角色按需加载其 evolution 详情",
+  "goals.evolution.version": "版本",
+  "goals.evolution.versions": "晋升版本数",
+  "goals.evolution.decisions": "进化决策数",
+  "goals.evolution.totalTasks": "累计任务",
+  "goals.evolution.detailLoading": "正在加载角色详情…",
+  "goals.evolution.detailUnavailable": "角色档案不可用（该角色暂无 evolution 记录）"
 }

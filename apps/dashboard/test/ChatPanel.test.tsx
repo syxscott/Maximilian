@@ -100,4 +100,29 @@ describe("ChatPanel", () => {
     render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={ws} />)
     expect(screen.getByText(/agent timeout/)).toBeInTheDocument()
   })
+
+  // 会话顶格渲染: the conversation column has no standalone heading row —
+  // the title collapses into a small badge inside the timeline's toolbar
+  // row (the wrapper overlays it on the row's reserved left edge), so the
+  // timeline gains the ~2 rows the old text-lg heading consumed.
+  it("renders the title as a compact badge in the timeline toolbar row, not a heading", () => {
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} />)
+    const badge = screen.getByTestId("chat-title-badge")
+    expect(badge).toBeInTheDocument()
+    // The i18n core title (chat.title), now compact rather than an h2 row.
+    expect(badge.textContent).toMatch(/chat|conversation/i)
+    // The shell hosts the overlay + timeline; no h2 heading row remains.
+    expect(screen.getByTestId("chat-timeline-shell")).toBeInTheDocument()
+    expect(document.querySelector("h2")).toBeNull()
+    // Button inventory unchanged (the badge is not a button).
+    expect(screen.getAllByRole("button")).toHaveLength(9)
+  })
+
+  it("omits the title badge entirely when dock-hosted (showHeading=false)", () => {
+    render(
+      <ChatPanel onSubmit={() => {}} submitting={false} workspace={null} showHeading={false} />,
+    )
+    expect(screen.queryByTestId("chat-title-badge")).toBeNull()
+    expect(screen.getByTestId("chat-timeline-shell")).toBeInTheDocument()
+  })
 })
