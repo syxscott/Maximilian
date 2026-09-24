@@ -8,11 +8,12 @@
  * get-workflow-run, list-saved-workflows, list-workflow-runs,
  * resume-workflow-run, resolve-workflow-question,
  * get-workflow-run-roster, get-workflow-run-situation,
- * eval-workflow-snippet, workflow-diagnostics. The dynamic-workflow
- * family keys on runId / workflowId / status / phase — every extractor
- * pulls the full defensive key group so each body shows at least three
- * structured fields (run · workflow · status/phase/count …) when the
- * event carries them.
+ * eval-workflow-snippet, workflow-diagnostics, amend-workflow. The
+ * dynamic-workflow family keys on runId / workflowId / status / phase —
+ * every extractor pulls the full defensive key group so each body shows
+ * at least three structured fields (run · workflow · status/phase/count …)
+ * when the event carries them. The run/workflow/status/phase key groups
+ * are shared with workflow-cards.model.ts (the compact-card variants).
  */
 
 import {
@@ -32,20 +33,26 @@ import {
   type ToolViewModel,
 } from "./shared.model"
 
-function runField(obj: Record<string, unknown>): string | undefined {
+/** Shared defensive key groups (also imported by workflow-cards.model.ts). */
+export function runField(obj: Record<string, unknown>): string | undefined {
   return pickStr(obj, ["runId", "run_id", "workflowRunId", "workflow_run_id", "id"])
 }
 
-function workflowField(obj: Record<string, unknown>): string | undefined {
+export function workflowField(obj: Record<string, unknown>): string | undefined {
   return pickStr(obj, ["workflowId", "workflow_id", "name", "workflow", "workflowName"])
 }
 
-function statusField(obj: Record<string, unknown>): string | undefined {
+export function statusField(obj: Record<string, unknown>): string | undefined {
   return pickStr(obj, ["status", "state", "lifecycle"])
 }
 
-function phaseField(obj: Record<string, unknown>): string | undefined {
+export function phaseField(obj: Record<string, unknown>): string | undefined {
   return pickStr(obj, ["phase", "stage", "currentPhase"])
+}
+
+/** Wall-clock duration of a run (candidates mirror the runtime events). */
+export function durationField(obj: Record<string, unknown>): number | undefined {
+  return pickNum(obj, ["durationMs", "duration_ms", "elapsedMs", "elapsed_ms"])
 }
 
 function countField(
@@ -279,5 +286,38 @@ export function extractWorkflowDiagnostics(input: unknown): ToolViewModel {
   return vmFrom(
     rows.filter((r) => r !== undefined),
     oneLine(runId ?? workflowId ?? phase ?? ""),
+  )
+}
+
+export function extractAmendWorkflow(input: unknown): ToolViewModel {
+  const obj = asRecord(input)
+  const runId = runField(obj)
+  const workflowId = workflowField(obj)
+  const script =
+    pickStr(obj, ["script", "revisedScript", "revised_script", "source"]) ??
+    pickStr(obj, ["path", "scriptPath", "script_path"])
+  const preserve = pickArray(obj, ["preserve", "keep", "reuse"])
+  const settings = asRecord(obj["settings"] ?? obj["changes"] ?? obj["revision"])
+  const settingKeys = Object.keys(settings)
+  if (
+    !runId &&
+    !workflowId &&
+    script === undefined &&
+    preserve === undefined &&
+    settingKeys.length === 0
+  ) {
+    return emptyVm()
+  }
+  const rows: Array<RendererRow | undefined> = [
+    row(FIELDS.run, runId, true),
+    row(FIELDS.workflow, workflowId, true),
+    script === undefined ? undefined : row(FIELDS.lines, script.split("\n").length),
+    preserve === undefined ? undefined : row(FIELDS.count, preserve.length),
+    settingKeys.length === 0 ? undefined : row(FIELDS.settings, settingKeys.length),
+  ]
+  return vmFrom(
+    rows.filter((r) => r !== undefined),
+    oneLine(runId ?? workflowId ?? ""),
+    script === undefined ? undefined : { text: script, maxLines: 20 },
   )
 }

@@ -108,6 +108,25 @@ import {
 } from "./renderers/coordination.model"
 import { extractCronCreate, extractOffpeakCreate } from "./renderers/schedule.model"
 import { extractNodeRepl, extractNodeReplImageGrid } from "./renderers/repl.model"
+import { extractBrowserAction, extractBrowserNavigate } from "./renderers/browser.model"
+import {
+  extractCuaAction,
+  extractGetAppState,
+  extractListApps,
+  extractScreenshot,
+} from "./renderers/cua.model"
+import {
+  extractAgentPrompt,
+  extractEnterPlanMode,
+  extractExitPlanMode,
+} from "./renderers/prompt.model"
+import { extractAmendWorkflow } from "./renderers/workflow.model"
+import {
+  extractGetWorkflowRunCard,
+  extractGetWorkflowRunRosterCard,
+  extractListWorkflowRunsCard,
+  extractResumeWorkflowRunCard,
+} from "./renderers/workflow-cards.model"
 import {
   extractCreateWorkflow,
   extractSaveWorkflow,
@@ -129,15 +148,20 @@ const HEADLINE_EXTRACTORS: Record<string, HeadlineExtractor> = {
   search: extractSearch,
   mcp: extractMcp,
   agent: extractAgent,
+  "agent-prompt": extractAgentPrompt,
   task: extractTask,
   "task-output": extractTaskOutput,
   "task-stop": extractTaskStop,
   explore: extractExplore,
   "plan-guidance": extractPlanGuidance,
+  "enter-plan-mode": extractEnterPlanMode,
+  "exit-plan-mode": extractExitPlanMode,
   "ask-question": extractAskQuestion,
   goal: extractGoal,
   escalate: extractEscalate,
   todo: extractTodo,
+  "todo-read": extractTodo,
+  "todo-write": extractTodo,
   skill: extractSkill,
   "send-message": extractSendMessage,
   "submit-result": extractSubmitResult,
@@ -149,8 +173,15 @@ const HEADLINE_EXTRACTORS: Record<string, HeadlineExtractor> = {
   "offpeak-create": extractOffpeakCreate,
   "node-repl": extractNodeRepl,
   "node-repl-image-grid": extractNodeReplImageGrid,
+  "cua-action": extractCuaAction,
+  "get-app-state": extractGetAppState,
+  "list-apps": extractListApps,
+  screenshot: extractScreenshot,
+  "browser-navigate": extractBrowserNavigate,
+  "browser-action": extractBrowserAction,
   "create-workflow": extractCreateWorkflow,
   "save-workflow": extractSaveWorkflow,
+  "amend-workflow": extractAmendWorkflow,
   "get-workflow-run": extractGetWorkflowRun,
   "list-saved-workflows": extractListSavedWorkflows,
   "list-workflow-runs": extractListWorkflowRuns,
@@ -160,6 +191,10 @@ const HEADLINE_EXTRACTORS: Record<string, HeadlineExtractor> = {
   "get-workflow-run-situation": extractGetWorkflowRunSituation,
   "eval-workflow-snippet": extractEvalWorkflowSnippet,
   "workflow-diagnostics": extractWorkflowDiagnostics,
+  "get-workflow-run-card": extractGetWorkflowRunCard,
+  "list-workflow-runs-card": extractListWorkflowRunsCard,
+  "resume-workflow-run-card": extractResumeWorkflowRunCard,
+  "get-workflow-run-roster-card": extractGetWorkflowRunRosterCard,
 }
 
 export function toolInputRows(tool: string, input: unknown): ToolInputRows {

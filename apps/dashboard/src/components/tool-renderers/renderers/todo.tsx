@@ -4,11 +4,13 @@
 // Licensed under the MIT License. See LICENSE in the project root.
 
 /**
- * todo renderer — the write-side todo list. Beyond the count/summary rows
- * the body renders the NORMALIZED items (coordination.model.ts) as a real
- * checklist: status glyph (○ pending / ◐ in progress / ✓ completed),
- * content text, optional priority badge. Falls back to the generic JSON
- * preview when the payload carries no todo-like array.
+ * todo renderer — the todo-list surface shared by the todo / todo-read /
+ * todo-write tool names. Beyond the count/summary rows the body renders
+ * the NORMALIZED items (coordination.model.ts) as a real checklist:
+ * status glyph (○ pending / ◐ in progress / ✓ completed), content text,
+ * optional priority badge. The localized title follows the concrete tool
+ * name; falls back to the generic JSON preview when the payload carries
+ * no todo-like array.
  */
 
 import { useLocale, t } from "@max/i18n"
@@ -65,7 +67,7 @@ function TodoRow({ item, index }: { item: TodoItem; index: number }) {
   )
 }
 
-export function TodoBody({ input }: ToolCallProps) {
+export function TodoBody({ tool, input }: ToolCallProps) {
   useLocale()
   const vm = extractTodo(input)
   const visible = vm.items.filter((item) => item.content.length > 0)
@@ -76,7 +78,7 @@ export function TodoBody({ input }: ToolCallProps) {
         className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground"
         data-testid="tool-title"
       >
-        {t("toolRenderers.todo.title")}
+        {t(`toolRenderers.${tool}.title`)}
       </p>
       {visible.length > 0 ? (
         <ul className="space-y-0.5" data-testid="todo-list">

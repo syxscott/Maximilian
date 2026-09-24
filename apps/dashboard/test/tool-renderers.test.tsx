@@ -65,9 +65,13 @@ import zhDomain from "../src/locales/tool-renderers.zh-CN.json"
 import enDomain from "../src/locales/tool-renderers.en-US.json"
 import aiZhDomain from "../src/locales/ai-elements.zh-CN.json"
 import aiEnDomain from "../src/locales/ai-elements.en-US.json"
-import { ToolCallBlock, resolveToolRenderer } from "../src/components/tool-renderers/registry"
+import {
+  ToolCallBlock,
+  resolveToolRenderer,
+  type ToolRendererDef,
+} from "../src/components/tool-renderers/registry"
 import { summarizeToolInput, toolInputRows } from "../src/components/tool-renderers/model"
-import { RENDERED_TOOLS } from "../src/components/tool-renderers/renderers/index"
+import { RENDERED_TOOLS, RENDERERS } from "../src/components/tool-renderers/renderers/index"
 import {
   extractWebfetch,
   extractSearch,
@@ -129,7 +133,30 @@ import {
   extractGetWorkflowRunSituation,
   extractEvalWorkflowSnippet,
   extractWorkflowDiagnostics,
+  extractAmendWorkflow,
 } from "../src/components/tool-renderers/renderers/workflow.model"
+import {
+  extractGetWorkflowRunCard,
+  extractListWorkflowRunsCard,
+  extractResumeWorkflowRunCard,
+  extractGetWorkflowRunRosterCard,
+} from "../src/components/tool-renderers/renderers/workflow-cards.model"
+import {
+  extractAgentPrompt,
+  extractEnterPlanMode,
+  extractExitPlanMode,
+} from "../src/components/tool-renderers/renderers/prompt.model"
+import {
+  extractCuaAction,
+  extractGetAppState,
+  extractListApps,
+  extractScreenshot,
+  screenshotIsRenderable,
+} from "../src/components/tool-renderers/renderers/cua.model"
+import {
+  extractBrowserNavigate,
+  extractBrowserAction,
+} from "../src/components/tool-renderers/renderers/browser.model"
 import { extractGroupChildren } from "../src/components/tool-renderers/renderers/group.model"
 import { extractFileChange } from "../src/components/tool-renderers/renderers/edit-inline-diff.model"
 import { usageOf } from "../src/components/tool-renderers/renderers/shared.model"
@@ -169,21 +196,26 @@ afterEach(() => {
   setLocale("en-US")
 })
 
-/** The 38 non-core tools this renderer set registers. */
+/** The 54 non-core tools this renderer set registers. */
 const NEW_TOOLS = [
   "webfetch",
   "search",
   "mcp",
   "agent",
+  "agent-prompt",
   "task",
   "task-output",
   "task-stop",
   "explore",
   "plan-guidance",
+  "enter-plan-mode",
+  "exit-plan-mode",
   "ask-question",
   "goal",
   "escalate",
   "todo",
+  "todo-read",
+  "todo-write",
   "skill",
   "send-message",
   "submit-result",
@@ -195,8 +227,15 @@ const NEW_TOOLS = [
   "offpeak-create",
   "node-repl",
   "node-repl-image-grid",
+  "cua-action",
+  "get-app-state",
+  "list-apps",
+  "screenshot",
+  "browser-navigate",
+  "browser-action",
   "create-workflow",
   "save-workflow",
+  "amend-workflow",
   "get-workflow-run",
   "list-saved-workflows",
   "list-workflow-runs",
@@ -206,6 +245,10 @@ const NEW_TOOLS = [
   "get-workflow-run-situation",
   "eval-workflow-snippet",
   "workflow-diagnostics",
+  "get-workflow-run-card",
+  "list-workflow-runs-card",
+  "resume-workflow-run-card",
+  "get-workflow-run-roster-card",
   "execute-group",
   "changes-group",
   "cua-group",
@@ -255,6 +298,20 @@ const ALL_EXTRACTORS: Array<(input: unknown) => { isEmpty: boolean }> = [
   extractGetWorkflowRunSituation,
   extractEvalWorkflowSnippet,
   extractWorkflowDiagnostics,
+  extractAmendWorkflow,
+  extractGetWorkflowRunCard,
+  extractListWorkflowRunsCard,
+  extractResumeWorkflowRunCard,
+  extractGetWorkflowRunRosterCard,
+  extractAgentPrompt,
+  extractEnterPlanMode,
+  extractExitPlanMode,
+  extractCuaAction,
+  extractGetAppState,
+  extractListApps,
+  extractScreenshot,
+  extractBrowserNavigate,
+  extractBrowserAction,
 ]
 
 const MALFORMED: unknown[] = [null, undefined, 42, "text", [], { nested: { deep: true } }]
@@ -336,7 +393,7 @@ function rowLabels(): string[] {
 
 describe("glyph resolution", () => {
   it("every new renderer resolves to a dedicated glyph (not the · fallback) with a Body", () => {
-    expect(NEW_TOOLS).toHaveLength(38)
+    expect(NEW_TOOLS).toHaveLength(54)
     for (const tool of NEW_TOOLS) {
       const def = resolveToolRenderer(tool)
       expect(def.glyph, tool).not.toBe("·")
@@ -2851,5 +2908,599 @@ describe("ai-elements mounts", () => {
     expect(usageOf({ other: 1 })).toBeUndefined()
     expect(usageOf(null)).toBeUndefined()
     expect(usageOf("text")).toBeUndefined()
+  })
+})
+
+// ── coverage completion round — the last batch (registry keys ≥ 60) ─────────
+
+describe("registry full coverage — every entry is a dedicated renderer", () => {
+  it("registry carries ≥60 keys and the aggregation agrees with the table", () => {
+    expect(Object.keys(RENDERERS).length).toBeGreaterThanOrEqual(60)
+    expect([...RENDERED_TOOLS].sort()).toEqual(Object.keys(RENDERERS).sort())
+  })
+
+  it("every entry has a non-fallback glyph AND a Body — known tools never hit DefaultBody", () => {
+    for (const [tool, def] of Object.entries(RENDERERS)) {
+      const d: ToolRendererDef = def
+      expect(d.glyph, tool).not.toBe("·")
+      expect(d.glyph.length, tool).toBeGreaterThan(0)
+      expect(d.Body, tool).toBeDefined()
+    }
+  })
+
+  it("every glyph is exclusive to one renderer", () => {
+    const seen = new Map<string, string>()
+    for (const [tool, def] of Object.entries(RENDERERS)) {
+      const owner = seen.get(def.glyph)
+      expect(owner, `glyph "${def.glyph}" shared by ${owner} and ${tool}`).toBeUndefined()
+      seen.set(def.glyph, tool)
+    }
+  })
+
+  it("only genuinely unknown tools resolve to the generic fallback", () => {
+    const fallback = resolveToolRenderer("no-such-tool")
+    expect(fallback.glyph).toBe("·")
+    expect(fallback.Body).toBeUndefined()
+    for (const tool of [...NEW_TOOLS, ...CORE_TOOLS]) {
+      expect(resolveToolRenderer(tool).Body, tool).toBeDefined()
+    }
+  })
+
+  it("every registry key owns a title key in both locales", () => {
+    for (const tool of Object.keys(RENDERERS)) {
+      const key = `toolRenderers.${tool}.title`
+      expect(enDomain[key as keyof typeof enDomain], key).toBeDefined()
+      expect(zhDomain[key as keyof typeof zhDomain], key).toBeDefined()
+    }
+  })
+
+  it("every tool summarizes to a target — never raw JSON — when its real fields land", () => {
+    // Groups re-render children recursively; their collapsed line stays the
+    // raw envelope by design. Every other entry gets a real-field sample.
+    const SAMPLES: Record<string, unknown> = {
+      bash: { command: "ls" },
+      read: { path: "p" },
+      glob: { pattern: "**/*" },
+      grep: { pattern: "x" },
+      permission: { tool: "bash", target: "make" },
+      lsp: { method: "documentSymbols" },
+      edit: { path: "a.ts", oldString: "x", newString: "y" },
+      write: { path: "a.ts", content: "c" },
+      webfetch: { url: "https://example.com/a" },
+      search: { query: "q" },
+      mcp: { server: "srv", tool: "t" },
+      agent: { name: "fixer" },
+      "agent-prompt": { name: "fixer", prompt: "fix it" },
+      task: { description: "audit" },
+      "task-output": { taskId: "t-1" },
+      "task-stop": { taskId: "t-1" },
+      explore: { query: "renderer" },
+      "plan-guidance": { goal: "stay minimal" },
+      "enter-plan-mode": { mode: "plan" },
+      "exit-plan-mode": { plan: "# Step 1" },
+      "ask-question": { questions: [{ question: "go?" }] },
+      goal: { goal: "ship" },
+      escalate: { reason: "blocked" },
+      todo: { todos: [{ content: "a", status: "pending" }] },
+      "todo-read": { todos: [{ content: "a", status: "pending" }] },
+      "todo-write": { todos: [{ content: "a", status: "pending" }] },
+      skill: { skill: "pdf" },
+      "send-message": { message: "hello" },
+      "submit-result": { summary: "done" },
+      "switch-mode": { from: "chat", mode: "plan" },
+      "list-models": { provider: "glm" },
+      "read-session-context": { sessionId: "s-1" },
+      "respond-to-coordinator": { summary: "ok" },
+      "cron-create": { schedule: "0 9 * * *" },
+      "offpeak-create": { window: "01:00-05:00" },
+      "node-repl": { code: "let x = 1" },
+      "node-repl-image-grid": { images: ["data:image/png;base64,AA"] },
+      "cua-action": { action: "click", target: "#submit" },
+      "get-app-state": { app: "Terminal" },
+      "list-apps": { apps: ["A"] },
+      screenshot: { width: 100, height: 80 },
+      "browser-navigate": { url: "https://example.com/x" },
+      "browser-action": { action: "fill", selector: "#q" },
+      "create-workflow": { name: "review" },
+      "save-workflow": { name: "review" },
+      "amend-workflow": { runId: "r-7" },
+      "get-workflow-run": { runId: "r-1" },
+      "list-saved-workflows": { scope: "project" },
+      "list-workflow-runs": { status: "running" },
+      "resume-workflow-run": { runId: "r-1" },
+      "resolve-workflow-question": { questionId: "q-1" },
+      "get-workflow-run-roster": { runId: "r-1" },
+      "get-workflow-run-situation": { runId: "r-1" },
+      "eval-workflow-snippet": { code: "x = 1" },
+      "workflow-diagnostics": { runId: "r-1" },
+      "get-workflow-run-card": { runId: "r-1", status: "running" },
+      "list-workflow-runs-card": { status: "running", total: 3 },
+      "resume-workflow-run-card": { runId: "r-1", status: "paused" },
+      "get-workflow-run-roster-card": { runId: "r-1", actors: ["a"] },
+    }
+    const groups = new Set(["execute-group", "changes-group", "cua-group"])
+    expect(Object.keys(SAMPLES).length).toBe(Object.keys(RENDERERS).length - groups.size)
+    for (const [tool, sample] of Object.entries(SAMPLES)) {
+      expect(resolveToolRenderer(tool).Body, tool).toBeDefined()
+      const summarized = summarizeToolInput(tool, sample)
+      expect(summarized, tool).not.toMatch(/^\{/)
+      expect(summarized.length, tool).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe("completion — model extensions", () => {
+  it("workflow run card: info-dense headline, chips fields off the row list", () => {
+    const vm = extractGetWorkflowRunCard({
+      runId: "r-9",
+      workflowId: "wf",
+      status: "running",
+      phase: "phase-2",
+      durationMs: 4200,
+    })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.headline).toBe("running · phase-2 · r-9")
+    expect(vm.status).toBe("running")
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.workflow",
+      "toolRenderers.fields.duration",
+    ])
+  })
+
+  it("list runs card: count composes into the headline, absent arrays fall back to total", () => {
+    expect(extractListWorkflowRunsCard({ status: "running", total: 7 }).headline).toBe(
+      "running · ×7",
+    )
+    const listed = extractListWorkflowRunsCard({ runs: [{}, {}, {}], limit: 5 })
+    expect(listed.headline).toBe("×3")
+    expect(listed.rows.map((r) => r.labelKey)).toEqual(["toolRenderers.fields.limit"])
+    expect(extractListWorkflowRunsCard({ limit: 5 }).isEmpty).toBe(false)
+  })
+
+  it("resume card keeps the reason row; roster card numbers the actor names", () => {
+    const resume = extractResumeWorkflowRunCard({
+      runId: "r-3",
+      status: "paused",
+      phase: "gate",
+      reason: "amended",
+    })
+    expect(resume.headline).toBe("r-3 · paused · gate")
+    expect(resume.rows.map((r) => r.labelKey)).toEqual(["toolRenderers.fields.reason"])
+    const roster = extractGetWorkflowRunRosterCard({
+      runId: "r-5",
+      phase: "review",
+      actors: [{ name: "reviewer" }, "fixer"],
+    })
+    expect(roster.headline).toBe("r-5 · review · ×2")
+    expect(roster.count).toBe(2)
+    expect(roster.code?.text).toBe("1. reviewer\n2. fixer")
+  })
+
+  it("amend-workflow: run/workflow/lines rows plus the revised script block", () => {
+    const vm = extractAmendWorkflow({
+      runId: "r-7",
+      workflowId: "wf-amend",
+      script: "phase one\nphase two",
+      settings: { max_concurrency: 3 },
+    })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.headline).toBe("r-7")
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.workflow",
+      "toolRenderers.fields.lines",
+      "toolRenderers.fields.settings",
+    ])
+    expect(vm.code?.text).toContain("phase two")
+  })
+
+  it("agent prompt: heading field, model/lines rows, clamped prompt block", () => {
+    const vm = extractAgentPrompt({ name: "fixer", model: "glm-5.3", prompt: "line1\nline2" })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.name).toBe("fixer")
+    expect(vm.lineCount).toBe(2)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.agent",
+      "toolRenderers.fields.provider",
+      "toolRenderers.fields.lines",
+    ])
+    expect(vm.code?.text).toBe("line1\nline2")
+    expect(extractAgentPrompt({ model: "m" }).rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.provider",
+    ])
+  })
+
+  it("plan mode: entry reads mode/target/reason, exit keeps the plan block + prompts", () => {
+    const enter = extractEnterPlanMode({ mode: "plan", target: "auth", reason: "multi-file" })
+    expect(enter.headline).toBe("plan")
+    expect(enter.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.mode",
+      "toolRenderers.fields.target",
+      "toolRenderers.fields.reason",
+    ])
+    const exit = extractExitPlanMode({ plan: "# Step 1\nStep 2", allowedPrompts: ["a", "b"] })
+    expect(exit.headline).toBe("# Step 1 Step 2")
+    expect(exit.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.lines",
+      "toolRenderers.fields.prompts",
+    ])
+    expect(exit.code?.text).toContain("Step 2")
+  })
+
+  it("cua-action reads the full verb surface; app-state counts elements", () => {
+    const click = extractCuaAction({
+      action: "click",
+      target: "#submit",
+      text: "go",
+      key: "Enter",
+      ms: 120,
+    })
+    expect(click.headline).toBe("click · #submit")
+    expect(click.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.action",
+      "toolRenderers.fields.selector",
+      "toolRenderers.fields.text",
+      "toolRenderers.fields.key",
+      "toolRenderers.fields.duration",
+    ])
+    expect(extractCuaAction({ action: "wait", ms: 800 }).rows).toHaveLength(2)
+    const state = extractGetAppState({
+      app: "Terminal",
+      window: "zsh",
+      stateId: "st-1",
+      elements: [{}, {}],
+    })
+    expect(state.stateId).toBe("st-1")
+    expect(state.headline).toBe("Terminal")
+    expect(state.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.app",
+      "toolRenderers.fields.window",
+      "toolRenderers.fields.state",
+      "toolRenderers.fields.elements",
+    ])
+    // Filtered row list: app row first, elements row second.
+    expect(extractGetAppState({ app: "X", count: 9 }).rows[1]?.value).toBe("9")
+  })
+
+  it("list-apps numbers the roster; screenshot classifies the image source", () => {
+    const apps = extractListApps({ apps: ["A", { name: "B", pid: "12" }] })
+    expect(apps.headline).toBe("×2")
+    expect(apps.code?.text).toBe("1. A\n2. B (12)")
+    expect(extractListApps({ apps: "nope" }).isEmpty).toBe(true)
+    const shot = extractScreenshot({ image: "data:image/png;base64,AAAA", width: 100, height: 80 })
+    expect(screenshotIsRenderable(shot)).toBe(true)
+    expect(shot.headline).toBe("100×80")
+    const pathed = extractScreenshot({ path: "/tmp/shot.png" })
+    expect(screenshotIsRenderable(pathed)).toBe(false)
+    expect(pathed.headline).toBe("/tmp/shot.png")
+    expect(pathed.rows.map((r) => r.labelKey)).toEqual(["toolRenderers.fields.path"])
+  })
+
+  it("browser family: host derivation for navigate, verb · selector for actions", () => {
+    const nav = extractBrowserNavigate({
+      url: "https://example.com/x",
+      title: "Example",
+      sessionId: "s-1",
+    })
+    expect(nav.headline).toBe("example.com")
+    expect(nav.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.url",
+      "toolRenderers.fields.host",
+      "toolRenderers.fields.title",
+      "toolRenderers.fields.session",
+    ])
+    const act = extractBrowserAction({ action: "fill", selector: "#q", text: "query" })
+    expect(act.headline).toBe("fill · #q")
+    expect(act.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.method",
+      "toolRenderers.fields.selector",
+      "toolRenderers.fields.text",
+    ])
+  })
+})
+
+describe("completion fixtures — workflow compact cards", () => {
+  it("run card: chips lead the expanded body, duration row follows", () => {
+    renderPair(
+      toolStart("get-workflow-run-card", {
+        runId: "r-9",
+        workflowId: "wf",
+        status: "running",
+        phase: "phase-2",
+        durationMs: 4200,
+      }),
+      toolEnd("get-workflow-run-card"),
+    )
+    const chips = screen.getByTestId("card-chips")
+    expect(within(chips).getByTestId("card-chip-status")).toHaveTextContent("running")
+    expect(within(chips).getByTestId("card-chip-phase")).toHaveTextContent("phase-2")
+    expect(within(chips).getByTestId("card-chip-run")).toHaveTextContent("r-9")
+    expect(rowValue("Workflow")).toBe("wf")
+    expect(rowValue("Duration")).toBe("4200")
+  })
+
+  it("runs card: count chip and the plain-rows variant", () => {
+    const first = renderPair(
+      toolStart("list-workflow-runs-card", { status: "running", total: 7 }),
+      toolEnd("list-workflow-runs-card"),
+    )
+    expect(
+      within(screen.getByTestId("card-chips")).getByTestId("card-chip-count"),
+    ).toHaveTextContent("×7")
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("Workflow runs card")
+    first.unmount()
+    renderInput("list-workflow-runs-card", { limit: 5 })
+    expect(screen.getByTestId("card-chips")).toBeEmptyDOMElement()
+    expect(rowValue("Limit")).toBe("5")
+  })
+
+  it("resume card: paused run surfaces status/phase chips and the reason", () => {
+    renderPair(
+      toolStart("resume-workflow-run-card", {
+        runId: "r-3",
+        status: "paused",
+        phase: "gate",
+        reason: "amended",
+      }),
+      toolEnd("resume-workflow-run-card"),
+    )
+    expect(
+      within(screen.getByTestId("card-chips")).getByTestId("card-chip-status"),
+    ).toHaveTextContent("paused")
+    expect(rowValue("Reason")).toBe("amended")
+  })
+
+  it("roster card: numbered actor block; empty inputs fall back to the JSON preview", () => {
+    renderPair(
+      toolStart("get-workflow-run-roster-card", {
+        runId: "r-5",
+        phase: "review",
+        actors: [{ name: "reviewer" }, "fixer"],
+      }),
+      toolEnd("get-workflow-run-roster-card"),
+    )
+    expect(screen.getByTestId("card-actors")).toHaveTextContent("1. reviewer")
+    expect(screen.getByTestId("card-actors")).toHaveTextContent("2. fixer")
+    expect(rowLabels()).toEqual([])
+  })
+
+  it("opaque card payloads land in the generic JSON preview", () => {
+    const first = renderInput("get-workflow-run-card", 42)
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+    first.unmount()
+    renderInput("get-workflow-run-roster-card", { actors: "nope" })
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("completion fixtures — prompt display family", () => {
+  it("agent-prompt: name heading, model/lines rows, prompt block", () => {
+    renderPair(
+      toolStart("agent-prompt", { name: "fixer", model: "glm-5.3", prompt: "line1\nline2" }),
+      toolEnd("agent-prompt"),
+    )
+    expect(screen.getByTestId("agent-prompt-name")).toHaveTextContent("fixer")
+    expect(rowValue("Model")).toBe("glm-5.3")
+    expect(rowValue("Lines")).toBe("2")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("line1")
+  })
+
+  it("agent-prompt: a bare system prompt renders without a heading", () => {
+    renderInput("agent-prompt", { system: "be terse" })
+    expect(screen.queryByTestId("agent-prompt-name")).toBeNull()
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("be terse")
+  })
+
+  it("enter-plan-mode: mode/target/reason section", () => {
+    renderPair(
+      toolStart("enter-plan-mode", { mode: "plan", target: "auth refactor", reason: "multi-file" }),
+      toolEnd("enter-plan-mode", true, 3),
+    )
+    expect(rowValue("Mode")).toBe("plan")
+    expect(rowValue("Target")).toBe("auth refactor")
+    expect(rowValue("Reason")).toBe("multi-file")
+  })
+
+  it("exit-plan-mode: the plan document is the approval surface", () => {
+    renderPair(
+      toolStart("exit-plan-mode", { plan: "# Step 1\nStep 2", allowedPrompts: ["run tests"] }),
+      toolEnd("exit-plan-mode"),
+    )
+    expect(rowValue("Lines")).toBe("2")
+    expect(rowValue("Prompts")).toBe("1")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("Step 2")
+  })
+
+  it("opaque prompt payloads fall back to the JSON preview", () => {
+    const first = renderInput("agent-prompt", null)
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+    first.unmount()
+    renderInput("exit-plan-mode", "text")
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("completion fixtures — amend-workflow", () => {
+  it("shows the targeted run and the revised script block", () => {
+    renderPair(
+      toolStart("amend-workflow", {
+        runId: "r-7",
+        workflowId: "wf-amend",
+        script: "phase one\nphase two",
+      }),
+      toolEnd("amend-workflow", true, 88),
+    )
+    expect(rowValue("Run")).toBe("r-7")
+    expect(rowValue("Workflow")).toBe("wf-amend")
+    expect(rowValue("Lines")).toBe("2")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("phase two")
+  })
+
+  it("a settings-only amendment reports the settings count", () => {
+    renderInput("amend-workflow", { runId: "r-7", settings: { max_concurrency: 3 } })
+    expect(rowValue("Settings")).toBe("1")
+    expect(screen.queryByTestId("tool-code")).toBeNull()
+  })
+
+  it("malformed payloads degrade to the JSON preview", () => {
+    renderInput("amend-workflow", 42)
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("completion fixtures — computer use", () => {
+  it("cua-action: click with selector and dwell rows", () => {
+    renderPair(
+      toolStart("cua-action", { action: "click", target: "#submit", ms: 120 }),
+      toolEnd("cua-action", true, 130),
+    )
+    const row = screen.getByRole("button")
+    expect(row.textContent).toContain("click · #submit")
+    expect(rowValue("Action")).toBe("click")
+    expect(rowValue("Selector")).toBe("#submit")
+    expect(rowValue("Duration")).toBe("120")
+  })
+
+  it("cua-action: typed text and hotkeys land in their own rows", () => {
+    renderInput("cua-action", { action: "type", target: "#q", text: "hello", key: "Enter" })
+    expect(rowValue("Text")).toBe("hello")
+    expect(rowValue("Key")).toBe("Enter")
+  })
+
+  it("cua-action: malformed payloads fall back to JSON", () => {
+    renderInput("cua-action", [])
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+
+  it("get-app-state: app/window/state/elements section", () => {
+    renderPair(
+      toolStart("get-app-state", {
+        app: "Terminal",
+        window: "zsh",
+        stateId: "st-1",
+        elements: [{}, {}],
+      }),
+      toolEnd("get-app-state"),
+    )
+    expect(rowValue("App")).toBe("Terminal")
+    expect(rowValue("Window")).toBe("zsh")
+    expect(rowValue("State")).toBe("st-1")
+    expect(rowValue("Elements")).toBe("2")
+  })
+
+  it("get-app-state: a count-only payload still shows the element count", () => {
+    renderInput("get-app-state", { app: "X", count: 9 })
+    expect(rowValue("Elements")).toBe("9")
+  })
+
+  it("list-apps: numbered roster block with count row", () => {
+    renderPair(
+      toolStart("list-apps", { apps: ["A", { name: "B", pid: "12" }] }),
+      toolEnd("list-apps"),
+    )
+    expect(rowValue("Count")).toBe("2")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("2. B (12)")
+  })
+
+  it("screenshot: a renderable payload draws the real <img>", () => {
+    renderPair(
+      toolStart("screenshot", {
+        image: "data:image/png;base64,AAAA",
+        width: 100,
+        height: 80,
+      }),
+      toolEnd("screenshot", true, 210),
+    )
+    const img = screen.getByTestId("screenshot-image")
+    expect(img).toHaveAttribute("src", "data:image/png;base64,AAAA")
+    expect(rowValue("Preview")).toBe("100×80")
+  })
+
+  it("screenshot: a bare file path stays a text row", () => {
+    renderInput("screenshot", { path: "/tmp/shot.png" })
+    expect(screen.queryByTestId("screenshot-image")).toBeNull()
+    expect(rowValue("Path")).toBe("/tmp/shot.png")
+  })
+
+  it("screenshot: malformed payloads fall back to JSON", () => {
+    renderInput("screenshot", "text")
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("completion fixtures — browser family", () => {
+  it("browser-navigate: link preview card plus host/title/session rows", () => {
+    renderPair(
+      toolStart("browser-navigate", {
+        url: "https://example.com/x",
+        title: "Example",
+        sessionId: "s-1",
+      }),
+      toolEnd("browser-navigate", true, 340),
+    )
+    const anchor = screen.getByLabelText("Link preview")
+    expect(anchor.tagName).toBe("A")
+    expect(anchor).toHaveAttribute("href", "https://example.com/x")
+    expect(rowValue("Host")).toBe("example.com")
+    expect(rowValue("Title")).toBe("Example")
+    expect(rowValue("Session")).toBe("s-1")
+  })
+
+  it("browser-action: verb · selector reads on the collapsed line", () => {
+    renderPair(
+      toolStart("browser-action", { action: "fill", selector: "#q", text: "query" }),
+      toolEnd("browser-action"),
+    )
+    expect(screen.getByRole("button").textContent).toContain("fill · #q")
+    expect(rowValue("Method")).toBe("fill")
+    expect(rowValue("Text")).toBe("query")
+  })
+
+  it("both degrade to the JSON preview on malformed payloads", () => {
+    const first = renderInput("browser-navigate", undefined)
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+    first.unmount()
+    renderInput("browser-action", 42)
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("completion fixtures — todo read/write", () => {
+  it("todo-write renders the checklist under its own title", () => {
+    renderPair(
+      toolStart("todo-write", {
+        todos: [
+          { content: "write the renderer", status: "completed" },
+          { content: "test it", status: "in_progress" },
+        ],
+      }),
+      toolEnd("todo-write"),
+    )
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("Write todos")
+    expect(screen.getAllByTestId("todo-item")).toHaveLength(2)
+  })
+
+  it("todo-read shares the checklist body under its own title", () => {
+    renderPair(
+      toolStart("todo-read", { todos: [{ content: "only reading", status: "pending" }] }),
+      toolEnd("todo-read"),
+    )
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("Read todos")
+    expect(screen.getByTestId("todo-item")).toHaveTextContent("only reading")
+  })
+
+  it("an empty read falls back to JSON; the localized zh titles resolve", () => {
+    renderInput("todo-read", {})
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+    setLocale("zh-CN")
+    const zh = renderPair(
+      toolStart("todo-write", { todos: [{ content: "写渲染器", status: "pending" }] }),
+      toolEnd("todo-write"),
+    )
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("写入待办")
+    zh.unmount()
+    setLocale("en-US")
+    renderInput("cua-action", { action: "click", target: "#x" })
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("Computer action")
   })
 })
