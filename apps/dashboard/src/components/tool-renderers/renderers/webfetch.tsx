@@ -5,8 +5,10 @@
 
 /**
  * webfetch renderer — URL fetch with a model-side prompt. Body shows the
- * URL, the derived host (web.model.ts urlHost) and the prompt; JSON
- * fallback when the payload is opaque.
+ * URL, the derived host (web.model.ts urlHost), the HTTP method, the
+ * extraction selector and the prompt, with the short result summary as a
+ * clamped block (web.model.ts extractWebfetch); JSON fallback when the
+ * payload is opaque.
  */
 
 import type { ToolCallProps } from "../registry"

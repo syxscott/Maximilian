@@ -5,8 +5,9 @@
 
 /**
  * escalate renderer — raise a blocker to the coordinator. Body shows the
- * target, severity and the escalation reason, with optional background
- * context as a monospace block (coordination.model.ts extractEscalate).
+ * escalation target, the severity and the reason (the collapsed line leads
+ * with the reason), with optional background context as a monospace block
+ * (coordination.model.ts extractEscalate).
  */
 
 import type { ToolCallProps } from "../registry"

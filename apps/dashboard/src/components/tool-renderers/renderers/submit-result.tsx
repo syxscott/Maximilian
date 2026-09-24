@@ -5,9 +5,9 @@
 
 /**
  * submit-result renderer — final task report. Body shows the summary, the
- * owning task id and the result payload as a clamped monospace block
- * (coordination.model.ts extractSubmitResult); JSON fallback for opaque
- * payloads.
+ * owning task id, the metadata key count and the result payload as a
+ * clamped monospace block (coordination.model.ts extractSubmitResult);
+ * JSON fallback for opaque payloads.
  */
 
 import type { ToolCallProps } from "../registry"

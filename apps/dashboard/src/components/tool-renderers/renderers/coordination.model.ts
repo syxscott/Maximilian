@@ -10,9 +10,12 @@
  * passthrough `input` of the runtime tool-start event, so extraction is
  * defensive — but the candidate keys track what each tool really sends
  * (e.g. todo's {todos:[{content,status,priority}]} and ask-question's
- * {questions:[{question,header,options,multiSelect}]}). todo and
- * ask-question additionally expose STRUCTURED view models their bodies
- * render as real lists, not just rows.
+ * {questions:[{question,header,options,multiSelect}]}). The final-alignment
+ * renderers expose STRUCTURED view models their bodies render precisely:
+ * goal carries a normalized 0-100 progress (string percents parsed),
+ * switch-mode carries the from/to pair (the body draws the transition
+ * arrow), send-message adds a clamped message preview row and
+ * submit-result reports the metadata key count.
  */
 
 import {
@@ -168,35 +171,81 @@ export function extractAskQuestion(input: unknown): AskQuestionViewModel {
 
 // ── goal ─────────────────────────────────────────────────────────────────────
 
-export function extractGoal(input: unknown): ToolViewModel {
+export interface GoalViewModel extends ToolViewModel {
+  /** Goal text (what the body highlights above the progress bar). */
+  goal?: string
+  status?: string
+  /** Normalized 0-100 integer; string percents ("40%") are parsed. */
+  progress?: number
+}
+
+/** Parse/clamp a progress value: numbers clamp to 0-100, "40%" parses. */
+export function normalizeProgress(raw: unknown): number | undefined {
+  let value: number | undefined
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    value = raw
+  } else if (typeof raw === "string") {
+    const parsed = Number.parseFloat(raw)
+    if (Number.isFinite(parsed)) value = parsed
+  }
+  if (value === undefined) return undefined
+  return Math.round(Math.min(100, Math.max(0, value)))
+}
+
+export function extractGoal(input: unknown): GoalViewModel {
   const obj = asRecord(input)
-  const goal = pickStr(obj, ["goal", "objective", "text", "description", "message"])
+  const goal = pickStr(obj, ["goal", "objective", "text", "description", "message", "target"])
   const status = pickStr(obj, ["status", "state"])
-  const progress = pickNum(obj, ["progress", "percent", "pct"])
-  if (goal === undefined && status === undefined && progress === undefined) return emptyVm()
+  const progress = normalizeProgress(
+    obj["progress"] ?? obj["percent"] ?? obj["pct"] ?? obj["completion"],
+  )
+  if (goal === undefined && status === undefined && progress === undefined) {
+    return { ...emptyVm() }
+  }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.goal, goal),
     row(FIELDS.status, status),
     progress === undefined ? undefined : row(FIELDS.progress, `${progress}%`),
   ]
-  return vmFrom(
-    rows.filter((r) => r !== undefined),
-    oneLine(goal ?? status ?? ""),
-  )
+  return {
+    ...vmFrom(
+      rows.filter((r) => r !== undefined),
+      oneLine(goal ?? status ?? ""),
+    ),
+    ...(goal === undefined ? {} : { goal }),
+    ...(status === undefined ? {} : { status }),
+    ...(progress === undefined ? {} : { progress }),
+  }
 }
 
 // ── escalate ─────────────────────────────────────────────────────────────────
 
 export function extractEscalate(input: unknown): ToolViewModel {
   const obj = asRecord(input)
-  const reason = pickStr(obj, ["reason", "message", "question", "summary", "cause", "text"])
-  const target = pickStr(obj, ["to", "target", "coordinator", "audience"])
+  const reason = pickStr(obj, [
+    "reason",
+    "message",
+    "question",
+    "summary",
+    "cause",
+    "text",
+    "blocker",
+    "issue",
+  ])
+  const target = pickStr(obj, [
+    "to",
+    "target",
+    "coordinator",
+    "audience",
+    "escalateTo",
+    "escalate_to",
+  ])
   const severity = pickStr(obj, ["severity", "level", "priority"])
   const context = pickStr(obj, ["context", "detail", "background"])
   if (reason === undefined && target === undefined && severity === undefined) return emptyVm()
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.target, target),
-    row(FIELDS.mode, severity),
+    row(FIELDS.severity, severity),
     row(FIELDS.reason, reason),
   ]
   return vmFrom(
@@ -210,13 +259,24 @@ export function extractEscalate(input: unknown): ToolViewModel {
 
 export function extractSendMessage(input: unknown): ToolViewModel {
   const obj = asRecord(input)
-  const to = pickStr(obj, ["to", "target", "recipient", "agent", "channel", "recipientName"])
+  const to = pickStr(obj, [
+    "to",
+    "target",
+    "recipient",
+    "agent",
+    "channel",
+    "recipientName",
+    "recipientId",
+    "agentId",
+    "targetAgent",
+  ])
   const summary = pickStr(obj, ["summary", "title", "subject"])
-  const message = pickStr(obj, ["message", "text", "body", "content"])
+  const message = pickStr(obj, ["message", "text", "body", "content", "note"])
   if (to === undefined && summary === undefined && message === undefined) return emptyVm()
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.target, to),
     row(FIELDS.summary, summary),
+    message === undefined ? undefined : row(FIELDS.preview, oneLine(message, 80)),
   ]
   return vmFrom(
     rows.filter((r) => r !== undefined),
@@ -249,12 +309,18 @@ export function extractRespondToCoordinator(input: unknown): ToolViewModel {
 export function extractSubmitResult(input: unknown): ToolViewModel {
   const obj = asRecord(input)
   const summary = pickStr(obj, ["summary", "title", "subject"])
-  const result = pickStr(obj, ["result", "outcome", "answer", "content", "report"])
+  const result = pickStr(obj, ["result", "outcome", "answer", "content", "report", "output"])
   const task = pickStr(obj, ["task", "taskId", "task_id"])
-  if (summary === undefined && result === undefined && task === undefined) return emptyVm()
+  // Metadata bag: the body reports how many keys it carries.
+  const metadata = asRecord(obj["metadata"] ?? obj["meta"] ?? obj["details"])
+  const metadataCount = Object.keys(metadata).length
+  if (summary === undefined && result === undefined && task === undefined && metadataCount === 0) {
+    return emptyVm()
+  }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.summary, summary),
     row(FIELDS.id, task, true),
+    metadataCount > 0 ? row(FIELDS.metadata, metadataCount) : undefined,
   ]
   return vmFrom(
     rows.filter((r) => r !== undefined),
@@ -267,21 +333,39 @@ export function extractSubmitResult(input: unknown): ToolViewModel {
 
 // ── switch-mode ──────────────────────────────────────────────────────────────
 
-export function extractSwitchMode(input: unknown): ToolViewModel {
+export interface SwitchModeViewModel extends ToolViewModel {
+  /** Mode left behind (body renders the from → to arrow). */
+  from?: string
+  /** Target mode. */
+  to?: string
+  reason?: string
+}
+
+export function extractSwitchMode(input: unknown): SwitchModeViewModel {
   const obj = asRecord(input)
-  const mode = pickStr(obj, ["mode", "to", "newMode", "target", "next"])
-  const from = pickStr(obj, ["from", "previous", "oldMode", "current"])
+  const mode = pickStr(obj, ["mode", "to", "newMode", "target", "next", "modeTo"])
+  const from = pickStr(obj, ["from", "previous", "oldMode", "current", "modeFrom"])
   const reason = pickStr(obj, ["reason", "because", "cause"])
-  if (mode === undefined && from === undefined && reason === undefined) return emptyVm()
+  if (mode === undefined && from === undefined && reason === undefined) {
+    return { ...emptyVm() }
+  }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.mode, mode, true),
     row(FIELDS.from, from, true),
     row(FIELDS.reason, reason),
   ]
-  return vmFrom(
-    rows.filter((r) => r !== undefined),
-    oneLine(mode ?? ""),
-  )
+  return {
+    ...vmFrom(
+      rows.filter((r) => r !== undefined),
+      // Collapsed line reads as a transition when both ends are known.
+      oneLine(
+        mode !== undefined && from !== undefined ? `${from} → ${mode}` : (mode ?? from ?? ""),
+      ),
+    ),
+    ...(mode === undefined ? {} : { to: mode }),
+    ...(from === undefined ? {} : { from }),
+    ...(reason === undefined ? {} : { reason }),
+  }
 }
 
 // ── list-models ──────────────────────────────────────────────────────────────

@@ -5,7 +5,8 @@
 
 /**
  * task-stop renderer — explicit stop request. Body shows the target task
- * id, the force flag and the stop reason (see agent.model.ts
+ * id, the force flag and the stop reason, and the collapsed line falls
+ * back to the reason when no id is given (see agent.model.ts
  * extractTaskStop); JSON fallback when the payload is opaque.
  */
 

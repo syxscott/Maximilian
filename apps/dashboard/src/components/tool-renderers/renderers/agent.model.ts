@@ -90,21 +90,36 @@ export function extractTaskOutput(input: unknown): ToolViewModel {
 
 // ── task-stop ────────────────────────────────────────────────────────────────
 
-export function extractTaskStop(input: unknown): ToolViewModel {
+export interface TaskStopViewModel extends ToolViewModel {
+  /** Target task/shell id the stop request names. */
+  taskId?: string
+  /** Why the task is being stopped. */
+  reason?: string
+  force?: boolean
+}
+
+export function extractTaskStop(input: unknown): TaskStopViewModel {
   const obj = asRecord(input)
-  const taskId = pickStr(obj, ["taskId", "task_id", "id", "shellId"])
-  const reason = pickStr(obj, ["reason", "cause", "because"])
+  const taskId = pickStr(obj, ["taskId", "task_id", "id", "task", "taskName", "shellId", "jobId"])
+  const reason = pickStr(obj, ["reason", "cause", "because", "why", "note"])
   const force = pickBool(obj, ["force", "aggressive"])
-  if (taskId === undefined && reason === undefined && force === undefined) return emptyVm()
+  if (taskId === undefined && reason === undefined && force === undefined) {
+    return { ...emptyVm() }
+  }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.id, taskId, true),
     force === undefined ? undefined : row(FIELDS.force, force ? "true" : "false", true),
     row(FIELDS.reason, reason),
   ]
-  return vmFrom(
-    rows.filter((r) => r !== undefined),
-    oneLine(taskId ?? reason ?? ""),
-  )
+  return {
+    ...vmFrom(
+      rows.filter((r) => r !== undefined),
+      oneLine(taskId ?? reason ?? ""),
+    ),
+    ...(taskId === undefined ? {} : { taskId }),
+    ...(reason === undefined ? {} : { reason }),
+    ...(force === undefined ? {} : { force }),
+  }
 }
 
 // ── explore ──────────────────────────────────────────────────────────────────

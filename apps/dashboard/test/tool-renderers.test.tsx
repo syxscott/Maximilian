@@ -15,6 +15,14 @@
  * toolName, input} / {type:"tool-end", …, ok, durationMs, error?}),
  * asserting both the collapsed line and the expanded detail.
  *
+ * "Final alignment" adds the last real-field pass: the eight coordination
+ * / web renderers (webfetch, search, send-message, submit-result,
+ * switch-mode, goal, escalate, task-stop) each get ≥3 event-fixture cases
+ * covering the fields their real events carry — method/selector/excerpt,
+ * result counts + top titles, message preview, metadata key count, the
+ * from → to arrow, the normalized progress bar, severity labeling and the
+ * stop-reason fallback.
+ *
  * Core tools (bash/read/glob/grep/permission/lsp) are asserted against the
  * input schemas of packages/tools/src — field names, optionality and
  * defaults (e.g. read's `path`/offset/limit, bash's 120000 ms default
@@ -60,6 +68,7 @@ import {
   extractSwitchMode,
   extractListModels,
   extractReadSessionContext,
+  normalizeProgress,
 } from "../src/components/tool-renderers/renderers/coordination.model"
 import {
   extractBash,
@@ -702,7 +711,11 @@ describe("extended tool model — coordination family", () => {
 
   it("extractSwitchMode reads to/from aliases and the reason", () => {
     const vm = extractSwitchMode({ from: "plan", to: "execute", reason: "approved" })
-    expect(vm.headline).toBe("execute")
+    // Both ends known → the collapsed line reads as the transition.
+    expect(vm.headline).toBe("plan → execute")
+    expect(vm.to).toBe("execute")
+    expect(vm.from).toBe("plan")
+    expect(vm.reason).toBe("approved")
     expect(vm.rows.map((r) => r.value)).toEqual(["execute", "plan", "approved"])
   })
 
@@ -1148,10 +1161,12 @@ describe("event fixtures — extended tools", () => {
     expect(screen.getByTestId("tool-code")).toHaveTextContent("46 renderers aligned")
   })
 
-  it("switch-mode: mode/from rows", () => {
+  it("switch-mode: the body draws the from → to arrow", () => {
     renderPair(toolStart("switch-mode", { from: "plan", to: "execute" }), toolEnd("switch-mode"))
-    expect(rowValue("Mode")).toBe("execute")
-    expect(rowValue("From")).toBe("plan")
+    const arrow = screen.getByTestId("switch-mode-arrow")
+    expect(arrow).toHaveTextContent("plan")
+    expect(arrow).toHaveTextContent("execute")
+    expect(arrow.textContent).toContain("→")
   })
 
   it("task-stop: force flag and reason", () => {
@@ -1174,14 +1189,14 @@ describe("event fixtures — extended tools", () => {
     expect(rowValue("Timeout")).toBe("2500")
   })
 
-  it("goal: status and percent progress rows", () => {
+  it("goal: the progress bar carries the percent and the status stays a row", () => {
     renderPair(
       toolStart("goal", { goal: "align renderers", status: "active", progress: 60 }),
       toolEnd("goal"),
     )
     expect(screen.getByRole("button").textContent).toContain("align renderers")
     expect(rowValue("Status")).toBe("active")
-    expect(rowValue("Progress")).toBe("60%")
+    expect(screen.getByTestId("goal-progress")).toHaveTextContent("60%")
   })
 
   it("escalate: severity row and background context block", () => {
@@ -1195,7 +1210,7 @@ describe("event fixtures — extended tools", () => {
       toolEnd("escalate"),
     )
     expect(rowValue("Target")).toBe("coordinator")
-    expect(rowValue("Mode")).toBe("high")
+    expect(rowValue("Severity")).toBe("high")
     expect(screen.getByTestId("tool-code")).toHaveTextContent("read.ts uses path")
   })
 
@@ -1336,5 +1351,416 @@ describe("render smoke (ToolCallBlock)", () => {
     setLocale("zh-CN")
     renderPair(toolStart("bash", { command: "ls" }), toolEnd("bash"))
     expect(rowValue("超时（默认）")).toBe("120000")
+  })
+})
+
+// ── final alignment — model extensions (last real-field pass) ───────────────
+
+describe("final alignment — model extensions", () => {
+  it("webfetch: method/selector rows plus the excerpt block", () => {
+    const vm = extractWebfetch({
+      url: "https://api.example.dev/v1/items",
+      method: "POST",
+      selector: ".content table",
+      prompt: "list the rows",
+      excerpt: "3 items found",
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.url",
+      "toolRenderers.fields.host",
+      "toolRenderers.fields.method",
+      "toolRenderers.fields.selector",
+      "toolRenderers.fields.prompt",
+    ])
+    expect(vm.rows[2]?.value).toBe("POST")
+    expect(vm.rows[3]?.value).toBe(".content table")
+    expect(vm.code?.text).toBe("3 items found")
+  })
+
+  it("webfetch: bare method/excerpt payloads still render without a url", () => {
+    const vm = extractWebfetch({ method: "GET", excerpt: "ok" })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.rows.some((r) => r.value === "GET")).toBe(true)
+    expect(extractWebfetch({}).isEmpty).toBe(true)
+  })
+
+  it("search: results normalize to titles, explicit counts win", () => {
+    const vm = extractSearch({
+      query: "vitest config",
+      results: [
+        { title: "Configuring Vitest" },
+        { title: "Coverage guide" },
+        "Plain string hit",
+        { title: "Dropped beyond three" },
+      ],
+    })
+    expect(vm.resultCount).toBe(4)
+    expect(vm.topResults.map((r) => r.title)).toEqual([
+      "Configuring Vitest",
+      "Coverage guide",
+      "Plain string hit",
+    ])
+    expect(vm.rows.some((r) => r.labelKey === "toolRenderers.fields.results")).toBe(true)
+    expect(vm.code?.text).toBe("1. Configuring Vitest\n2. Coverage guide\n3. Plain string hit")
+    const counted = extractSearch({ query: "q", resultCount: 7 })
+    expect(counted.resultCount).toBe(7)
+    expect(counted.topResults).toEqual([])
+  })
+
+  it("goal: progress normalizes numbers, string percents and clamps", () => {
+    expect(normalizeProgress(40)).toBe(40)
+    expect(normalizeProgress("75%")).toBe(75)
+    expect(normalizeProgress(140)).toBe(100)
+    expect(normalizeProgress(-3)).toBe(0)
+    expect(normalizeProgress("many")).toBeUndefined()
+    const vm = extractGoal({ goal: "align", percent: "62%" })
+    expect(vm.progress).toBe(62)
+    expect(vm.goal).toBe("align")
+    expect(vm.rows.some((r) => r.value === "62%")).toBe(true)
+  })
+
+  it("submit-result: metadata key count and the output alias", () => {
+    const vm = extractSubmitResult({
+      summary: "done",
+      output: "all green",
+      metadata: { durationMs: 12, files: 3, score: 9 },
+    })
+    expect(vm.rows.some((r) => r.labelKey === "toolRenderers.fields.metadata")).toBe(true)
+    expect(vm.rows.some((r) => r.value === "3")).toBe(true)
+    expect(vm.code?.text).toBe("all green")
+    expect(extractSubmitResult({ metadata: {} }).isEmpty).toBe(true)
+  })
+
+  it("escalate: severity is its own label; blocker/escalate_to aliases land", () => {
+    const vm = extractEscalate({ blocker: "flaky suite", escalate_to: "human", level: "medium" })
+    expect(vm.headline).toBe("flaky suite")
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.target",
+      "toolRenderers.fields.severity",
+      "toolRenderers.fields.reason",
+    ])
+    expect(vm.rows[0]?.value).toBe("human")
+    expect(vm.rows[1]?.value).toBe("medium")
+  })
+
+  it("task-stop: task/why/jobId aliases and the reason headline fallback", () => {
+    expect(extractTaskStop({ task: "task-9", why: "superseded" }).rows[0]?.value).toBe("task-9")
+    expect(extractTaskStop({ jobId: "job-3" }).headline).toBe("job-3")
+    expect(extractTaskStop({ why: "user requested" }).headline).toBe("user requested")
+    const vm = extractTaskStop({ taskName: "task-2", reason: "done" })
+    expect(vm.taskId).toBe("task-2")
+    expect(vm.reason).toBe("done")
+  })
+
+  it("send-message: preview row and agentId alias", () => {
+    const vm = extractSendMessage({ agentId: "agent-9", message: "half done" })
+    expect(vm.rows[0]?.value).toBe("agent-9")
+    expect(vm.rows.some((r) => r.labelKey === "toolRenderers.fields.preview")).toBe(true)
+    expect(vm.code?.text).toBe("half done")
+    // The preview clamps to 80 chars with an ellipsis.
+    const long = extractSendMessage({ to: "c", message: "x".repeat(200) })
+    expect(long.rows.find((r) => r.labelKey === "toolRenderers.fields.preview")?.value).toMatch(
+      /…$/,
+    )
+  })
+
+  it("switch-mode: modeTo/modeFrom aliases fill the transition", () => {
+    const vm = extractSwitchMode({ modeTo: "review", modeFrom: "execute" })
+    expect(vm.to).toBe("review")
+    expect(vm.from).toBe("execute")
+    expect(vm.headline).toBe("execute → review")
+  })
+})
+
+// ── final alignment — real event fixtures (≥3 per upgraded renderer) ────────
+
+describe("final alignment fixtures — webfetch", () => {
+  it("renders method and selector rows beside the url", () => {
+    renderPair(
+      toolStart("webfetch", {
+        url: "https://api.example.dev/v1/items",
+        method: "POST",
+        selector: ".content table",
+        prompt: "list the rows",
+      }),
+      toolEnd("webfetch", true, 640),
+    )
+    expect(screen.getByRole("button").textContent).toContain("api.example.dev")
+    expect(rowValue("Method")).toBe("POST")
+    expect(rowValue("Selector")).toBe(".content table")
+    expect(rowValue("Host")).toBe("api.example.dev")
+  })
+
+  it("renders the result summary as a clamped block", () => {
+    renderPair(
+      toolStart("webfetch", {
+        url: "https://example.com/status",
+        excerpt: "All systems operational. Incident resolved at 09:12 UTC.",
+      }),
+      toolEnd("webfetch", true, 210),
+    )
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("All systems operational")
+    expect(rowValue("URL")).toBe("https://example.com/status")
+  })
+
+  it("surfaces a failed fetch through the tool-end error", () => {
+    renderPair(
+      toolStart("webfetch", { url: "https://gone.example.net/x" }),
+      toolEnd("webfetch", false, 88, "HTTP 404"),
+    )
+    expect(screen.getByText("✗")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("HTTP 404")
+    expect(rowValue("URL")).toBe("https://gone.example.net/x")
+  })
+})
+
+describe("final alignment fixtures — search", () => {
+  it("renders the hit count with the top three titles", () => {
+    renderPair(
+      toolStart("search", {
+        query: "vitest coverage",
+        results: [
+          { title: "Configuring Vitest" },
+          { title: "Coverage guide" },
+          { title: "Migration notes" },
+          { title: "Shadowed title" },
+          { title: "Another shadowed" },
+        ],
+      }),
+      toolEnd("search", true, 830),
+    )
+    expect(rowValue("Results")).toBe("5")
+    const code = screen.getByTestId("tool-code")
+    expect(code).toHaveTextContent("1. Configuring Vitest")
+    expect(code).toHaveTextContent("3. Migration notes")
+    expect(code.textContent).not.toContain("Shadowed title")
+  })
+
+  it("renders an explicit result count without a results array", () => {
+    renderPair(toolStart("search", { query: "hook config", resultCount: 7 }), toolEnd("search"))
+    expect(rowValue("Query")).toBe("hook config")
+    expect(rowValue("Results")).toBe("7")
+  })
+
+  it("keeps the domain scoping rows beside the results", () => {
+    renderPair(
+      toolStart("search", {
+        query: "runtime events",
+        allowedDomains: ["vitest.dev"],
+        results: [{ title: "RuntimeEvent" }],
+      }),
+      toolEnd("search"),
+    )
+    expect(rowValue("Allowed domains")).toBe("vitest.dev")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("1. RuntimeEvent")
+  })
+})
+
+describe("final alignment fixtures — send-message", () => {
+  it("renders the target agent with preview row and full message block", () => {
+    renderPair(
+      toolStart("send-message", {
+        to: "coordinator",
+        message: "Phase 2 done, starting verification",
+      }),
+      toolEnd("send-message", true, 12),
+    )
+    expect(rowValue("Target")).toBe("coordinator")
+    expect(rowValue("Preview")).toBe("Phase 2 done, starting verification")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("Phase 2 done, starting verification")
+  })
+
+  it("agentId alias resolves as the target", () => {
+    renderPair(
+      toolStart("send-message", { agentId: "agent-3", message: "need the schema" }),
+      toolEnd("send-message"),
+    )
+    expect(rowValue("Target")).toBe("agent-3")
+  })
+
+  it("clamps long messages in the preview row but keeps the full body", () => {
+    renderPair(
+      toolStart("send-message", { to: "c", message: `${"detail ".repeat(40)}end` }),
+      toolEnd("send-message"),
+    )
+    expect(rowValue("Preview")).toMatch(/…$/)
+    expect(screen.getByTestId("tool-code").textContent).toContain("end")
+  })
+})
+
+describe("final alignment fixtures — submit-result", () => {
+  it("renders summary headline, result block and metadata key count", () => {
+    renderPair(
+      toolStart("submit-result", {
+        summary: "renderers aligned",
+        result: "46 renderers, all green",
+        metadata: { durationMs: 900, files: 12, score: 9.5 },
+      }),
+      toolEnd("submit-result", true, 940),
+    )
+    expect(screen.getByRole("button").textContent).toContain("renderers aligned")
+    expect(rowValue("Metadata")).toBe("3")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("46 renderers, all green")
+  })
+
+  it("accepts the output alias for the result payload", () => {
+    renderPair(
+      toolStart("submit-result", { summary: "s", output: "done body" }),
+      toolEnd("submit-result"),
+    )
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("done body")
+  })
+
+  it("surfaces a failed submit through the tool-end error", () => {
+    renderPair(
+      toolStart("submit-result", { summary: "s", result: "r" }),
+      toolEnd("submit-result", false, 5, "workspace closed"),
+    )
+    expect(screen.getByText("✗")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("workspace closed")
+  })
+})
+
+describe("final alignment fixtures — switch-mode", () => {
+  it("draws the from → to arrow and keeps the reason row", () => {
+    renderPair(
+      toolStart("switch-mode", { from: "plan", to: "execute", reason: "plan approved" }),
+      toolEnd("switch-mode"),
+    )
+    const arrow = screen.getByTestId("switch-mode-arrow")
+    expect(arrow).toHaveTextContent("plan")
+    expect(arrow).toHaveTextContent("→")
+    expect(arrow).toHaveTextContent("execute")
+    expect(rowValue("Reason")).toBe("plan approved")
+  })
+
+  it("collapses the line as the transition when both ends are known", () => {
+    renderPair(toolStart("switch-mode", { from: "plan", to: "execute" }), toolEnd("switch-mode"))
+    expect(screen.getByRole("button").textContent).toContain("plan → execute")
+  })
+
+  it("falls back to the mode row when only the target mode is sent", () => {
+    renderPair(toolStart("switch-mode", { mode: "review" }), toolEnd("switch-mode"))
+    expect(screen.queryByTestId("switch-mode-arrow")).toBeNull()
+    expect(rowValue("Mode")).toBe("review")
+  })
+})
+
+describe("final alignment fixtures — goal", () => {
+  it("renders the goal text with a real progress bar", () => {
+    renderPair(
+      toolStart("goal", { goal: "align renderers", status: "active", progress: 60 }),
+      toolEnd("goal"),
+    )
+    const bar = screen.getByTestId("goal-progress")
+    expect(bar).toHaveAttribute("aria-valuenow", "60")
+    expect(bar).toHaveTextContent("60%")
+    expect(screen.getByTestId("tool-body")).toHaveTextContent("align renderers")
+    expect(rowValue("Status")).toBe("active")
+  })
+
+  it("parses string percents from the event payload", () => {
+    renderPair(toolStart("goal", { goal: "ship", percent: "75%" }), toolEnd("goal"))
+    expect(screen.getByTestId("goal-progress")).toHaveAttribute("aria-valuenow", "75")
+  })
+
+  it("clamps out-of-range progress and renders goal-less payloads", () => {
+    renderPair(toolStart("goal", { progress: 140 }), toolEnd("goal"))
+    expect(screen.getByTestId("goal-progress")).toHaveAttribute("aria-valuenow", "100")
+    expect(screen.getByTestId("tool-body").textContent).toContain("100%")
+  })
+})
+
+describe("final alignment fixtures — escalate", () => {
+  it("leads with the reason and shows the escalation target + severity", () => {
+    renderPair(
+      toolStart("escalate", {
+        reason: "schema drift between read.ts and the timeline",
+        to: "coordinator",
+        severity: "high",
+      }),
+      toolEnd("escalate", true, 9),
+    )
+    expect(screen.getByRole("button").textContent).toContain("schema drift")
+    expect(rowValue("Target")).toBe("coordinator")
+    expect(rowValue("Severity")).toBe("high")
+    expect(rowValue("Reason")).toContain("schema drift")
+  })
+
+  it("blocker/escalate_to aliases land in the same rows", () => {
+    renderPair(
+      toolStart("escalate", { blocker: "flaky suite", escalate_to: "human", level: "medium" }),
+      toolEnd("escalate"),
+    )
+    expect(rowValue("Reason")).toBe("flaky suite")
+    expect(rowValue("Target")).toBe("human")
+    expect(rowValue("Severity")).toBe("medium")
+  })
+
+  it("carries the background context block and failed ends show errors", () => {
+    renderPair(
+      toolStart("escalate", { reason: "blocked", context: "read.ts uses path" }),
+      toolEnd("escalate", false, 3, "no coordinator available"),
+    )
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("read.ts uses path")
+    expect(screen.getByText("✗")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("no coordinator available")
+  })
+})
+
+describe("final alignment fixtures — task-stop", () => {
+  it("renders the target task with the stop reason", () => {
+    renderPair(
+      toolStart("task-stop", { taskId: "task-7", reason: "superseded by task-9" }),
+      toolEnd("task-stop", true, 4),
+    )
+    expect(rowValue("ID")).toBe("task-7")
+    expect(rowValue("Reason")).toBe("superseded by task-9")
+    expect(screen.getByRole("button").textContent).toContain("task-7")
+  })
+
+  it("renders the force flag beside the id", () => {
+    renderPair(
+      toolStart("task-stop", { task_id: "task-7", force: true, reason: "hang" }),
+      toolEnd("task-stop"),
+    )
+    expect(rowValue("ID")).toBe("task-7")
+    expect(rowValue("Force")).toBe("true")
+    expect(rowValue("Reason")).toBe("hang")
+  })
+
+  it("falls back to the reason on the collapsed line when no id is given", () => {
+    renderPair(toolStart("task-stop", { why: "user requested" }), toolEnd("task-stop"))
+    expect(screen.getByRole("button").textContent).toContain("user requested")
+    expect(rowValue("Reason")).toBe("user requested")
+  })
+})
+
+describe("final alignment — localized new bodies", () => {
+  it("switch-mode arrow renders under zh-CN", () => {
+    setLocale("zh-CN")
+    render(<ToolCallBlock tool="switch-mode" input={{ from: "plan", to: "execute" }} defaultOpen />)
+    expect(screen.getByTestId("switch-mode-arrow")).toHaveTextContent("plan")
+    expect(screen.getByTestId("switch-mode-arrow")).toHaveTextContent("→")
+    expect(screen.getByTestId("switch-mode-arrow")).toHaveTextContent("execute")
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("切换模式")
+  })
+
+  it("goal progress bar renders under zh-CN", () => {
+    setLocale("zh-CN")
+    renderPair(toolStart("goal", { goal: "对齐渲染器", progress: 40 }), toolEnd("goal"))
+    expect(screen.getByTestId("goal-progress")).toHaveTextContent("40%")
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("目标")
+  })
+
+  it("escalate severity and search result labels exist in both locales", () => {
+    for (const domain of [enDomain, zhDomain]) {
+      expect(domain["toolRenderers.fields.severity"]).toBeDefined()
+      expect(domain["toolRenderers.fields.results"]).toBeDefined()
+      expect(domain["toolRenderers.fields.selector"]).toBeDefined()
+      expect(domain["toolRenderers.fields.method"]).toBeDefined()
+      expect(domain["toolRenderers.fields.preview"]).toBeDefined()
+      expect(domain["toolRenderers.fields.metadata"]).toBeDefined()
+    }
   })
 })

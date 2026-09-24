@@ -4,9 +4,10 @@
 // Licensed under the MIT License. See LICENSE in the project root.
 
 /**
- * send-message renderer — inter-agent message. Body shows the recipient
- * and the summary headline, with the full message text as a monospace
- * block (coordination.model.ts extractSendMessage).
+ * send-message renderer — inter-agent message. Body shows the target
+ * agent, the summary headline and a clamped message preview row, with the
+ * full message text as a monospace block (coordination.model.ts
+ * extractSendMessage).
  */
 
 import type { ToolCallProps } from "../registry"

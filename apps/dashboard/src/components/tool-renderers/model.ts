@@ -26,7 +26,6 @@ export interface ToolInputRows {
 }
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined)
-const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined)
 
 function head(text: string, max = 120): string {
   const one = text.replace(/\s+/g, " ").trim()
@@ -49,6 +48,7 @@ function rowsFrom(
 
 import { extractFileChange } from "./renderers/edit-inline-diff.model"
 import { coreHeadline, coreInputRows } from "./renderers/core.model"
+import { utf8Length } from "./renderers/shared.model"
 
 export function summarizeToolInput(tool: string, input: unknown): string {
   const obj = (input ?? {}) as Record<string, unknown>
@@ -219,13 +219,6 @@ export function toolInputRows(tool: string, input: unknown): ToolInputRows {
   }
 }
 
-/** Byte length of a string in UTF-8 (write renderer detail). */
-export function utf8Length(text: string): number {
-  return new TextEncoder().encode(text).length
-}
-
 export function lineCount(text: string): number {
   return text.split("\n").length
 }
-
-export { num, str }
