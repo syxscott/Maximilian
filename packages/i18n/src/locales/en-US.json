@@ -462,5 +462,6 @@
   "sessionQuery.title": "Session search",
   "settingsDeep.subagents.title": "Subagent roles",
   "settingsDeep.usage.title": "Usage charts",
-  "settingsDeep.store.title": "Session store"
+  "settingsDeep.store.title": "Session store",
+  "timeline.newEntries": "new entries"
 }

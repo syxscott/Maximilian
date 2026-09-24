@@ -462,5 +462,6 @@
   "sessionQuery.title": "会话搜索",
   "settingsDeep.subagents.title": "子代理角色",
   "settingsDeep.usage.title": "用量图表",
-  "settingsDeep.store.title": "会话库状态"
+  "settingsDeep.store.title": "会话库状态",
+  "timeline.newEntries": "条新内容"
 }

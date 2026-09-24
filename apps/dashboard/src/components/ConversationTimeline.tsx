@@ -29,6 +29,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { adjacentAnchor, turnAnchors, windowItems } from "@/lib/timeline-view"
+import { liveTailState } from "@/components/conversation/model"
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
 import type { RuntimeEvent, Workspace } from "@/api"
@@ -134,7 +135,15 @@ export function ConversationTimeline({
     }
   }
 
-  // Auto-tail: stick to the bottom while live, unless the user scrolled up.
+  // Auto-tail via the liveTailState model (round-4 borrowing): while live
+  // and attached the view follows the tail; detaching freezes the window
+  // and counts what arrives until the user jumps back.
+  const [frozenAt, setFrozenAt] = useState<number | null>(null)
+  const tail = useMemo(
+    () => liveTailState(units, detached && live, { frozenAt: frozenAt ?? undefined }),
+    [units, detached, live, frozenAt],
+  )
+
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !live || detached) return
@@ -146,6 +155,8 @@ export function ConversationTimeline({
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
     setDetached(!atBottom)
+    if (atBottom) setFrozenAt(null)
+    else if (frozenAt === null) setFrozenAt(units.length)
   }
 
   const findActiveQuery = findActive(query)
@@ -252,6 +263,7 @@ export function ConversationTimeline({
           data-testid="jump-to-latest"
         >
           ↓ {t("timeline.jumpToLatest")}
+          {tail.frozenCount > 0 ? ` · +${tail.frozenCount}` : ""}
         </Button>
       )}
     </div>
