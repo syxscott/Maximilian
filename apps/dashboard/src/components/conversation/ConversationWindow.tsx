@@ -49,8 +49,9 @@ export function ConversationWindow({
   highlightTurnIds?: Set<string>
   /** Unit key → matched ranges inside the unit's text (find highlight). */
   textHighlights?: Map<string, FindHit[]>
-  /** Turn id → estimated pixel height — renders a placeholder bar per
-   *  card so the scrollbar ratio stays real while windowed. */
+  /** Turn id → estimated pixel height — reserves that height as the
+   *  card wrapper's minHeight and renders a placeholder bar per card so
+   *  the scrollbar ratio stays real while windowed. */
   turnHeights?: Map<string, number>
   /** Appended to the load-earlier label (the estimated-height hint). */
   loadEarlierHint?: string
@@ -113,6 +114,11 @@ export function ConversationWindow({
             key={turn.turnId}
             ref={anchorOffset !== undefined && renderIndex === 0 ? anchorRef : undefined}
             data-window-index={hiddenBefore + renderIndex}
+            // Progressive enhancement: reserve the turn's estimated
+            // height on the card wrapper so a re-render can't collapse
+            // the row while the window is virtualized (anti-jump).
+            style={spacer !== undefined ? { minHeight: spacer } : undefined}
+            data-min-height={spacer !== undefined ? spacer : undefined}
           >
             <TurnGroup
               turn={turn}

@@ -23,12 +23,14 @@ import {
   type DockModel,
   addPanel as addPanelModel,
   createDefaultDockModel,
+  cyclePanelDisplay,
   deserializeDockModel,
   findLeaf,
   flattenPanels,
   openPanel as openPanelModel,
   parseDockModel,
   removePanel as removePanelModel,
+  resetSplit as resetSplitModel,
   resizeSplit as resizeSplitModel,
   serializeDockModel,
   setActive as setActiveModel,
@@ -95,6 +97,11 @@ interface DockLayoutState {
   /** The fullscreen panel, null when none is maximized. Not persisted. */
   maximizedId: string | null
   /**
+   * Panels collapsed to thin restore strips (the tri-state display's
+   * hidden state). Not persisted; mutually exclusive with maximizedId.
+   */
+  hiddenIds: string[]
+  /**
    * Split the target leaf and open a new panel beside/below it
    * (defaults: the active panel, horizontally). With no panels open,
    * creates the first one. Returns the new panel id, null when nothing
@@ -108,7 +115,15 @@ interface DockLayoutState {
   openPanel: (panelId: string, titleKey?: string) => void
   removePanel: (panelId: string) => void
   resizeSplit: (splitId: string, ratio: number) => void
+  /** Even out one split to 50/50 (the divider double-click affordance). */
+  resetSplit: (splitId: string) => void
   setActive: (panelId: string | null) => void
+  /**
+   * Advance one panel through the display cycle: normal → maximized →
+   * hidden (collapsed strip) → normal. Replaces the plain maximize
+   * toggle; invariants live in the pure cyclePanelDisplay.
+   */
+  cycleDisplay: (panelId: string) => void
   /** Fullscreen one panel; toggling the maximized panel restores. */
   toggleMaximize: (panelId: string) => void
   resetLayout: () => void
@@ -137,6 +152,7 @@ export function createDockLayoutStore(options: DockLayoutStoreOptions): DockLayo
     return {
       model: loadDockLayoutFrom(defaultStorage(), storageKey, createDefault),
       maximizedId: null,
+      hiddenIds: [],
       addPanel: (targetId, direction = "horizontal") => {
         const { model } = get()
         // Fresh unique id — "panel-N" never collides with an open panel.
@@ -163,21 +179,39 @@ export function createDockLayoutStore(options: DockLayoutStoreOptions): DockLayo
       removePanel: (panelId) => {
         const next = removePanelModel(get().model, panelId)
         if (next === get().model) return
-        set((s) => ({ maximizedId: s.maximizedId === panelId ? null : s.maximizedId }))
+        set((s) => ({
+          maximizedId: s.maximizedId === panelId ? null : s.maximizedId,
+          hiddenIds: s.hiddenIds.filter((h) => h !== panelId),
+        }))
         commit(next)
       },
       resizeSplit: (splitId, ratio) => {
         const next = resizeSplitModel(get().model, splitId, ratio)
         if (next !== get().model) commit(next)
       },
+      resetSplit: (splitId) => {
+        const next = resetSplitModel(get().model, splitId)
+        if (next !== get().model) commit(next)
+      },
       setActive: (panelId) => {
         const next = setActiveModel(get().model, panelId)
         if (next !== get().model) set({ model: next })
       },
+      cycleDisplay: (panelId) => {
+        const { maximizedId, hiddenIds } = get()
+        // View state only — never mirrored to the persisted document.
+        const next = cyclePanelDisplay({ maximizedId, hiddenIds }, panelId)
+        set({ maximizedId: next.maximizedId, hiddenIds: [...next.hiddenIds] })
+      },
       toggleMaximize: (panelId) =>
-        set((s) => ({ maximizedId: s.maximizedId === panelId ? null : panelId })),
+        set((s) => ({
+          maximizedId: s.maximizedId === panelId ? null : panelId,
+          // Maximize and hidden are mutually exclusive view states.
+          hiddenIds:
+            s.maximizedId === panelId ? s.hiddenIds : s.hiddenIds.filter((h) => h !== panelId),
+        })),
       resetLayout: () => {
-        set({ maximizedId: null })
+        set({ maximizedId: null, hiddenIds: [] })
         commit(createDefault())
       },
     }
@@ -195,6 +229,9 @@ export const useDockLayoutStore = createDockLayoutStore({
 export const useDockModel = (): DockModel => useDockLayoutStore((s) => s.model)
 
 export const useDockMaximizedId = (): string | null => useDockLayoutStore((s) => s.maximizedId)
+
+/** Selector: the panels currently collapsed to hidden strips. */
+export const useDockHiddenIds = (): string[] => useDockLayoutStore((s) => s.hiddenIds)
 
 /** Selector: is a given panel currently maximized? */
 export const selectIsMaximized =

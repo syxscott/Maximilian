@@ -28,9 +28,11 @@
  *   - live-tail: liveTailState frozen count on the jump affordance;
  *   - share: the pipeline's toConversationMarkdown;
  *   - virtual-height estimation: over VIRTUAL_HEIGHT_THRESHOLD the
- *     load-earlier label carries the estimated pixel height and each
- *     card renders a placeholder bar (perItemHeight) so the scrollbar
- *     ratio stays real.
+ *     toolbar shows the total estimate beside the find box, the
+ *     load-earlier label carries the estimated pixel height, and each
+ *     card reserves its turn's estimate as a minHeight (plus a
+ *     placeholder bar, perItemHeight) so the scrollbar ratio stays real
+ *     and layout doesn't jump.
  *
  * Timeline discipline: newest at the bottom, auto-tail (sticks to the
  * bottom while the run is live unless the user scrolled up), and a
@@ -45,7 +47,7 @@ import {
   estimateVirtualHeight,
   formatEstimatedHeight,
   liveTailState,
-  perItemHeight,
+  turnHeight,
   VIRTUAL_HEIGHT_THRESHOLD,
 } from "@/components/conversation/model"
 import { Button } from "@/components/ui/button"
@@ -83,14 +85,6 @@ function matchedTurnIdSet(
   units: ConversationUnit[],
 ): Set<string> {
   return new Set(matches.map((match) => units[match.unitIndex]?.turnId ?? match.turnId))
-}
-
-/** A turn's placeholder height: the sum of its units' estimates. */
-function turnEstimatedHeight(
-  turn: ReturnType<typeof groupUnitsByTurn>[number],
-  heights: ReturnType<typeof perItemHeight>,
-): number {
-  return heights.reduce((sum, h) => sum + h, 0)
 }
 
 export function ConversationTimeline({
@@ -144,15 +138,16 @@ export function ConversationTimeline({
 
   // Virtual-height budget: the estimated pixel height of the render
   // area, surfaced once it crosses the threshold — a hint on the
-  // windowing affordance plus a per-card placeholder bar so the
-  // scrollbar ratio stays real while only a window renders.
+  // windowing affordance, a total estimate beside the find box, and a
+  // per-card minHeight (plus placeholder bar) so the scrollbar ratio
+  // stays real and cards don't jump while only a window renders.
   const estimatedHeight = useMemo(() => estimateVirtualHeight(displayedUnits), [displayedUnits])
   const overHeightBudget = estimatedHeight > VIRTUAL_HEIGHT_THRESHOLD
   const turnHeights = useMemo(() => {
     if (!overHeightBudget) return undefined
     const map = new Map<string, number>()
     for (const turn of displayedTurns) {
-      map.set(turn.turnId, turnEstimatedHeight(turn, perItemHeight(turn.units)))
+      map.set(turn.turnId, turnHeight(turn))
     }
     return map
   }, [overHeightBudget, displayedTurns])
@@ -218,6 +213,17 @@ export function ConversationTimeline({
         >
           ⌕ {t("timeline.find")}
         </Button>
+        {overHeightBudget && (
+          <span
+            data-testid="timeline-estimated-height"
+            title={t("conversation.window.estimatedHeightTitle")}
+            className="text-xs text-muted-foreground"
+          >
+            {t("conversation.window.totalHeight", {
+              height: formatEstimatedHeight(estimatedHeight),
+            })}
+          </span>
+        )}
         <div className="flex gap-1">
           <Button
             variant="ghost"

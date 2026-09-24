@@ -34,6 +34,7 @@ import {
   textUnits,
   toConversationMarkdown,
   toShareMarkdown,
+  turnHeight,
   VIRTUAL_HEIGHT_THRESHOLD,
   windowTurns,
   type ConversationUnit,
@@ -1006,6 +1007,27 @@ describe("ConversationTimeline rendering", () => {
     expect(spacers[0]).toHaveAttribute("data-spacer-height", "28")
     expect(spacers[0]).toHaveStyle({ height: "28px" })
   })
+
+  it("over the budget the toolbar carries the total estimate and cards reserve a minHeight", () => {
+    const many = msgTurnEvents(400)
+    render(<ConversationTimeline events={many} workspace={null} live={false} />)
+    // The total estimate sits beside the find box with a hover title.
+    const total = screen.getByTestId("timeline-estimated-height")
+    expect(total).toHaveTextContent("≈ 11.2k px")
+    expect(total.getAttribute("title")).toBeTruthy()
+    // Each rendered card wrapper reserves its turn's estimate (anti-jump)
+    // in addition to the placeholder bar.
+    const rows = screen.getByTestId("conversation-window").querySelectorAll("[data-min-height]")
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows[0]).toHaveAttribute("data-min-height", "28")
+    expect(rows[0]).toHaveStyle({ minHeight: "28px" })
+  })
+
+  it("under the budget neither the toolbar estimate nor card minHeight show", () => {
+    render(<ConversationTimeline events={flowEvents()} workspace={null} live={false} />)
+    expect(screen.queryByTestId("timeline-estimated-height")).not.toBeInTheDocument()
+    expect(screen.getByTestId("conversation-window").querySelector("[data-min-height]")).toBeNull()
+  })
 })
 
 // ── windowTurns (deep-surface windowing) ────────────────────────────────────
@@ -1441,6 +1463,59 @@ describe("perItemHeight", () => {
     expect(perItemHeight(units, -4)).toEqual([28, 28])
     expect(perItemHeight(units, Number.NaN)).toEqual([28, 28])
     expect(perItemHeight(units)).toEqual([28, 28])
+  })
+})
+
+// ── turnHeight (per-turn virtual-height estimate) ───────────────────────────
+
+describe("turnHeight", () => {
+  it("sums the per-unit estimates of one turn's units", () => {
+    const units = buildTurnFlowItems(
+      [taskStart("t1"), toolStart("t1", "bash"), toolEnd("t1", "bash", { ok: true })],
+      null,
+    )
+    const [turn] = groupUnitsByTurn(units)
+    // Marker (1 row) + folded tool (2 rows) at 10px per row.
+    expect(turn?.units).toHaveLength(2)
+    expect(turnHeight(turn, 10)).toBe(30)
+  })
+
+  it("scales text rows with wrapping and the row height", () => {
+    const [plain] = groupUnitsByTurn(buildTurnFlowItems(msgTurnEvents(1), null))
+    expect(turnHeight(plain)).toBe(28) // default row height
+    expect(turnHeight(plain, 12)).toBe(12)
+    const wrapped = buildTurnFlowItems([textEv("x".repeat(160))], null) // 2 wrapped rows
+    expect(turnHeight(groupUnitsByTurn(wrapped)[0], 10)).toBe(20)
+  })
+
+  it("counts malformed turns and missing unit lists as 0", () => {
+    expect(turnHeight(null)).toBe(0)
+    expect(turnHeight(undefined)).toBe(0)
+    expect(turnHeight(42 as unknown as { units?: ConversationUnit[] })).toBe(0)
+    expect(turnHeight({} as { units?: ConversationUnit[] })).toBe(0)
+    expect(turnHeight({ units: "junk" as unknown as ConversationUnit[] })).toBe(0)
+    expect(turnHeight({ units: [] }, 28)).toBe(0)
+  })
+
+  it("falls back to the default row height for invalid heights", () => {
+    const [turn] = groupUnitsByTurn(buildTurnFlowItems(msgTurnEvents(1), null))
+    expect(turnHeight(turn, -3)).toBe(28)
+    expect(turnHeight(turn, Number.NaN)).toBe(28)
+  })
+
+  it("sums per-turn to estimateVirtualHeight across a whole stream", () => {
+    const units = buildTurnFlowItems(
+      [
+        taskStart("t1"),
+        textEv("a note", "t1"),
+        toolStart("t1", "bash"),
+        toolEnd("t1", "bash", { ok: true }),
+        textEv("tail note"),
+      ],
+      null,
+    )
+    const total = groupUnitsByTurn(units).reduce((sum, turn) => sum + turnHeight(turn, 10), 0)
+    expect(total).toBe(estimateVirtualHeight(units, 10))
   })
 })
 

@@ -3,12 +3,15 @@
     "panel": {
       "close": "Close panel",
       "maximize": "Maximize panel",
+      "collapse": "Collapse panel",
       "restore": "Restore panel",
+      "hidden": "Panel collapsed — click to restore",
       "chat": "Conversation",
       "timeline": "Timeline",
       "untitled": "Untitled panel"
     },
     "splitter": "Drag to resize",
+    "splitterReset": "Double-click to split evenly",
     "empty": "No panels open — add one to get started",
     "addPanel": "Add panel",
     "resetLayout": "Reset layout",

@@ -40,7 +40,9 @@
       "empty": "No turns to window yet",
       "loadEarlier": "Load {count} earlier turns",
       "jumpLatest": "Back to latest",
-      "estimatedHeight": "≈ {height} est."
+      "estimatedHeight": "≈ {height} est.",
+      "estimatedHeightTitle": "Estimated total height of the conversation stream — windowed rendering keeps it bounded",
+      "totalHeight": "≈ {height}"
     },
     "textUnit": {
       "user": "Request",

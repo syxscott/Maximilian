@@ -1319,6 +1319,23 @@ export function estimateVirtualHeight(
 }
 
 /**
+ * Estimated pixel height of ONE turn: the sum of its units' per-item
+ * estimates — the minHeight a timeline card reserves while windowed
+ * (anti-jump) and the turn's share of estimateVirtualHeight. Defensive:
+ * a malformed turn (null, missing or non-array units) contributes 0;
+ * row-height validation matches perItemHeight.
+ */
+export function turnHeight(
+  turn: { units?: ConversationUnit[] } | null | undefined,
+  rowHeight: number = VIRTUAL_ROW_HEIGHT,
+): number {
+  if (turn === null || typeof turn !== "object") return 0
+  const units = turn.units
+  if (!Array.isArray(units)) return 0
+  return perItemHeight(units as ConversationUnit[], rowHeight).reduce((sum, h) => sum + h, 0)
+}
+
+/**
  * Human-readable pixel estimate for the windowing affordance: plain
  * pixels under a thousand, one-decimal k-pixels above. Defensive:
  * non-finite / non-positive input collapses to "0 px".

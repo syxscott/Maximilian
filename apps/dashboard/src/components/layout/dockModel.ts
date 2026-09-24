@@ -385,3 +385,84 @@ export function ratioFromPointer(
   if (rect.height <= 0) return null
   return clampDockRatio((clientY - rect.top) / rect.height)
 }
+
+/**
+ * Reset one split to the even 50/50 share — the double-click-on-divider
+ * affordance. Unknown split ids degrade the same way resizeSplit does
+ * (structure-equal tree, no throw); junk input cannot wedge the layout
+ * because 0.5 is always inside the clamped ratio range.
+ */
+export function resetSplit(model: DockModel, splitId: string): DockModel {
+  return resizeSplit(model, splitId, 0.5)
+}
+
+// ── Tri-state panel display (normal | maximized | hidden strip) ─────────────
+
+/**
+ * Per-panel display state behind the header's density affordance: the
+ * button cycles normal → maximized → hidden → normal, and the hidden
+ * state renders the leaf as a thin restore strip instead of a full
+ * panel. View state only — like maximizedId it is never persisted.
+ */
+export type DockPanelDisplay = "normal" | "maximized" | "hidden"
+
+/** The non-persisted view flags the display state derives from. */
+export interface DockDisplayFlags {
+  maximizedId: string | null
+  hiddenIds: ReadonlyArray<string>
+}
+
+/** The next state in the tri-state cycle. Total over the three states. */
+export function nextPanelDisplay(current: DockPanelDisplay): DockPanelDisplay {
+  if (current === "normal") return "maximized"
+  if (current === "maximized") return "hidden"
+  return "normal"
+}
+
+/** Defensive hidden-list normalization: junk entries and blanks drop out. */
+function normalizeHiddenIds(hiddenIds: ReadonlyArray<string> | null | undefined): string[] {
+  if (!Array.isArray(hiddenIds)) return []
+  return hiddenIds.filter((id): id is string => typeof id === "string" && id.trim() !== "")
+}
+
+/**
+ * Resolve one panel's display state from the dock flags. Maximize wins
+ * over hidden (the two are mutually exclusive by construction — see
+ * cyclePanelDisplay — but a hand-assembled flag pair resolves stably).
+ */
+export function panelDisplay(
+  panelId: string,
+  maximizedId: string | null,
+  hiddenIds: ReadonlyArray<string> | null | undefined,
+): DockPanelDisplay {
+  if (maximizedId === panelId) return "maximized"
+  if (normalizeHiddenIds(hiddenIds).includes(panelId)) return "hidden"
+  return "normal"
+}
+
+/**
+ * Advance one panel through the tri-state cycle (the pure core of the
+ * store's cycleDisplay action). Invariants, enforced on every step:
+ * at most one maximized panel (a new maximize displaces the old one),
+ * maximized and hidden are mutually exclusive, and panels not touched
+ * keep their flags. Blank / non-string ids leave the flags unchanged.
+ */
+export function cyclePanelDisplay(
+  flags: DockDisplayFlags | null | undefined,
+  panelId: string,
+): DockDisplayFlags {
+  const maximizedId = typeof flags?.maximizedId === "string" ? flags.maximizedId : null
+  const hiddenIds = normalizeHiddenIds(flags?.hiddenIds)
+  const id = typeof panelId === "string" ? panelId.trim() : ""
+  if (id === "") return { maximizedId, hiddenIds }
+
+  const withoutId = hiddenIds.filter((h) => h !== id)
+  switch (nextPanelDisplay(panelDisplay(id, maximizedId, hiddenIds))) {
+    case "maximized":
+      return { maximizedId: id, hiddenIds: withoutId }
+    case "hidden":
+      return { maximizedId: maximizedId === id ? null : maximizedId, hiddenIds: [...withoutId, id] }
+    default:
+      return { maximizedId: maximizedId === id ? null : maximizedId, hiddenIds: withoutId }
+  }
+}

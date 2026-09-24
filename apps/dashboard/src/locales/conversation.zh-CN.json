@@ -40,7 +40,9 @@
       "empty": "暂无可开窗的回合",
       "loadEarlier": "加载更早的 {count} 个回合",
       "jumpLatest": "回到最新",
-      "estimatedHeight": "≈ {height} 估算"
+      "estimatedHeight": "≈ {height} 估算",
+      "estimatedHeightTitle": "会话流预估总高度——开窗渲染将其保持在有界范围",
+      "totalHeight": "≈ {height}"
     },
     "textUnit": {
       "user": "请求",

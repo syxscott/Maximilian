@@ -3,12 +3,15 @@
     "panel": {
       "close": "关闭面板",
       "maximize": "最大化面板",
+      "collapse": "折叠面板",
       "restore": "还原面板",
+      "hidden": "面板已折叠——点击还原",
       "chat": "会话",
       "timeline": "时间线",
       "untitled": "未命名面板"
     },
     "splitter": "拖动调整大小",
+    "splitterReset": "双击均分",
     "empty": "没有打开的面板——先添加一个吧",
     "addPanel": "添加面板",
     "resetLayout": "重置布局",

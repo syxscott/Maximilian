@@ -7,10 +7,13 @@
  * Dock layout engine tests:
  *   - dockModel.ts — every tree operation, ratio drag math, serialization
  *     round-trips and the defensive parser (bad JSON, wrong shapes,
- *     duplicate ids, over-deep trees, cyclic graphs);
+ *     duplicate ids, over-deep trees, cyclic graphs), plus the density
+ *     layer: resetSplit (double-click even-split) and the tri-state
+ *     panel display (normal → maximized → hidden strip) cycle;
  *   - useDockLayout — store actions + "maximilian.dock-layout" persistence;
- *   - DockPanel / DockContainer — render smoke, maximize/close wiring and
- *     a splitter drag driven through pointer events at the model layer.
+ *   - DockPanel / DockContainer — render smoke, tri-state display wiring,
+ *     splitter drag tooltip / double-click reset driven through pointer
+ *     events at the model layer.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { act, fireEvent, render, screen } from "@testing-library/react"
@@ -28,15 +31,19 @@ import {
   createDefaultDockModel,
   createDockModel,
   createStackedDockModel,
+  cyclePanelDisplay,
   deserializeDockModel,
   findLeaf,
   flattenPanels,
   makeLeaf,
   makeSplit,
+  nextPanelDisplay,
   openPanel,
+  panelDisplay,
   parseDockModel,
   ratioFromPointer,
   removePanel,
+  resetSplit,
   resizeSplit,
   serializeDockModel,
   setActive,
@@ -65,7 +72,7 @@ const rootSplit = (model: DockModel): DockSplit => {
 }
 
 const resetStore = () =>
-  useDockLayoutStore.setState({ model: createDefaultDockModel(), maximizedId: null })
+  useDockLayoutStore.setState({ model: createDefaultDockModel(), maximizedId: null, hiddenIds: [] })
 
 beforeEach(() => {
   try {
@@ -214,6 +221,91 @@ describe("dockModel operations", () => {
     expect(nested.direction).toBe("vertical")
     expect(nested.ratio).toBe(0.5)
     expect(createStackedDockModel([]).root).toBeNull()
+  })
+})
+
+// ── dockModel: density layer (resetSplit + tri-state display) ───────────────
+
+describe("dockModel resetSplit + tri-state display", () => {
+  it("resetSplit evens the named split to 50/50 and leaves others alone", () => {
+    const nested = addPanel(defaultModel, "notes", "chat", "vertical")
+    const root = rootSplit(nested)
+    const inner = root.children[0] as DockSplit
+    const shaken = resizeSplit(resizeSplit(nested, root.id, 0.8), inner.id, 0.2)
+    const evened = resetSplit(shaken, inner.id)
+    expect((rootSplit(evened).children[0] as DockSplit).ratio).toBe(0.5)
+    expect(rootSplit(evened).ratio).toBe(0.8) // the untouched split keeps its drag
+    // Re-resetting an even split is stable; unknown ids degrade quietly.
+    expect((rootSplit(resetSplit(evened, inner.id)).children[0] as DockSplit).ratio).toBe(0.5)
+    expect(resetSplit(defaultModel, "no-such-split").root).toEqual(defaultModel.root)
+  })
+
+  it("nextPanelDisplay cycles normal → maximized → hidden → normal", () => {
+    expect(nextPanelDisplay("normal")).toBe("maximized")
+    expect(nextPanelDisplay("maximized")).toBe("hidden")
+    expect(nextPanelDisplay("hidden")).toBe("normal")
+  })
+
+  it("panelDisplay resolves the three states from the flags, defensively", () => {
+    expect(panelDisplay("a", null, [])).toBe("normal")
+    expect(panelDisplay("a", "a", [])).toBe("maximized")
+    expect(panelDisplay("a", null, ["a", "b"])).toBe("hidden")
+    // Maximize wins over a hand-assembled contradictory flag pair.
+    expect(panelDisplay("a", "a", ["a"])).toBe("maximized")
+    // Junk hidden lists collapse to nothing instead of throwing.
+    expect(panelDisplay("a", null, undefined)).toBe("normal")
+    expect(panelDisplay("a", null, [42 as unknown as string, "  "])).toBe("normal")
+  })
+
+  it("cyclePanelDisplay walks the full cycle from normal and back", () => {
+    const start = { maximizedId: null, hiddenIds: [] as string[] }
+    const maximized = cyclePanelDisplay(start, "a")
+    expect(maximized).toEqual({ maximizedId: "a", hiddenIds: [] })
+    const hidden = cyclePanelDisplay(maximized, "a")
+    expect(hidden).toEqual({ maximizedId: null, hiddenIds: ["a"] })
+    const normal = cyclePanelDisplay(hidden, "a")
+    expect(normal).toEqual({ maximizedId: null, hiddenIds: [] })
+  })
+
+  it("cyclePanelDisplay keeps at most one maximized panel", () => {
+    const first = cyclePanelDisplay({ maximizedId: null, hiddenIds: [] }, "a")
+    const second = cyclePanelDisplay(first, "b")
+    expect(second).toEqual({ maximizedId: "b", hiddenIds: [] }) // a displaced to normal
+  })
+
+  it("cyclePanelDisplay stays exclusive and preserves unrelated hidden strips", () => {
+    // Cycling a hidden panel restores it to normal (the strip's click).
+    expect(cyclePanelDisplay({ maximizedId: null, hiddenIds: ["b"] }, "b")).toEqual({
+      maximizedId: null,
+      hiddenIds: [],
+    })
+    // Hiding the maximized panel clears the maximize (mutual exclusion).
+    expect(cyclePanelDisplay({ maximizedId: "a", hiddenIds: [] }, "a")).toEqual({
+      maximizedId: null,
+      hiddenIds: ["a"],
+    })
+    // Strips of untouched panels survive every step.
+    expect(cyclePanelDisplay({ maximizedId: null, hiddenIds: ["b"] }, "a")).toEqual({
+      maximizedId: "a",
+      hiddenIds: ["b"],
+    })
+    expect(cyclePanelDisplay({ maximizedId: null, hiddenIds: ["a", "b"] }, "a").hiddenIds).toEqual([
+      "b",
+    ])
+  })
+
+  it("cyclePanelDisplay is defensive about junk flags and blank ids", () => {
+    // Junk flags read as "nothing special open" — the panel still cycles.
+    expect(cyclePanelDisplay(undefined, "a")).toEqual({ maximizedId: "a", hiddenIds: [] })
+    expect(cyclePanelDisplay(null, "a")).toEqual({ maximizedId: "a", hiddenIds: [] })
+    // Blank / non-string ids leave the flags untouched.
+    expect(cyclePanelDisplay({ maximizedId: "x", hiddenIds: ["y"] }, "   ")).toEqual({
+      maximizedId: "x",
+      hiddenIds: ["y"],
+    })
+    expect(
+      cyclePanelDisplay({ maximizedId: "x", hiddenIds: "nope" as unknown as string[] }, "a"),
+    ).toEqual({ maximizedId: "a", hiddenIds: [] })
   })
 })
 
@@ -399,6 +491,42 @@ describe("useDockLayoutStore", () => {
     ).toBe(0.8)
   })
 
+  it("resetSplit evens the persisted split back out", () => {
+    const id = rootSplit(useDockLayoutStore.getState().model).id
+    useDockLayoutStore.getState().resizeSplit(id, 0.85)
+    useDockLayoutStore.getState().resetSplit(id)
+    expect(rootSplit(useDockLayoutStore.getState().model).ratio).toBe(0.5)
+    expect(
+      rootSplit(deserializeDockModel(localStorage.getItem(DOCK_LAYOUT_STORAGE_KEY))).ratio,
+    ).toBe(0.5)
+  })
+
+  it("cycleDisplay walks the tri-state and never persists the view state", () => {
+    useDockLayoutStore.getState().cycleDisplay("chat")
+    expect(useDockLayoutStore.getState().maximizedId).toBe("chat")
+    expect(useDockLayoutStore.getState().hiddenIds).toEqual([])
+    useDockLayoutStore.getState().cycleDisplay("chat")
+    expect(useDockLayoutStore.getState().maximizedId).toBeNull()
+    expect(useDockLayoutStore.getState().hiddenIds).toEqual(["chat"])
+    useDockLayoutStore.getState().cycleDisplay("chat")
+    expect(useDockLayoutStore.getState().hiddenIds).toEqual([])
+    // View state only — the persisted document is untouched by cycling.
+    expect(localStorage.getItem(DOCK_LAYOUT_STORAGE_KEY)).toBeNull()
+  })
+
+  it("removePanel drops a hidden panel from hiddenIds; resetLayout clears the view state", () => {
+    useDockLayoutStore.getState().cycleDisplay("timeline")
+    useDockLayoutStore.getState().cycleDisplay("timeline") // timeline hidden
+    expect(useDockLayoutStore.getState().hiddenIds).toEqual(["timeline"])
+    useDockLayoutStore.getState().removePanel("timeline")
+    expect(useDockLayoutStore.getState().hiddenIds).toEqual([])
+    useDockLayoutStore.getState().cycleDisplay("chat")
+    useDockLayoutStore.getState().cycleDisplay("chat")
+    useDockLayoutStore.getState().resetLayout()
+    expect(useDockLayoutStore.getState().hiddenIds).toEqual([])
+    expect(useDockLayoutStore.getState().maximizedId).toBeNull()
+  })
+
   it("toggleMaximize flips; resetLayout restores and persists the default shell", () => {
     useDockLayoutStore.getState().addPanel("timeline", "vertical")
     useDockLayoutStore.getState().resetLayout()
@@ -456,21 +584,16 @@ describe("DockPanel", () => {
     expect(screen.getByText("ghost-panel")).toBeTruthy()
   })
 
-  it("wires close and maximize affordances, omitting absent callbacks", () => {
+  it("wires close and the display-cycle affordance, omitting absent callbacks", () => {
     const onClose = vi.fn()
-    const onToggleMaximize = vi.fn()
+    const onCycleDisplay = vi.fn()
     const { rerender } = render(
-      <DockPanel
-        id="p"
-        titleKey="t"
-        onClose={onClose}
-        onToggleMaximize={onToggleMaximize}
-        maximized
-      />,
+      <DockPanel id="p" titleKey="t" onClose={onClose} onCycleDisplay={onCycleDisplay} maximized />,
     )
-    expect(screen.getByLabelText("Restore panel")).toBeTruthy()
+    // Tri-state cycle: from maximized the button offers the collapse stop.
+    expect(screen.getByLabelText("Collapse panel")).toBeTruthy()
     fireEvent.click(screen.getByTestId("dock-maximize-p"))
-    expect(onToggleMaximize).toHaveBeenCalledWith("p")
+    expect(onCycleDisplay).toHaveBeenCalledWith("p")
     fireEvent.click(screen.getByTestId("dock-close-p"))
     expect(onClose).toHaveBeenCalledWith("p")
 
@@ -497,13 +620,64 @@ describe("DockContainer", () => {
     expect(screen.getByTestId(`dock-splitter-${splitId}`).getAttribute("role")).toBe("separator")
   })
 
-  it("maximize shows one panel; toggling again restores the tree", () => {
+  it("the display cycle maximizes, collapses to a strip, and the strip restores", () => {
     renderDock()
+    // normal → maximized: the chat renders alone.
     fireEvent.click(screen.getByTestId("dock-maximize-chat"))
     expect(screen.queryByTestId("dock-panel-timeline")).toBeNull()
     expect(screen.getByTestId("dock-panel-chat")).toBeTruthy()
+    // maximized → hidden: the chat collapses to a thin restore strip and
+    // the tree (timeline) renders beside it again.
     fireEvent.click(screen.getByTestId("dock-maximize-chat"))
+    expect(screen.queryByTestId("dock-panel-chat")).toBeNull()
+    expect(screen.getByTestId("dock-hidden-strip-chat")).toBeTruthy()
     expect(screen.getByTestId("dock-panel-timeline")).toBeTruthy()
+    // hidden → normal: clicking the strip restores the full panel.
+    fireEvent.click(screen.getByTestId("dock-hidden-strip-chat"))
+    expect(screen.getByTestId("dock-panel-chat")).toBeTruthy()
+    expect(useDockLayoutStore.getState().hiddenIds).toEqual([])
+  })
+
+  it("dragging the splitter shows a live percentage tooltip that clears on release", () => {
+    renderDock()
+    const splitId = rootSplit(useDockLayoutStore.getState().model).id
+    const splitEl = screen.getByTestId(`dock-split-${splitId}`)
+    Object.defineProperty(splitEl, "getBoundingClientRect", {
+      value: () => ({ left: 0, top: 0, width: 1000, height: 500, right: 1000, bottom: 500 }),
+      configurable: true,
+    })
+    expect(screen.queryByTestId(`dock-splitter-tip-${splitId}`)).toBeNull()
+
+    // RTL's fireEvent drops clientX/clientY on window-targeted pointer
+    // events in this jsdom build — dispatch the window events by hand.
+    const windowPointer = (type: string, x: number, y: number) => {
+      act(() => {
+        const ev = new window.Event(type, { bubbles: true }) as PointerEvent
+        Object.defineProperty(ev, "clientX", { value: x })
+        Object.defineProperty(ev, "clientY", { value: y })
+        window.dispatchEvent(ev)
+      })
+    }
+
+    fireEvent.pointerDown(screen.getByTestId(`dock-splitter-${splitId}`), { clientX: 600 })
+    // The tooltip is live during the drag: the default 60%, then 75%.
+    expect(screen.getByTestId(`dock-splitter-tip-${splitId}`).textContent).toBe("60%")
+    windowPointer("pointermove", 750, 0)
+    expect(screen.getByTestId(`dock-splitter-tip-${splitId}`).textContent).toBe("75%")
+    // Release clears the tooltip.
+    windowPointer("pointerup", 750, 0)
+    expect(screen.queryByTestId(`dock-splitter-tip-${splitId}`)).toBeNull()
+    expect(rootSplit(useDockLayoutStore.getState().model).ratio).toBe(0.75)
+  })
+
+  it("double-clicking the splitter evens the split back to 50/50", () => {
+    renderDock()
+    const splitId = rootSplit(useDockLayoutStore.getState().model).id
+    useDockLayoutStore.getState().resizeSplit(splitId, 0.85)
+    expect(rootSplit(useDockLayoutStore.getState().model).ratio).toBe(0.85)
+    fireEvent.doubleClick(screen.getByTestId(`dock-splitter-${splitId}`))
+    expect(rootSplit(useDockLayoutStore.getState().model).ratio).toBe(0.5)
+    expect(screen.queryByTestId(`dock-splitter-tip-${splitId}`)).toBeNull()
   })
 
   it("closing panels drives the store; an emptied dock shows the empty state", () => {
