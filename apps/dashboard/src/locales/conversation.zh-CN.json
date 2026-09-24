@@ -32,6 +32,24 @@
     "preview": {
       "empty": "暂无会话事件——运行开始后此处将实时流出渲染单元",
       "stats": "{turns} 个回合 · {units} 个渲染单元"
+    },
+    "window": {
+      "empty": "暂无可开窗的回合",
+      "loadEarlier": "加载更早的 {count} 个回合",
+      "jumpLatest": "回到最新"
+    },
+    "textUnit": {
+      "user": "请求",
+      "steering": "引导",
+      "system": "系统"
+    },
+    "share": {
+      "untitled": "会话",
+      "stats": "{turns} 个回合 · {units} 个单元 · {tools} 次工具调用 · {retries} 次重试",
+      "sectionStats": "{units} 个单元 · {tools} 次工具调用",
+      "copy": "复制为 Markdown",
+      "copied": "已复制",
+      "empty": "暂无可分享的内容"
     }
   }
 }

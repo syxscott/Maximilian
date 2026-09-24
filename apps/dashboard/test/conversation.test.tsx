@@ -7,8 +7,11 @@
  * Conversation turn-unit pipeline tests: the pairing algorithm (FIFO
  * per taskId+tool, running tails, ignored orphans), retry-wave folding,
  * the unit-stream compiler, turn depths, the find index, markdown
- * export — plus render smokes for TurnGroup / RetryWaveGroup /
- * ConversationUnitsPreview.
+ * export, the deep-surface models (turn windowing, text-unit
+ * extraction, live-tail state, share sections, virtual-height
+ * estimation) — plus render smokes for TurnGroup / RetryWaveGroup /
+ * ConversationUnitsPreview / ConversationWindow / TextUnitBlock /
+ * ShareView.
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
@@ -19,17 +22,27 @@ import {
   buildConversationFindIndex,
   buildTurnFlowItems,
   estimateTurnDepth,
+  estimateVirtualHeight,
   formatDuration,
   groupRetryWaves,
   groupUnitsByTurn,
+  liveTailState,
   pairToolCalls,
+  shareSections,
+  textUnits,
   toConversationMarkdown,
+  toShareMarkdown,
+  windowTurns,
   type ConversationUnit,
+  type ExtractedTextUnit,
   type RetryUnit,
 } from "../src/components/conversation/model"
 import { TurnGroup } from "../src/components/conversation/TurnGroup"
 import { RetryWaveGroup } from "../src/components/conversation/RetryWaveGroup"
 import { ConversationUnitsPreview } from "../src/components/conversation/ConversationUnitsPreview"
+import { ConversationWindow } from "../src/components/conversation/ConversationWindow"
+import { TextUnitBlock } from "../src/components/conversation/TextUnitBlock"
+import { ShareView } from "../src/components/conversation/ShareView"
 import { ConversationTimeline } from "../src/components/ConversationTimeline"
 import type { RuntimeEvent, Workspace } from "../src/api"
 
@@ -918,5 +931,544 @@ describe("ConversationTimeline rendering", () => {
     fireEvent.click(screen.getByTestId("load-earlier"))
     expect(screen.getAllByTestId("turn-group")).toHaveLength(60)
     expect(screen.queryByTestId("load-earlier")).not.toBeInTheDocument()
+  })
+})
+
+// ── windowTurns (deep-surface windowing) ────────────────────────────────────
+
+/** Standalone narration events — each becomes its own `msg-N` turn. */
+const msgTurnEvents = (n: number): RuntimeEvent[] =>
+  Array.from({ length: n }, (_, i) => textEv(`note ${i}`))
+
+describe("windowTurns", () => {
+  it("defaults to the newest 30 turns with the older hidden", () => {
+    const win = windowTurns(buildTurnFlowItems(msgTurnEvents(35), null))
+    expect(win.turns).toHaveLength(30)
+    expect(win.hiddenBefore).toBe(5)
+    expect(win.anchorOffset).toBeUndefined()
+    // Tail window: the newest turn survives, the oldest hidden one does not.
+    expect(win.turns.at(-1)?.turnId).toBe("msg-34")
+    expect(win.turns[0]?.turnId).toBe("msg-5")
+  })
+
+  it("respects a smaller visibleTurns", () => {
+    const win = windowTurns(buildTurnFlowItems(msgTurnEvents(10), null), { visibleTurns: 3 })
+    expect(win.turns.map((t) => t.turnId)).toEqual(["msg-7", "msg-8", "msg-9"])
+    expect(win.hiddenBefore).toBe(7)
+  })
+
+  it("returns an empty window for an empty stream", () => {
+    expect(windowTurns([])).toEqual({ turns: [], hiddenBefore: 0, anchorOffset: undefined })
+  })
+
+  it("falls back to the default window for negative, zero and non-finite sizes", () => {
+    for (const visibleTurns of [-5, 0, Number.NaN, Number.POSITIVE_INFINITY, "3"]) {
+      const win = windowTurns(buildTurnFlowItems(msgTurnEvents(40), null), {
+        visibleTurns: visibleTurns as number,
+      })
+      expect(win.turns).toHaveLength(30)
+      expect(win.hiddenBefore).toBe(10)
+    }
+  })
+
+  it("clamps oversized sizes to the full turn list", () => {
+    const win = windowTurns(buildTurnFlowItems(msgTurnEvents(4), null), { visibleTurns: 999 })
+    expect(win.turns).toHaveLength(4)
+    expect(win.hiddenBefore).toBe(0)
+  })
+
+  it("floors fractional sizes", () => {
+    const win = windowTurns(buildTurnFlowItems(msgTurnEvents(10), null), { visibleTurns: 2.9 })
+    expect(win.turns).toHaveLength(2)
+  })
+
+  it("pins the window head at the anchor turn", () => {
+    const win = windowTurns(buildTurnFlowItems(msgTurnEvents(10), null), {
+      visibleTurns: 3,
+      anchorTurnId: "msg-4",
+    })
+    expect(win.turns.map((t) => t.turnId)).toEqual(["msg-4", "msg-5", "msg-6"])
+    expect(win.hiddenBefore).toBe(4)
+    expect(win.anchorOffset).toBe(4)
+  })
+
+  it("clamps the anchored window at the list tail", () => {
+    const win = windowTurns(buildTurnFlowItems(msgTurnEvents(10), null), {
+      visibleTurns: 3,
+      anchorTurnId: "msg-8",
+    })
+    expect(win.turns.map((t) => t.turnId)).toEqual(["msg-8", "msg-9"])
+    expect(win.anchorOffset).toBe(8)
+  })
+
+  it("degrades to the tail window when the anchor matches nothing", () => {
+    const win = windowTurns(buildTurnFlowItems(msgTurnEvents(6), null), {
+      visibleTurns: 2,
+      anchorTurnId: "msg-99",
+    })
+    expect(win.turns.map((t) => t.turnId)).toEqual(["msg-4", "msg-5"])
+    expect(win.anchorOffset).toBeUndefined()
+    // Non-string anchors are ignored the same way.
+    expect(
+      windowTurns(buildTurnFlowItems(msgTurnEvents(6), null), {
+        visibleTurns: 2,
+        anchorTurnId: 42 as unknown as string,
+      }).anchorOffset,
+    ).toBeUndefined()
+  })
+})
+
+// ── textUnits (text-segment extraction) ─────────────────────────────────────
+
+describe("textUnits", () => {
+  it("leads with the workspace user request as a user-sourced unit", () => {
+    const units = textUnits([], ws({ userRequest: "Build the login page" }))
+    expect(units).toHaveLength(1)
+    expect(units[0]).toMatchObject({
+      key: "text-user",
+      turnId: "user",
+      role: "user",
+      source: "user",
+      text: "Build the login page",
+      index: -1,
+    })
+  })
+
+  it("emits nothing without a workspace request", () => {
+    expect(textUnits([], null)).toEqual([])
+    expect(textUnits([], ws({ userRequest: undefined as unknown as string }))).toEqual([])
+  })
+
+  it("extracts task descriptions into their task turn", () => {
+    const units = textUnits(
+      [
+        taskStart("t1", "backend"),
+        ev({ type: "task-start", taskId: "t1", description: "ship it" }),
+      ],
+      null,
+    )
+    expect(units).toHaveLength(1)
+    expect(units[0]).toMatchObject({
+      key: "task-desc-1",
+      turnId: "task-t1",
+      role: "system",
+      source: "system",
+      text: "ship it",
+      taskId: "t1",
+    })
+  })
+
+  it("folds repeated descriptions and emits only the change", () => {
+    const units = textUnits(
+      [
+        ev({ type: "task-start", taskId: "t1", description: "v1" }),
+        ev({ type: "task-update", taskId: "t1", description: "v1" }), // repeat — folded
+        ev({ type: "task-update", taskId: "t1", description: "v2" }), // revision — kept
+      ],
+      null,
+    )
+    expect(units.map((u) => u.text)).toEqual(["v1", "v2"])
+  })
+
+  it("extracts steering messages as steering units joined to the steered turn", () => {
+    const units = textUnits(
+      [
+        ev({
+          type: "steering-applied",
+          messages: ["focus on tests", "skip the bench"],
+          taskIds: ["t1"],
+        }),
+      ],
+      ws(),
+    )
+    expect(units).toHaveLength(3) // user request + 2 steering messages
+    expect(units[1]).toMatchObject({
+      key: "steering-0-0",
+      turnId: "task-t1",
+      role: "user",
+      source: "steering",
+      text: "focus on tests",
+      taskId: "t1",
+    })
+    expect(units[2]).toMatchObject({ key: "steering-0-1", text: "skip the bench" })
+  })
+
+  it("routes untargeted steering to the system turn and drops malformed payloads", () => {
+    const units = textUnits(
+      [
+        ev({ type: "steering-applied", messages: ["untargeted note"] }),
+        ev({ type: "steering-applied", messages: [42, null, "kept"] }),
+        ev({ type: "steering-applied" }), // no messages at all
+      ],
+      null,
+    )
+    expect(units).toHaveLength(2)
+    expect(units[0]).toMatchObject({ turnId: "system", source: "steering" })
+    expect(units[1]?.text).toBe("kept")
+  })
+
+  it("drops garbage events and keeps stream order", () => {
+    const units = textUnits(
+      [
+        ev({ type: "steering-applied", messages: ["late"], taskIds: ["t2"] }),
+        null,
+        "junk",
+        ev({ type: "task-start", taskId: "t1", description: "desc" }),
+      ] as unknown as RuntimeEvent[],
+      ws({ userRequest: "the request" }),
+    )
+    expect(units.map((u) => u.source)).toEqual(["user", "steering", "system"])
+    expect(new Set(units.map((u) => u.key)).size).toBe(units.length) // keys unique
+  })
+
+  it("survives a non-array stream", () => {
+    expect(textUnits(undefined as unknown as RuntimeEvent[], null)).toEqual([])
+  })
+})
+
+// ── liveTailState (live-tail state machine) ─────────────────────────────────
+
+describe("liveTailState", () => {
+  const units = buildTurnFlowItems(msgTurnEvents(5), null)
+
+  it("follows the tail while attached", () => {
+    expect(liveTailState(units, false)).toEqual({ followsTail: true, frozenCount: 0 })
+  })
+
+  it("treats an undefined detached flag as attached", () => {
+    expect(liveTailState(units, undefined)).toEqual({ followsTail: true, frozenCount: 0 })
+  })
+
+  it("freezes at the current end when detaching without a freeze point", () => {
+    expect(liveTailState(units, true)).toEqual({ followsTail: false, frozenCount: 0 })
+  })
+
+  it("counts units that landed after the freeze point while detached", () => {
+    expect(liveTailState(units, true, { frozenAt: 3 })).toEqual({
+      followsTail: false,
+      frozenCount: 2,
+    })
+  })
+
+  it("clamps freeze points into range", () => {
+    expect(liveTailState(units, true, { frozenAt: -7 }).frozenCount).toBe(5) // frozen before everything
+    expect(liveTailState(units, true, { frozenAt: 99 }).frozenCount).toBe(0)
+    expect(liveTailState(units, true, { frozenAt: Number.NaN }).frozenCount).toBe(0)
+    expect(liveTailState(units, true, { frozenAt: 2.9 }).frozenCount).toBe(3)
+  })
+
+  it("is defensive about stream shape", () => {
+    expect(
+      liveTailState(undefined as unknown as ConversationUnit[], true, { frozenAt: 0 }),
+    ).toEqual({ followsTail: false, frozenCount: 0 })
+    expect(liveTailState([], true, { frozenAt: 0 })).toEqual({
+      followsTail: false,
+      frozenCount: 0,
+    })
+  })
+})
+
+// ── shareSections (structured share export) ─────────────────────────────────
+
+describe("shareSections", () => {
+  const units = buildTurnFlowItems(
+    [
+      taskStart("t1", "backend"),
+      textEv("starting now", "t1"),
+      toolStart("t1", "bash", { command: "ls" }, 1000),
+      toolEnd("t1", "bash", { ok: true, durationMs: 120, exitCode: 0 }, 1120),
+      retryEv("waiting", 1, 1000),
+      retryEv("waiting", 2, 2000, { reason: "still 429" }),
+      taskComplete("t1"),
+    ],
+    ws({ userRequest: "Ship it" }),
+  )
+
+  it("builds one section per turn with heading, status and task id", () => {
+    const doc = shareSections(units)
+    expect(doc.sections.map((s) => s.turnId)).toEqual(["user", "task-t1"])
+    expect(doc.sections[0]).toMatchObject({ heading: "user", role: "user" })
+    expect(doc.sections[1]).toMatchObject({
+      turnId: "task-t1",
+      heading: "backend · t1 (completed)",
+      taskId: "t1",
+      status: "completed",
+    })
+  })
+
+  it("computes per-section and document stats", () => {
+    const doc = shareSections(units)
+    expect(doc.sections[1]?.stats).toEqual({ units: 5, texts: 1, tools: 1, retries: 2 })
+    expect(doc.stats).toEqual({ turns: 2, units: 6, texts: 2, tools: 1, retries: 2 })
+  })
+
+  it("excerpts each section's first text", () => {
+    const doc = shareSections(units)
+    expect(doc.sections[0]?.excerpt).toBe("Ship it")
+    expect(doc.sections[1]?.excerpt).toBe("starting now")
+  })
+
+  it("renders an empty document for an empty stream", () => {
+    const doc = shareSections([])
+    expect(doc.sections).toEqual([])
+    expect(doc.stats).toEqual({ turns: 0, units: 0, texts: 0, tools: 0, retries: 0 })
+    expect(doc.title).toBe("")
+  })
+
+  it("carries the workspace title and caps it", () => {
+    expect(shareSections(units, { workspaceTitle: "Ship it" }).title).toBe("Ship it")
+    const long = "x".repeat(300)
+    expect(shareSections(units, { workspaceTitle: long }).title).toHaveLength(120)
+  })
+
+  it("serializes to markdown matching the flat exporter's line format", () => {
+    const md = toShareMarkdown(shareSections(units, { workspaceTitle: "Ship it" }))
+    expect(md).toContain("# Maximilian conversation — Ship it")
+    expect(md).toContain("_2 turns · 6 units · 1 tool calls · 2 retry attempts_")
+    expect(md).toContain("## backend · t1 (completed)")
+    expect(md).toContain("- `bash` · 120ms · exit 0")
+    expect(md).toContain("- retry: waiting ×2 · 3000ms total — still 429")
+    expect(md).toContain("- status: completed")
+  })
+
+  it("appends stamps only on request and keeps marker units out of the body", () => {
+    const doc = shareSections(units, { includeTimestamps: true })
+    const md = toShareMarkdown(doc)
+    expect(md).toContain("1970-01-01T00:00:01.000Z")
+    // The task marker unit contributes the heading, never a body line.
+    expect(doc.sections.map((s) => s.lines.length)).toEqual([1, 4])
+  })
+})
+
+// ── estimateVirtualHeight (virtual-scroll budget) ───────────────────────────
+
+describe("estimateVirtualHeight", () => {
+  it("is zero for an empty stream", () => {
+    expect(estimateVirtualHeight([], 28)).toBe(0)
+  })
+
+  it("scales text units with their wrapped-line estimate", () => {
+    const oneLine: ConversationUnit = {
+      kind: "text",
+      key: "a",
+      turnId: "user",
+      role: "user",
+      index: 0,
+      text: "short",
+    }
+    expect(estimateVirtualHeight([oneLine], 10)).toBe(10) // 1 row
+    const multiline: ConversationUnit = { ...oneLine, text: "a\nb\nc" }
+    expect(estimateVirtualHeight([multiline], 10)).toBe(30) // 3 rows
+  })
+
+  it("wraps long single-line text across the 80-column estimate", () => {
+    const long: ConversationUnit = {
+      kind: "text",
+      key: "a",
+      turnId: "user",
+      role: "user",
+      index: 0,
+      text: "x".repeat(160),
+    }
+    expect(estimateVirtualHeight([long], 10)).toBe(20) // 2 wrapped rows
+  })
+
+  it("weights structural units by kind (tool 2 rows, marker 1)", () => {
+    const units = buildTurnFlowItems(
+      [taskStart("t1"), toolStart("t1", "bash"), toolEnd("t1", "bash", { ok: true })],
+      null,
+    )
+    // Marker + folded tool = 1 + 2 rows.
+    expect(estimateVirtualHeight(units, 10)).toBe(30)
+  })
+
+  it("falls back to the default row height for invalid heights", () => {
+    const units = buildTurnFlowItems(msgTurnEvents(2), null)
+    expect(estimateVirtualHeight(units)).toBe(2 * 28)
+    expect(estimateVirtualHeight(units, -4)).toBe(2 * 28)
+    expect(estimateVirtualHeight(units, Number.NaN)).toBe(2 * 28)
+  })
+
+  it("is defensive about stream shape", () => {
+    expect(estimateVirtualHeight(null as unknown as ConversationUnit[], 28)).toBe(0)
+  })
+})
+
+// ── ConversationWindow rendering ────────────────────────────────────────────
+
+describe("ConversationWindow rendering", () => {
+  it("renders the newest window with a load-earlier affordance that grows it", () => {
+    const units = buildTurnFlowItems(msgTurnEvents(8), null)
+    render(<ConversationWindow units={units} visibleTurns={3} />)
+    expect(screen.getAllByTestId("turn-group")).toHaveLength(3)
+    const rows = screen.getByTestId("conversation-window").querySelectorAll("[data-window-index]")
+    expect(rows[0]).toHaveAttribute("data-window-index", "5")
+    expect(screen.getByTestId("window-load-earlier")).toHaveTextContent("Load 5 earlier turns")
+    fireEvent.click(screen.getByTestId("window-load-earlier"))
+    expect(screen.getAllByTestId("turn-group")).toHaveLength(8)
+    expect(screen.queryByTestId("window-load-earlier")).not.toBeInTheDocument()
+  })
+
+  it("caps the load-earlier label at the hidden count", () => {
+    const units = buildTurnFlowItems(msgTurnEvents(4), null)
+    render(<ConversationWindow units={units} visibleTurns={3} loadStep={10} />)
+    expect(screen.getByTestId("window-load-earlier")).toHaveTextContent("Load 1 earlier turns")
+  })
+
+  it("shows the empty state for an empty stream", () => {
+    render(<ConversationWindow units={[]} />)
+    expect(screen.getByTestId("conversation-window-empty")).toBeInTheDocument()
+    expect(screen.queryByTestId("turn-group")).not.toBeInTheDocument()
+  })
+
+  it("anchors the window on the anchor turn and offers the release affordance", () => {
+    let scrolled: Element[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this)
+    }
+    const onClearAnchor = vi.fn()
+    try {
+      const units = buildTurnFlowItems(msgTurnEvents(6), null)
+      render(
+        <ConversationWindow
+          units={units}
+          visibleTurns={2}
+          anchorTurnId="msg-2"
+          onClearAnchor={onClearAnchor}
+        />,
+      )
+      expect(screen.getAllByTestId("turn-group")).toHaveLength(2)
+      const rows = screen.getByTestId("conversation-window").querySelectorAll("[data-window-index]")
+      expect(rows[0]).toHaveAttribute("data-window-index", "2")
+      expect(rows[0]).toHaveTextContent("note 2")
+      expect(screen.getByTestId("conversation-window")).toHaveAttribute("data-anchor-offset", "2")
+      // The anchored turn scrolled into view on mount.
+      expect(scrolled).toHaveLength(1)
+      expect(scrolled[0]).toHaveAttribute("data-window-index", "2")
+      fireEvent.click(screen.getByTestId("window-clear-anchor"))
+      expect(onClearAnchor).toHaveBeenCalledTimes(1)
+    } finally {
+      Element.prototype.scrollIntoView = original
+      scrolled = []
+    }
+  })
+
+  it("falls back to the tail window for an unknown anchor", () => {
+    const units = buildTurnFlowItems(msgTurnEvents(6), null)
+    render(<ConversationWindow units={units} visibleTurns={2} anchorTurnId="msg-99" />)
+    expect(screen.getAllByTestId("turn-group")[0]).toHaveTextContent("note 4")
+    expect(screen.getByTestId("conversation-window")).not.toHaveAttribute("data-anchor-offset")
+    expect(screen.queryByTestId("window-clear-anchor")).not.toBeInTheDocument()
+  })
+})
+
+// ── TextUnitBlock rendering ─────────────────────────────────────────────────
+
+describe("TextUnitBlock rendering", () => {
+  const unit = (over: Partial<ExtractedTextUnit>): ExtractedTextUnit => ({
+    key: "k",
+    turnId: "user",
+    role: "user",
+    source: "user",
+    text: "body text",
+    index: 0,
+    ...over,
+  })
+
+  it("distinguishes the three sources with data attributes and labels", () => {
+    for (const source of ["user", "steering", "system"] as const) {
+      render(<TextUnitBlock unit={unit({ source, turnId: "task-t1", taskId: "t1" })} />)
+      expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-source", source)
+      expect(screen.getByTestId("text-unit-source")).toHaveTextContent(
+        { user: "Request", steering: "Steering", system: "System" }[source],
+      )
+      expect(screen.getByTestId("text-unit-body")).toHaveTextContent("body text")
+      expect(screen.getByText("t1")).toBeInTheDocument()
+      cleanup()
+    }
+  })
+
+  it("localizes the source label under zh-CN", () => {
+    setLocale("zh-CN")
+    render(<TextUnitBlock unit={unit({ source: "steering" })} />)
+    expect(screen.getByTestId("text-unit-source")).toHaveTextContent("引导")
+  })
+
+  it("keeps multi-line body text pre-wrapped", () => {
+    render(<TextUnitBlock unit={unit({ text: "line one\nline two" })} />)
+    const body = screen.getByTestId("text-unit-body")
+    expect(body).toHaveClass("whitespace-pre-wrap")
+    expect(body).toHaveTextContent("line one")
+  })
+})
+
+// ── ShareView rendering ─────────────────────────────────────────────────────
+
+describe("ShareView rendering", () => {
+  const shareUnits = (): ConversationUnit[] =>
+    buildTurnFlowItems(
+      [
+        taskStart("t1", "backend"),
+        toolStart("t1", "bash", { command: "ls" }, 1000),
+        toolEnd("t1", "bash", { ok: true, durationMs: 20 }, 1020),
+        taskComplete("t1"),
+      ],
+      ws({ userRequest: "Ship it" }),
+    )
+
+  it("renders sections with headings, stats and bodies, read-only", () => {
+    render(<ShareView units={shareUnits()} workspaceTitle="Ship it" />)
+    expect(screen.getByTestId("share-view")).toBeInTheDocument()
+    expect(screen.getByTestId("share-title")).toHaveTextContent("Ship it")
+    expect(screen.getByTestId("share-stats")).toHaveTextContent("2 turns")
+    const sections = screen.getAllByTestId("share-section")
+    expect(sections).toHaveLength(2)
+    const headings = screen.getAllByTestId("share-section-heading")
+    expect(headings[0]).toHaveTextContent("user")
+    expect(headings[1]).toHaveTextContent("backend · t1 (completed)")
+    const sectionStats = screen.getAllByTestId("share-section-stats")
+    expect(sectionStats[0]).toHaveTextContent("1 units · 0 tool calls")
+    expect(sectionStats[1]).toHaveTextContent("3 units · 1 tool calls")
+    expect(screen.getByTestId("share-excerpt")).toHaveTextContent("Ship it")
+    const bodies = screen.getAllByTestId("share-body")
+    expect(bodies).toHaveLength(2) // user text + task units, both sections carry a body
+    expect(bodies[1]).toHaveTextContent("- `bash` · 20ms")
+    // Read-only: the only control is the copy button.
+    expect(screen.getAllByRole("button")).toHaveLength(1)
+  })
+
+  it("copies the structured markdown and confirms", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    })
+    render(<ShareView units={shareUnits()} workspaceTitle="Ship it" />)
+    fireEvent.click(screen.getByTestId("share-copy"))
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    const md = writeText.mock.calls[0]?.[0] ?? ""
+    expect(md).toContain("# Maximilian conversation — Ship it")
+    expect(md).toContain("## backend · t1 (completed)")
+    expect(await screen.findByTestId("share-copy")).toHaveTextContent("Copied")
+  })
+
+  it("stays unconfirmed when the clipboard rejects", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error("no"))
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    })
+    render(<ShareView units={shareUnits()} />)
+    fireEvent.click(screen.getByTestId("share-copy"))
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    expect(screen.getByTestId("share-copy")).toHaveTextContent("Copy as markdown")
+    expect(screen.queryByText(/Copied/)).not.toBeInTheDocument()
+  })
+
+  it("shows the empty state for an empty stream", () => {
+    render(<ShareView units={[]} />)
+    expect(screen.getByTestId("share-empty")).toBeInTheDocument()
+    expect(screen.queryByTestId("share-section")).not.toBeInTheDocument()
   })
 })

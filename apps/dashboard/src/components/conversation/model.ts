@@ -913,6 +913,389 @@ export function toConversationMarkdown(
   return lines.join("\n")
 }
 
+// ── windowTurns (virtualized-window model) ──────────────────────────────────
+
+/** Newest-turn window size when the caller does not pin one. */
+export const DEFAULT_WINDOW_TURNS = 30
+
+export interface WindowTurnsOpts {
+  /** Window size in turns (default DEFAULT_WINDOW_TURNS). Clamped defensively. */
+  visibleTurns?: number
+  /** Scroll anchor: pin the window head to this turn id. */
+  anchorTurnId?: string | null
+}
+
+export interface TurnWindow {
+  /** Turns to render, stream order. */
+  turns: TurnModel[]
+  /** Turns hidden above the window — the "load earlier" count. */
+  hiddenBefore: number
+  /** The anchor's position in the FULL turn list; undefined without a hit. */
+  anchorOffset?: number
+}
+
+/**
+ * Conversation windowing (deepseek ui-conversation borrowing): the turn
+ * list is a growing stream, so render only a bounded window. Without an
+ * anchor the window hugs the TAIL (newest `visibleTurns`); with an
+ * anchor turn id the window's head is pinned AT the anchor so the
+ * container can scroll to it (anchorOffset = its full-list position).
+ * Defensive: empty streams, non-finite / negative / oversized
+ * `visibleTurns` all fall back to the default window; an anchor that
+ * matches no turn degrades to the tail window.
+ */
+export function windowTurns(units: ConversationUnit[], opts: WindowTurnsOpts = {}): TurnWindow {
+  const turns = groupUnitsByTurn(units)
+  if (turns.length === 0) return { turns: [], hiddenBefore: 0, anchorOffset: undefined }
+
+  const requested = opts.visibleTurns
+  const visible =
+    typeof requested === "number" && Number.isFinite(requested) && requested >= 1
+      ? Math.min(Math.floor(requested), turns.length)
+      : Math.min(DEFAULT_WINDOW_TURNS, turns.length)
+
+  const anchorId =
+    typeof opts.anchorTurnId === "string" && opts.anchorTurnId !== ""
+      ? opts.anchorTurnId
+      : undefined
+  if (anchorId !== undefined) {
+    const at = turns.findIndex((turn) => turn.turnId === anchorId)
+    if (at >= 0) {
+      const end = Math.min(at + visible, turns.length)
+      return { turns: turns.slice(at, end), hiddenBefore: at, anchorOffset: at }
+    }
+  }
+  return {
+    turns: turns.slice(turns.length - visible),
+    hiddenBefore: turns.length - visible,
+    anchorOffset: undefined,
+  }
+}
+
+// ── textUnits (text-segment extraction) ─────────────────────────────────────
+
+/** Where a text segment came from — drives TextUnitBlock styling. */
+export type TextUnitSource = "user" | "system" | "steering"
+
+export interface ExtractedTextUnit {
+  key: string
+  /** Turn (conversation group) the segment belongs to. */
+  turnId: string
+  role: string
+  source: TextUnitSource
+  text: string
+  taskId?: string
+  /** Input-stream position (user request = -1, before the stream). */
+  index: number
+  at?: number
+}
+
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
+
+/** Event types whose `description` field is task prose worth surfacing. */
+const TASK_DESCRIPTION_TYPES = new Set(["task-start", "task-update", "task-description"])
+
+/**
+ * Extract the conversation's TEXT segments as standalone units: the
+ * workspace user request (source "user"), task description prose and
+ * its later revisions (source "system" — same description for a task is
+ * a repeat, not a change, and folds away), and steering-injected
+ * messages (source "steering", one unit per message, joined to the
+ * first steered task's turn). Everything is defensive: garbage events
+ * drop, non-string description/message payloads drop, and the user
+ * request only appears when a workspace carries one.
+ */
+export function textUnits(
+  events: RuntimeEvent[],
+  workspace: Workspace | null = null,
+): ExtractedTextUnit[] {
+  const units: ExtractedTextUnit[] = []
+  /** Last description seen per task — change detection for revisions. */
+  const lastDescription = new Map<string, string>()
+  const stream = Array.isArray(events) ? events : []
+
+  const userRequest = workspace === null ? undefined : asStr(workspace.userRequest, 8000)
+  if (userRequest !== undefined) {
+    units.push({
+      key: "text-user",
+      turnId: "user",
+      role: "user",
+      source: "user",
+      text: userRequest,
+      index: -1,
+    })
+  }
+
+  stream.forEach((raw, index) => {
+    const e = asEvent(raw)
+    if (!e) return
+    const rec = e as Record<string, unknown>
+    const at = eventTs(e)
+
+    if (TASK_DESCRIPTION_TYPES.has(e.type)) {
+      const taskId = asStr(rec.taskId) ?? ""
+      const description = asStr(rec.description, 8000)
+      if (description === undefined || lastDescription.get(taskId) === description) return
+      lastDescription.set(taskId, description)
+      const turnId = taskId !== "" ? `task-${taskId}` : `msg-${index}`
+      units.push({
+        key: `task-desc-${index}`,
+        turnId,
+        role: asStr(rec.agentRole, 40) ?? "system",
+        source: "system",
+        text: description,
+        taskId: taskId !== "" ? taskId : undefined,
+        index,
+        at,
+      })
+      return
+    }
+
+    if (e.type === "steering-applied") {
+      const steeredTaskId = asStr(asArray(rec.taskIds)[0]) ?? asStr(rec.taskId) ?? undefined
+      const turnId = steeredTaskId !== undefined ? `task-${steeredTaskId}` : SYSTEM_TURN_ID
+      asArray(rec.messages).forEach((message, ordinal) => {
+        const text = asStr(message, 8000)
+        if (text === undefined) return
+        units.push({
+          key: `steering-${index}-${ordinal}`,
+          turnId,
+          role: "user",
+          source: "steering",
+          text,
+          taskId: steeredTaskId,
+          index,
+          at,
+        })
+      })
+    }
+  })
+
+  // Stream order (stable: same-index steering messages keep their order).
+  units.sort((a, b) => a.index - b.index)
+  return units
+}
+
+// ── liveTailState (live-tail state machine) ─────────────────────────────────
+
+export interface LiveTailState {
+  /** Attached: the rendered window grows with the stream (follow the tail). */
+  followsTail: boolean
+  /** Units that landed after the freeze point while detached. */
+  frozenCount: number
+}
+
+export interface LiveTailOpts {
+  /** Unit count at detach time — where the tail froze. */
+  frozenAt?: number | null
+}
+
+/**
+ * Live-tail state machine: attached = follow the tail (window keeps
+ * growing, nothing pending); detached (the user scrolled up) = freeze
+ * the window at `frozenAt` and count the units that arrived since —
+ * the "N new" badge a jump-to-latest affordance renders. Detaching
+ * without a recorded freeze point freezes at the current end (nothing
+ * pending yet). Defensive: non-array streams count as empty; negative /
+ * non-finite / oversized frozenAt clamps into range.
+ */
+export function liveTailState(
+  units: ConversationUnit[],
+  detached: boolean | undefined,
+  opts: LiveTailOpts = {},
+): LiveTailState {
+  const total = Array.isArray(units) ? units.length : 0
+  if (detached !== true) return { followsTail: true, frozenCount: 0 }
+  const frozen = asNum(opts.frozenAt)
+  const at = frozen === undefined ? total : Math.max(0, Math.min(Math.floor(frozen), total))
+  return { followsTail: false, frozenCount: total - at }
+}
+
+// ── shareSections (structured share export) ─────────────────────────────────
+
+export interface ShareStats {
+  units: number
+  texts: number
+  tools: number
+  retries: number
+}
+
+export interface ShareSection {
+  turnId: string
+  role: string
+  taskId?: string
+  /** Lifecycle status for task turns; message turns carry none. */
+  status?: TurnStatus
+  /** Locale-independent heading line ("backend · t1 (completed)"). */
+  heading: string
+  stats: ShareStats
+  /** Markdown body lines (toConversationMarkdown's line format). */
+  lines: string[]
+  /** Head of the section's first text — list/preview affordances. */
+  excerpt: string
+}
+
+export interface ShareDocument {
+  /** Document title tail (workspace request head, or ""). */
+  title: string
+  stats: ShareStats & { turns: number }
+  sections: ShareSection[]
+}
+
+const EXCERPT_LENGTH = 120
+
+function shareStatsOf(sectionUnits: ConversationUnit[]): ShareStats {
+  return {
+    units: sectionUnits.length,
+    texts: sectionUnits.filter((u) => u.kind === "text").length,
+    tools: sectionUnits.filter((u) => u.kind === "tool").length,
+    retries: sectionUnits
+      .filter((u): u is RetryUnit => u.kind === "retry")
+      .reduce((sum, u) => sum + u.attempts, 0),
+  }
+}
+
+function shareUnitLine(unit: ConversationUnit, withStamp: boolean): string | null {
+  const mark = stamp(unit.at, withStamp)
+  switch (unit.kind) {
+    case "task":
+      return null // the section heading IS the marker's render
+    case "text":
+      return unit.text.includes("\n") ? unit.text : unit.text + mark
+    case "tool":
+      return toolLine(unit) + mark
+    case "retry": {
+      const detail = unit.reason !== undefined ? ` — ${unit.reason}` : ""
+      return `- retry: ${unit.phase} ×${unit.attempts} · ${unit.totalDelayMs}ms total${detail}${mark}`
+    }
+    case "permission": {
+      const target = unit.target !== undefined ? ` → ${unit.target}` : ""
+      return `- permission \`${unit.tool}\`${target} — ${unit.state}${mark}`
+    }
+    case "task-status":
+      return `- status: ${unit.status}${unit.error ? `: ${unit.error}` : ""}${mark}`
+    case "review":
+      return `- review score: ${unit.score ?? "—"}${unit.summary ? ` — ${unit.summary}` : ""}${mark}`
+    case "failed":
+      return `- workspace failed: ${unit.error}${mark}`
+  }
+}
+
+/**
+ * Structured share model — the per-TURN sections a share preview
+ * renders (vs toConversationMarkdown's flat string): heading, per-turn
+ * stats, markdown body lines and a text excerpt each. Titles/stamps
+ * stay locale-independent; ShareView owns the labels.
+ */
+export function shareSections(
+  units: ConversationUnit[],
+  opts: { workspaceTitle?: string | null; includeTimestamps?: boolean } = {},
+): ShareDocument {
+  const title = opts.workspaceTitle ? opts.workspaceTitle.slice(0, 120) : ""
+  const turns = groupUnitsByTurn(units)
+
+  const sections: ShareSection[] = turns.map((turn) => {
+    const stats = shareStatsOf(turn.units)
+    const status =
+      turn.turnId.startsWith("task-") && turn.status !== "running" ? ` (${turn.status})` : ""
+    const head = turn.taskId !== undefined ? `${turn.role} · ${turn.taskId}` : turn.role
+    const lines: string[] = []
+    for (const unit of turn.units) {
+      const line = shareUnitLine(unit, opts.includeTimestamps === true)
+      if (line !== null) lines.push(line)
+    }
+    const firstText = turn.units.find((u) => u.kind === "text")
+    return {
+      turnId: turn.turnId,
+      role: turn.role,
+      taskId: turn.taskId,
+      status: turn.turnId.startsWith("task-") ? turn.status : undefined,
+      heading: `${head}${status}`,
+      stats,
+      lines,
+      excerpt:
+        firstText && firstText.kind === "text" ? firstText.text.slice(0, EXCERPT_LENGTH) : "",
+    }
+  })
+
+  const totals = sections.reduce(
+    (acc, section) => ({
+      units: acc.units + section.stats.units,
+      texts: acc.texts + section.stats.texts,
+      tools: acc.tools + section.stats.tools,
+      retries: acc.retries + section.stats.retries,
+    }),
+    { units: 0, texts: 0, tools: 0, retries: 0 },
+  )
+  return { title, stats: { ...totals, turns: sections.length }, sections }
+}
+
+/** Render the structured share document as the copy-to-clipboard text. */
+export function toShareMarkdown(doc: ShareDocument): string {
+  const title = doc.title ? ` — ${doc.title}` : ""
+  const s = doc.stats
+  const stats = [`${s.turns} turns`, `${s.units} units`, `${s.tools} tool calls`]
+  if (s.retries > 0) stats.push(`${s.retries} retry attempts`)
+  const lines: string[] = [`# Maximilian conversation${title}`, "", `_${stats.join(" · ")}_`, ""]
+  for (const section of doc.sections) {
+    lines.push(`## ${section.heading}`, "")
+    if (section.lines.length > 0) lines.push(...section.lines.map((line) => `${line}`), "")
+  }
+  return lines.join("\n")
+}
+
+// ── estimateVirtualHeight (virtual-scroll budget) ───────────────────────────
+
+/** Row height a virtualized container assumes when none is given. */
+export const VIRTUAL_ROW_HEIGHT = 28
+/** Wrap width the text line estimate assumes (columns per row). */
+const TEXT_WRAP_COLUMNS = 80
+
+const UNIT_ROW_WEIGHT: Record<ConversationUnitKind, number> = {
+  task: 1,
+  tool: 2, // folded header + result line
+  retry: 2,
+  permission: 2,
+  "task-status": 1,
+  review: 1,
+  failed: 1,
+  text: 0, // computed from the wrapped-line estimate below
+}
+
+/** Rows a text unit occupies: hard breaks plus 80-column wrap estimate. */
+function textRowCount(text: string): number {
+  return text
+    .split("\n")
+    .reduce((n, seg) => n + Math.max(1, Math.ceil(seg.length / TEXT_WRAP_COLUMNS)), 0)
+}
+
+/**
+ * Total pixel height a virtualized conversation container needs:
+ * per-unit row weights (text scales with wrapped-line estimate), times
+ * the row height. Defensive: malformed entries count 0; a missing /
+ * non-finite / negative rowHeight falls back to VIRTUAL_ROW_HEIGHT.
+ */
+export function estimateVirtualHeight(
+  units: ConversationUnit[],
+  rowHeight: number = VIRTUAL_ROW_HEIGHT,
+): number {
+  const height =
+    typeof rowHeight === "number" && Number.isFinite(rowHeight) && rowHeight > 0
+      ? rowHeight
+      : VIRTUAL_ROW_HEIGHT
+  if (!Array.isArray(units)) return 0
+  let rows = 0
+  for (const unit of units) {
+    if (unit === null || typeof unit !== "object") continue
+    if (unit.kind === "text") {
+      rows += textRowCount(unit.text)
+    } else {
+      rows += UNIT_ROW_WEIGHT[unit.kind] ?? 1
+    }
+  }
+  return rows * height
+}
+
 // ── Presentation helpers (pure, shared by the components) ───────────────────
 
 /** Deterministic duration label: "120 ms" under a second, "2.5 s" above. */

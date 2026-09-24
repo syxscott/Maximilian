@@ -32,6 +32,24 @@
     "preview": {
       "empty": "No conversation events yet — render units stream here live once a run starts",
       "stats": "{turns} turns · {units} units"
+    },
+    "window": {
+      "empty": "No turns to window yet",
+      "loadEarlier": "Load {count} earlier turns",
+      "jumpLatest": "Back to latest"
+    },
+    "textUnit": {
+      "user": "Request",
+      "steering": "Steering",
+      "system": "System"
+    },
+    "share": {
+      "untitled": "Conversation",
+      "stats": "{turns} turns · {units} units · {tools} tool calls · {retries} retry attempts",
+      "sectionStats": "{units} units · {tools} tool calls",
+      "copy": "Copy as markdown",
+      "copied": "Copied",
+      "empty": "Nothing to share yet"
     }
   }
 }
