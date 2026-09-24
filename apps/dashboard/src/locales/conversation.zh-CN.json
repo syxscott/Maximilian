@@ -1,0 +1,37 @@
+{
+  "conversation": {
+    "role": {
+      "user": "你",
+      "assistant": "助手",
+      "system": "系统"
+    },
+    "status": {
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "skipped": "已跳过"
+    },
+    "turn": {
+      "duration": "耗时 {duration}"
+    },
+    "tool": {
+      "running": "执行中"
+    },
+    "permission": {
+      "pending": "待批准",
+      "allowed": "已允许",
+      "denied": "已拒绝"
+    },
+    "retry": {
+      "summary": "重试 {phase} ×{attempts} · 累计等待 {delay}",
+      "attempt": "第 {attempt} 次 · 等待 {delay}"
+    },
+    "review": {
+      "score": "评审完成 · 评分 {score}"
+    },
+    "preview": {
+      "empty": "暂无会话事件——运行开始后此处将实时流出渲染单元",
+      "stats": "{turns} 个回合 · {units} 个渲染单元"
+    }
+  }
+}

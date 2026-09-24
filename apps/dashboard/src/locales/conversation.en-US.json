@@ -1,0 +1,37 @@
+{
+  "conversation": {
+    "role": {
+      "user": "You",
+      "assistant": "Assistant",
+      "system": "System"
+    },
+    "status": {
+      "running": "Running",
+      "completed": "Done",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "turn": {
+      "duration": "took {duration}"
+    },
+    "tool": {
+      "running": "running"
+    },
+    "permission": {
+      "pending": "pending",
+      "allowed": "allowed",
+      "denied": "denied"
+    },
+    "retry": {
+      "summary": "retry {phase} ×{attempts} · waited {delay} total",
+      "attempt": "attempt {attempt} · waited {delay}"
+    },
+    "review": {
+      "score": "Review complete · score {score}"
+    },
+    "preview": {
+      "empty": "No conversation events yet — render units stream here live once a run starts",
+      "stats": "{turns} turns · {units} units"
+    }
+  }
+}
