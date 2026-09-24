@@ -28,6 +28,7 @@ import { ProviderModelTester } from "./settings/providers-manager/ProviderModelT
 import { SubagentsDomain } from "./settings/subagents-domain/SubagentsDomain"
 import { UsageDomain } from "./settings/usage-domain/UsageDomain"
 import { SessionStoreStatusCard } from "./settings/store-domain/SessionStoreStatusCard"
+import { MigrationCandidatesCard } from "./settings/store-domain/MigrationCandidatesCard"
 import { JobsDomainSection } from "./settings/sections"
 import { AutomationsDomain } from "./settings/automations-domain/AutomationsDomain"
 import { MemoryDomain } from "./settings/memory-domain/MemoryDomain"
@@ -166,7 +167,12 @@ export function SettingsPanel() {
           {section === "oracle" && <OracleLessonsSection />}
           {section === "subagents" && <SubagentsDomain />}
           {section === "usageCharts" && <UsageDomain />}
-          {section === "store" && <SessionStoreStatusCard />}
+          {section === "store" && (
+            <>
+              <SessionStoreStatusCard />
+              <MigrationCandidatesCard />
+            </>
+          )}
           {section === "automations" && <AutomationsDomain />}
           {section === "jobs" && <JobsDomainSection />}
           {section === "memory" && <MemoryDomain />}
