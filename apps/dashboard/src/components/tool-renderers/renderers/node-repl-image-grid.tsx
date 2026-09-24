@@ -39,7 +39,6 @@ export function NodeReplImageGridBody({ input }: ToolCallProps) {
           {drawable.map((img, i) => (
             <img
               // Position identifies the entry; the payloads are unkeyed.
-              // eslint-disable-next-line react/no-array-index-key
               key={`${img.src ?? "src"}-${i}`}
               src={img.src}
               alt={`#${i + 1}`}
@@ -53,7 +52,6 @@ export function NodeReplImageGridBody({ input }: ToolCallProps) {
       {paths.length > 0 && (
         <ul className="mt-1 space-y-0.5" data-testid="repl-image-paths">
           {paths.map((img, i) => (
-            // eslint-disable-next-line react/no-array-index-key
             <li key={`${img.path ?? "path"}-${i}`} className="break-all font-mono text-xs">
               {img.path}
             </li>
