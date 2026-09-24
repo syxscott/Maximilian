@@ -23,6 +23,19 @@
  * from → to arrow, the normalized progress bar, severity labeling and the
  * stop-reason fallback.
  *
+ * The "remaining twelve" round upgrades the defensive-tier renderers to
+ * precise rendering the same way — read-session-context (result block),
+ * respond-to-coordinator (coordinator + response-type chips), explore
+ * (strategy/depth/breadth), task-output (clamped output block),
+ * task-stop (stops list), list-models (numbered model block), cron-create
+ * (timezone/description), offpeak-create (window range + duration),
+ * node-repl (title heading + line count), node-repl-image-grid
+ * (classified data-URI/URL imgs vs path list), create-workflow (step
+ * count + numbered preview) and eval-workflow-snippet (assertion count) —
+ * and lifts the whole workflow family to ≥3 structured fields per body
+ * (run · workflow · status/phase/count). Each upgraded renderer carries
+ * ≥3 real event fixtures (typical / missing-field / malformed).
+ *
  * Core tools (bash/read/glob/grep/permission/lsp) are asserted against the
  * input schemas of packages/tools/src — field names, optionality and
  * defaults (e.g. read's `path`/offset/limit, bash's 120000 ms default
@@ -89,6 +102,7 @@ import {
 import {
   extractNodeRepl,
   extractNodeReplImageGrid,
+  isRenderableImageSrc,
 } from "../src/components/tool-renderers/renderers/repl.model"
 import {
   extractCreateWorkflow,
@@ -262,6 +276,11 @@ function renderPair(start: ToolStartEvent, end: ToolEndEvent) {
       defaultOpen
     />,
   )
+}
+
+/** Render a single open block (input-level fixtures). */
+function renderInput(tool: string, input: unknown) {
+  return render(<ToolCallBlock tool={tool} input={input} defaultOpen />)
 }
 
 /** Value of the detail row with the given (localized) label, if rendered. */
@@ -1761,6 +1780,905 @@ describe("final alignment — localized new bodies", () => {
       expect(domain["toolRenderers.fields.method"]).toBeDefined()
       expect(domain["toolRenderers.fields.preview"]).toBeDefined()
       expect(domain["toolRenderers.fields.metadata"]).toBeDefined()
+    }
+  })
+})
+
+// ── remaining twelve — model extensions ─────────────────────────────────────
+
+describe("remaining twelve — model extensions", () => {
+  it("read-session-context keeps the returned summary as a clamped block", () => {
+    const vm = extractReadSessionContext({
+      sessionId: "sess_a1",
+      query: "renderer conventions",
+      strategy: "handoff",
+      maxTokens: 4000,
+      result: "CONVENTIONS.md requires model/presentation split",
+    })
+    expect(vm.sessionId).toBe("sess_a1")
+    expect(vm.result).toBe("CONVENTIONS.md requires model/presentation split")
+    expect(vm.rows.length).toBe(4)
+    expect(vm.code?.text).toContain("model/presentation split")
+    expect(vm.code?.maxLines).toBe(12)
+    // A result-only payload still renders (via the code block).
+    const resultOnly = extractReadSessionContext({ result: "prior answer" })
+    expect(resultOnly.isEmpty).toBe(false)
+    expect(resultOnly.code?.text).toBe("prior answer")
+    expect(extractReadSessionContext({ nested: {} }).isEmpty).toBe(true)
+  })
+
+  it("respond-to-coordinator extracts the target coordinator and response type", () => {
+    const vm = extractRespondToCoordinator({
+      to: "coordinator",
+      responseType: "progress",
+      summary: "halfway",
+      message: "3 of 6 renderers done",
+    })
+    expect(vm.target).toBe("coordinator")
+    expect(vm.responseType).toBe("progress")
+    expect(vm.headline).toBe("halfway")
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.target",
+      "toolRenderers.fields.responseType",
+      "toolRenderers.fields.summary",
+    ])
+    expect(vm.code?.text).toBe("3 of 6 renderers done")
+    // kind/coordinator_id aliases land in the same slots.
+    const aliased = extractRespondToCoordinator({
+      coordinatorId: "coord-2",
+      kind: "blocker",
+      text: "need credentials",
+    })
+    expect(aliased.target).toBe("coord-2")
+    expect(aliased.responseType).toBe("blocker")
+    expect(aliased.headline).toBe("need credentials")
+    expect(extractRespondToCoordinator({ task: "t1" }).isEmpty).toBe(false)
+    expect(extractRespondToCoordinator({}).isEmpty).toBe(true)
+  })
+
+  it("explore reads strategy plus depth/breadth scope knobs", () => {
+    const vm = extractExplore({
+      query: "auth flow",
+      strategy: "breadth_first",
+      depth: 3,
+      breadth: 2,
+    })
+    expect(vm.headline).toBe("auth flow")
+    expect(vm.rows.some((r) => r.labelKey === "toolRenderers.fields.strategy")).toBe(true)
+    expect(vm.rows.some((r) => r.value === "depth 3 × breadth 2")).toBe(true)
+    const depthOnly = extractExplore({ query: "q", depth: 1 })
+    expect(depthOnly.rows.some((r) => r.value === "depth 1")).toBe(true)
+    const breadthOnly = extractExplore({ breadth: 4 })
+    expect(breadthOnly.isEmpty).toBe(false)
+    expect(breadthOnly.rows.some((r) => r.value === "breadth 4")).toBe(true)
+    expect(extractExplore({}).isEmpty).toBe(true)
+  })
+
+  it("task-output moves the retrieved output into a clamped block with a line count", () => {
+    const vm = extractTaskOutput({
+      taskId: "t1",
+      block: true,
+      timeoutMs: 3000,
+      output: "line one\nline two",
+    })
+    expect(vm.taskId).toBe("t1")
+    expect(vm.output).toBe("line one\nline two")
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.id",
+      "toolRenderers.fields.block",
+      "toolRenderers.fields.timeout",
+      "toolRenderers.fields.lines",
+    ])
+    expect(vm.rows[3]?.value).toBe("2")
+    expect(vm.code?.text).toBe("line one\nline two")
+    expect(extractTaskOutput({ output: "only output" }).headline).toBe("only output")
+    expect(extractTaskOutput({ stdout: "alias" }).isEmpty).toBe(false)
+  })
+
+  it("task-stop normalizes the batch stops list beside the single-task form", () => {
+    const vm = extractTaskStop({ stops: ["task-1", { taskId: "task-2" }, 42], reason: "wave done" })
+    expect(vm.stops).toEqual(["task-1", "task-2"])
+    expect(vm.reason).toBe("wave done")
+    expect(vm.rows.some((r) => r.labelKey === "toolRenderers.fields.stops")).toBe(true)
+    expect(vm.rows.find((r) => r.labelKey === "toolRenderers.fields.stops")?.value).toBe(
+      "task-1, task-2",
+    )
+    // No id → the collapsed line names the stops.
+    expect(extractTaskStop({ stops: ["a", "b"] }).headline).toBe("a, b")
+    expect(extractTaskStop({ stops: [] }).isEmpty).toBe(true)
+    expect(extractTaskStop({}).stops).toEqual([])
+  })
+
+  it("list-models normalizes {id|model} records into the numbered block", () => {
+    const vm = extractListModels({
+      provider: "zai",
+      models: [{ id: "glm-5.3" }, { model: "glm-4.7" }, "bare-id", 42],
+    })
+    expect(vm.provider).toBe("zai")
+    expect(vm.models).toEqual(["glm-5.3", "glm-4.7", "bare-id"])
+    // The count row reports what the server sent; garbage is dropped
+    // from the normalized list and its numbered block.
+    expect(vm.rows.some((r) => r.value === "4")).toBe(true)
+    expect(vm.code?.text).toBe("1. glm-5.3\n2. glm-4.7\n3. bare-id")
+    expect(extractListModels({ models: [] }).rows.some((r) => r.value === "0")).toBe(true)
+    expect(extractListModels({ models: [] }).code).toBeUndefined()
+  })
+
+  it("cron-create reads the timezone and description rows", () => {
+    const vm = extractCronCreate({
+      schedule: "0 9 * * 1-5",
+      name: "standup-notes",
+      description: "weekday digest",
+      timezone: "Asia/Shanghai",
+      command: "pnpm digest",
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.schedule",
+      "toolRenderers.fields.name",
+      "toolRenderers.fields.timezone",
+      "toolRenderers.fields.description",
+      "toolRenderers.fields.command",
+    ])
+    expect(vm.rows[2]?.value).toBe("Asia/Shanghai")
+    // tz alias + headline fallback to the name when no schedule is sent.
+    const aliased = extractCronCreate({ name: "nightly", timeZone: "UTC" })
+    expect(aliased.rows.some((r) => r.value === "UTC")).toBe(true)
+    expect(aliased.headline).toBe("nightly")
+    expect(extractCronCreate({ description: "only" }).isEmpty).toBe(false)
+  })
+
+  it("offpeak-create reads the start–end window and the run duration", () => {
+    const vm = extractOffpeakCreate({
+      label: "nightly-backfill",
+      start: "22:00",
+      end: "06:00",
+      durationMinutes: 45,
+      command: "pnpm backfill",
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.window",
+      "toolRenderers.fields.duration",
+      "toolRenderers.fields.name",
+      "toolRenderers.fields.command",
+    ])
+    expect(vm.rows[0]?.value).toBe("22:00 – 06:00")
+    expect(vm.rows[1]?.value).toBe("45m")
+    // The headline prefers the window over the label.
+    expect(vm.headline).toBe("22:00 – 06:00")
+    const durationAlias = extractOffpeakCreate({ duration: 30 })
+    expect(durationAlias.rows.some((r) => r.value === "30m")).toBe(true)
+    expect(extractOffpeakCreate({ start: "22:00" }).isEmpty).toBe(false)
+  })
+
+  it("node-repl carries the title and the script line count", () => {
+    const vm = extractNodeRepl({
+      code: "const a = 1\nconst b = 2",
+      title: "demo",
+      timeoutMs: 15000,
+    })
+    expect(vm.title).toBe("demo")
+    expect(vm.lineCount).toBe(2)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.title",
+      "toolRenderers.fields.timeout",
+      "toolRenderers.fields.lines",
+    ])
+    expect(vm.code?.text).toBe("const a = 1\nconst b = 2")
+    // A title-less script still headlines from the code.
+    const bare = extractNodeRepl({ code: "let x = 1" })
+    expect(bare.title).toBeUndefined()
+    expect(bare.headline).toBe("let x = 1")
+    expect(bare.rows.some((r) => r.value === "1")).toBe(true)
+  })
+
+  it("node-repl-image-grid classifies inline sources vs bare paths", () => {
+    expect(isRenderableImageSrc("data:image/png;base64,AAAA")).toBe(true)
+    expect(isRenderableImageSrc("https://x/y.png")).toBe(true)
+    expect(isRenderableImageSrc("http://x/y.png")).toBe(true)
+    expect(isRenderableImageSrc("charts/out.png")).toBe(false)
+    const vm = extractNodeReplImageGrid({
+      title: "captures",
+      images: ["data:image/png;base64,AAAA", { url: "https://x/y.png" }, "charts/out.png"],
+    })
+    expect(vm.images).toEqual([
+      { src: "data:image/png;base64,AAAA" },
+      { src: "https://x/y.png" },
+      { path: "charts/out.png" },
+    ])
+    expect(vm.rows.some((r) => r.value === "2 inline / 1 path")).toBe(true)
+    // Records with path-ish keys classify as paths, not broken sources.
+    const pathRecords = extractNodeReplImageGrid({
+      images: [{ path: "a.png" }, { file: "b.png" }],
+    })
+    expect(pathRecords.images).toEqual([{ path: "a.png" }, { path: "b.png" }])
+    expect(pathRecords.rows.some((r) => r.value === "0 inline / 2 path")).toBe(true)
+  })
+
+  it("create-workflow counts the steps and previews them as a numbered block", () => {
+    const vm = extractCreateWorkflow({
+      name: "pr-review",
+      description: "review the diff",
+      steps: [{ ask: "diff review" }, { ask: "confirm" }, { ask: "gate tests" }, { ask: "report" }],
+    })
+    expect(vm.headline).toBe("pr-review")
+    expect(vm.rows.some((r) => r.labelKey === "toolRenderers.fields.steps")).toBe(true)
+    expect(vm.rows.find((r) => r.labelKey === "toolRenderers.fields.steps")?.value).toBe("4")
+    expect(vm.code?.text).toContain("1. ")
+    expect(vm.code?.text).toContain("4. ")
+    // phases alias; steps alone still render without a name.
+    const aliased = extractCreateWorkflow({ phases: ["a", "b"] })
+    expect(aliased.rows.some((r) => r.value === "2")).toBe(true)
+    expect(aliased.code?.text).toBe("1. a\n2. b")
+    expect(extractCreateWorkflow({}).isEmpty).toBe(true)
+  })
+
+  it("eval-workflow-snippet counts assertions from an array or an explicit number", () => {
+    const vm = extractEvalWorkflowSnippet({
+      code: "const a = 1",
+      timeoutMs: 2000,
+      assertions: [{ ok: true }, { ok: false }],
+    })
+    expect(vm.code?.text).toBe("const a = 1")
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.timeout",
+      "toolRenderers.fields.assertions",
+    ])
+    expect(vm.rows[1]?.value).toBe("2")
+    // assertion_count alias, and expects arrays land the same way.
+    const counted = extractEvalWorkflowSnippet({ code: "x", assertionCount: 5 })
+    expect(counted.rows.some((r) => r.value === "5")).toBe(true)
+    const expects = extractEvalWorkflowSnippet({ expects: [1, 2, 3] })
+    expect(expects.rows.some((r) => r.value === "3")).toBe(true)
+    expect(extractEvalWorkflowSnippet({}).isEmpty).toBe(true)
+  })
+})
+
+// ── remaining twelve — workflow family ≥3 structured fields ─────────────────
+
+describe("remaining twelve — workflow family fields", () => {
+  it("get-workflow-run shows run · workflow · status · phase", () => {
+    const vm = extractGetWorkflowRun({
+      runId: "run-01",
+      workflowId: "pr-review",
+      status: "running",
+      phase: "verify",
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.workflow",
+      "toolRenderers.fields.status",
+      "toolRenderers.fields.phase",
+    ])
+    expect(vm.rows[2]?.value).toBe("running")
+    expect(extractGetWorkflowRun({ status: "completed" }).isEmpty).toBe(false)
+  })
+
+  it("get-workflow-run-roster adds workflow/status/actor-count to the run+phase pair", () => {
+    const vm = extractGetWorkflowRunRoster({
+      runId: "run-02",
+      workflowId: "pr-review",
+      phase: "review",
+      actors: [{ name: "reviewer-a" }, { name: "reviewer-b" }, { name: "fixer" }],
+    })
+    expect(vm.rows.map((r) => r.value)).toEqual(["run-02", "pr-review", "review", "3"])
+    expect(extractGetWorkflowRunRoster({ actors: [1] }).isEmpty).toBe(false)
+  })
+
+  it("get-workflow-run-situation shows run · workflow · status · phase", () => {
+    const vm = extractGetWorkflowRunSituation({
+      runId: "run-03",
+      workflowId: "w",
+      status: "errored",
+      phase: "report",
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.workflow",
+      "toolRenderers.fields.status",
+      "toolRenderers.fields.phase",
+    ])
+    expect(vm.headline).toBe("run-03")
+    expect(extractGetWorkflowRunSituation({ phase: "p" }).rows.length).toBeGreaterThan(0)
+  })
+
+  it("list-workflow-runs keeps status/limit/workflow and reports the run count", () => {
+    const vm = extractListWorkflowRuns({
+      status: "running",
+      limit: 20,
+      workflowId: "pr-review",
+      runs: [{ runId: "a" }, { runId: "b" }],
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.status",
+      "toolRenderers.fields.limit",
+      "toolRenderers.fields.workflow",
+      "toolRenderers.fields.count",
+    ])
+    expect(vm.rows[3]?.value).toBe("2")
+    // A bare total (no array) lands in the same count row.
+    expect(extractListWorkflowRuns({ total: 9 }).rows.some((r) => r.value === "9")).toBe(true)
+    // `count` belongs to the limit family here, not the count row.
+    expect(extractListWorkflowRuns({ count: 5 }).rows.some((r) => r.value === "5")).toBe(true)
+  })
+
+  it("list-saved-workflows shows scope · query · count · limit", () => {
+    const vm = extractListSavedWorkflows({
+      scope: "project",
+      query: "pr",
+      workflows: [{ name: "pr-review" }, { name: "bench" }],
+      limit: 10,
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.scope",
+      "toolRenderers.fields.query",
+      "toolRenderers.fields.count",
+      "toolRenderers.fields.limit",
+    ])
+    expect(vm.rows[2]?.value).toBe("2")
+    expect(extractListSavedWorkflows({ workflows: [] }).isEmpty).toBe(false)
+  })
+
+  it("resume-workflow-run shows run · workflow · status · phase", () => {
+    const vm = extractResumeWorkflowRun({
+      runId: "run-04",
+      workflowId: "pr-review",
+      status: "pending",
+      phase: "gate",
+    })
+    expect(vm.rows.map((r) => r.value)).toEqual(["run-04", "pr-review", "pending", "gate"])
+    expect(extractResumeWorkflowRun({}).isEmpty).toBe(true)
+  })
+
+  it("resolve-workflow-question adds the run id and question preview to id+answer", () => {
+    const vm = extractResolveWorkflowQuestion({
+      questionId: "dwfq-9",
+      runId: "run-05",
+      question: "limit parallelism?",
+      answer: "no",
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.id",
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.question",
+      "toolRenderers.fields.answer",
+    ])
+    expect(vm.rows[3]?.value).toBe("no")
+    expect(extractResolveWorkflowQuestion({ question: "only q" }).isEmpty).toBe(false)
+  })
+
+  it("save-workflow shows name · scope · description · force", () => {
+    const vm = extractSaveWorkflow({
+      name: "bench",
+      scope: "global",
+      description: "nightly bench",
+      force: true,
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.name",
+      "toolRenderers.fields.scope",
+      "toolRenderers.fields.description",
+      "toolRenderers.fields.force",
+    ])
+    expect(vm.rows[3]?.value).toBe("true")
+    expect(extractSaveWorkflow({ overwrite: true }).isEmpty).toBe(false)
+  })
+
+  it("workflow-diagnostics shows run · workflow · phase · status", () => {
+    const vm = extractWorkflowDiagnostics({
+      runId: "run-06",
+      workflowId: "pr-review",
+      phase: "gate",
+      status: "running",
+    })
+    expect(vm.rows.map((r) => r.value)).toEqual(["run-06", "pr-review", "gate", "running"])
+    expect(extractWorkflowDiagnostics({ status: "completed" }).rows.length).toBe(1)
+  })
+})
+
+// ── remaining twelve — real event fixtures (≥3 per upgraded renderer) ───────
+
+describe("remaining fixtures — read-session-context", () => {
+  it("renders the query params and the returned context block", () => {
+    renderPair(
+      toolStart("read-session-context", {
+        sessionId: "sess_41",
+        query: "renderer conventions",
+        strategy: "handoff",
+        maxTokens: 6000,
+        result: "Model layer must stay locale-free; bodies resolve labels via t().",
+      }),
+      toolEnd("read-session-context", true, 810),
+    )
+    expect(screen.getByRole("button").textContent).toContain("sess_41")
+    expect(rowValue("Session")).toBe("sess_41")
+    expect(rowValue("Query")).toBe("renderer conventions")
+    expect(rowValue("Strategy")).toBe("handoff")
+    expect(rowValue("Max tokens")).toBe("6000")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("bodies resolve labels")
+  })
+
+  it("a missing session id falls back to the query on the collapsed line", () => {
+    renderPair(
+      toolStart("read-session-context", { query: "find the diff gate", maxTokens: 2000 }),
+      toolEnd("read-session-context"),
+    )
+    expect(screen.getByRole("button").textContent).toContain("find the diff gate")
+    expect(rowValue("Query")).toBe("find the diff gate")
+    expect(rowValue("Session")).toBeUndefined()
+    expect(screen.queryByTestId("tool-code")).toBeNull()
+  })
+
+  it("an opaque payload degrades to the raw JSON preview", () => {
+    renderPair(
+      toolStart("read-session-context", { deep: { nested: true } }),
+      toolEnd("read-session-context", false, 3, "session gone"),
+    )
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+    expect(screen.getByText("✗")).toBeInTheDocument()
+  })
+})
+
+describe("remaining fixtures — respond-to-coordinator", () => {
+  it("leads with the coordinator + response-type chips and the message block", () => {
+    renderPair(
+      toolStart("respond-to-coordinator", {
+        to: "coordinator",
+        responseType: "progress",
+        summary: "halfway",
+        message: "6 of 12 renderers aligned",
+      }),
+      toolEnd("respond-to-coordinator", true, 11),
+    )
+    expect(screen.getByRole("button").textContent).toContain("halfway")
+    expect(screen.getByTestId("respond-target")).toHaveTextContent("coordinator")
+    expect(screen.getByTestId("respond-type")).toHaveTextContent("progress")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("6 of 12 renderers aligned")
+  })
+
+  it("renders summary-only replies without chips and keeps the task id row", () => {
+    renderPair(
+      toolStart("respond-to-coordinator", { summary: "done", task: "task-7" }),
+      toolEnd("respond-to-coordinator"),
+    )
+    expect(screen.queryByTestId("respond-target")).toBeNull()
+    expect(screen.queryByTestId("respond-type")).toBeNull()
+    expect(rowValue("Summary")).toBe("done")
+    expect(rowValue("ID")).toBe("task-7")
+  })
+
+  it("a rejected reply surfaces the tool-end error", () => {
+    renderPair(
+      toolStart("respond-to-coordinator", { summary: "s", message: "m" }),
+      toolEnd("respond-to-coordinator", false, 4, "coordinator stopped"),
+    )
+    expect(screen.getByText("✗")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("coordinator stopped")
+  })
+})
+
+describe("remaining fixtures — explore", () => {
+  it("renders scope paths, strategy and the depth × breadth knobs", () => {
+    renderPair(
+      toolStart("explore", {
+        query: "tool call pipeline",
+        paths: ["src/components", "src/lib"],
+        strategy: "breadth_first",
+        depth: 2,
+        breadth: 3,
+      }),
+      toolEnd("explore", true, 1540),
+    )
+    expect(screen.getByRole("button").textContent).toContain("tool call pipeline")
+    expect(rowValue("Target")).toBe("src/components, src/lib")
+    expect(rowValue("Strategy")).toBe("breadth_first")
+    expect(rowValue("Scope")).toBe("depth 2 × breadth 3")
+  })
+
+  it("a base-path-only recon still names the path on the collapsed line", () => {
+    renderPair(toolStart("explore", { path: "packages/core", depth: 1 }), toolEnd("explore"))
+    expect(screen.getByRole("button").textContent).toContain("packages/core")
+    expect(rowValue("Path")).toBe("packages/core")
+    expect(rowValue("Scope")).toBe("depth 1")
+  })
+
+  it("an opaque payload degrades to the raw JSON preview", () => {
+    renderPair(toolStart("explore", { see: "everywhere" }), toolEnd("explore"))
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("remaining fixtures — task-output", () => {
+  it("renders the target task with the retrieved output as a clamped block", () => {
+    renderPair(
+      toolStart("task-output", {
+        taskId: "task-7",
+        block: false,
+        timeoutMs: 1000,
+        output: "stdout line 1\nstdout line 2",
+      }),
+      toolEnd("task-output", true, 1040),
+    )
+    expect(rowValue("ID")).toBe("task-7")
+    expect(rowValue("Block")).toBe("false")
+    expect(rowValue("Lines")).toBe("2")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("stdout line 1")
+  })
+
+  it("clamps long output with the overflow note", () => {
+    const output = Array.from({ length: 16 }, (_, i) => `out-${i}`).join("\n")
+    renderPair(toolStart("task-output", { taskId: "t", output }), toolEnd("task-output"))
+    expect(screen.getByTestId("tool-code-overflow")).toHaveTextContent("…4 more lines")
+    expect(rowValue("Lines")).toBe("16")
+  })
+
+  it("a timeout retrieval surfaces the tool-end error", () => {
+    renderPair(
+      toolStart("task-output", { taskId: "t-404", block: true, timeoutMs: 30000 }),
+      toolEnd("task-output", false, 30040, "timed out"),
+    )
+    expect(screen.getByText("✗")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("timed out")
+  })
+})
+
+describe("remaining fixtures — task-stop", () => {
+  it("renders the batch stops list beside the reason", () => {
+    renderPair(
+      toolStart("task-stop", { stops: ["task-1", "task-2", "task-3"], reason: "wave complete" }),
+      toolEnd("task-stop", true, 6),
+    )
+    expect(rowValue("Stops")).toBe("task-1, task-2, task-3")
+    expect(rowValue("Reason")).toBe("wave complete")
+    expect(screen.getByRole("button").textContent).toContain("task-1, task-2, task-3")
+  })
+
+  it("normalizes stop records down to their ids", () => {
+    renderPair(
+      toolStart("task-stop", { stops: [{ taskId: "a" }, { id: "b" }], force: true }),
+      toolEnd("task-stop"),
+    )
+    expect(rowValue("Stops")).toBe("a, b")
+    expect(rowValue("Force")).toBe("true")
+  })
+
+  it("an opaque payload degrades to the raw JSON preview", () => {
+    renderPair(toolStart("task-stop", { halted: true }), toolEnd("task-stop"))
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("remaining fixtures — list-models", () => {
+  it("renders the provider filter with the numbered model block", () => {
+    renderPair(
+      toolStart("list-models", {
+        provider: "zai",
+        models: [{ id: "glm-5.3" }, { id: "glm-4.7" }],
+      }),
+      toolEnd("list-models", true, 120),
+    )
+    expect(rowValue("Model")).toBe("zai")
+    expect(rowValue("Count")).toBe("2")
+    const code = screen.getByTestId("tool-code")
+    expect(code).toHaveTextContent("1. glm-5.3")
+    expect(code).toHaveTextContent("2. glm-4.7")
+  })
+
+  it("renders the reasoning-level filter without a model list", () => {
+    renderPair(toolStart("list-models", { reasoningLevel: "high" }), toolEnd("list-models"))
+    expect(rowValue("Mode")).toBe("high")
+    expect(screen.queryByTestId("tool-code")).toBeNull()
+  })
+
+  it("the usual no-arg call shows the localized discovery note", () => {
+    renderPair(toolStart("list-models", null), toolEnd("list-models"))
+    expect(screen.getByTestId("list-models-empty")).toHaveTextContent("Discovery request")
+  })
+})
+
+describe("remaining fixtures — cron-create", () => {
+  it("renders schedule, timezone, description and the deferred command", () => {
+    renderPair(
+      toolStart("cron-create", {
+        name: "weekday-digest",
+        schedule: "0 9 * * 1-5",
+        description: "morning digest",
+        timezone: "Asia/Shanghai",
+        command: "pnpm digest",
+      }),
+      toolEnd("cron-create", true, 15),
+    )
+    expect(screen.getByRole("button").textContent).toContain("0 9 * * 1-5")
+    expect(rowValue("Schedule")).toBe("0 9 * * 1-5")
+    expect(rowValue("Timezone")).toBe("Asia/Shanghai")
+    expect(rowValue("Description")).toBe("morning digest")
+    expect(rowValue("Command")).toBe("pnpm digest")
+  })
+
+  it("a missing schedule falls back to the job name", () => {
+    renderPair(
+      toolStart("cron-create", { name: "nightly", prompt: "run bench" }),
+      toolEnd("cron-create"),
+    )
+    expect(screen.getByRole("button").textContent).toContain("nightly")
+    expect(rowValue("Name")).toBe("nightly")
+    expect(rowValue("Timezone")).toBeUndefined()
+  })
+
+  it("a rejected registration surfaces the tool-end error", () => {
+    renderPair(
+      toolStart("cron-create", { schedule: "not a cron" }),
+      toolEnd("cron-create", false, 8, "invalid expression"),
+    )
+    expect(screen.getByText("✗")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("invalid expression")
+  })
+})
+
+describe("remaining fixtures — offpeak-create", () => {
+  it("renders the start–end window with duration and command", () => {
+    renderPair(
+      toolStart("offpeak-create", {
+        label: "backfill",
+        start: "23:30",
+        end: "05:00",
+        durationMinutes: 90,
+        command: "pnpm backfill",
+      }),
+      toolEnd("offpeak-create", true, 12),
+    )
+    expect(rowValue("Window")).toBe("23:30 – 05:00")
+    expect(rowValue("Duration")).toBe("90m")
+    expect(rowValue("Command")).toBe("pnpm backfill")
+    expect(screen.getByRole("button").textContent).toContain("23:30 – 05:00")
+  })
+
+  it("interval payloads keep the classic interval/duration rows", () => {
+    renderPair(
+      toolStart("offpeak-create", {
+        interval: "22:00-06:00",
+        label: "nightly",
+        intervalMinutes: 30,
+      }),
+      toolEnd("offpeak-create"),
+    )
+    expect(rowValue("Interval")).toBe("22:00-06:00")
+    expect(rowValue("Name")).toBe("nightly")
+  })
+
+  it("an opaque payload degrades to the raw JSON preview", () => {
+    renderPair(toolStart("offpeak-create", { whenever: true }), toolEnd("offpeak-create"))
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("remaining fixtures — node-repl", () => {
+  it("renders the script title heading with the code block", () => {
+    renderPair(
+      toolStart("node-repl", {
+        title: "schema probe",
+        code: "const rows = files.glob('*.ts')\nrows.length",
+        timeoutMs: 20000,
+      }),
+      toolEnd("node-repl", true, 320),
+    )
+    expect(screen.getByTestId("node-repl-title")).toHaveTextContent("schema probe")
+    expect(rowValue("Lines")).toBe("2")
+    expect(rowValue("Timeout")).toBe("20000")
+    const code = screen.getByTestId("tool-code")
+    expect(code.className).toContain("font-mono")
+    expect(code).toHaveTextContent("files.glob")
+  })
+
+  it("a title-less script headlines from the code", () => {
+    renderPair(toolStart("node-repl", { code: "1 + 1" }), toolEnd("node-repl"))
+    expect(screen.queryByTestId("node-repl-title")).toBeNull()
+    expect(screen.getByRole("button").textContent).toContain("1 + 1")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("1 + 1")
+  })
+
+  it("an opaque payload degrades to the raw JSON preview", () => {
+    renderPair(
+      toolStart("node-repl", { eval: "dangerous()" }),
+      toolEnd("node-repl", false, 2, "blocked"),
+    )
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("blocked")
+  })
+})
+
+describe("remaining fixtures — node-repl-image-grid", () => {
+  it("draws inline sources (data URIs and URLs) as an image grid", () => {
+    renderPair(
+      toolStart("node-repl-image-grid", {
+        title: "captures",
+        images: ["data:image/png;base64,AAAA", { url: "https://img.example.net/shot.png" }],
+      }),
+      toolEnd("node-repl-image-grid", true, 45),
+    )
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("Image grid")
+    expect(rowValue("Images")).toBe("2")
+    const imgs = screen.getAllByTestId("repl-image")
+    expect(imgs).toHaveLength(2)
+    expect(imgs[0]).toHaveAttribute("src", "data:image/png;base64,AAAA")
+    expect(imgs[1]).toHaveAttribute("src", "https://img.example.net/shot.png")
+    expect(screen.queryByTestId("repl-image-paths")).toBeNull()
+  })
+
+  it("lists bare file paths as monospace text instead of broken images", () => {
+    renderPair(
+      toolStart("node-repl-image-grid", { images: [{ path: "charts/a.png" }, { file: "b.png" }] }),
+      toolEnd("node-repl-image-grid"),
+    )
+    expect(screen.queryByTestId("repl-image")).toBeNull()
+    const paths = screen.getByTestId("repl-image-paths")
+    expect(paths).toHaveTextContent("charts/a.png")
+    expect(paths).toHaveTextContent("b.png")
+    expect(rowValue("Preview")).toBe("0 inline / 2 path")
+  })
+
+  it("an opaque payload degrades to the raw JSON preview", () => {
+    renderPair(toolStart("node-repl-image-grid", { picture: 42 }), toolEnd("node-repl-image-grid"))
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("remaining fixtures — create-workflow", () => {
+  it("renders the workflow name, step count and numbered step preview", () => {
+    renderPair(
+      toolStart("create-workflow", {
+        name: "pr-review",
+        description: "review the diff",
+        steps: [{ ask: "diff review" }, { ask: "confirm" }, { ask: "gate tests" }],
+      }),
+      toolEnd("create-workflow", true, 30),
+    )
+    expect(screen.getByRole("button").textContent).toContain("pr-review")
+    expect(rowValue("Name")).toBe("pr-review")
+    expect(rowValue("Steps")).toBe("3")
+    const code = screen.getByTestId("tool-code")
+    expect(code).toHaveTextContent("1. ")
+    expect(code).toHaveTextContent("3. ")
+  })
+
+  it("a name-less workflow still previews its steps", () => {
+    renderPair(toolStart("create-workflow", { steps: ["a", "b"] }), toolEnd("create-workflow"))
+    expect(rowValue("Steps")).toBe("2")
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("1. a")
+  })
+
+  it("an opaque payload degrades to the raw JSON preview", () => {
+    renderPair(toolStart("create-workflow", { script: "top secret" }), toolEnd("create-workflow"))
+    expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+  })
+})
+
+describe("remaining fixtures — eval-workflow-snippet", () => {
+  it("renders the snippet block with timeout and assertion rows", () => {
+    renderPair(
+      toolStart("eval-workflow-snippet", {
+        code: "const files = await files.glob('*.ts')",
+        timeoutMs: 5000,
+        assertions: [{ ok: true }, { ok: true }],
+      }),
+      toolEnd("eval-workflow-snippet", true, 90),
+    )
+    expect(screen.getByTestId("tool-code")).toHaveTextContent("files.glob")
+    expect(rowValue("Timeout")).toBe("5000")
+    expect(rowValue("Assertions")).toBe("2")
+  })
+
+  it("an explicit assertion count renders without an array", () => {
+    renderPair(
+      toolStart("eval-workflow-snippet", { code: "ok", assertionCount: 7 }),
+      toolEnd("eval-workflow-snippet"),
+    )
+    expect(rowValue("Assertions")).toBe("7")
+  })
+
+  it("a failed snippet run surfaces the diagnostics", () => {
+    renderPair(
+      toolStart("eval-workflow-snippet", { code: "syntax (" }),
+      toolEnd("eval-workflow-snippet", false, 12, "TS1005: ')' expected"),
+    )
+    expect(screen.getByText("✗")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("TS1005")
+  })
+})
+
+describe("remaining fixtures — workflow family event pairs", () => {
+  it("get-workflow-run: run/workflow/status/phase rows from one event", () => {
+    renderPair(
+      toolStart("get-workflow-run", {
+        runId: "run-77",
+        workflowId: "pr-review",
+        status: "running",
+        phase: "gate",
+      }),
+      toolEnd("get-workflow-run", true, 25),
+    )
+    expect(screen.getByRole("button").textContent).toContain("run-77")
+    expect(rowValue("Run")).toBe("run-77")
+    expect(rowValue("Workflow")).toBe("pr-review")
+    expect(rowValue("Status")).toBe("running")
+    expect(rowValue("Phase")).toBe("gate")
+  })
+
+  it("list-workflow-runs: status/limit/count rows", () => {
+    renderPair(
+      toolStart("list-workflow-runs", {
+        status: "running",
+        limit: 50,
+        runs: [{ runId: "a" }, { runId: "b" }, { runId: "c" }],
+      }),
+      toolEnd("list-workflow-runs"),
+    )
+    expect(rowValue("Status")).toBe("running")
+    expect(rowValue("Limit")).toBe("50")
+    expect(rowValue("Count")).toBe("3")
+  })
+
+  it("resolve-workflow-question: id/run/question/answer rows", () => {
+    renderPair(
+      toolStart("resolve-workflow-question", {
+        questionId: "dwfq-12",
+        runId: "run-80",
+        question: "cap parallelism?",
+        answer: "no, keep default",
+      }),
+      toolEnd("resolve-workflow-question"),
+    )
+    expect(rowValue("ID")).toBe("dwfq-12")
+    expect(rowValue("Run")).toBe("run-80")
+    expect(rowValue("Question")).toBe("cap parallelism?")
+    expect(rowValue("Answer")).toBe("no, keep default")
+  })
+
+  it("resume-workflow-run and workflow-diagnostics render 3+ fields each", () => {
+    const first = renderInput("resume-workflow-run", {
+      runId: "run-91",
+      workflowId: "bench",
+      status: "pending",
+    })
+    expect(rowValue("Run")).toBe("run-91")
+    expect(rowValue("Workflow")).toBe("bench")
+    expect(rowValue("Status")).toBe("pending")
+    first.unmount()
+    renderInput("workflow-diagnostics", { runId: "run-92", phase: "report", status: "errored" })
+    expect(rowValue("Run")).toBe("run-92")
+    expect(rowValue("Phase")).toBe("report")
+    expect(rowValue("Status")).toBe("errored")
+  })
+})
+
+describe("remaining fixtures — localized new bodies (zh-CN)", () => {
+  it("respond-to-coordinator chips and image grid render under zh-CN", () => {
+    setLocale("zh-CN")
+    render(
+      <ToolCallBlock
+        tool="respond-to-coordinator"
+        input={{ to: "coordinator", responseType: "progress", message: "half" }}
+        defaultOpen
+      />,
+    )
+    expect(screen.getByTestId("tool-title")).toHaveTextContent("回复协调者")
+    expect(screen.getByTestId("respond-target")).toHaveTextContent("coordinator")
+    expect(screen.getByTestId("respond-type")).toHaveTextContent("progress")
+  })
+
+  it("new field labels exist in both locales", () => {
+    const keys = [
+      "toolRenderers.fields.assertions",
+      "toolRenderers.fields.duration",
+      "toolRenderers.fields.output",
+      "toolRenderers.fields.responseType",
+      "toolRenderers.fields.steps",
+      "toolRenderers.fields.stops",
+      "toolRenderers.fields.timezone",
+      "toolRenderers.fields.window",
+    ]
+    for (const key of keys) {
+      expect(enDomain[key as keyof typeof enDomain], key).toBeDefined()
+      expect(zhDomain[key as keyof typeof zhDomain], key).toBeDefined()
     }
   })
 })

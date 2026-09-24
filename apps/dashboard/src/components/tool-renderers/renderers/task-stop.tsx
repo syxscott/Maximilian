@@ -5,9 +5,10 @@
 
 /**
  * task-stop renderer — explicit stop request. Body shows the target task
- * id, the force flag and the stop reason, and the collapsed line falls
- * back to the reason when no id is given (see agent.model.ts
- * extractTaskStop); JSON fallback when the payload is opaque.
+ * id, the force flag, the stop reason and — for batch requests — the
+ * comma-joined stops list; the collapsed line falls back to the reason or
+ * the stops when no id is given (see agent.model.ts extractTaskStop);
+ * JSON fallback when the payload is opaque.
  */
 
 import type { ToolCallProps } from "../registry"

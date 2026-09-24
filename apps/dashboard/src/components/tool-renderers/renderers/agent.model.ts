@@ -62,7 +62,14 @@ export function extractAgent(input: unknown): ToolViewModel {
 
 // ── task-output ──────────────────────────────────────────────────────────────
 
-export function extractTaskOutput(input: unknown): ToolViewModel {
+export interface TaskOutputViewModel extends ToolViewModel {
+  /** Target task/shell the retrieval names. */
+  taskId?: string
+  /** Retrieved output (the body renders it as a clamped monospace block). */
+  output?: string
+}
+
+export function extractTaskOutput(input: unknown): TaskOutputViewModel {
   const obj = asRecord(input)
   const taskId = pickStr(obj, ["taskId", "task_id", "id", "shellId"])
   const timeout = pickNum(obj, ["timeoutMs", "timeout_ms", "timeout"])
@@ -74,18 +81,23 @@ export function extractTaskOutput(input: unknown): ToolViewModel {
     block === undefined &&
     output === undefined
   ) {
-    return emptyVm()
+    return { ...emptyVm() }
   }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.id, taskId, true),
     block === undefined ? undefined : row(FIELDS.block, block ? "true" : "false", true),
     timeout === undefined ? undefined : row(FIELDS.timeout, timeout),
-    output === undefined ? undefined : row(FIELDS.result, jsonPreview(output, 240), true),
+    output === undefined ? undefined : row(FIELDS.lines, output.split("\n").length),
   ]
-  return vmFrom(
-    rows.filter((r) => r !== undefined),
-    oneLine(taskId ?? output ?? ""),
-  )
+  return {
+    ...vmFrom(
+      rows.filter((r) => r !== undefined),
+      oneLine(taskId ?? output ?? ""),
+      output === undefined ? undefined : { text: output, maxLines: 12 },
+    ),
+    ...(taskId === undefined ? {} : { taskId }),
+    ...(output === undefined ? {} : { output }),
+  }
 }
 
 // ── task-stop ────────────────────────────────────────────────────────────────
@@ -96,6 +108,14 @@ export interface TaskStopViewModel extends ToolViewModel {
   /** Why the task is being stopped. */
   reason?: string
   force?: boolean
+  /** Batch form — every task id the request stops. */
+  stops: string[]
+}
+
+function normalizeStopId(raw: unknown): string | undefined {
+  if (typeof raw === "string" && raw.length > 0) return raw
+  const obj = asRecord(raw)
+  return pickStr(obj, ["taskId", "task_id", "id", "shellId", "jobId"])
 }
 
 export function extractTaskStop(input: unknown): TaskStopViewModel {
@@ -103,22 +123,29 @@ export function extractTaskStop(input: unknown): TaskStopViewModel {
   const taskId = pickStr(obj, ["taskId", "task_id", "id", "task", "taskName", "shellId", "jobId"])
   const reason = pickStr(obj, ["reason", "cause", "because", "why", "note"])
   const force = pickBool(obj, ["force", "aggressive"])
-  if (taskId === undefined && reason === undefined && force === undefined) {
-    return { ...emptyVm() }
+  const stopEntries = pickArray(obj, ["stops", "tasks", "targets", "ids"])
+  const stops =
+    stopEntries === undefined
+      ? []
+      : stopEntries.map(normalizeStopId).filter((s): s is string => s !== undefined)
+  if (taskId === undefined && reason === undefined && force === undefined && stops.length === 0) {
+    return { ...emptyVm(), stops: [] }
   }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.id, taskId, true),
     force === undefined ? undefined : row(FIELDS.force, force ? "true" : "false", true),
     row(FIELDS.reason, reason),
+    stops.length > 0 ? row(FIELDS.stops, stops.join(", "), true) : undefined,
   ]
   return {
     ...vmFrom(
       rows.filter((r) => r !== undefined),
-      oneLine(taskId ?? reason ?? ""),
+      oneLine(taskId ?? (stops.length > 0 ? stops.join(", ") : (reason ?? ""))),
     ),
     ...(taskId === undefined ? {} : { taskId }),
     ...(reason === undefined ? {} : { reason }),
     ...(force === undefined ? {} : { force }),
+    stops,
   }
 }
 
@@ -129,17 +156,39 @@ export function extractExplore(input: unknown): ToolViewModel {
   const query = pickStr(obj, ["query", "topic", "question", "goal", "prompt"])
   const paths = pickArray(obj, ["paths", "dirs", "directories", "targets"])
   const base = pickStr(obj, ["path", "root", "cwd"])
-  if (query === undefined && paths === undefined && base === undefined) return emptyVm()
+  const strategy = pickStr(obj, ["strategy", "mode", "approach"])
+  const depth = pickNum(obj, ["depth", "maxDepth", "max_depth"])
+  const breadth = pickNum(obj, ["breadth", "width", "fanout"])
+  if (
+    query === undefined &&
+    paths === undefined &&
+    base === undefined &&
+    strategy === undefined &&
+    depth === undefined &&
+    breadth === undefined
+  ) {
+    return emptyVm()
+  }
+  const scope = [depth, breadth].filter((n) => n !== undefined)
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.query, query),
     base === undefined ? undefined : row(FIELDS.path, base, true),
     paths === undefined
       ? undefined
       : row(FIELDS.target, paths.map((p) => String(p)).join(", "), true),
+    row(FIELDS.strategy, strategy),
+    // Scope knobs collapse into one "depth×breadth"-style row when both land.
+    scope.length === 2
+      ? row(FIELDS.scope, `depth ${depth} × breadth ${breadth}`)
+      : depth !== undefined
+        ? row(FIELDS.scope, `depth ${depth}`)
+        : breadth !== undefined
+          ? row(FIELDS.scope, `breadth ${breadth}`)
+          : undefined,
   ]
   return vmFrom(
     rows.filter((r) => r !== undefined),
-    oneLine(query ?? base ?? ""),
+    oneLine(query ?? base ?? strategy ?? ""),
   )
 }
 

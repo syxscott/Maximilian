@@ -14,8 +14,11 @@
  * renderers expose STRUCTURED view models their bodies render precisely:
  * goal carries a normalized 0-100 progress (string percents parsed),
  * switch-mode carries the from/to pair (the body draws the transition
- * arrow), send-message adds a clamped message preview row and
- * submit-result reports the metadata key count.
+ * arrow), send-message adds a clamped message preview row, submit-result
+ * reports the metadata key count, respond-to-coordinator carries the
+ * addressed coordinator + response type, list-models normalizes the
+ * returned model ids into a numbered block and read-session-context keeps
+ * the returned context summary as a clamped block.
  */
 
 import {
@@ -287,21 +290,55 @@ export function extractSendMessage(input: unknown): ToolViewModel {
 
 // ── respond-to-coordinator ───────────────────────────────────────────────────
 
-export function extractRespondToCoordinator(input: unknown): ToolViewModel {
+export interface RespondToCoordinatorViewModel extends ToolViewModel {
+  /** Coordinating agent the reply addresses. */
+  target?: string
+  /** Declared response kind (progress / result / blocker …). */
+  responseType?: string
+  summary?: string
+  message?: string
+}
+
+export function extractRespondToCoordinator(input: unknown): RespondToCoordinatorViewModel {
   const obj = asRecord(input)
+  const target = pickStr(obj, [
+    "to",
+    "coordinator",
+    "coordinatorId",
+    "target",
+    "recipient",
+    "audience",
+  ])
+  const responseType = pickStr(obj, ["responseType", "response_type", "kind", "answerType"])
   const summary = pickStr(obj, ["summary", "title", "subject"])
   const message = pickStr(obj, ["message", "text", "body", "result"])
   const task = pickStr(obj, ["task", "taskId", "task_id"])
-  if (summary === undefined && message === undefined && task === undefined) return emptyVm()
+  if (
+    target === undefined &&
+    responseType === undefined &&
+    summary === undefined &&
+    message === undefined &&
+    task === undefined
+  ) {
+    return { ...emptyVm() }
+  }
   const rows: Array<RendererRow | undefined> = [
+    row(FIELDS.target, target),
+    row(FIELDS.responseType, responseType),
     row(FIELDS.summary, summary),
     row(FIELDS.id, task, true),
   ]
-  return vmFrom(
-    rows.filter((r) => r !== undefined),
-    oneLine(summary ?? message ?? ""),
-    message === undefined ? undefined : { text: message, maxLines: 12 },
-  )
+  return {
+    ...vmFrom(
+      rows.filter((r) => r !== undefined),
+      oneLine(summary ?? message ?? ""),
+      message === undefined ? undefined : { text: message, maxLines: 12 },
+    ),
+    ...(target === undefined ? {} : { target }),
+    ...(responseType === undefined ? {} : { responseType }),
+    ...(summary === undefined ? {} : { summary }),
+    ...(message === undefined ? {} : { message }),
+  }
 }
 
 // ── submit-result ────────────────────────────────────────────────────────────
@@ -370,47 +407,89 @@ export function extractSwitchMode(input: unknown): SwitchModeViewModel {
 
 // ── list-models ──────────────────────────────────────────────────────────────
 
-export function extractListModels(input: unknown): ToolViewModel {
+export interface ListModelsViewModel extends ToolViewModel {
+  provider?: string
+  reasoning?: string
+  /** Normalized model ids (strings or {id|name|model} records). */
+  models: string[]
+  limit?: number
+}
+
+function normalizeModelId(raw: unknown): string | undefined {
+  if (typeof raw === "string" && raw.length > 0) return raw
+  const obj = asRecord(raw)
+  return pickStr(obj, ["id", "model", "modelId", "providerId", "name"])
+}
+
+export function extractListModels(input: unknown): ListModelsViewModel {
   const obj = asRecord(input)
-  const provider = pickStr(obj, ["provider", "vendor", "filter"])
+  const provider = pickStr(obj, ["provider", "providerId", "provider_id", "vendor", "filter"])
   const reasoning = pickStr(obj, ["reasoningLevel", "reasoning_level", "level"])
-  const models = pickArray(obj, ["models", "ids"])
+  const modelEntries = pickArray(obj, ["models", "ids"])
   const limit = pickNum(obj, ["limit", "count", "max"])
+  const models =
+    modelEntries === undefined
+      ? []
+      : modelEntries.map(normalizeModelId).filter((m): m is string => m !== undefined)
   if (
     provider === undefined &&
     reasoning === undefined &&
-    models === undefined &&
+    modelEntries === undefined &&
     limit === undefined
   ) {
-    return emptyVm()
+    return { ...emptyVm(), models: [] }
   }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.provider, provider, true),
     row(FIELDS.mode, reasoning, true),
-    models === undefined ? undefined : row(FIELDS.count, models.length),
+    modelEntries === undefined ? undefined : row(FIELDS.count, modelEntries.length),
     limit === undefined ? undefined : row(FIELDS.limit, limit),
   ]
-  return vmFrom(
-    rows.filter((r) => r !== undefined),
-    oneLine(provider ?? reasoning ?? ""),
-  )
+  return {
+    ...vmFrom(
+      rows.filter((r) => r !== undefined),
+      oneLine(provider ?? reasoning ?? ""),
+      // Discovery results: the returned model ids as a numbered block.
+      modelEntries === undefined || models.length === 0
+        ? undefined
+        : {
+            text: models.map((m, i) => `${i + 1}. ${m}`).join("\n"),
+            maxLines: 8,
+          },
+    ),
+    ...(provider === undefined ? {} : { provider }),
+    ...(reasoning === undefined ? {} : { reasoning }),
+    models,
+    ...(limit === undefined ? {} : { limit }),
+  }
 }
 
 // ── read-session-context ─────────────────────────────────────────────────────
 
-export function extractReadSessionContext(input: unknown): ToolViewModel {
+export interface ReadSessionContextViewModel extends ToolViewModel {
+  sessionId?: string
+  query?: string
+  strategy?: string
+  maxTokens?: number
+  /** Matching context the prior session returned (clamped block). */
+  result?: string
+}
+
+export function extractReadSessionContext(input: unknown): ReadSessionContextViewModel {
   const obj = asRecord(input)
   const sessionId = pickStr(obj, ["sessionId", "session_id", "id", "session"])
   const query = pickStr(obj, ["query", "question", "prompt"])
   const strategy = pickStr(obj, ["strategy", "mode"])
   const maxTokens = pickNum(obj, ["maxTokens", "max_tokens", "tokenBudget"])
+  const result = pickStr(obj, ["result", "summary", "context", "excerpt", "output"])
   if (
     sessionId === undefined &&
     query === undefined &&
     strategy === undefined &&
-    maxTokens === undefined
+    maxTokens === undefined &&
+    result === undefined
   ) {
-    return emptyVm()
+    return { ...emptyVm() }
   }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.session, sessionId, true),
@@ -418,10 +497,18 @@ export function extractReadSessionContext(input: unknown): ToolViewModel {
     row(FIELDS.strategy, strategy),
     maxTokens === undefined ? undefined : row(FIELDS.maxTokens, maxTokens),
   ]
-  return vmFrom(
-    rows.filter((r) => r !== undefined),
-    oneLine(sessionId ?? query ?? ""),
-  )
+  return {
+    ...vmFrom(
+      rows.filter((r) => r !== undefined),
+      oneLine(sessionId ?? query ?? ""),
+      result === undefined ? undefined : { text: result, maxLines: 12 },
+    ),
+    ...(sessionId === undefined ? {} : { sessionId }),
+    ...(query === undefined ? {} : { query }),
+    ...(strategy === undefined ? {} : { strategy }),
+    ...(maxTokens === undefined ? {} : { maxTokens }),
+    ...(result === undefined ? {} : { result }),
+  }
 }
 
 // ── skill (unchanged scope) ──────────────────────────────────────────────────

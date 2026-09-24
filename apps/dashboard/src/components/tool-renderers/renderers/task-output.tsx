@@ -5,8 +5,8 @@
 
 /**
  * task-output renderer — TaskOutput retrieval. Body shows the target task
- * id, the block/wait flag and timeout, plus a clamped monospace preview of
- * a retrieved output when the payload already carries one (see
+ * id, the block/wait flag, the timeout and the output line count, with
+ * the retrieved output as a clamped monospace preview (see
  * agent.model.ts extractTaskOutput).
  */
 

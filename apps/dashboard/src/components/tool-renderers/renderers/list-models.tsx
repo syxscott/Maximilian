@@ -8,12 +8,13 @@
  * arguments, so the body has an explicit, localized empty state ("discovery
  * request — server returns the configured model list") instead of a bare
  * fallback; provider/reasoning-level filters and model counts render as
- * rows when the payload carries them.
+ * rows, and a returned model list draws as a numbered monospace block
+ * (coordination.model.ts extractListModels).
  */
 
 import { useLocale, t } from "@max/i18n"
 import type { ToolCallProps } from "../registry"
-import { FieldRows, JsonFallback } from "./common"
+import { CodeBlock, FieldRows, JsonFallback } from "./common"
 import { extractListModels } from "./coordination.model"
 
 export const LIST_MODELS_GLYPH = "☰"
@@ -46,6 +47,7 @@ export function ListModelsBody({ input }: ToolCallProps) {
         {t("toolRenderers.list-models.title")}
       </p>
       <FieldRows rows={vm.rows} />
+      {vm.code && <CodeBlock text={vm.code.text} maxLines={vm.code.maxLines} />}
     </div>
   )
 }

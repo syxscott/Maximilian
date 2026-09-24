@@ -6,7 +6,8 @@
 /**
  * read-session-context renderer — pull context from a prior session. Body
  * shows the session id, the focused query, the retrieval strategy and the
- * token budget (coordination.model.ts extractReadSessionContext).
+ * token budget as rows, with any returned context summary as a clamped
+ * block (coordination.model.ts extractReadSessionContext).
  */
 
 import type { ToolCallProps } from "../registry"

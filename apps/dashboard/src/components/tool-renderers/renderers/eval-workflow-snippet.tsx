@@ -3,7 +3,12 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** eval-workflow-snippet renderer — glyph + body over extractEvalWorkflowSnippet (monospace code). */
+/**
+ * eval-workflow-snippet renderer — pre-flight a snippet against the real
+ * compiler. Body shows the timeout and the assertion count beside the
+ * snippet itself as a clamped monospace block (workflow.model.ts
+ * extractEvalWorkflowSnippet).
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"
