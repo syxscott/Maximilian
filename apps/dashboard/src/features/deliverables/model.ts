@@ -228,6 +228,36 @@ export function toDeliverablesJson(views: DeliverableView[]): string {
   return JSON.stringify(payload, null, 2) + "\n"
 }
 
+// ── Stats-strip views (ai-elements mounts) ──────────────────────────────────
+
+/**
+ * Share of deliverables carrying an associated review score, 0–1. An
+ * empty set scores 0 (nothing reviewed yet) — the DonutStat in the stats
+ * strip renders the ring from this.
+ */
+export function reviewCoverage(links: TaskReviewLink[]): number {
+  if (links.length === 0) return 0
+  const reviewed = links.filter((l) => l.score !== null).length
+  return reviewed / links.length
+}
+
+/**
+ * Workspace id for the copy chip: the explicit `workspaceId` prop wins,
+ * else the `id` field of the fetched workspace payload. Undefined when
+ * neither is a non-empty string — the CopyField stays hidden.
+ */
+export function workspaceIdOf(
+  workspaceId: string | undefined,
+  workspace: unknown,
+): string | undefined {
+  if (typeof workspaceId === "string" && workspaceId.length > 0) return workspaceId
+  if (workspace != null && typeof workspace === "object") {
+    const id = (workspace as Record<string, unknown>).id
+    if (typeof id === "string" && id.length > 0) return id
+  }
+  return undefined
+}
+
 /** Where a deliverable's review score came from — disclosed in the UI. */
 export type ReviewScoreSource = "metadata" | "workspace" | null
 

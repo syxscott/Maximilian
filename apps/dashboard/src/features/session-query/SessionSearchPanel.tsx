@@ -7,26 +7,22 @@
  * SessionSearchPanel — cross-session message search (ui-session /
  * session-query borrowing). Debounced input (300ms) → GET
  * /sessions/search → results sectioned by session, each hit rendered as
- * a role badge plus a three-segment snippet with the match emphasized.
- * Pure presentation: derivation lives in model.ts, fetching in
- * useSessionSearch.ts.
+ * an ai-elements StatusPill role capsule plus a three-segment snippet
+ * with the match emphasized, and a CopyField chip that copies the full
+ * message content. Pure presentation: derivation lives in model.ts,
+ * fetching in useSessionSearch.ts.
  */
 
 import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { CopyField, StatusPill } from "@/components/ai-elements"
 import { Search } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import { useDebouncedValue } from "@/hooks/useDebouncedValue"
-import { groupSearchResults } from "./model"
+import { groupSearchResults, roleStatus } from "./model"
 import { useSessionSearch } from "./useSessionSearch"
-
-const ROLE_BADGE_CLASS: Record<string, string> = {
-  user: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-  assistant: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  system: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-}
 
 const DEBOUNCE_MS = 300
 
@@ -109,14 +105,11 @@ export function SessionSearchPanel({
                       className="flex items-start justify-between gap-2 rounded-md px-1 py-0.5 hover:bg-muted/50"
                     >
                       <div className="flex min-w-0 items-baseline gap-2">
-                        <Badge
-                          variant="outline"
-                          className={`h-4 shrink-0 px-1 text-[10px] ${
-                            ROLE_BADGE_CLASS[hit.role] ?? ""
-                          }`}
-                        >
-                          {hit.role}
-                        </Badge>
+                        <StatusPill
+                          status={roleStatus(hit.role)}
+                          label={hit.role}
+                          className="shrink-0"
+                        />
                         <span
                           className="truncate text-xs text-muted-foreground"
                           data-testid="session-search-snippet"
@@ -129,14 +122,17 @@ export function SessionSearchPanel({
                           {hit.highlight.after}
                         </span>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 shrink-0 px-2 text-[10px]"
-                        onClick={() => onOpenSession?.(group.sessionId)}
-                      >
-                        {t("sessionQuery.openSession")}
-                      </Button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <CopyField field={{ value: hit.content, label: t("sessionQuery.copy") }} />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 px-2 text-[10px]"
+                          onClick={() => onOpenSession?.(group.sessionId)}
+                        >
+                          {t("sessionQuery.openSession")}
+                        </Button>
+                      </div>
                     </li>
                   ))}
                 </ul>

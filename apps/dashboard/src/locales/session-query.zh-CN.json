@@ -7,5 +7,6 @@
   "sessionQuery.error": "搜索失败",
   "sessionQuery.resultCount": "{count} 条结果",
   "sessionQuery.groupHits": "{count} 条命中",
-  "sessionQuery.openSession": "在会话中打开"
+  "sessionQuery.openSession": "在会话中打开",
+  "sessionQuery.copy": "消息"
 }

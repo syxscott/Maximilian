@@ -7,17 +7,15 @@
  * Shared presentation pieces for the per-tool renderers. Every body is the
  * same shape: labeled field rows, an optional monospace code block, and a
  * generic JSON preview when the model layer found nothing — so each
- * <tool>.tsx stays a glyph + a thin Body over its extractor.
+ * <tool>.tsx stays a glyph + a thin Body over its extractor. The generic
+ * preview mounts the ai-elements JsonPeek widget (pretty-printed, bounded,
+ * expandable) instead of a flat JSON.stringify dump.
  */
 
+import type { ReactNode } from "react"
 import { useLocale, t } from "@max/i18n"
-import {
-  asRecord,
-  jsonPreview,
-  truncateLines,
-  type RendererRow,
-  type ToolViewModel,
-} from "./shared.model"
+import { JsonPeek } from "@/components/ai-elements"
+import { asRecord, truncateLines, type RendererRow, type ToolViewModel } from "./shared.model"
 
 /** Labeled field rows (same grid as the registry DefaultBody). */
 export function FieldRows({ rows }: { rows: RendererRow[] }) {
@@ -58,7 +56,7 @@ export function CodeBlock({ text, maxLines = 20 }: { text: string; maxLines?: nu
   )
 }
 
-/** Generic fallback: clamped JSON of the raw input (defensive landing). */
+/** Generic fallback: JsonPeek over the raw input (defensive landing). */
 export function JsonFallback({ input }: { input: unknown }) {
   useLocale()
   const obj = asRecord(input)
@@ -68,26 +66,26 @@ export function JsonFallback({ input }: { input: unknown }) {
       <p className="text-[10px] uppercase text-muted-foreground">
         {hasKeys ? t("toolRenderers.json.raw") : t("toolRenderers.json.empty")}
       </p>
-      {hasKeys && (
-        <pre className="max-h-40 overflow-auto rounded border border-border/60 bg-muted/40 p-2 text-xs font-mono leading-5 m-0 whitespace-pre-wrap break-all">
-          {jsonPreview(input)}
-        </pre>
-      )}
+      {hasKeys && <JsonPeek json={input} className="mt-1" />}
     </div>
   )
 }
 
 /** Standard body shell: localized title + rows + optional code, JSON
- *  fallback when empty. */
+ *  fallback when empty. `extra` renders a widget slot (e.g. the bash
+ *  CommandBlock) between the title and the field rows. */
 export function BodyShell({
   vm,
   input,
   titleKey,
+  extra,
 }: {
   vm: ToolViewModel
   input: unknown
   /** i18n key of this renderer's localized title. */
   titleKey: string
+  /** Optional widget slot mounted above the rows. */
+  extra?: ReactNode
 }) {
   useLocale()
   if (vm.isEmpty) return <JsonFallback input={input} />
@@ -99,6 +97,7 @@ export function BodyShell({
       >
         {t(titleKey)}
       </p>
+      {extra}
       <FieldRows rows={vm.rows} />
       {vm.code && <CodeBlock text={vm.code.text} maxLines={vm.code.maxLines} />}
     </div>

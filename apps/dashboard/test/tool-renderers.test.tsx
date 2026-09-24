@@ -41,6 +41,17 @@
  * defaults (e.g. read's `path`/offset/limit, bash's 120000 ms default
  * timeout capped at 600000, glob/grep limit default 100).
  *
+ * The "ai-elements mounts" round wires the previously unconsumed
+ * ai-elements widgets into the real render surfaces: bash swaps its code
+ * block for CommandBlock (exit-code badge), write output becomes a
+ * DocumentPreviewBlock, the webfetch summary a LinkPreviewCard, search
+ * hits CitationBlock ordinals, task/agent grow a StatusPill spawn-status
+ * capsule, usage-bearing payloads (submit-result, respond-to-coordinator)
+ * a TokenUsageBadge, every measured call a LatencyMeter, failures an
+ * ErrorBlock and the generic fallback JsonPeek. Assertions that pointed
+ * at the old DOM moved to the new widgets; the model-layer expectations
+ * are untouched.
+ *
  * The domain dictionaries are registered here directly (the aggregator
  * in src/locales/index.ts is main-session-owned), which also lets us
  * assert zh/en key parity.
@@ -52,6 +63,8 @@ import { getDictionary, registerLocale, setLocale } from "@max/i18n"
 
 import zhDomain from "../src/locales/tool-renderers.zh-CN.json"
 import enDomain from "../src/locales/tool-renderers.en-US.json"
+import aiZhDomain from "../src/locales/ai-elements.zh-CN.json"
+import aiEnDomain from "../src/locales/ai-elements.en-US.json"
 import { ToolCallBlock, resolveToolRenderer } from "../src/components/tool-renderers/registry"
 import { summarizeToolInput, toolInputRows } from "../src/components/tool-renderers/model"
 import { RENDERED_TOOLS } from "../src/components/tool-renderers/renderers/index"
@@ -61,7 +74,7 @@ import {
   extractMcp,
   urlHost,
 } from "../src/components/tool-renderers/renderers/web.model"
-import { extractTask } from "../src/components/tool-renderers/renderers/task.model"
+import { extractTask, spawnStatus } from "../src/components/tool-renderers/renderers/task.model"
 import {
   extractAgent,
   extractTaskOutput,
@@ -119,11 +132,34 @@ import {
 } from "../src/components/tool-renderers/renderers/workflow.model"
 import { extractGroupChildren } from "../src/components/tool-renderers/renderers/group.model"
 import { extractFileChange } from "../src/components/tool-renderers/renderers/edit-inline-diff.model"
+import { usageOf } from "../src/components/tool-renderers/renderers/shared.model"
 
 // Register the domain dictionaries over the core ones (en-US is the test
 // locale per test/setup.ts; zh-CN registered for the localized smoke).
-const en = { ...(getDictionary("en-US") ?? {}), ...(enDomain as Record<string, string>) }
-const zh = { ...(getDictionary("zh-CN") ?? {}), ...(zhDomain as Record<string, string>) }
+// The mounted ai-elements widgets (CommandBlock, StatusPill, JsonPeek, …)
+// read the aiElements.* keys, so that domain is flattened in as well.
+function flatten(tree: Record<string, unknown>, prefix = ""): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(tree)) {
+    const dotted = prefix ? `${prefix}.${key}` : key
+    if (value !== null && typeof value === "object") {
+      Object.assign(out, flatten(value as Record<string, unknown>, dotted))
+    } else {
+      out[dotted] = String(value)
+    }
+  }
+  return out
+}
+const en = {
+  ...(getDictionary("en-US") ?? {}),
+  ...(enDomain as Record<string, string>),
+  ...flatten(aiEnDomain as Record<string, unknown>),
+}
+const zh = {
+  ...(getDictionary("zh-CN") ?? {}),
+  ...(zhDomain as Record<string, string>),
+  ...flatten(aiZhDomain as Record<string, unknown>),
+}
 registerLocale("en-US", en)
 registerLocale("zh-CN", zh)
 setLocale("en-US")
@@ -954,7 +990,11 @@ describe("event fixtures — core tools", () => {
     expect(rowValue("Workdir")).toBe("apps/dashboard")
     expect(rowValue("Description")).toBe("dashboard suite")
     expect(rowValue("Timeout")).toBe("5000")
-    expect(screen.getByTestId("tool-code")).toHaveTextContent("pnpm vitest run")
+    // The command card is the mounted CommandBlock (exit code unknown on
+    // the input side — no badge), not the plain code block.
+    const command = screen.getByLabelText("Executed command")
+    expect(command).toHaveTextContent("pnpm vitest run")
+    expect(screen.queryByTestId("tool-code")).toBeNull()
   })
 
   it("bash: schema-default timeout shown when the model omitted it", () => {
@@ -1039,11 +1079,14 @@ describe("event fixtures — core tools", () => {
     expect(rowValue("Replace all")).toBe("true")
   })
 
-  it("write: byte/line counts of the schema content plus the all-added diff", () => {
+  it("write: byte/line counts of the schema content plus the document preview", () => {
     renderPair(toolStart("write", { path: "notes.md", content: "one\ntwo" }), toolEnd("write"))
     expect(rowValue("Bytes")).toBe("7")
     expect(rowValue("Lines")).toBe("2")
-    expect(screen.getByTestId("diff-preview")).toHaveTextContent("+one")
+    // Write output is plain text → DocumentPreviewBlock, not a diff.
+    expect(screen.queryByTestId("diff-preview")).toBeNull()
+    expect(screen.getByText("Document · 2 lines")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-body")).toHaveTextContent("one")
   })
 })
 
@@ -1305,9 +1348,13 @@ describe("render smoke (ToolCallBlock)", () => {
     expect(container.querySelector('[data-testid="tool-call-webfetch"]')).not.toBeNull()
     expect(screen.getByText("⇣")).toBeInTheDocument()
     expect(within(screen.getByTestId("tool-body")).getByText("Web fetch")).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId("tool-body")).getByText("https://example.com/a"),
-    ).toBeInTheDocument()
+    // The URL appears twice now — the row and the LinkPreviewCard anchor.
+    const body = screen.getByTestId("tool-body")
+    expect(within(body).getAllByText("https://example.com/a").length).toBeGreaterThan(1)
+    expect(within(body).getByLabelText("Link preview")).toHaveAttribute(
+      "href",
+      "https://example.com/a",
+    )
   })
 
   it("node-repl: renders the code block monospace with overflow note", () => {
@@ -1320,12 +1367,13 @@ describe("render smoke (ToolCallBlock)", () => {
     expect(screen.getByTestId("tool-code-overflow")).toHaveTextContent("…5 more lines")
   })
 
-  it("falls back to the raw JSON preview when no domain field is found", () => {
+  it("falls back to JsonPeek over the raw JSON when no domain field is found", () => {
     render(<ToolCallBlock tool="create-workflow" input={{ opaque: true }} defaultOpen />)
     expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
     expect(screen.getByText("Raw input")).toBeInTheDocument()
     const preview = screen.getByTestId("tool-json-preview")
-    expect(preview.textContent).toContain('"opaque":true')
+    // JsonPeek pretty-prints the payload (the old path was a flat dump).
+    expect(preview.textContent).toContain('"opaque": true')
   })
 
   it("changes-group: renders 8 recursive children plus the overflow note", () => {
@@ -1510,7 +1558,7 @@ describe("final alignment fixtures — webfetch", () => {
     expect(rowValue("Host")).toBe("api.example.dev")
   })
 
-  it("renders the result summary as a clamped block", () => {
+  it("renders the result summary as a LinkPreviewCard", () => {
     renderPair(
       toolStart("webfetch", {
         url: "https://example.com/status",
@@ -1518,7 +1566,9 @@ describe("final alignment fixtures — webfetch", () => {
       }),
       toolEnd("webfetch", true, 210),
     )
-    expect(screen.getByTestId("tool-code")).toHaveTextContent("All systems operational")
+    const card = screen.getByLabelText("Link preview")
+    expect(card).toHaveTextContent("All systems operational")
+    expect(card).toHaveTextContent("https://example.com/status")
     expect(rowValue("URL")).toBe("https://example.com/status")
   })
 
@@ -1549,16 +1599,19 @@ describe("final alignment fixtures — search", () => {
       toolEnd("search", true, 830),
     )
     expect(rowValue("Results")).toBe("5")
-    const code = screen.getByTestId("tool-code")
-    expect(code).toHaveTextContent("1. Configuring Vitest")
-    expect(code).toHaveTextContent("3. Migration notes")
-    expect(code.textContent).not.toContain("Shadowed title")
+    // Top hits mount as citation ordinals, capped at three.
+    const cites = screen.getByTestId("search-citations")
+    expect(cites).toHaveTextContent("Configuring Vitest")
+    expect(cites).toHaveTextContent("Migration notes")
+    expect(cites.textContent).not.toContain("Shadowed title")
+    expect(screen.queryByTestId("tool-code")).toBeNull()
   })
 
   it("renders an explicit result count without a results array", () => {
     renderPair(toolStart("search", { query: "hook config", resultCount: 7 }), toolEnd("search"))
     expect(rowValue("Query")).toBe("hook config")
     expect(rowValue("Results")).toBe("7")
+    expect(screen.queryByTestId("search-citations")).toBeNull()
   })
 
   it("keeps the domain scoping rows beside the results", () => {
@@ -1571,7 +1624,7 @@ describe("final alignment fixtures — search", () => {
       toolEnd("search"),
     )
     expect(rowValue("Allowed domains")).toBe("vitest.dev")
-    expect(screen.getByTestId("tool-code")).toHaveTextContent("1. RuntimeEvent")
+    expect(screen.getByTestId("search-citations")).toHaveTextContent("RuntimeEvent")
   })
 })
 
@@ -2680,5 +2733,123 @@ describe("remaining fixtures — localized new bodies (zh-CN)", () => {
       expect(enDomain[key as keyof typeof enDomain], key).toBeDefined()
       expect(zhDomain[key as keyof typeof zhDomain], key).toBeDefined()
     }
+  })
+})
+
+// ── ai-elements mounts — the widgets are now consumed for real ──────────────
+
+describe("ai-elements mounts", () => {
+  it("bash: CommandBlock shows the exit-code badge when the payload carries one", () => {
+    renderInput("bash", { command: "pnpm test", exitCode: 0 })
+    const command = screen.getByLabelText("Executed command")
+    expect(command).toHaveTextContent("pnpm test")
+    expect(command).toHaveTextContent("exit 0")
+  })
+
+  it("bash: a non-zero exit code renders its own badge value", () => {
+    renderInput("bash", { command: "false", exitCode: 3 })
+    expect(screen.getByLabelText("Executed command")).toHaveTextContent("exit 3")
+  })
+
+  it("every measured call renders a LatencyMeter with a rated bar", () => {
+    renderPair(toolStart("bash", { command: "pnpm build" }), toolEnd("bash", true, 6500))
+    expect(screen.getByText("7s")).toBeInTheDocument()
+    expect(screen.getByRole("meter")).toHaveAttribute("aria-label", "slow · 7s")
+  })
+
+  it("failed tool-ends render an ErrorBlock alert inside the error slot", () => {
+    renderPair(toolStart("bash", { command: "exit 1" }), toolEnd("bash", false, 12, "boom"))
+    expect(screen.getByRole("alert")).toHaveTextContent("boom")
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("boom")
+  })
+
+  it("task/agent show the spawn outcome as a StatusPill", () => {
+    const done = renderPair(
+      toolStart("task", { description: "d", prompt: "p" }),
+      toolEnd("task", true, 5),
+    )
+    expect(screen.getByRole("status")).toHaveTextContent("Completed")
+    done.unmount()
+    renderPair(toolStart("agent", { name: "fixer" }), toolEnd("agent", false, 3, "nope"))
+    expect(screen.getByRole("status")).toHaveTextContent("Failed")
+  })
+
+  it("spawn pills read as queued while the call is in flight", () => {
+    renderInput("task", { description: "d" })
+    expect(screen.getByRole("status")).toHaveTextContent("Pending")
+  })
+
+  it("submit-result mounts a TokenUsageBadge for usage payloads", () => {
+    renderPair(
+      toolStart("submit-result", {
+        summary: "done",
+        result: "r",
+        usage: { inputTokens: 1200, outputTokens: 300 },
+      }),
+      toolEnd("submit-result", true, 30),
+    )
+    const badge = screen.getByTitle("Token usage (input/output/cache)")
+    expect(badge).toHaveTextContent("1.5K")
+    expect(badge).toHaveTextContent("in 1.2K")
+    expect(badge).toHaveTextContent("out 300")
+  })
+
+  it("respond-to-coordinator mounts the badge too; absent usage renders none", () => {
+    const withUsage = renderPair(
+      toolStart("respond-to-coordinator", {
+        summary: "s",
+        message: "m",
+        usage: { totalTokens: 42 },
+      }),
+      toolEnd("respond-to-coordinator"),
+    )
+    expect(screen.getByTitle("Token usage (input/output/cache)")).toHaveTextContent("42")
+    withUsage.unmount()
+    renderPair(
+      toolStart("respond-to-coordinator", { summary: "s", message: "m" }),
+      toolEnd("respond-to-coordinator"),
+    )
+    expect(screen.queryByTitle("Token usage (input/output/cache)")).toBeNull()
+  })
+
+  it("opaque payloads expand via JsonPeek's pretty-printed preview", () => {
+    renderInput("get-workflow-run", { opaque: { deep: true } })
+    const preview = screen.getByTestId("tool-json-preview")
+    expect(preview).toHaveTextContent("JSON")
+    expect(preview).toHaveTextContent('"deep": true')
+  })
+
+  it("webfetch summary card is a real outbound anchor", () => {
+    renderInput("webfetch", { url: "https://example.com/a" })
+    const anchor = screen.getByLabelText("Link preview")
+    expect(anchor.tagName).toBe("A")
+    expect(anchor).toHaveAttribute("href", "https://example.com/a")
+  })
+
+  it("search citations carry ordinals in result order", () => {
+    renderInput("search", { query: "q", results: [{ title: "A" }, { title: "B" }] })
+    const cites = screen.getByTestId("search-citations")
+    expect(cites.textContent).toContain("[1]")
+    expect(cites.textContent).toContain("[2]")
+    expect(cites.textContent).toContain("A")
+    expect(cites.textContent).toContain("B")
+  })
+
+  it("the mounted widgets localize under zh-CN", () => {
+    setLocale("zh-CN")
+    renderPair(toolStart("task", { description: "d" }), toolEnd("task", true, 5))
+    expect(screen.getByRole("status")).toHaveTextContent("已完成")
+  })
+
+  it("model helpers behind the mounts: spawnStatus + usageOf", () => {
+    expect(spawnStatus(undefined)).toBe("queued")
+    expect(spawnStatus(true)).toBe("completed")
+    expect(spawnStatus(false)).toBe("failed")
+    expect(usageOf({ usage: { total: 5 } })).toEqual({ total: 5 })
+    expect(usageOf({ tokens: { input: 1 } })).toEqual({ input: 1 })
+    expect(usageOf({ token_usage: 99 })).toBe(99)
+    expect(usageOf({ other: 1 })).toBeUndefined()
+    expect(usageOf(null)).toBeUndefined()
+    expect(usageOf("text")).toBeUndefined()
   })
 })

@@ -135,5 +135,6 @@
   "toolRenderers.group.more": "{count} more",
   "toolRenderers.code.overflow": "…{count} more lines",
   "toolRenderers.json.raw": "Raw input",
-  "toolRenderers.json.empty": "(no fields)"
+  "toolRenderers.json.empty": "(no fields)",
+  "toolRenderers.search.topResults": "Top results"
 }

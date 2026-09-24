@@ -26,6 +26,15 @@ import {
   type ToolViewModel,
 } from "./shared.model"
 
+/**
+ * Tool-end verdict → canonical StatusPill status for the spawn family
+ * (task / agent): "queued" while the call is in flight, completed/failed
+ * once the tool-end lands. Feeds the ai-elements StatusPill alias table.
+ */
+export function spawnStatus(ok: boolean | undefined): string {
+  return ok === undefined ? "queued" : ok ? "completed" : "failed"
+}
+
 export function extractTask(input: unknown): ToolViewModel {
   const obj = asRecord(input)
   const prompt = pickStr(obj, ["prompt", "instructions", "task", "message"])

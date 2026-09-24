@@ -9,10 +9,14 @@
  * tool call; the registry picks the per-tool presentation and falls back
  * to a generic key/value view for tools without a dedicated renderer.
  * The collapsed line is always: icon · tool · one-line summary · outcome.
+ * The expanded detail mounts the ai-elements widgets that apply to every
+ * tool: LatencyMeter for the measured call duration and ErrorBlock for
+ * the failure path.
  */
 
 import { useState, type ComponentType } from "react"
 import { Badge } from "@/components/ui/badge"
+import { ErrorBlock, LatencyMeter } from "@/components/ai-elements"
 import { RENDERERS } from "./renderers"
 import { summarizeToolInput, toolInputRows } from "./model"
 
@@ -97,14 +101,12 @@ export function ToolCallBlock(props: ToolCallProps) {
       </button>
       {open && (
         <div className="border-t border-border/60 px-2 py-1.5">
+          {durationMs !== undefined && <LatencyMeter ms={durationMs} className="mb-1" />}
           <Body {...props} />
           {error && (
-            <p
-              className="mt-1 break-all font-mono text-xs text-destructive"
-              data-testid="tool-error"
-            >
-              {error}
-            </p>
+            <div className="mt-1" data-testid="tool-error">
+              <ErrorBlock error={error} />
+            </div>
           )}
         </div>
       )}

@@ -135,5 +135,6 @@
   "toolRenderers.group.more": "还有 {count} 个",
   "toolRenderers.code.overflow": "…其余 {count} 行",
   "toolRenderers.json.raw": "原始输入",
-  "toolRenderers.json.empty": "（无字段）"
+  "toolRenderers.json.empty": "（无字段）",
+  "toolRenderers.search.topResults": "前几个结果"
 }

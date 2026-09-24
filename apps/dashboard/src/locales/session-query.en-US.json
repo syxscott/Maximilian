@@ -7,5 +7,6 @@
   "sessionQuery.error": "Search failed",
   "sessionQuery.resultCount": "{count} results",
   "sessionQuery.groupHits": "{count} hits",
-  "sessionQuery.openSession": "Open in session"
+  "sessionQuery.openSession": "Open in session",
+  "sessionQuery.copy": "message"
 }

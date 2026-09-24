@@ -33,6 +33,8 @@ export interface SessionHitView {
   role: string
   createdAt: string | null
   highlight: HighlightSegments
+  /** Full message content — the per-hit CopyField copies this. */
+  content: string
 }
 
 /** All hits of one session, in input (newest-first) order. */
@@ -85,6 +87,25 @@ export function splitHighlight(
 }
 
 /**
+ * Hit role → StatusPill alias status for the role capsule: user reads as
+ * the active party (blue), assistant as the fulfilled party (green),
+ * system as waiting (amber); anything else stays queued-neutral. The
+ * pill's visible text stays the raw role (label override).
+ */
+export function roleStatus(role: string): string {
+  switch (role) {
+    case "user":
+      return "active"
+    case "assistant":
+      return "success"
+    case "system":
+      return "waiting"
+    default:
+      return "queued"
+  }
+}
+
+/**
  * Group flat hits by session, preserving the input order (the API
  * returns newest first, so sections are newest first too). Malformed
  * rows and non-matching content are dropped; `limits` caps the rendered
@@ -121,6 +142,7 @@ export function groupSearchResults(
       role: typeof row.role === "string" && row.role.length > 0 ? row.role : "message",
       createdAt: typeof row.createdAt === "string" ? row.createdAt : null,
       highlight,
+      content: typeof row.content === "string" ? row.content : "",
     })
     hitCount++
   }

@@ -22,5 +22,11 @@
   "deliverables.exportJson": "导出为 JSON",
   "deliverables.jsonCopied": "已复制 JSON 到剪贴板",
   "deliverables.reviewBadge": "评审 {score}",
-  "deliverables.taskReview": "任务评审 {score}"
+  "deliverables.taskReview": "任务评审 {score}",
+  "deliverables.statTotal": "交付物",
+  "deliverables.statTasks": "任务",
+  "deliverables.statRoles": "角色",
+  "deliverables.reviewCoverage": "评审覆盖",
+  "deliverables.filterDelta": "角色筛选隐藏了 {count} 行",
+  "deliverables.copyId": "工作区"
 }

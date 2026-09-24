@@ -16,6 +16,11 @@
  * `metadata.review`, else the workspace-level review) — no score, no
  * badge, nothing invented.
  *
+ * The stats strip mounts the ai-elements widgets: one StatCard per count
+ * (deliverables / tasks / roles), a DonutStat ring for the review
+ * coverage share, a DeltaBadge for the rows a role filter hides, and a
+ * CopyField chip beside the export buttons for the workspace id.
+ *
  * Data is either passed in via the `workspace` prop or fetched by
  * `workspaceId` through chatApi.getWorkspace (api.ts is the arch-mandated
  * network chokepoint).
@@ -27,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { CopyField, DeltaBadge, DonutStat, StatCard } from "@/components/ai-elements"
 import { useLocale, t } from "@max/i18n"
 import { chatApi } from "@/api"
 import {
@@ -36,11 +42,13 @@ import {
   filterByRole,
   groupByRole,
   previewLines,
+  reviewCoverage,
   reviewPerTask,
   reviewSummary,
   toDeliverableViews,
   toDeliverablesJson,
   toDeliverablesMarkdown,
+  workspaceIdOf,
 } from "./model"
 import type { DeliverableView, TaskReviewLink } from "./model"
 
@@ -91,6 +99,9 @@ export function DeliverablesPanel({
     visibleViews.forEach((view, i) => map.set(view, reviewLinks[i]))
     return map
   }, [visibleViews, reviewLinks])
+  const coverage = useMemo(() => reviewCoverage(reviewLinks), [reviewLinks])
+  const wsId = useMemo(() => workspaceIdOf(workspaceId, source), [workspaceId, source])
+  const filterDelta = roleFilter === "" ? 0 : visibleViews.length - views.length
 
   const toggle = (key: string) => {
     setExpanded((prev) => {
@@ -121,7 +132,8 @@ export function DeliverablesPanel({
           <CardTitle className="text-sm font-medium">{t("deliverables.title")}</CardTitle>
           <p className="text-xs text-muted-foreground">{t("deliverables.description")}</p>
         </div>
-        <div className="flex shrink-0 gap-1">
+        <div className="flex shrink-0 items-center gap-1">
+          <CopyField field={{ value: wsId ?? "", label: t("deliverables.copyId") }} />
           <Button
             size="sm"
             variant="outline"
@@ -169,6 +181,11 @@ export function DeliverablesPanel({
                   roles: stats.roles,
                 })}
               </span>
+              {filterDelta !== 0 && (
+                <span title={t("deliverables.filterDelta", { count: -filterDelta })}>
+                  <DeltaBadge delta={filterDelta} />
+                </span>
+              )}
               {review && review.score !== null && (
                 <Badge variant="secondary" className="h-4 px-1 text-[10px]">
                   {t("deliverables.reviewScore", { score: review.score })}
@@ -196,6 +213,28 @@ export function DeliverablesPanel({
                   ))}
                 </select>
               </label>
+            </div>
+
+            <div
+              className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+              data-testid="deliverables-stat-cards"
+            >
+              <StatCard stat={{ label: t("deliverables.statTotal"), value: stats.total }} />
+              <StatCard stat={{ label: t("deliverables.statTasks"), value: stats.tasks }} />
+              <StatCard stat={{ label: t("deliverables.statRoles"), value: stats.roles }} />
+              <div
+                className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2"
+                data-testid="deliverables-coverage"
+              >
+                <DonutStat
+                  value={coverage}
+                  ariaLabel={t("deliverables.reviewCoverage")}
+                  className="text-foreground"
+                />
+                <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  {t("deliverables.reviewCoverage")}
+                </span>
+              </div>
             </div>
 
             {exportResult?.format === "markdown" && exportResult.status === "copied" && (

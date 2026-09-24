@@ -22,5 +22,11 @@
   "deliverables.exportJson": "Export as JSON",
   "deliverables.jsonCopied": "JSON copied to clipboard",
   "deliverables.reviewBadge": "review {score}",
-  "deliverables.taskReview": "task review {score}"
+  "deliverables.taskReview": "task review {score}",
+  "deliverables.statTotal": "Deliverables",
+  "deliverables.statTasks": "Tasks",
+  "deliverables.statRoles": "Roles",
+  "deliverables.reviewCoverage": "Review coverage",
+  "deliverables.filterDelta": "{count} row(s) hidden by the role filter",
+  "deliverables.copyId": "workspace"
 }

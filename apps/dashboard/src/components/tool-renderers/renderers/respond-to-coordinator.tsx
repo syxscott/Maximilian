@@ -8,15 +8,17 @@
  * body leads with the addressed coordinator and the declared response
  * type (chips), keeps the owning task id and summary as rows, and shows
  * the full response as a clamped monospace block
- * (coordination.model.ts extractRespondToCoordinator); JSON fallback when
- * the payload is opaque.
+ * (coordination.model.ts extractRespondToCoordinator); a usage payload
+ * mounts as the ai-elements TokenUsageBadge; JSON fallback when the
+ * payload is opaque.
  */
 
 import { useLocale, t } from "@max/i18n"
+import { TokenUsageBadge } from "@/components/ai-elements"
 import type { ToolCallProps } from "../registry"
 import { CodeBlock, FieldRows, JsonFallback } from "./common"
 import { extractRespondToCoordinator } from "./coordination.model"
-import { FIELDS } from "./shared.model"
+import { FIELDS, usageOf } from "./shared.model"
 
 export const RESPOND_TO_COORDINATOR_GLYPH = "↩"
 
@@ -24,6 +26,7 @@ export function RespondToCoordinatorBody({ input }: ToolCallProps) {
   useLocale()
   const vm = extractRespondToCoordinator(input)
   if (vm.isEmpty) return <JsonFallback input={input} />
+  const usage = usageOf(input)
   const rows = vm.rows.filter(
     (r) =>
       (vm.target === undefined || r.labelKey !== FIELDS.target) &&
@@ -55,6 +58,7 @@ export function RespondToCoordinatorBody({ input }: ToolCallProps) {
           </span>
         )}
       </div>
+      {usage !== undefined && <TokenUsageBadge usage={usage} className="mb-1" />}
       <FieldRows rows={rows} />
       {vm.code && <CodeBlock text={vm.code.text} maxLines={vm.code.maxLines} />}
     </div>

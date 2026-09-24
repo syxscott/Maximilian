@@ -6,29 +6,54 @@
 /**
  * Deepening tests for the deliverables feature domain: the role filter,
  * the JSON export, and the per-deliverable review-score association
- * (model layer plus DeliverablesPanel render smoke). Complements — and
- * must not break — the existing deliverables.test.tsx suite.
+ * (model layer plus DeliverablesPanel render smoke). The ai-elements
+ * mounts round covers the stats strip (StatCard counts, DonutStat review
+ * coverage, DeltaBadge filter delta) and the workspace-id CopyField chip.
+ * Complements — and must not break — the existing deliverables.test.tsx
+ * suite.
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactElement } from "react"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
 
 import deliverablesEn from "../src/locales/deliverables.en-US.json"
+import aiEn from "../src/locales/ai-elements.en-US.json"
 import {
   filterByRole,
+  reviewCoverage,
   reviewPerTask,
   reviewSummary,
   toDeliverableViews,
   toDeliverablesJson,
+  workspaceIdOf,
 } from "../src/features/deliverables/model"
+import type { TaskReviewLink } from "../src/features/deliverables/model"
 import { DeliverablesPanel } from "../src/features/deliverables/DeliverablesPanel"
+
+/** The ai-elements dictionaries are nested trees; flatten to dotted keys. */
+function flattenAi(tree: Record<string, unknown>, prefix = ""): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(tree)) {
+    const dotted = prefix ? `${prefix}.${key}` : key
+    if (value !== null && typeof value === "object") {
+      Object.assign(out, flattenAi(value as Record<string, unknown>, dotted))
+    } else {
+      out[dotted] = String(value)
+    }
+  }
+  return out
+}
 
 beforeAll(() => {
   const existing = getDictionary("en-US") ?? {}
-  registerLocale("en-US", { ...existing, ...(deliverablesEn as Record<string, string>) })
+  registerLocale("en-US", {
+    ...existing,
+    ...(deliverablesEn as Record<string, string>),
+    ...flattenAi(aiEn as Record<string, unknown>),
+  })
   setLocale("en-US")
 })
 
@@ -153,6 +178,27 @@ describe("deliverables deepening — model", () => {
   })
 })
 
+describe("deliverables deepening — stats-strip mount models", () => {
+  it("reviewCoverage is the scored share and 0 on an empty set", () => {
+    expect(reviewCoverage([])).toBe(0)
+    const links: TaskReviewLink[] = [
+      { taskId: "a", score: 9, source: "metadata" },
+      { taskId: "b", score: null, source: null },
+      { taskId: "c", score: 8.5, source: "workspace" },
+    ]
+    expect(reviewCoverage(links)).toBeCloseTo(2 / 3)
+    expect(reviewCoverage(reviewPerTask(VIEWS, 7))).toBe(1)
+  })
+
+  it("workspaceIdOf prefers the prop and falls back to workspace.id", () => {
+    expect(workspaceIdOf("ws-prop", { id: "ws-body" })).toBe("ws-prop")
+    expect(workspaceIdOf(undefined, { id: "ws-body" })).toBe("ws-body")
+    expect(workspaceIdOf(undefined, { id: 42 })).toBeUndefined()
+    expect(workspaceIdOf(undefined, null)).toBeUndefined()
+    expect(workspaceIdOf("", undefined)).toBeUndefined()
+  })
+})
+
 // ── Render smoke ────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -240,5 +286,46 @@ describe("deliverables deepening — render smoke", () => {
     expect(textarea.readOnly).toBe(true)
     const parsed = JSON.parse(textarea.value) as { count: number }
     expect(parsed.count).toBe(2)
+  })
+
+  it("mounts the ai-elements stats strip: StatCards, coverage donut, filter delta", () => {
+    const user = { writeText: vi.fn().mockResolvedValue(undefined) }
+    Object.defineProperty(navigator, "clipboard", { value: user, configurable: true })
+    renderWithQuery(<DeliverablesPanel workspace={PANEL_WORKSPACE} />)
+    const strip = screen.getByTestId("deliverables-stat-cards")
+    expect(strip).toHaveTextContent("Deliverables")
+    expect(strip).toHaveTextContent("Tasks")
+    expect(strip).toHaveTextContent("Roles")
+    // Both rows carry an associated score (metadata first, workspace
+    // fallback second) → the DonutStat ring reads full.
+    expect(screen.getByLabelText("Review coverage")).toHaveTextContent("100%")
+    // No role filter → no delta badge.
+    expect(screen.queryByText("-1")).toBeNull()
+
+    fireEvent.change(screen.getByLabelText("Filter by role"), {
+      target: { value: "planner" },
+    })
+    // The filter hides one row → DeltaBadge reads the -1 delta.
+    expect(screen.getByText("-1")).toBeInTheDocument()
+    expect(screen.getByTitle("1 row(s) hidden by the role filter")).toBeInTheDocument()
+  })
+
+  it("copies the workspace id through the CopyField chip beside the exports", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    renderWithQuery(<DeliverablesPanel workspace={PANEL_WORKSPACE} />)
+    const chip = screen.getByLabelText("Copyable field")
+    expect(chip).toHaveTextContent("ws-1")
+    fireEvent.click(within(chip).getByRole("button", { name: "Copy" }))
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("ws-1")
+    })
+  })
+
+  it("hides the CopyField chip when no workspace id is known", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    renderWithQuery(<DeliverablesPanel workspace={{ results: PANEL_WORKSPACE.results }} />)
+    expect(screen.queryByLabelText("Copyable field")).toBeNull()
   })
 })

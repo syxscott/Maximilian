@@ -17,6 +17,12 @@ import type { PillVariant } from "./model"
 export interface StatusPillProps {
   /** Raw status string ("running", "in_progress", "Done", …). */
   status: unknown
+  /**
+   * Optional display-text override (a raw role/state the caller wants
+   * verbatim, e.g. "user" / "assistant"). Colors and the dot still follow
+   * the canonical variant; without it the localized variant name shows.
+   */
+  label?: string
   className?: string
 }
 
@@ -36,7 +42,7 @@ const PILL_DOT: Record<PillVariant, string> = {
   skipped: "bg-muted-foreground/50",
 }
 
-export function StatusPill({ status, className }: StatusPillProps) {
+export function StatusPill({ status, label, className }: StatusPillProps) {
   useLocale()
   const variant = statusVariant(status)
 
@@ -50,7 +56,7 @@ export function StatusPill({ status, className }: StatusPillProps) {
       )}
     >
       <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", PILL_DOT[variant])} />
-      {t(`aiElements.status.${variant}`)}
+      {label ?? t(`aiElements.status.${variant}`)}
     </span>
   )
 }

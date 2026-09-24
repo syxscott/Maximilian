@@ -227,3 +227,23 @@ export function row(
   if (text.length === 0) return undefined
   return { labelKey, value: oneLine(text, 400), ...(mono ? { mono } : {}) }
 }
+
+/** Candidate keys a tool payload may carry its token usage under. */
+const USAGE_KEYS = ["usage", "tokens", "tokenUsage", "token_usage"]
+
+/**
+ * Pull a usage payload out of a tool input so response renderers
+ * (submit-result, respond-to-coordinator) can mount the ai-elements
+ * TokenUsageBadge. Returns undefined when the input carries nothing
+ * usage-shaped — the badge is then not mounted at all (no "unknown"
+ * noise).
+ */
+export function usageOf(input: unknown): unknown {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return undefined
+  const obj = input as Record<string, unknown>
+  for (const key of USAGE_KEYS) {
+    const v = obj[key]
+    if (v !== null && (typeof v === "object" || typeof v === "number")) return v
+  }
+  return undefined
+}
