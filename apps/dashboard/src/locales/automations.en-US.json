@@ -1,16 +1,16 @@
 {
   "automations": {
     "title": "Automations",
-    "description": "Manage jobs as automations: switch-style enable toggles, create dialog and delete confirmation.",
+    "description": "Every automation is a real job (name carries the automation: prefix): the switch creates or suspends the schedule itself; unfold a row for trigger history and manual triggers.",
     "summary": "{total} total · {enabled} enabled · {disabled} disabled",
     "searchPlaceholder": "Search automations…",
     "create": "New automation",
     "createTitle": "New automation",
-    "createHint": "Creates an underlying job (schedule: cron expression or intervalMs milliseconds).",
+    "createHint": "Creates an underlying job (the automation: prefix is added automatically) and wires it into the real scheduler.",
     "deleteTitle": "Delete automation",
-    "deleteHint": "Delete \"{name}\"? This cannot be undone.",
+    "deleteHint": "Delete \"{name}\"? The underlying job is removed too — this cannot be undone.",
     "deleteConfirm": "Delete",
-    "toggleNote": "Toggles are page-local only (the jobs API has no enabled field yet): a disabled automation hides manual triggers here; server-side scheduling is unaffected.",
+    "toggleNote": "The switch acts on the job directly: ON = create/resume the schedule; OFF = rebuild the job with an enabled:false marker. State is always re-derived from GET /jobs; failed toggles roll back and raise a notification.",
     "state": {
       "loading": "Loading…",
       "error": "Failed to load",
@@ -21,23 +21,44 @@
     "row": {
       "fires": "Fires:",
       "delete": "Delete",
-      "toggle": "Enable/disable"
+      "toggle": "Enable/disable schedule",
+      "triggerNow": "Trigger now"
     },
     "trigger": {
       "cron": "Runs on a cron plan",
       "interval": "Runs at a fixed interval",
       "unknown": "Unknown schedule"
     },
+    "slot": {
+      "pending": "Pending",
+      "idle": "Idle",
+      "unknown": "Unknown"
+    },
+    "detail": {
+      "slot": "Pending slot:",
+      "lastTriggered": "Last triggered:"
+    },
     "form": {
       "name": "Name",
+      "namePlaceholder": "e.g. nightly-report",
       "schedule": "Schedule",
+      "scheduleHint": "A cron expression (5 fields) or intervalMs in milliseconds (>= 1000).",
       "description": "Description (optional)",
       "cancel": "Cancel",
       "submit": "Create"
     },
     "errors": {
       "nameRequired": "Name is required",
-      "scheduleRequired": "Schedule is required"
+      "nameTooLong": "Name is too long (120 chars max including the automation: prefix)",
+      "scheduleRequired": "Schedule is required",
+      "intervalTooShort": "intervalMs must be an integer of at least 1000",
+      "cronFields": "A cron expression needs exactly 5 fields (minute hour dom month dow)"
+    },
+    "notify": {
+      "toggleFailed": "Failed to toggle \"{name}\"",
+      "restoreFailed": "Rebuild of \"{name}\" failed and the restore did not complete",
+      "triggered": "Triggered \"{name}\"",
+      "triggerFailed": "Failed to trigger \"{name}\": {message}"
     }
   }
 }

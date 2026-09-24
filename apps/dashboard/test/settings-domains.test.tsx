@@ -4,29 +4,20 @@
 // Licensed under the MIT License. See LICENSE in the project root.
 
 /**
- * Tests for the three new settings domains: automations (jobs API +
- * local toggles + dialogs), memory (read-only role memory viewer) and
- * skills (static capability catalog). Model-layer units plus render
- * smoke with the data hooks mocked (settings-deep.test.tsx pattern).
+ * Tests for the memory (read-only role memory viewer) and skills
+ * (static capability catalog) settings domains. Model-layer units plus
+ * render smoke with the data hooks mocked (settings-deep.test.tsx
+ * pattern). The automations domain lives in test/automations.test.tsx.
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactElement } from "react"
 import { getDictionary, registerLocale, setLocale, t } from "@max/i18n"
 
-import automationsEn from "../src/locales/automations.en-US.json"
 import memoryEn from "../src/locales/memory.en-US.json"
 import skillsEn from "../src/locales/skills.en-US.json"
-import {
-  EMPTY_AUTOMATION_DRAFT,
-  automationSummary,
-  filterAutomations,
-  toAutomationViews,
-  triggerLabelKey,
-  validateAutomationDraft,
-} from "../src/components/settings/automations-domain/model"
 import {
   MEMORY_BUCKETS,
   bucketCount,
@@ -41,7 +32,6 @@ import {
   groupCatalogByKind,
   kindCounts,
 } from "../src/components/settings/skills-domain/model"
-import { AutomationsDomain } from "../src/components/settings/automations-domain/AutomationsDomain"
 import { MemoryDomain } from "../src/components/settings/memory-domain/MemoryDomain"
 import { SkillsDomain } from "../src/components/settings/skills-domain/SkillsDomain"
 
@@ -63,7 +53,6 @@ beforeAll(() => {
   const existing = getDictionary("en-US") ?? {}
   registerLocale("en-US", {
     ...existing,
-    ...flatten(automationsEn as Record<string, unknown>),
     ...flatten(memoryEn as Record<string, unknown>),
     ...flatten(skillsEn as Record<string, unknown>),
   })
@@ -80,67 +69,6 @@ function renderWithQuery(ui: ReactElement) {
 function q(props: Record<string, unknown>) {
   return { isFetching: false, ...props }
 }
-
-const jobRow = {
-  id: "job_1",
-  name: "nightly",
-  schedule: "0 2 * * *",
-  scheduleKind: "cron",
-  createdAt: "2026-09-24T10:00:00.000Z",
-  triggerCount: 5,
-}
-
-// ── Automations: model ───────────────────────────────────────────────────────
-
-describe("automations-domain model", () => {
-  it("wraps job rows with local enabled state (default on)", () => {
-    const views = toAutomationViews({ jobs: [jobRow, { id: "job_2", name: "b", schedule: "*" }] })
-    expect(views.map((v) => v.enabled)).toEqual([true, true])
-    const toggled = toAutomationViews({ jobs: [jobRow] }, { job_1: false })
-    expect(toggled[0]?.enabled).toBe(false)
-  })
-
-  it("defends against garbage and filters by name", () => {
-    expect(toAutomationViews(null)).toEqual([])
-    expect(toAutomationViews({ jobs: 9 })).toEqual([])
-    const views = toAutomationViews({ jobs: [jobRow] })
-    expect(filterAutomations(views, "NIGHT")).toHaveLength(1)
-    expect(filterAutomations(views, "zzz")).toHaveLength(0)
-  })
-
-  it("summarizes enabled/disabled counts", () => {
-    const views = toAutomationViews(
-      {
-        jobs: [
-          jobRow,
-          { id: "2", name: "x", schedule: "*" },
-          { id: "3", name: "y", schedule: "*" },
-        ],
-      },
-      { "2": false },
-    )
-    expect(automationSummary(views)).toEqual({ total: 3, enabled: 2, disabled: 1 })
-    expect(automationSummary([])).toEqual({ total: 0, enabled: 0, disabled: 0 })
-  })
-
-  it("validates drafts and picks the trigger label", () => {
-    expect(validateAutomationDraft(EMPTY_AUTOMATION_DRAFT)).toBe("automations.errors.nameRequired")
-    expect(validateAutomationDraft({ name: "x", schedule: "", description: "" })).toBe(
-      "automations.errors.scheduleRequired",
-    )
-    expect(validateAutomationDraft({ name: "x", schedule: "*", description: "" })).toBeNull()
-    const views = toAutomationViews({
-      jobs: [
-        jobRow,
-        { id: "2", name: "x", schedule: "60000", scheduleKind: "interval" },
-        { id: "3", name: "y", schedule: "?", scheduleKind: "wat" },
-      ],
-    })
-    expect(triggerLabelKey(views[0]!)).toBe("automations.trigger.cron")
-    expect(triggerLabelKey(views[1]!)).toBe("automations.trigger.interval")
-    expect(triggerLabelKey(views[2]!)).toBe("automations.trigger.unknown")
-  })
-})
 
 // ── Memory: model ────────────────────────────────────────────────────────────
 
@@ -243,104 +171,19 @@ describe("skills-domain model", () => {
 
 // ── Render smoke ─────────────────────────────────────────────────────────────
 
-vi.mock("@/hooks/useJobsQueries", () => ({
-  useJobs: vi.fn(),
-  useCreateJob: vi.fn(),
-  useDeleteJob: vi.fn(),
-  useTriggerJob: vi.fn(),
-  useJobSlots: vi.fn(),
-}))
 vi.mock("@/hooks/useSettingsQueries", () => ({
   useSubagentProfiles: vi.fn(),
 }))
 
-import * as jobsHooks from "@/hooks/useJobsQueries"
 import * as settingsHooks from "@/hooks/useSettingsQueries"
 
-const mockedJobs = vi.mocked(jobsHooks)
 const mockedSettings = vi.mocked(settingsHooks)
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mockedJobs.useCreateJob.mockReturnValue({ mutate: vi.fn(), isPending: false } as never)
-  mockedJobs.useDeleteJob.mockReturnValue({ mutate: vi.fn(), isPending: false } as never)
 })
 
 describe("settings domains render smoke", () => {
-  it("AutomationsDomain lists rows, flips local toggles, creates and deletes with confirmation", async () => {
-    const create = vi.fn().mockImplementation((_input, opts) => opts?.onSuccess?.({}))
-    const remove = vi.fn()
-    mockedJobs.useCreateJob.mockReturnValue({ mutate: create, isPending: false } as never)
-    mockedJobs.useDeleteJob.mockReturnValue({ mutate: remove, isPending: false } as never)
-    mockedJobs.useJobs.mockReturnValue(
-      q({
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-        data: { jobs: [jobRow, { ...jobRow, id: "job_2", name: "hourly" }] },
-      }) as never,
-    )
-    renderWithQuery(<AutomationsDomain />)
-    expect(screen.getByTestId("automations-list")).toBeTruthy()
-    expect(screen.getByTestId("automations-summary").textContent).toContain("2 total")
-
-    // Local toggle: off (dimmed row), does not touch the API.
-    const toggle = screen.getByTestId("automations-toggle-job_1")
-    expect(toggle.getAttribute("aria-checked")).toBe("true")
-    fireEvent.click(toggle)
-    expect(screen.getByTestId("automations-toggle-job_1").getAttribute("aria-checked")).toBe(
-      "false",
-    )
-
-    // Delete goes through the confirmation dialog.
-    expect(remove).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByTestId("automations-delete-job_1"))
-    expect(screen.getByTestId("automations-delete-dialog")).toBeTruthy()
-    fireEvent.click(screen.getByTestId("automations-delete-confirm"))
-    await waitFor(() => expect(remove).toHaveBeenCalledWith("job_1", expect.anything()))
-
-    // Create dialog validation + submit.
-    fireEvent.click(screen.getByTestId("automations-new"))
-    fireEvent.click(screen.getByTestId("automations-create-submit"))
-    expect(create).not.toHaveBeenCalled()
-    expect(screen.getByTestId("automations-draft-error").textContent).toBe("Name is required")
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "pulse" } })
-    fireEvent.change(screen.getByLabelText("Schedule"), { target: { value: "30000" } })
-    fireEvent.click(screen.getByTestId("automations-create-submit"))
-    await waitFor(() =>
-      expect(create).toHaveBeenCalledWith(
-        { name: "pulse", schedule: "30000" },
-        expect.objectContaining({ onSuccess: expect.any(Function) }),
-      ),
-    )
-  })
-
-  it("AutomationsDomain shows loading, error and empty states", () => {
-    mockedJobs.useJobs.mockReturnValue(q({ isLoading: true }) as never)
-    const view = renderWithQuery(<AutomationsDomain />)
-    expect(screen.getByText("Loading…")).toBeTruthy()
-
-    mockedJobs.useJobs.mockReturnValue(
-      q({ isLoading: false, isError: true, refetch: vi.fn() }) as never,
-    )
-    view.rerender(
-      <QueryClientProvider client={new QueryClient()}>
-        <AutomationsDomain />
-      </QueryClientProvider>,
-    )
-    expect(screen.getByText("Failed to load")).toBeTruthy()
-
-    mockedJobs.useJobs.mockReturnValue(
-      q({ isLoading: false, isError: false, refetch: vi.fn(), data: { jobs: [] } }) as never,
-    )
-    view.rerender(
-      <QueryClientProvider client={new QueryClient()}>
-        <AutomationsDomain />
-      </QueryClientProvider>,
-    )
-    expect(screen.getByTestId("automations-empty")).toBeTruthy()
-  })
-
   it("MemoryDomain renders the role selector and bucket previews", () => {
     mockedSettings.useSubagentProfiles.mockReturnValue(
       q({

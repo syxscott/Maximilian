@@ -132,7 +132,13 @@ export function useTriggerJob() {
   return useMutation<TriggerResponse, Error, string>({
     mutationFn: (id) =>
       sendJobsJson(`/jobs/${encodeURIComponent(id)}/trigger`, "POST", TriggerResponseSchema),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [JOBS_PREFIX, "list"] }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: [JOBS_PREFIX, "list"] })
+      // A fired job clears its pending slot — refresh every slots read
+      // (the per-row keys under the shared prefix) so trigger history
+      // panels reflect the new state immediately.
+      qc.invalidateQueries({ queryKey: [JOBS_PREFIX, "slots", id] })
+    },
   })
 }
 

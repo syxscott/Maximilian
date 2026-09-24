@@ -1,16 +1,16 @@
 {
   "automations": {
     "title": "自动化",
-    "description": "把作业当作自动化管理：开关式启用、创建对话框与删除确认。",
+    "description": "每个自动化就是一条真实作业（名称带 automation: 前缀）：开关直接创建/停用调度，展开可查看触发历史并手动触发。",
     "summary": "共 {total} 个 · 启用 {enabled} · 停用 {disabled}",
     "searchPlaceholder": "搜索自动化…",
     "create": "新建自动化",
     "createTitle": "新建自动化",
-    "createHint": "创建一个底层作业（调度：cron 表达式或 intervalMs 毫秒数）。",
+    "createHint": "创建一条底层作业（名称自动加 automation: 前缀），立即接入真实调度。",
     "deleteTitle": "删除自动化",
-    "deleteHint": "确定要删除 “{name}” 吗？该操作不可撤销。",
+    "deleteHint": "确定要删除 “{name}” 吗？底层作业会一并删除，不可撤销。",
     "deleteConfirm": "确认删除",
-    "toggleNote": "开关仅保存在本页（作业 API 暂无 enabled 字段）：停用后本界面不再提供手动触发，服务端调度不受影响。",
+    "toggleNote": "开关直接作用于作业：开启 = 创建/恢复调度；关闭 = 以 enabled:false 标记重建作业。启用状态始终以 GET /jobs 回读为准；切换失败会回滚并通知。",
     "state": {
       "loading": "加载中…",
       "error": "加载失败",
@@ -21,23 +21,44 @@
     "row": {
       "fires": "触发：",
       "delete": "删除",
-      "toggle": "启用/停用"
+      "toggle": "启用/停用调度",
+      "triggerNow": "立即触发"
     },
     "trigger": {
       "cron": "按 cron 计划触发",
       "interval": "按固定间隔触发",
       "unknown": "未知调度"
     },
+    "slot": {
+      "pending": "待触发",
+      "idle": "空闲",
+      "unknown": "未知"
+    },
+    "detail": {
+      "slot": "调度槽位：",
+      "lastTriggered": "上次触发："
+    },
     "form": {
       "name": "名称",
+      "namePlaceholder": "例如：nightly-report",
       "schedule": "调度",
+      "scheduleHint": "cron 表达式（5 段）或 intervalMs 毫秒数（≥ 1000）。",
       "description": "描述（可选）",
       "cancel": "取消",
       "submit": "创建"
     },
     "errors": {
       "nameRequired": "名称不能为空",
-      "scheduleRequired": "调度不能为空"
+      "nameTooLong": "名称过长（含 automation: 前缀不能超过 120 字符）",
+      "scheduleRequired": "调度不能为空",
+      "intervalTooShort": "intervalMs 必须是不小于 1000 的整数",
+      "cronFields": "cron 表达式必须恰好 5 段（分 时 日 月 周）"
+    },
+    "notify": {
+      "toggleFailed": "自动化 “{name}” 切换失败",
+      "restoreFailed": "自动化 “{name}” 重建失败且恢复未完成",
+      "triggered": "自动化 “{name}” 已触发",
+      "triggerFailed": "触发 “{name}” 失败：{message}"
     }
   }
 }
