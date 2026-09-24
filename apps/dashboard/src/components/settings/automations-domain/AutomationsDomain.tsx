@@ -9,19 +9,26 @@
  * prefix): the switch rebuilds the job with an `enabled` payload marker
  * (DELETE + POST — the v0 API has no update route), state is re-derived
  * from GET /jobs, failed toggles roll the optimistic UI back and raise a
- * notification, rows unfold into trigger history (pending-slot state +
- * lastTriggeredAt + a manual "trigger now" button), and the create
- * dialog forces the `automation:` prefix with basic schedule checks
- * (intervalMs or 5-field cron) plus verbatim server error echo.
+ * notification, rows unfold into a real read-back of the job's trigger
+ * history — a structured slots panel (status badge + relative
+ * scheduledAt/updatedAt + slot-key tail) and the per-job event log
+ * (carried by GET /jobs) as a vertical mini timeline — plus a manual
+ * "trigger now" button with a full feedback loop: optimistic spinner →
+ * inline success/failure note (auto-dismisses) → slots/lastTriggeredAt
+ * refresh via the mutation's query invalidations. The create dialog
+ * forces the `automation:` prefix with basic schedule checks (intervalMs
+ * or 5-field cron) plus verbatim server error echo.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { TimelineMini } from "@/components/ai-elements/TimelineMini"
 import {
   Dialog,
   DialogContent,
@@ -30,7 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { useLocale, t } from "@max/i18n"
+import { formatRelative, t, useLocale } from "@max/i18n"
 import { useNotificationStore } from "@/stores/notificationStore"
 import {
   useCreateJob,
@@ -39,42 +46,138 @@ import {
   useJobs,
   useTriggerJob,
 } from "@/hooks/useJobsQueries"
-import { formatTimestamp } from "../jobs-domain/model"
 import {
   EMPTY_AUTOMATION_DRAFT,
+  TRIGGER_FEEDBACK_MS,
   automationName,
   automationSummary,
+  automationTimelineInput,
   filterAutomations,
   planToggle,
-  toAutomationSlotView,
+  slotStatusLabelKey,
+  toAutomationEventViews,
+  toAutomationSlotRows,
   toAutomationViews,
   triggerLabelKey,
   validateAutomationDraft,
   type AutomationDraft,
+  type AutomationSlotRow,
   type AutomationView,
 } from "./model"
 
-/** Pending-slot badge for one automation's expanded history panel. */
-function AutomationSlotBadge({ jobId }: { jobId: string }) {
-  const slots = useJobSlots(jobId)
-  const view = slots.isLoading
-    ? { kind: "unknown" as const, scheduledAt: null }
-    : toAutomationSlotView(slots.data)
-  const labelKey =
-    view.kind === "pending"
-      ? "automations.slot.pending"
-      : view.kind === "idle"
-        ? "automations.slot.idle"
-        : "automations.slot.unknown"
+/** Inline trigger feedback: null = nothing to show. */
+interface TriggerFeedback {
+  ok: boolean
+  message: string | null
+}
+
+/** One structured row of the slots panel (status badge + times + key tail). */
+function AutomationSlotRowView({ jobId, row }: { jobId: string; row: AutomationSlotRow }) {
   return (
-    <Badge
-      variant={view.kind === "pending" ? "default" : "outline"}
-      className="h-4 px-1 text-[10px]"
-      data-testid={`automations-slot-${jobId}`}
+    <div
+      className="flex flex-wrap items-center gap-2 text-xs"
+      data-testid={`automations-slot-row-${jobId}`}
     >
-      {t(labelKey)}
-      {view.scheduledAt !== null ? ` · ${formatTimestamp(view.scheduledAt)}` : ""}
-    </Badge>
+      <Badge
+        variant={row.status === "pending" ? "default" : "outline"}
+        className="h-4 px-1 text-[10px]"
+        data-testid={`automations-slot-${jobId}`}
+      >
+        {t(slotStatusLabelKey(row.status))}
+      </Badge>
+      <span className="font-mono text-[10px] text-muted-foreground">{row.keyTail}</span>
+      {row.status === "pending" && (
+        <>
+          <span className="text-xs text-muted-foreground">
+            {t("automations.slots.scheduled")} {row.scheduledAtRelative ?? "—"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("automations.slots.updated")} {row.updatedAtRelative ?? "—"}
+          </span>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Expanded row body: slots panel + event-log timeline read back from the
+ * server, lastTriggeredAt, and the manual-trigger button with its
+ * optimistic pending spinner and inline auto-dismissing feedback.
+ */
+function AutomationDetail({
+  automation: a,
+  triggerPending,
+  feedback,
+  onTrigger,
+}: {
+  automation: AutomationView
+  triggerPending: boolean
+  feedback: TriggerFeedback | null
+  onTrigger: () => void
+}) {
+  useLocale()
+  const slots = useJobSlots(a.id)
+  const slotRows = toAutomationSlotRows(slots.isLoading ? null : slots.data, a.id)
+  const events = toAutomationEventViews(a.events)
+  return (
+    <div className="space-y-2 border-t px-2 py-1.5" data-testid={`automations-detail-${a.id}`}>
+      <div className="space-y-1" data-testid={`automations-slots-${a.id}`}>
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {t("automations.slots.title")}
+        </p>
+        {slotRows.map((row, i) => (
+          <AutomationSlotRowView key={i} jobId={a.id} row={row} />
+        ))}
+      </div>
+      <div className="space-y-1" data-testid={`automations-history-${a.id}`}>
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {t("automations.history.title")}
+        </p>
+        {events.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t("automations.history.empty")}</p>
+        ) : (
+          <div data-testid={`automations-timeline-${a.id}`}>
+            <TimelineMini timeline={automationTimelineInput(events, (key) => t(key))} />
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("automations.detail.lastTriggered")}{" "}
+        {a.lastTriggeredAt !== null ? formatRelative(a.lastTriggeredAt) : "—"}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[10px]"
+          disabled={triggerPending}
+          aria-busy={triggerPending}
+          onClick={onTrigger}
+          data-testid={`automations-trigger-${a.id}`}
+        >
+          {triggerPending && (
+            <Loader2
+              aria-hidden="true"
+              className="mr-1 h-3 w-3 animate-spin"
+              data-testid={`automations-trigger-spinner-${a.id}`}
+            />
+          )}
+          {t(triggerPending ? "automations.row.triggering" : "automations.row.triggerNow")}
+        </Button>
+        {feedback !== null && (
+          <span
+            role="status"
+            className={`text-xs ${feedback.ok ? "text-emerald-600" : "text-destructive"}`}
+            data-testid={`automations-trigger-feedback-${a.id}`}
+          >
+            {feedback.ok
+              ? t("automations.feedback.success", { name: a.bareName })
+              : `${t("automations.feedback.failure")} ${feedback.message ?? ""}`}
+          </span>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -95,6 +198,17 @@ export function AutomationsDomain() {
    * must not clear their optimistic state mid-flight. */
   const inFlight = useRef<Set<string>>(new Set())
   const [toggleError, setToggleError] = useState<{ name: string; message: string } | null>(null)
+  /** Automation ids with a manual trigger in flight (per-row spinner). */
+  const [triggerPending, setTriggerPending] = useState<Record<string, true>>({})
+  /** Inline trigger feedback keyed by automation id; auto-dismisses. */
+  const [triggerFeedback, setTriggerFeedback] = useState<Record<string, TriggerFeedback>>({})
+  const feedbackTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  useEffect(() => {
+    const timers = feedbackTimers.current
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer)
+    }
+  }, [])
   const [expanded, setExpanded] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [draft, setDraft] = useState<AutomationDraft>(EMPTY_AUTOMATION_DRAFT)
@@ -164,6 +278,55 @@ export function AutomationsDomain() {
           },
         })
       },
+    })
+  }
+
+  /** Drop one automation's inline feedback (and its pending timer). */
+  const dropTriggerFeedback = (id: string) => {
+    const timer = feedbackTimers.current.get(id)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      feedbackTimers.current.delete(id)
+    }
+    setTriggerFeedback((p) => {
+      if (!(id in p)) return p
+      const { [id]: _drop, ...rest } = p
+      return rest
+    })
+  }
+
+  /** Feedback loop settle: spinner off, inline note on, auto-dismiss armed. */
+  const settleTrigger = (id: string, ok: boolean, message: string | null) => {
+    setTriggerPending((p) => {
+      if (!(id in p)) return p
+      const { [id]: _drop, ...rest } = p
+      return rest
+    })
+    setTriggerFeedback((p) => ({ ...p, [id]: { ok, message } }))
+    const prev = feedbackTimers.current.get(id)
+    if (prev !== undefined) clearTimeout(prev)
+    feedbackTimers.current.set(
+      id,
+      setTimeout(() => {
+        feedbackTimers.current.delete(id)
+        setTriggerFeedback((p) => {
+          if (!(id in p)) return p
+          const { [id]: _drop, ...rest } = p
+          return rest
+        })
+      }, TRIGGER_FEEDBACK_MS),
+    )
+  }
+
+  /** Manual trigger: optimistic per-row spinner, then inline feedback;
+   * the mutation's onSuccess invalidations refresh slots + the list
+   * (lastTriggeredAt) read-back. */
+  const requestTrigger = (a: AutomationView) => {
+    dropTriggerFeedback(a.id)
+    setTriggerPending((p) => ({ ...p, [a.id]: true }))
+    triggerJob.mutate(a.id, {
+      onSuccess: () => settleTrigger(a.id, true, null),
+      onError: (err) => settleTrigger(a.id, false, err.message),
     })
   }
 
@@ -284,43 +447,12 @@ export function AutomationsDomain() {
                         </div>
                       </div>
                       {open && (
-                        <div
-                          className="space-y-1 border-t px-2 py-1.5"
-                          data-testid={`automations-detail-${a.id}`}
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs text-muted-foreground">
-                              {t("automations.detail.slot")}
-                            </span>
-                            <AutomationSlotBadge jobId={a.id} />
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {t("automations.detail.lastTriggered")}{" "}
-                            {formatTimestamp(a.lastTriggeredAt)}
-                          </p>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px]"
-                            disabled={triggerJob.isPending}
-                            onClick={() =>
-                              triggerJob.mutate(a.id, {
-                                onSuccess: () =>
-                                  push("success", "automations.notify.triggered", {
-                                    name: a.bareName,
-                                  }),
-                                onError: (err) =>
-                                  push("error", "automations.notify.triggerFailed", {
-                                    name: a.bareName,
-                                    message: err.message,
-                                  }),
-                              })
-                            }
-                            data-testid={`automations-trigger-${a.id}`}
-                          >
-                            {t("automations.row.triggerNow")}
-                          </Button>
-                        </div>
+                        <AutomationDetail
+                          automation={a}
+                          triggerPending={triggerPending[a.id] === true}
+                          feedback={triggerFeedback[a.id] ?? null}
+                          onTrigger={() => requestTrigger(a)}
+                        />
                       )}
                     </li>
                   )

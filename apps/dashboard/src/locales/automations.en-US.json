@@ -22,21 +22,40 @@
       "fires": "Fires:",
       "delete": "Delete",
       "toggle": "Enable/disable schedule",
-      "triggerNow": "Trigger now"
+      "triggerNow": "Trigger now",
+      "triggering": "Triggering…"
     },
     "trigger": {
       "cron": "Runs on a cron plan",
       "interval": "Runs at a fixed interval",
       "unknown": "Unknown schedule"
     },
+    "slots": {
+      "title": "Slots",
+      "scheduled": "Scheduled",
+      "updated": "Updated"
+    },
     "slot": {
       "pending": "Pending",
-      "idle": "Idle",
+      "cleared": "Cleared",
       "unknown": "Unknown"
     },
+    "history": {
+      "title": "Trigger history",
+      "empty": "No triggers recorded yet"
+    },
+    "event": {
+      "manual": "Manual trigger",
+      "scheduled": "Scheduled trigger",
+      "recovered": "Recovered trigger",
+      "unknown": "Trigger record"
+    },
     "detail": {
-      "slot": "Pending slot:",
       "lastTriggered": "Last triggered:"
+    },
+    "feedback": {
+      "success": "Triggered \"{name}\"",
+      "failure": "Trigger failed"
     },
     "form": {
       "name": "Name",
@@ -56,9 +75,7 @@
     },
     "notify": {
       "toggleFailed": "Failed to toggle \"{name}\"",
-      "restoreFailed": "Rebuild of \"{name}\" failed and the restore did not complete",
-      "triggered": "Triggered \"{name}\"",
-      "triggerFailed": "Failed to trigger \"{name}\": {message}"
+      "restoreFailed": "Rebuild of \"{name}\" failed and the restore did not complete"
     }
   }
 }

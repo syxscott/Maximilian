@@ -4,33 +4,42 @@
 // Licensed under the MIT License. See LICENSE in the project root.
 
 /**
- * Automations domain tests (dashboard): model-layer unit tests for the
+ * AutomationsDomain tests (dashboard): model-layer unit tests for the
  * automation↔job mapping (prefix filter, payload-derived enabled state,
- * toggle rebuild plans, draft/schedule validation, slot views) plus
- * render smoke for AutomationsDomain with the data hooks mocked
- * (jobs-domain.test.tsx pattern — React Query + fetch stubs interact in
- * fragile ways under jsdom; the contract under test is the model layer
- * and the UI's states).
+ * toggle rebuild plans, draft/schedule validation), the slots panel
+ * (status normalization, relative times, slot-key tails) and the event
+ * log views (GET /jobs carries the log; newest-first, TimelineMini
+ * input) plus render smoke for AutomationsDomain with the data hooks
+ * mocked (jobs-domain.test.tsx pattern — React Query + fetch stubs
+ * interact in fragile ways under jsdom; the contract under test is the
+ * model layer and the UI's states, including the manual-trigger
+ * feedback loop).
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactElement } from "react"
-import { getDictionary, registerLocale, setLocale } from "@max/i18n"
+import { getDictionary, registerLocale, setLocale, t } from "@max/i18n"
 import { useNotificationStore } from "@/stores/notificationStore"
 
 import automationsEn from "../src/locales/automations.en-US.json"
 import automationsZh from "../src/locales/automations.zh-CN.json"
 import {
   AUTOMATION_MIN_INTERVAL_MS,
+  TRIGGER_FEEDBACK_MS,
   automationName,
   automationSummary,
+  automationTimelineInput,
+  eventKindLabelKey,
   filterAutomations,
   isAutomationEnabled,
   planToggle,
+  slotKeyTail,
+  slotStatusLabelKey,
   stripAutomationPrefix,
-  toAutomationSlotView,
+  toAutomationEventViews,
+  toAutomationSlotRows,
   toAutomationViews,
   triggerLabelKey,
   validateAutomationDraft,
@@ -97,6 +106,9 @@ const disabledRow = {
 }
 
 const foreignRow = { id: "job_x", name: "plain-job", schedule: "*", scheduleKind: "cron" }
+
+/** Fixed clock for deterministic relative-time assertions. */
+const NOW = Date.parse("2026-09-24T12:00:00.000Z")
 
 // ── Model: automation ↔ job mapping ─────────────────────────────────────────
 
@@ -258,33 +270,151 @@ describe("automations-domain model", () => {
     expect(plan.restore).not.toHaveProperty("payload")
   })
 
-  it("picks the trigger label and maps slot responses for the history panel", () => {
+  it("picks the trigger label from the schedule kind", () => {
     const views = toAutomationViews({ jobs: [enabledRow, disabledRow] })
     expect(triggerLabelKey(views[0]!)).toBe("automations.trigger.cron")
     expect(triggerLabelKey(views[1]!)).toBe("automations.trigger.interval")
-
-    expect(toAutomationSlotView(null)).toEqual({ kind: "unknown", scheduledAt: null })
-    expect(toAutomationSlotView({})).toEqual({ kind: "unknown", scheduledAt: null })
-    expect(toAutomationSlotView({ hasPendingSlot: false })).toEqual({
-      kind: "idle",
-      scheduledAt: null,
-    })
-    expect(
-      toAutomationSlotView({
-        hasPendingSlot: true,
-        slot: { scheduledAt: "2026-09-24T00:00:00.000Z", at: "x", by: "y" },
-      }),
-    ).toEqual({ kind: "pending", scheduledAt: "2026-09-24T00:00:00.000Z" })
-    expect(toAutomationSlotView({ hasPendingSlot: true })).toEqual({
-      kind: "pending",
-      scheduledAt: null,
-    })
   })
 
   it("keeps the zh-CN and en-US key sets in sync", () => {
     expect(Object.keys(flatten(automationsZh as Record<string, unknown>)).sort()).toEqual(
       Object.keys(flatten(automationsEn as Record<string, unknown>)).sort(),
     )
+  })
+})
+
+// ── Model: slots panel + event log (trigger history read-back) ───────────────
+
+describe("automations slots panel + event log model", () => {
+  it("strips the job: namespace prefix from slot keys, defensively", () => {
+    expect(slotKeyTail("job:job_ab12", "fb")).toBe("job_ab12")
+    expect(slotKeyTail("other:key", "fb")).toBe("other:key")
+    expect(slotKeyTail("job:", "fb")).toBe("fb")
+    expect(slotKeyTail(undefined, "fb")).toBe("fb")
+    expect(slotKeyTail("", "fb")).toBe("fb")
+  })
+
+  it("normalizes a pending slot into one row with key tail and relative times", () => {
+    const rows = toAutomationSlotRows(
+      {
+        jobId: "job_a1",
+        hasPendingSlot: true,
+        slot: {
+          scheduledAt: "2026-09-24T11:58:00.000Z",
+          at: "2026-09-24T11:57:00.000Z",
+          by: "api",
+        },
+      },
+      "job_a1",
+      NOW,
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: "pending", keyTail: "job_a1" })
+    expect(rows[0]?.scheduledAt).toBe("2026-09-24T11:58:00.000Z")
+    expect(rows[0]?.scheduledAtRelative).toBe("2 minutes ago")
+    expect(rows[0]?.updatedAtRelative).toBe("3 minutes ago")
+  })
+
+  it("maps a released slot to a cleared row synthesized from the job id", () => {
+    expect(toAutomationSlotRows({ hasPendingSlot: false }, "job_a1", NOW)).toEqual([
+      {
+        status: "cleared",
+        keyTail: "job_a1",
+        scheduledAt: null,
+        scheduledAtRelative: null,
+        updatedAt: null,
+        updatedAtRelative: null,
+      },
+    ])
+  })
+
+  it("falls back to an unknown row on garbage responses and unparseable stamps", () => {
+    expect(toAutomationSlotRows(null, "job_a1")[0]?.status).toBe("unknown")
+    expect(toAutomationSlotRows(undefined, "job_a1")[0]?.status).toBe("unknown")
+    expect(toAutomationSlotRows("nope", "job_a1")[0]?.status).toBe("unknown")
+    expect(toAutomationSlotRows({}, "job_a1")[0]?.status).toBe("unknown")
+    const pending = toAutomationSlotRows(
+      { hasPendingSlot: true, slot: { scheduledAt: "not-a-date" } },
+      "job_a1",
+      NOW,
+    )[0]
+    expect(pending?.status).toBe("pending")
+    expect(pending?.scheduledAtRelative).toBeNull()
+    expect(pending?.keyTail).toBe("job_a1")
+  })
+
+  it("labels the three slot statuses for the badge", () => {
+    expect(slotStatusLabelKey("pending")).toBe("automations.slot.pending")
+    expect(slotStatusLabelKey("cleared")).toBe("automations.slot.cleared")
+    expect(slotStatusLabelKey("unknown")).toBe("automations.slot.unknown")
+  })
+
+  it("turns the append-only event log into newest-first views with relative times", () => {
+    const views = toAutomationEventViews(
+      [
+        { at: "2026-09-24T10:00:00.000Z", kind: "scheduled-trigger", note: "older fire" },
+        {
+          at: "2026-09-24T11:59:00.000Z",
+          kind: "manual-trigger",
+          note: "executor v0: dispatch is record-only",
+        },
+      ],
+      NOW,
+    )
+    expect(views.map((v) => v.kind)).toEqual(["manual-trigger", "scheduled-trigger"])
+    expect(views[0]?.atRelative).toBe("1 minute ago")
+    expect(views[0]?.labelKey).toBe("automations.event.manual")
+    expect(views[0]?.note).toBe("executor v0: dispatch is record-only")
+    expect(views[1]?.atRelative).toBe("2 hours ago")
+    expect(views[1]?.labelKey).toBe("automations.event.scheduled")
+  })
+
+  it("maps trigger kinds to labels and defends against garbage log entries", () => {
+    expect(eventKindLabelKey("manual-trigger")).toBe("automations.event.manual")
+    expect(eventKindLabelKey("scheduled-trigger")).toBe("automations.event.scheduled")
+    expect(eventKindLabelKey("recovered-trigger")).toBe("automations.event.recovered")
+    expect(eventKindLabelKey("whatever")).toBe("automations.event.unknown")
+    expect(eventKindLabelKey(undefined)).toBe("automations.event.unknown")
+    expect(toAutomationEventViews(null, NOW)).toEqual([])
+    expect(toAutomationEventViews("nope", NOW)).toEqual([])
+    // Non-object entries are skipped; object entries map defensively.
+    expect(toAutomationEventViews([null, 42, { at: 5, kind: 7 }], NOW)).toEqual([
+      {
+        at: null,
+        atRelative: null,
+        kind: "unknown",
+        labelKey: "automations.event.unknown",
+        note: null,
+      },
+    ])
+  })
+
+  it("builds TimelineMini input: kind label + note, relative time, completed tone", () => {
+    const events = toAutomationEventViews(
+      [{ at: "2026-09-24T11:59:00.000Z", kind: "manual-trigger", note: "record-only" }],
+      NOW,
+    )
+    expect(automationTimelineInput(events, (key) => t(key)).items).toEqual([
+      { label: "Manual trigger · record-only", time: "1 minute ago", status: "completed" },
+    ])
+    const bare = automationTimelineInput(
+      [{ ...events[0]!, note: null, atRelative: null }],
+      () => "X",
+    )
+    expect(bare.items).toEqual([{ label: "X", status: "completed" }])
+  })
+
+  it("carries the raw event log and payload through toAutomationViews", () => {
+    const withEvents = {
+      ...enabledRow,
+      events: [{ at: "2026-09-23T02:00:00.000Z", kind: "manual-trigger" }],
+    }
+    const views = toAutomationViews({ jobs: [withEvents] })
+    expect(views[0]?.events).toEqual(withEvents.events)
+    const bare = toAutomationViews({
+      jobs: [{ id: "j", name: "automation:x", schedule: "*", scheduleKind: "cron" }],
+    })
+    expect(bare[0]?.events).toBeUndefined()
   })
 })
 
@@ -387,34 +517,118 @@ describe("AutomationsDomain render smoke", () => {
     ).toBe(true)
   })
 
-  it("unfolds trigger history: slot badge, last trigger, and a working trigger button", () => {
-    const trigger = vi.fn().mockImplementation((_id, opts) => opts?.onSuccess?.({}))
-    mocked.useTriggerJob.mockReturnValue({ mutate: trigger, isPending: false } as never)
+  it("unfolds into a slots panel and trigger history timeline read back from the server", () => {
     mocked.useJobSlots.mockReturnValue(
       q({
         data: {
           jobId: "job_a1",
           hasPendingSlot: true,
-          slot: { scheduledAt: "2026-09-24T00:00:00.000Z" },
+          slot: { scheduledAt: "2026-09-24T11:58:00.000Z", at: "2026-09-24T11:57:00.000Z" },
         },
       }) as never,
     )
-    showList()
+    showList({
+      jobs: [
+        {
+          ...enabledRow,
+          events: [
+            {
+              at: "2026-09-23T02:00:00.000Z",
+              kind: "scheduled-trigger",
+              note: "executor v0: dispatch is record-only",
+            },
+            { at: "2026-09-24T06:00:00.000Z", kind: "manual-trigger" },
+          ],
+        },
+        disabledRow,
+        foreignRow,
+      ],
+      total: 3,
+    })
     renderWithQuery(<AutomationsDomain />)
-
     expect(screen.queryByTestId("automations-detail-job_a1")).toBeNull()
     fireEvent.click(screen.getByTestId("automations-row-job_a1"))
     expect(screen.getByTestId("automations-detail-job_a1")).toBeTruthy()
-    expect(screen.getByTestId("automations-slot-job_a1").textContent).toContain("Pending")
-    expect(screen.getByText(/Last triggered:/)).toBeTruthy()
 
+    // Slots panel: pending badge, stripped key tail, labeled relative times.
+    expect(screen.getByTestId("automations-slot-job_a1").textContent).toBe("Pending")
+    const slotRow = screen.getByTestId("automations-slot-row-job_a1").textContent ?? ""
+    expect(slotRow).toContain("job_a1")
+    expect(slotRow).toContain("Scheduled")
+    expect(slotRow).toContain("Updated")
+    expect(slotRow).not.toContain("job:")
+
+    // Event log → vertical mini timeline, newest first, note composed in.
+    const timeline = screen.getByTestId("automations-timeline-job_a1").textContent ?? ""
+    expect(timeline).toContain("Manual trigger")
+    expect(timeline).toContain("Scheduled trigger · executor v0: dispatch is record-only")
+    expect(timeline.indexOf("Manual trigger")).toBeLessThan(timeline.indexOf("Scheduled trigger"))
+
+    // lastTriggeredAt still part of the read-back.
+    expect(screen.getByTestId("automations-detail-job_a1").textContent).toContain("Last triggered:")
+  })
+
+  it("shows a cleared slot row and the history empty state without data", () => {
+    mocked.useJobSlots.mockReturnValue(
+      q({ data: { jobId: "job_a1", hasPendingSlot: false } }) as never,
+    )
+    showList()
+    renderWithQuery(<AutomationsDomain />)
+    fireEvent.click(screen.getByTestId("automations-row-job_a1"))
+    expect(screen.getByTestId("automations-slot-job_a1").textContent).toBe("Cleared")
+    expect(screen.getByTestId("automations-history-job_a1").textContent).toContain(
+      "No triggers recorded yet",
+    )
+    expect(screen.queryByTestId("automations-timeline-job_a1")).toBeNull()
+  })
+
+  it("runs the trigger feedback loop: spinner, inline success, auto-dismiss", () => {
+    vi.useFakeTimers()
+    try {
+      let settle: { onSuccess?: (d: unknown) => void; onError?: (e: Error) => void } | undefined
+      const trigger = vi.fn().mockImplementation((_id, opts) => {
+        settle = opts
+      })
+      mocked.useTriggerJob.mockReturnValue({ mutate: trigger, isPending: false } as never)
+      showList()
+      renderWithQuery(<AutomationsDomain />)
+      fireEvent.click(screen.getByTestId("automations-row-job_a1"))
+
+      // Optimistic pending state: spinner + disabled button.
+      fireEvent.click(screen.getByTestId("automations-trigger-job_a1"))
+      expect(screen.getByTestId("automations-trigger-spinner-job_a1")).toBeTruthy()
+      expect(screen.getByTestId("automations-trigger-job_a1").hasAttribute("disabled")).toBe(true)
+
+      act(() => settle?.onSuccess?.({}))
+      expect(screen.queryByTestId("automations-trigger-spinner-job_a1")).toBeNull()
+      const feedback = screen.getByTestId("automations-trigger-feedback-job_a1")
+      expect(feedback.textContent).toContain('Triggered "nightly"')
+
+      // Inline note auto-dismisses after 3s.
+      act(() => {
+        vi.advanceTimersByTime(TRIGGER_FEEDBACK_MS)
+      })
+      expect(screen.queryByTestId("automations-trigger-feedback-job_a1")).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows the inline failure note with the server error message", () => {
+    let settle: { onSuccess?: (d: unknown) => void; onError?: (e: Error) => void } | undefined
+    const trigger = vi.fn().mockImplementation((_id, opts) => {
+      settle = opts
+    })
+    mocked.useTriggerJob.mockReturnValue({ mutate: trigger, isPending: false } as never)
+    showList()
+    renderWithQuery(<AutomationsDomain />)
+    fireEvent.click(screen.getByTestId("automations-row-job_a1"))
     fireEvent.click(screen.getByTestId("automations-trigger-job_a1"))
+    act(() => settle?.onError?.(new Error("Unknown job: job_a1")))
+    const feedback = screen.getByTestId("automations-trigger-feedback-job_a1")
+    expect(feedback.textContent).toContain("Trigger failed")
+    expect(feedback.textContent).toContain("Unknown job: job_a1")
     expect(trigger).toHaveBeenCalledWith("job_a1", expect.anything())
-    expect(
-      useNotificationStore
-        .getState()
-        .items.some((n) => n.messageKey === "automations.notify.triggered"),
-    ).toBe(true)
   })
 
   it("creates through the dialog with a forced prefix and echoes server errors", async () => {

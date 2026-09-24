@@ -22,6 +22,7 @@
  * by recreating the pre-toggle job (`restore` in TogglePlan).
  */
 
+import { formatRelative } from "@max/i18n"
 import { toJobView, type JobView } from "../jobs-domain/model"
 
 export const AUTOMATION_NAME_PREFIX = "automation:"
@@ -37,6 +38,8 @@ export interface AutomationView extends JobView {
   payload: unknown
   /** Derived from the payload marker — NOT local UI state. */
   enabled: boolean
+  /** Raw per-job event log from the GET /jobs row (newest last). */
+  events: unknown
 }
 
 /** Force the `automation:` prefix onto a user-entered name (idempotent). */
@@ -72,7 +75,8 @@ export function toAutomationViews(raw: unknown): AutomationView[] {
     const bareName = stripAutomationPrefix(view.name)
     if (bareName === null) continue
     const payload = (row as { payload?: unknown }).payload
-    views.push({ ...view, bareName, payload, enabled: isAutomationEnabled(payload) })
+    const events = (row as { events?: unknown }).events
+    views.push({ ...view, bareName, payload, enabled: isAutomationEnabled(payload), events })
   }
   return views
 }
@@ -208,27 +212,165 @@ export function planToggle(view: AutomationView, next: boolean): TogglePlan {
 
 // ── Trigger history (expansion panel) ────────────────────────────────────────
 
-export type AutomationSlotKind = "idle" | "pending" | "unknown"
+/**
+ * Inline manual-trigger feedback auto-dismisses after this long — the
+ * slot panel and lastTriggeredAt refresh through the useTriggerJob
+ * query invalidations, so nothing here needs a second fetch.
+ */
+export const TRIGGER_FEEDBACK_MS = 3_000
 
-export interface AutomationSlotView {
-  kind: AutomationSlotKind
-  /** scheduledAt of the pending slot, when the server sent one. */
+// ── Slots panel ──────────────────────────────────────────────────────────────
+
+export type AutomationSlotStatus = "pending" | "cleared" | "unknown"
+
+/** One structured row of the slots panel (the API exposes one slot per job). */
+export interface AutomationSlotRow {
+  status: AutomationSlotStatus
+  /** Slot key minus the `job:` namespace prefix (falls back to the job id). */
+  keyTail: string
   scheduledAt: string | null
+  scheduledAtRelative: string | null
+  /** When the slot was stamped (PendingSlotRecord.at). */
+  updatedAt: string | null
+  updatedAtRelative: string | null
 }
 
-/** Defensive GET /jobs/{id}/slots response → expansion-panel state. */
-export function toAutomationSlotView(raw: unknown): AutomationSlotView {
-  if (raw == null || typeof raw !== "object") return { kind: "unknown", scheduledAt: null }
-  const hasPending = (raw as { hasPendingSlot?: unknown }).hasPendingSlot
-  const kind: AutomationSlotKind =
-    hasPending === true ? "pending" : hasPending === false ? "idle" : "unknown"
-  if (kind !== "pending") return { kind, scheduledAt: null }
+/** `job:job_ab12` → `job_ab12`; foreign keys pass through untouched. */
+export function slotKeyTail(key: unknown, fallback: string): string {
+  if (typeof key !== "string" || key.length === 0) return fallback
+  const tail = key.startsWith("job:") ? key.slice("job:".length) : key
+  return tail.length > 0 ? tail : fallback
+}
+
+/** ISO string → locale relative time; null when missing/unparseable. */
+function relativeTime(iso: string | null, now: Date | number): string | null {
+  if (iso === null) return null
+  const ms = Date.parse(iso)
+  if (Number.isNaN(ms)) return null
+  return formatRelative(new Date(ms), now)
+}
+
+/**
+ * Defensive GET /jobs/{id}/slots response → slots-panel rows. The API
+ * holds a single slot per job: `pending` while a fire is in flight,
+ * `cleared` otherwise — the cleared/unknown rows are synthesized from
+ * the job id (the key is always `job:{id}`) because the server answers
+ * without a slot record once the slot is released.
+ */
+export function toAutomationSlotRows(
+  raw: unknown,
+  jobId: string,
+  now: Date | number = Date.now(),
+): AutomationSlotRow[] {
+  const keyTail = slotKeyTail(`job:${jobId}`, jobId)
+  const bareTimes = {
+    scheduledAt: null,
+    scheduledAtRelative: null,
+    updatedAt: null,
+    updatedAtRelative: null,
+  }
+  if (raw == null || typeof raw !== "object") {
+    return [{ ...bareTimes, status: "unknown", keyTail }]
+  }
+  const hasPendingSlot = (raw as { hasPendingSlot?: unknown }).hasPendingSlot
+  if (hasPendingSlot !== true) {
+    return [{ ...bareTimes, keyTail, status: hasPendingSlot === false ? "cleared" : "unknown" }]
+  }
   const slot = (raw as { slot?: unknown }).slot
-  const scheduledAt =
-    slot != null && typeof slot === "object"
-      ? typeof (slot as { scheduledAt?: unknown }).scheduledAt === "string"
-        ? (slot as { scheduledAt: string }).scheduledAt
-        : null
-      : null
-  return { kind, scheduledAt }
+  if (slot == null || typeof slot !== "object") {
+    return [{ ...bareTimes, keyTail, status: "pending" }]
+  }
+  const s = slot as Record<string, unknown>
+  const strOrNull = (v: unknown): string | null =>
+    typeof v === "string" && v.length > 0 ? v : null
+  const scheduledAt = strOrNull(s.scheduledAt)
+  const updatedAt = strOrNull(s.at)
+  return [
+    {
+      status: "pending",
+      keyTail: slotKeyTail(s.key, keyTail),
+      scheduledAt,
+      scheduledAtRelative: relativeTime(scheduledAt, now),
+      updatedAt,
+      updatedAtRelative: relativeTime(updatedAt, now),
+    },
+  ]
+}
+
+/** Status → i18n key for the badge label. */
+export function slotStatusLabelKey(status: AutomationSlotStatus): string {
+  return status === "pending"
+    ? "automations.slot.pending"
+    : status === "cleared"
+      ? "automations.slot.cleared"
+      : "automations.slot.unknown"
+}
+
+// ── Event log views ──────────────────────────────────────────────────────────
+
+export interface AutomationEventView {
+  at: string | null
+  atRelative: string | null
+  /** Raw server kind (manual/scheduled/recovered-trigger). */
+  kind: string
+  labelKey: string
+  note: string | null
+}
+
+/** Server TriggerKind → i18n key for the human label. */
+export function eventKindLabelKey(kind: unknown): string {
+  switch (kind) {
+    case "manual-trigger":
+      return "automations.event.manual"
+    case "scheduled-trigger":
+      return "automations.event.scheduled"
+    case "recovered-trigger":
+      return "automations.event.recovered"
+    default:
+      return "automations.event.unknown"
+  }
+}
+
+/**
+ * Raw per-job event log (GET /jobs rows carry it; append-only, newest
+ * LAST server-side) → defensive views ordered newest-first for the
+ * history timeline.
+ */
+export function toAutomationEventViews(
+  raw: unknown,
+  now: Date | number = Date.now(),
+): AutomationEventView[] {
+  if (!Array.isArray(raw)) return []
+  const views: AutomationEventView[] = []
+  for (const entry of raw) {
+    if (entry == null || typeof entry !== "object") continue
+    const e = entry as Record<string, unknown>
+    const at = typeof e.at === "string" && e.at.length > 0 ? e.at : null
+    views.push({
+      at,
+      atRelative: relativeTime(at, now),
+      kind: typeof e.kind === "string" ? e.kind : "unknown",
+      labelKey: eventKindLabelKey(e.kind),
+      note: typeof e.note === "string" && e.note.length > 0 ? e.note : null,
+    })
+  }
+  return views.reverse()
+}
+
+/**
+ * TimelineMini input for the history panel: one completed entry per
+ * recorded fire, labeled with the kind (+ note when present) and the
+ * relative time. `kindLabel` translates an event's labelKey.
+ */
+export function automationTimelineInput(
+  events: AutomationEventView[],
+  kindLabel: (labelKey: string) => string,
+): { items: Array<{ label: string; time?: string; status: string }> } {
+  return {
+    items: events.map((e) => ({
+      label: e.note !== null ? `${kindLabel(e.labelKey)} · ${e.note}` : kindLabel(e.labelKey),
+      ...(e.atRelative !== null ? { time: e.atRelative } : {}),
+      status: "completed",
+    })),
+  }
 }

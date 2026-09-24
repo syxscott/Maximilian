@@ -22,21 +22,40 @@
       "fires": "触发：",
       "delete": "删除",
       "toggle": "启用/停用调度",
-      "triggerNow": "立即触发"
+      "triggerNow": "立即触发",
+      "triggering": "触发中…"
     },
     "trigger": {
       "cron": "按 cron 计划触发",
       "interval": "按固定间隔触发",
       "unknown": "未知调度"
     },
+    "slots": {
+      "title": "调度槽位",
+      "scheduled": "计划于",
+      "updated": "更新于"
+    },
     "slot": {
       "pending": "待触发",
-      "idle": "空闲",
+      "cleared": "已清空",
       "unknown": "未知"
     },
+    "history": {
+      "title": "触发历史",
+      "empty": "暂无触发记录"
+    },
+    "event": {
+      "manual": "手动触发",
+      "scheduled": "计划触发",
+      "recovered": "恢复触发",
+      "unknown": "触发记录"
+    },
     "detail": {
-      "slot": "调度槽位：",
       "lastTriggered": "上次触发："
+    },
+    "feedback": {
+      "success": "已触发 “{name}”",
+      "failure": "触发失败"
     },
     "form": {
       "name": "名称",
@@ -56,9 +75,7 @@
     },
     "notify": {
       "toggleFailed": "自动化 “{name}” 切换失败",
-      "restoreFailed": "自动化 “{name}” 重建失败且恢复未完成",
-      "triggered": "自动化 “{name}” 已触发",
-      "triggerFailed": "触发 “{name}” 失败：{message}"
+      "restoreFailed": "自动化 “{name}” 重建失败且恢复未完成"
     }
   }
 }
