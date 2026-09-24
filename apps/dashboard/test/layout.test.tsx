@@ -27,11 +27,13 @@ import {
   clampDockRatio,
   createDefaultDockModel,
   createDockModel,
+  createStackedDockModel,
   deserializeDockModel,
   findLeaf,
   flattenPanels,
   makeLeaf,
   makeSplit,
+  openPanel,
   parseDockModel,
   ratioFromPointer,
   removePanel,
@@ -178,6 +180,40 @@ describe("dockModel operations", () => {
     expect(setActive(defaultModel, "timeline").activeId).toBe("timeline")
     expect(setActive(defaultModel, "nope")).toBe(defaultModel)
     expect(setActive(defaultModel, null).activeId).toBeNull()
+  })
+
+  it("openPanel reopens a known id: beside the focus, or as the whole empty dock", () => {
+    const reopened = openPanel(removePanel(defaultModel, "timeline"), "timeline")
+    expect(flattenPanels(reopened.root).map((l) => l.id)).toEqual(["chat", "timeline"])
+    expect(reopened.activeId).toBe("timeline")
+    expect((reopened.root as DockSplit).direction).toBe("vertical") // stacks below by default
+    // An emptied dock: the reopened panel becomes the whole layout.
+    const empty = { root: null, activeId: null }
+    const first = openPanel(empty, "tasks", "task.title")
+    expect(first.root?.kind).toBe("leaf")
+    expect(first.activeId).toBe("tasks")
+    // Defensive: already-open, blank ids → unchanged.
+    expect(openPanel(defaultModel, "chat")).toBe(defaultModel)
+    expect(openPanel(defaultModel, "   ")).toBe(defaultModel)
+  })
+
+  it("createStackedDockModel balances heights: every leaf equally tall", () => {
+    const panels = [
+      { id: "a", titleKey: "t.a" },
+      { id: "b", titleKey: "t.b" },
+      { id: "c", titleKey: "t.c" },
+    ]
+    const model = createStackedDockModel(panels)
+    expect(flattenPanels(model.root).map((l) => l.id)).toEqual(["a", "b", "c"])
+    expect(model.activeId).toBe("a")
+    const root = rootSplit(model)
+    expect(root.direction).toBe("vertical")
+    expect(root.ratio).toBeCloseTo(1 / 3) // the top leaf keeps its fair share
+    expect(root.children[0].kind).toBe("leaf")
+    const nested = root.children[1] as DockSplit
+    expect(nested.direction).toBe("vertical")
+    expect(nested.ratio).toBe(0.5)
+    expect(createStackedDockModel([]).root).toBeNull()
   })
 })
 

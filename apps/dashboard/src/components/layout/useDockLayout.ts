@@ -6,12 +6,18 @@
 /**
  * Dock layout state (zustand wrapper around the pure dockModel): the
  * layout model plus which panel is maximized, with every structural
- * change mirrored to localStorage under "maximilian.dock-layout" so the
+ * change mirrored to localStorage under the store's storage key so the
  * arrangement survives reloads. All tree surgery is delegated to the
  * pure functions in dockModel.ts — this module only owns persistence
  * and the maximize toggle. Storage access is defensive (try/catch).
+ *
+ * The module exports a factory (createDockLayoutStore) so independent
+ * docks can live beside the main shell dock — each with its own storage
+ * key and default layout — without duplicating the action wiring. The
+ * shell singleton (useDockLayoutStore) is built through the same factory.
  */
 import { create } from "zustand"
+import type { StoreApi, UseBoundStore } from "zustand"
 import {
   type DockDirection,
   type DockModel,
@@ -20,6 +26,8 @@ import {
   deserializeDockModel,
   findLeaf,
   flattenPanels,
+  openPanel as openPanelModel,
+  parseDockModel,
   removePanel as removePanelModel,
   resizeSplit as resizeSplitModel,
   serializeDockModel,
@@ -36,27 +44,50 @@ function defaultStorage(): Storage | undefined {
   }
 }
 
-/** Read the persisted layout; never throws (junk → default shell). */
-export function loadDockLayout(storage: Storage | undefined = defaultStorage()): DockModel {
-  if (!storage) return createDefaultDockModel()
+/** Read one persisted layout; never throws (junk → the given default). */
+export function loadDockLayoutFrom(
+  storage: Storage | undefined,
+  storageKey: string,
+  createDefault: () => DockModel,
+): DockModel {
+  if (!storage) return createDefault()
   try {
-    return deserializeDockModel(storage.getItem(DOCK_LAYOUT_STORAGE_KEY))
+    const raw = storage.getItem(storageKey)
+    if (!raw) return createDefault()
+    const model = parseDockModel(JSON.parse(raw))
+    // An intentionally emptied layout ({root:null}) is never a state
+    // worth restoring — fall back to the owner's default model.
+    return model.root === null ? createDefault() : model
   } catch {
-    return createDefaultDockModel()
+    return createDefault()
   }
 }
 
-/** Write the layout to storage; never throws. */
+/** Read the persisted shell layout; never throws (junk → default shell). */
+export function loadDockLayout(storage: Storage | undefined = defaultStorage()): DockModel {
+  return loadDockLayoutFrom(storage, DOCK_LAYOUT_STORAGE_KEY, createDefaultDockModel)
+}
+
+/** Write one layout to storage; never throws. */
+export function persistDockLayoutTo(
+  model: DockModel,
+  storage: Storage | undefined,
+  storageKey: string,
+): void {
+  if (!storage) return
+  try {
+    storage.setItem(storageKey, serializeDockModel(model))
+  } catch {
+    // Quota exceeded / storage disabled — the layout simply stays in memory.
+  }
+}
+
+/** Write the shell layout to storage; never throws. */
 export function persistDockLayout(
   model: DockModel,
   storage: Storage | undefined = defaultStorage(),
 ): void {
-  if (!storage) return
-  try {
-    storage.setItem(DOCK_LAYOUT_STORAGE_KEY, serializeDockModel(model))
-  } catch {
-    // Quota exceeded / storage disabled — the layout simply stays in memory.
-  }
+  persistDockLayoutTo(model, storage, DOCK_LAYOUT_STORAGE_KEY)
 }
 
 interface DockLayoutState {
@@ -70,6 +101,11 @@ interface DockLayoutState {
    * changed (duplicate id, dock full).
    */
   addPanel: (targetId?: string, direction?: DockDirection) => string | null
+  /**
+   * Reopen a known panel id (stable registry entry — the add-panel menu
+   * path). No-op when the panel is already open or the id is blank.
+   */
+  openPanel: (panelId: string, titleKey?: string) => void
   removePanel: (panelId: string) => void
   resizeSplit: (splitId: string, ratio: number) => void
   setActive: (panelId: string | null) => void
@@ -80,54 +116,78 @@ interface DockLayoutState {
 
 let panelSeq = 0
 
-export const useDockLayoutStore = create<DockLayoutState>((set, get) => {
-  const commit = (model: DockModel) => {
-    persistDockLayout(model)
-    set({ model })
-  }
-  return {
-    model: loadDockLayout(),
-    maximizedId: null,
-    addPanel: (targetId, direction = "horizontal") => {
-      const { model } = get()
-      // Fresh unique id — "panel-N" never collides with an open panel.
-      let id = `panel-${++panelSeq}`
-      while (model.root !== null && findLeaf(model.root, id) !== null) {
-        id = `panel-${++panelSeq}`
-      }
-      const leaves = flattenPanels(model.root)
-      const target = targetId ?? model.activeId ?? leaves[0]?.id ?? ""
-      if (model.root === null) {
-        // Empty dock — the new panel becomes the whole layout.
-        commit({ root: { kind: "leaf", id, titleKey: `layout.panel.${id}` }, activeId: id })
+/** Options for a dock store instance: where it persists and its default. */
+export interface DockLayoutStoreOptions {
+  /** localStorage key the model is mirrored to. */
+  storageKey: string
+  /** Fresh default model (empty/junk storage, and resetLayout). */
+  createDefault: () => DockModel
+}
+
+export type DockLayoutStore = UseBoundStore<StoreApi<DockLayoutState>>
+
+/** Build one dock layout store — the shell singleton's exact behavior. */
+export function createDockLayoutStore(options: DockLayoutStoreOptions): DockLayoutStore {
+  const { storageKey, createDefault } = options
+  return create<DockLayoutState>()((set, get) => {
+    const commit = (model: DockModel) => {
+      persistDockLayoutTo(model, defaultStorage(), storageKey)
+      set({ model })
+    }
+    return {
+      model: loadDockLayoutFrom(defaultStorage(), storageKey, createDefault),
+      maximizedId: null,
+      addPanel: (targetId, direction = "horizontal") => {
+        const { model } = get()
+        // Fresh unique id — "panel-N" never collides with an open panel.
+        let id = `panel-${++panelSeq}`
+        while (model.root !== null && findLeaf(model.root, id) !== null) {
+          id = `panel-${++panelSeq}`
+        }
+        const leaves = flattenPanels(model.root)
+        const target = targetId ?? model.activeId ?? leaves[0]?.id ?? ""
+        if (model.root === null) {
+          // Empty dock — the new panel becomes the whole layout.
+          commit({ root: { kind: "leaf", id, titleKey: `layout.panel.${id}` }, activeId: id })
+          return id
+        }
+        const next = addPanelModel(model, id, target, direction)
+        if (next === model) return null
+        commit(next)
         return id
-      }
-      const next = addPanelModel(model, id, target, direction)
-      if (next === model) return null
-      commit(next)
-      return id
-    },
-    removePanel: (panelId) => {
-      const next = removePanelModel(get().model, panelId)
-      if (next === get().model) return
-      set((s) => ({ maximizedId: s.maximizedId === panelId ? null : s.maximizedId }))
-      commit(next)
-    },
-    resizeSplit: (splitId, ratio) => {
-      const next = resizeSplitModel(get().model, splitId, ratio)
-      if (next !== get().model) commit(next)
-    },
-    setActive: (panelId) => {
-      const next = setActiveModel(get().model, panelId)
-      if (next !== get().model) set({ model: next })
-    },
-    toggleMaximize: (panelId) =>
-      set((s) => ({ maximizedId: s.maximizedId === panelId ? null : panelId })),
-    resetLayout: () => {
-      set({ maximizedId: null })
-      commit(createDefaultDockModel())
-    },
-  }
+      },
+      openPanel: (panelId, titleKey) => {
+        const next = openPanelModel(get().model, panelId, titleKey)
+        if (next !== get().model) commit(next)
+      },
+      removePanel: (panelId) => {
+        const next = removePanelModel(get().model, panelId)
+        if (next === get().model) return
+        set((s) => ({ maximizedId: s.maximizedId === panelId ? null : s.maximizedId }))
+        commit(next)
+      },
+      resizeSplit: (splitId, ratio) => {
+        const next = resizeSplitModel(get().model, splitId, ratio)
+        if (next !== get().model) commit(next)
+      },
+      setActive: (panelId) => {
+        const next = setActiveModel(get().model, panelId)
+        if (next !== get().model) set({ model: next })
+      },
+      toggleMaximize: (panelId) =>
+        set((s) => ({ maximizedId: s.maximizedId === panelId ? null : panelId })),
+      resetLayout: () => {
+        set({ maximizedId: null })
+        commit(createDefault())
+      },
+    }
+  })
+}
+
+/** The main shell dock (chat | timeline). */
+export const useDockLayoutStore = createDockLayoutStore({
+  storageKey: DOCK_LAYOUT_STORAGE_KEY,
+  createDefault: createDefaultDockModel,
 })
 
 // ── Selector hooks ──────────────────────────────────────────────────────────

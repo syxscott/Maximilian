@@ -9,6 +9,9 @@
     },
     "splitter": "Drag to resize",
     "empty": "No panels open — add one to get started",
-    "addPanel": "Add panel"
+    "addPanel": "Add panel",
+    "addPanelMenu": {
+      "allDocked": "All panels are open"
+    }
   }
 }

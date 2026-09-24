@@ -14,22 +14,14 @@ import { useLocale, t } from "@max/i18n"
 import { chatApi, openWorkspaceStream } from "./api"
 import type { Workspace, RuntimeEvent, WorkspaceStreamHandle, Health } from "./api"
 import { ChatPanel } from "./components/ChatPanel"
-import { SubagentsPanel } from "./components/SubagentsPanel"
-import { TrajectoryPanel } from "./features/trajectory"
-import { FileChangesPanel } from "./components/FileChangesPanel"
-import { SessionsPanel } from "./components/SessionsPanel"
 import {
   LeaderboardTable,
   TruthReportPanel,
   OracleTriadConsole,
 } from "./components/observability/panels"
 import { WorkflowRunsPanel } from "./components/WorkflowRunsPanel"
-import { ArtifactsExplorer } from "./components/ArtifactsExplorer"
 import { WorkspaceTabStrip } from "./components/WorkspaceTabStrip"
-import { AgentPanel } from "./components/AgentPanel"
-import { TaskPanel } from "./components/TaskPanel"
-import { OutputPanel } from "./components/OutputPanel"
-import { ReviewPanel } from "./components/ReviewPanel"
+import { WorkspaceDockSidebar } from "./components/layout/WorkspaceDockSidebar"
 import { ThemeToggle } from "./components/ThemeToggle"
 import { LocaleSwitcher } from "./components/LocaleSwitcher"
 import { LiveUsagePill } from "./components/LiveUsagePill"
@@ -729,29 +721,20 @@ export function App() {
                 live={submitting}
                 sidebarHidden={sidebarHidden}
                 sidebar={
-                  <div className="flex flex-col gap-4">
-                    <AgentPanel
-                      workspace={workspace}
-                      parkedTaskIds={
-                        pendingPermissions.size > 0
-                          ? new Set(Array.from(pendingPermissions.values()).map((p) => p.taskId))
-                          : undefined
-                      }
-                    />
-                    <TaskPanel workspace={workspace} />
-                    {/* Trajectory + subagents read the session projection
-                        store (kept in sync with `events` above). */}
-                    <SubagentsPanel />
-                    <TrajectoryPanel />
-                    <FileChangesPanel events={events} />
-                    <SessionsPanel workspaceId={workspace?.id} />
-                    <ArtifactsExplorer workspaceId={workspace?.id} />
-                    {workspace?.review ? (
-                      <ReviewPanel workspace={workspace} />
-                    ) : (
-                      <OutputPanel workspace={workspace} />
-                    )}
-                  </div>
+                  // The workspace sidebar is a dock-resident panel system:
+                  // agent/tasks/subagents/trajectory/files/sessions/artifacts
+                  // render as DockContainer leaves with stable ids, persisted
+                  // via useDockLayout; closed leaves come back through the
+                  // sidebar's add-panel menu.
+                  <WorkspaceDockSidebar
+                    workspace={workspace}
+                    events={events}
+                    parkedTaskIds={
+                      pendingPermissions.size > 0
+                        ? new Set(Array.from(pendingPermissions.values()).map((p) => p.taskId))
+                        : undefined
+                    }
+                  />
                 }
               />
             </div>

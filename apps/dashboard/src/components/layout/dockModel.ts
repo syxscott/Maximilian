@@ -157,6 +157,51 @@ export function addPanel(
 }
 
 /**
+ * Reopen a *known* panel id (a stable registry entry, unlike addPanel's
+ * caller-chosen new panel): an emptied dock gets the panel as its whole
+ * layout, an open dock splits it beside the focused panel (default
+ * direction: stacked below — sidebar-friendly). Already-open ids, blank
+ * ids, a full dock or a focus-less dock leave the model unchanged.
+ */
+export function openPanel(
+  model: DockModel,
+  panelId: string,
+  titleKey?: string,
+  direction: DockDirection = "vertical",
+): DockModel {
+  const id = panelId.trim()
+  if (id === "") return model
+  if (model.root !== null && findLeaf(model.root, id) !== null) return model
+  const key = titleKey?.trim() || `layout.panel.${id}`
+  if (model.root === null) return { root: makeLeaf(id, key), activeId: id }
+  const target = model.activeId ?? flattenPanels(model.root)[0]?.id
+  if (target === undefined) return model
+  return addPanel(model, id, target, direction, key)
+}
+
+/**
+ * Build a model from an ordered panel list as a balanced vertical stack:
+ * [a, b, c, d] → (a | b) | (c | d) — a balanced binary split tree, so
+ * every leaf ends up equally tall (createDockModel's left-biased fold
+ * would shrink the first panels into slivers).
+ */
+export function createStackedDockModel(
+  panels: ReadonlyArray<{ id: string; titleKey: string }>,
+): DockModel {
+  const stack = (list: ReadonlyArray<{ id: string; titleKey: string }>): DockNode | null => {
+    if (list.length === 0) return null
+    if (list.length === 1) return makeLeaf(list[0].id, list[0].titleKey)
+    const mid = Math.floor(list.length / 2)
+    const first = stack(list.slice(0, mid))
+    const second = stack(list.slice(mid))
+    if (first === null || second === null) return first ?? second
+    return makeSplit("vertical", first, second, mid / list.length)
+  }
+  const root = stack(panels)
+  return { root, activeId: flattenPanels(root)[0]?.id ?? null }
+}
+
+/**
  * Remove a leaf; the parent split collapses into the surviving child.
  * Focus falls to the first remaining panel when the removed one was
  * active. Removing the last panel yields the empty model.

@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useRef } from "react"
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react"
+import { useStore } from "zustand"
 import { t } from "@max/i18n"
 import { cn } from "@/lib/utils"
 import {
@@ -23,7 +24,7 @@ import {
   findLeaf,
   ratioFromPointer,
 } from "@/components/layout/dockModel"
-import { useDockLayoutStore } from "@/components/layout/useDockLayout"
+import { type DockLayoutStore, useDockLayoutStore } from "@/components/layout/useDockLayout"
 import { DockPanel } from "@/components/layout/DockPanel"
 
 /** Divider thickness in px — subtracted once from the split's free space. */
@@ -32,6 +33,11 @@ const SPLITTER_PX = 6
 export interface DockContainerProps {
   /** Content factory — the consumer maps a panel id to its contents. */
   renderPanel: (panelId: string) => ReactNode
+  /**
+   * Which dock store to render. Defaults to the main shell dock; scoped
+   * docks (e.g. the workspace sidebar) pass their own instance.
+   */
+  store?: DockLayoutStore
   className?: string
 }
 
@@ -43,6 +49,7 @@ interface NodeViewProps {
   onClose: (id: string) => void
   onToggleMaximize: (id: string) => void
   onFocus: (id: string) => void
+  onResizeSplit: (splitId: string, ratio: number) => void
 }
 
 function LeafView({
@@ -110,7 +117,7 @@ function childStyles(ratio: number): [CSSProperties, CSSProperties] {
 }
 
 function SplitView({ node, ...rest }: { node: DockSplit } & Omit<NodeViewProps, "node">) {
-  const resizeSplit = useDockLayoutStore((s) => s.resizeSplit)
+  const { onResizeSplit: resizeSplit } = rest
   const dragRef = useRef<{ splitId: string; direction: DockDirection; el: HTMLElement } | null>(
     null,
   )
@@ -180,12 +187,15 @@ function SplitView({ node, ...rest }: { node: DockSplit } & Omit<NodeViewProps, 
   )
 }
 
-export function DockContainer({ renderPanel, className }: DockContainerProps) {
-  const model = useDockLayoutStore((s) => s.model)
-  const maximizedId = useDockLayoutStore((s) => s.maximizedId)
-  const removePanel = useDockLayoutStore((s) => s.removePanel)
-  const toggleMaximize = useDockLayoutStore((s) => s.toggleMaximize)
-  const setActive = useDockLayoutStore((s) => s.setActive)
+export function DockContainer({ renderPanel, store, className }: DockContainerProps) {
+  // The shell dock is the default; scoped docks pass their own store.
+  const dock = store ?? useDockLayoutStore
+  const model = useStore(dock, (s) => s.model)
+  const maximizedId = useStore(dock, (s) => s.maximizedId)
+  const removePanel = useStore(dock, (s) => s.removePanel)
+  const toggleMaximize = useStore(dock, (s) => s.toggleMaximize)
+  const setActive = useStore(dock, (s) => s.setActive)
+  const resizeSplit = useStore(dock, (s) => s.resizeSplit)
 
   // A maximized panel renders alone (when it still exists).
   if (maximizedId !== null && model.root !== null) {
@@ -231,6 +241,7 @@ export function DockContainer({ renderPanel, className }: DockContainerProps) {
         onClose={removePanel}
         onToggleMaximize={toggleMaximize}
         onFocus={setActive}
+        onResizeSplit={resizeSplit}
       />
     </div>
   )
