@@ -78,6 +78,136 @@
     },
     "markdown": {
       "empty": "(no content)"
+    },
+    "tool": {
+      "untitled": "Tool call",
+      "empty": "(no output)",
+      "moreLines": "Show {count} more lines",
+      "collapse": "Collapse"
+    },
+    "plan": {
+      "aria": "Execution plan",
+      "empty": "(empty plan)"
+    },
+    "todo": {
+      "aria": "Todo list",
+      "empty": "(empty list)",
+      "progress": "{done}/{total} done",
+      "priority": {
+        "high": "High priority",
+        "medium": "Medium priority",
+        "low": "Low priority"
+      }
+    },
+    "fileChange": {
+      "aria": "File change",
+      "noPath": "(unknown path)",
+      "expand": "Expand diff",
+      "collapse": "Collapse diff",
+      "binary": "(binary file — diff preview skipped)",
+      "kind": {
+        "edit": "edit",
+        "write": "write"
+      }
+    },
+    "terminal": {
+      "aria": "Terminal output",
+      "title": "Output",
+      "empty": "(no output)"
+    },
+    "webSearch": {
+      "aria": "Web search results",
+      "noQuery": "(no query)",
+      "count": "{count} results",
+      "empty": "(no results)",
+      "untitled": "(untitled)",
+      "truncated": "Results truncated"
+    },
+    "link": {
+      "aria": "Link preview",
+      "untitled": "(untitled link)"
+    },
+    "command": {
+      "aria": "Executed command",
+      "empty": "(empty command)",
+      "exit": "exit {code}"
+    },
+    "table": {
+      "aria": "Data table",
+      "empty": "(empty table)",
+      "moreRows": "{count} more rows ({total} total)"
+    },
+    "progress": {
+      "title": "Progress",
+      "aria": "Progress"
+    },
+    "alert": {
+      "info": "Info",
+      "warn": "Warning",
+      "error": "Error",
+      "success": "Success"
+    },
+    "quote": {
+      "aria": "Quote",
+      "source": "— {source}"
+    },
+    "diffStat": {
+      "aria": "Diff stats: {added} added, {removed} removed",
+      "files": "{count} files"
+    },
+    "collapse": {
+      "collapsed": "Content collapsed"
+    },
+    "sparkline": {
+      "aria": "Mini trend",
+      "range": "range {min} – {max}"
+    },
+    "barMini": {
+      "aria": "Mini bar chart",
+      "max": "max {max}"
+    },
+    "donut": {
+      "aria": "Ratio"
+    },
+    "heat": {
+      "aria": "Heat strip",
+      "empty": "(no values)"
+    },
+    "gauge": {
+      "aria": "Gauge: {percent}"
+    },
+    "timeline": {
+      "aria": "Timeline",
+      "empty": "(no events)"
+    },
+    "statCard": {
+      "unlabeled": "Unlabeled metric",
+      "trendUp": "Trending up",
+      "trendDown": "Trending down",
+      "trendFlat": "Flat trend"
+    },
+    "delta": {
+      "up": "increase",
+      "down": "decrease",
+      "flat": "no change"
+    },
+    "skeleton": {
+      "aria": "Loading"
+    },
+    "emptyHint": {
+      "defaultTitle": "Nothing here yet"
+    },
+    "copyField": {
+      "aria": "Copyable field",
+      "copy": "Copy",
+      "copied": "Copied"
+    },
+    "jsonPeek": {
+      "aria": "JSON preview",
+      "invalid": "not JSON",
+      "cut": "…",
+      "expand": "Show {count} more characters",
+      "collapse": "Collapse"
     }
   }
 }

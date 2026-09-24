@@ -78,6 +78,136 @@
     },
     "markdown": {
       "empty": "（无内容）"
+    },
+    "tool": {
+      "untitled": "工具调用",
+      "empty": "（无输出）",
+      "moreLines": "展开剩余 {count} 行",
+      "collapse": "收起"
+    },
+    "plan": {
+      "aria": "执行计划",
+      "empty": "（计划为空）"
+    },
+    "todo": {
+      "aria": "待办清单",
+      "empty": "（清单为空）",
+      "progress": "已完成 {done}/{total}",
+      "priority": {
+        "high": "高优先级",
+        "medium": "中优先级",
+        "low": "低优先级"
+      }
+    },
+    "fileChange": {
+      "aria": "文件变更",
+      "noPath": "（未知路径）",
+      "expand": "展开差异",
+      "collapse": "收起差异",
+      "binary": "（二进制文件，跳过差异预览）",
+      "kind": {
+        "edit": "编辑",
+        "write": "写入"
+      }
+    },
+    "terminal": {
+      "aria": "终端输出",
+      "title": "输出",
+      "empty": "（无输出）"
+    },
+    "webSearch": {
+      "aria": "网页搜索结果",
+      "noQuery": "（无搜索词）",
+      "count": "{count} 条结果",
+      "empty": "（无结果）",
+      "untitled": "（无标题）",
+      "truncated": "结果已截断"
+    },
+    "link": {
+      "aria": "链接预览",
+      "untitled": "（无标题链接）"
+    },
+    "command": {
+      "aria": "执行的命令",
+      "empty": "（空命令）",
+      "exit": "退出码 {code}"
+    },
+    "table": {
+      "aria": "数据表格",
+      "empty": "（空表格）",
+      "moreRows": "还有 {count} 行（共 {total} 行）"
+    },
+    "progress": {
+      "title": "进度",
+      "aria": "进度"
+    },
+    "alert": {
+      "info": "提示",
+      "warn": "警告",
+      "error": "错误",
+      "success": "成功"
+    },
+    "quote": {
+      "aria": "引用",
+      "source": "—— {source}"
+    },
+    "diffStat": {
+      "aria": "差异统计：新增 {added} 行，删除 {removed} 行",
+      "files": "{count} 个文件"
+    },
+    "collapse": {
+      "collapsed": "内容已折叠"
+    },
+    "sparkline": {
+      "aria": "迷你趋势图",
+      "range": "范围 {min} – {max}"
+    },
+    "barMini": {
+      "aria": "迷你柱状图",
+      "max": "最大值 {max}"
+    },
+    "donut": {
+      "aria": "占比"
+    },
+    "heat": {
+      "aria": "热力条",
+      "empty": "（无数值）"
+    },
+    "gauge": {
+      "aria": "仪表：{percent}"
+    },
+    "timeline": {
+      "aria": "时间线",
+      "empty": "（暂无事件）"
+    },
+    "statCard": {
+      "unlabeled": "未命名指标",
+      "trendUp": "上升趋势",
+      "trendDown": "下降趋势",
+      "trendFlat": "趋势持平"
+    },
+    "delta": {
+      "up": "增加",
+      "down": "减少",
+      "flat": "无变化"
+    },
+    "skeleton": {
+      "aria": "加载中"
+    },
+    "emptyHint": {
+      "defaultTitle": "暂无内容"
+    },
+    "copyField": {
+      "aria": "可复制字段",
+      "copy": "复制",
+      "copied": "已复制"
+    },
+    "jsonPeek": {
+      "aria": "JSON 预览",
+      "invalid": "非 JSON 文本",
+      "cut": "……",
+      "expand": "展开剩余 {count} 字符",
+      "collapse": "收起"
     }
   }
 }
