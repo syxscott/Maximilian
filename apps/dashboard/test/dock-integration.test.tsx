@@ -13,12 +13,14 @@
  *   - the add-panel menu lists only closed panels and restores leaves,
  *     including into a fully-emptied dock (dock-empty state);
  *   - persisted documents rehydrate, and hand-edited layouts with
- *     unknown panel ids render without crashing.
+ *     unknown panel ids render without crashing;
+ *   - the panel registry maps one-to-one onto the feature-domain
+ *     registry (workspacePanelDomains).
  *
  * The workspace MAIN area is dock-hosted too (WorkspaceDockArea): the
  * conversation is the shell dock's resident "chat" leaf — locked (no
  * close affordance), re-inserted when a stale document lost it, and kept
- * by the persisted document across reloads; the seven-panel sidebar
+ * by the persisted document across reloads; the nine-panel sidebar
  * stays an independent dock in the trailing column, and "Reset layout"
  * restores both trees.
  */
@@ -40,8 +42,10 @@ import {
   WorkspaceDockSidebar,
   createWorkspaceDockModel,
   useWorkspaceDockStore,
+  workspacePanelDomains,
 } from "../src/components/layout/WorkspaceDockSidebar"
 import { WorkspaceDockArea } from "../src/components/layout/WorkspaceDockArea"
+import { FEATURE_DOMAINS } from "../src/features"
 
 // Register the aggregated dashboard dictionaries exactly like main.tsx so
 // t() resolves the layout.* keys (setup.ts pins the locale to en-US).
@@ -96,7 +100,7 @@ const renderSidebar = () => {
 const dockedIds = () => flattenPanels(useWorkspaceDockStore.getState().model.root).map((l) => l.id)
 
 describe("WorkspaceDockSidebar — dock residency", () => {
-  it("renders all seven registered panels as stable-id dock leaves with translated headers", () => {
+  it("renders all nine registered panels as stable-id dock leaves with translated headers", () => {
     renderSidebar()
     const expectedHeaders: Record<string, string> = {
       agent: "Agents",
@@ -106,6 +110,8 @@ describe("WorkspaceDockSidebar — dock residency", () => {
       files: "File changes",
       sessions: "Session history",
       artifacts: "Artifacts",
+      goals: "Goal Progress",
+      deliverables: "Deliverables",
     }
     for (const panel of WORKSPACE_PANELS) {
       expect(screen.getByTestId(`dock-panel-${panel.id}`)).toBeTruthy()
@@ -113,7 +119,7 @@ describe("WorkspaceDockSidebar — dock residency", () => {
         expectedHeaders[panel.id],
       )
     }
-    // The registry drives the default layout: all seven are resident.
+    // The registry drives the default layout: all nine are resident.
     expect(dockedIds()).toEqual(WORKSPACE_PANELS.map((p) => p.id))
   })
 
@@ -128,6 +134,15 @@ describe("WorkspaceDockSidebar — dock residency", () => {
     expect(screen.getByTestId("dock-panel-subagents").textContent).toContain(
       "No subagent activity yet",
     )
+    // Goals leaf: the derived goal tree + summary card, honest empty state.
+    const goalsLeaf = screen.getByTestId("dock-panel-goals")
+    expect(goalsLeaf.querySelector("[data-testid='goal-tree']")).toBeTruthy()
+    expect(goalsLeaf.querySelector("[data-testid='goal-summary-card']")).toBeTruthy()
+    expect(goalsLeaf.textContent).toContain("No goal data yet (waiting for a workspace)")
+    // Deliverables leaf: the real panel body, empty without a workspace id.
+    const deliverablesLeaf = screen.getByTestId("dock-panel-deliverables")
+    expect(deliverablesLeaf.querySelector("[data-testid='deliverables-panel']")).toBeTruthy()
+    expect(deliverablesLeaf.querySelector("[data-testid='deliverables-empty']")).toBeTruthy()
   })
 
   it("closing a leaf removes it and persists the layout document", () => {
@@ -154,6 +169,31 @@ describe("WorkspaceDockSidebar — dock residency", () => {
     fireEvent.click(screen.getByTestId("workspace-dock-add-files"))
     expect(screen.getByTestId("dock-panel-files")).toBeTruthy()
     // Reopening splits beside the focused leaf, so only compare the set.
+    expect([...dockedIds()].sort()).toEqual(WORKSPACE_PANELS.map((p) => p.id).sort())
+  })
+
+  it("the goals and deliverables leaves persist closure and restore from the add-panel menu", () => {
+    renderSidebar()
+    fireEvent.click(screen.getByTestId("dock-close-goals"))
+    fireEvent.click(screen.getByTestId("dock-close-deliverables"))
+    expect(screen.queryByTestId("dock-panel-goals")).toBeNull()
+    expect(screen.queryByTestId("dock-panel-deliverables")).toBeNull()
+    // The closures survive in the persisted layout document.
+    const persisted = flattenPanels(
+      parseDockModel(JSON.parse(localStorage.getItem(WORKSPACE_DOCK_STORAGE_KEY) as string)).root,
+    ).map((l) => l.id)
+    expect(persisted).not.toContain("goals")
+    expect(persisted).not.toContain("deliverables")
+    // The registry-driven menu offers exactly the closed leaves back.
+    fireEvent.click(screen.getByTestId("workspace-dock-add-toggle"))
+    expect(screen.getByTestId("workspace-dock-add-goals")).toBeTruthy()
+    expect(screen.getByTestId("workspace-dock-add-deliverables")).toBeTruthy()
+    // Picking closes the menu, so reopen it for the second restore.
+    fireEvent.click(screen.getByTestId("workspace-dock-add-goals"))
+    fireEvent.click(screen.getByTestId("workspace-dock-add-toggle"))
+    fireEvent.click(screen.getByTestId("workspace-dock-add-deliverables"))
+    expect(screen.getByTestId("dock-panel-goals")).toBeTruthy()
+    expect(screen.getByTestId("dock-panel-deliverables")).toBeTruthy()
     expect([...dockedIds()].sort()).toEqual(WORKSPACE_PANELS.map((p) => p.id).sort())
   })
 
@@ -218,6 +258,54 @@ describe("WorkspaceDockSidebar — dock residency", () => {
     // the raw id as the header title instead of throwing.
     expect(screen.getByTestId("dock-panel-ghost")).toBeTruthy()
     expect(screen.getByTestId("dock-header-ghost").textContent).toBe("ghost")
+  })
+})
+
+// ── workspacePanelDomains — WORKSPACE_PANELS ↔ FEATURE_DOMAINS mapping ──────
+
+describe("workspacePanelDomains — panel registry ↔ feature-domain registry", () => {
+  it("maps the registry onto feature domains one-to-one, no third list", () => {
+    const mapped = workspacePanelDomains().filter((m) => m.domainId !== null)
+    const domainIds = mapped.map((m) => m.domainId as string)
+    // One-to-one: every panel resolves to exactly one domain and no two
+    // panels share one — the projection is injective.
+    expect(new Set(domainIds).size).toBe(domainIds.length)
+    expect(mapped).toHaveLength(domainIds.length)
+    // Every resolved id is a real FEATURE_DOMAINS entry.
+    const known = new Set(FEATURE_DOMAINS.map((d) => d.id))
+    for (const id of domainIds) expect(known.has(id)).toBe(true)
+  })
+
+  it("resolves the shared-id overlap plus the agent→chat alias", () => {
+    const byId = new Map(workspacePanelDomains().map((m) => [m.panelId, m]))
+    for (const id of [
+      "subagents",
+      "trajectory",
+      "files",
+      "sessions",
+      "artifacts",
+      "deliverables",
+    ]) {
+      expect(byId.get(id)?.domainId).toBe(id)
+    }
+    expect(byId.get("agent")?.domainId).toBe("chat")
+  })
+
+  it("same-id overlaps agree with the domain's titleKey", () => {
+    for (const mapping of workspacePanelDomains()) {
+      if (mapping.domainId === null || mapping.domainId !== mapping.panelId) continue
+      const domain = FEATURE_DOMAINS.find((d) => d.id === mapping.domainId)
+      expect(domain?.titleKey).toBe(mapping.titleKey)
+    }
+  })
+
+  it("registry-only ids stay visibly unmapped until FEATURE_DOMAINS grows them", () => {
+    const unmapped = workspacePanelDomains()
+      .filter((m) => m.domainId === null)
+      .map((m) => m.panelId)
+    // "tasks" and "goals" predate / outrun the domain registry; the gap
+    // is pinned here so the future unification flips this assertion.
+    expect(unmapped).toEqual(["tasks", "goals"])
   })
 })
 

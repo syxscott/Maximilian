@@ -6,13 +6,14 @@
 /**
  * WorkspaceDockSidebar — the workspace tab's right-hand sidebar as a
  * dock-resident panel system. Each workspace panel (agents, tasks,
- * subagents, trajectory, file changes, sessions, artifacts) is a
- * stable-id leaf of a DockContainer; the tree is persisted under its
- * own storage key through the dock layout engine, so arrangements and
- * closures survive reloads. A small "add panel" menu at the top lists
- * every registered panel that is not currently docked and reopens its
- * leaf on pick. The panels themselves are untouched — this module only
- * wraps them.
+ * subagents, trajectory, file changes, sessions, artifacts, goals,
+ * deliverables) is a stable-id leaf of a DockContainer; the tree is
+ * persisted under its own storage key through the dock layout engine,
+ * so arrangements and closures survive reloads. A small "add panel"
+ * menu at the top lists every registered panel that is not currently
+ * docked and reopens its leaf on pick — the menu is driven purely by
+ * this registry, so registering a leaf here is the whole mount. The
+ * panels themselves are untouched — this module only wraps them.
  */
 import { useMemo, useState } from "react"
 import { ListPlus, RotateCcw } from "lucide-react"
@@ -34,6 +35,9 @@ import { SessionsPanel } from "@/components/SessionsPanel"
 import { ArtifactsExplorer } from "@/components/ArtifactsExplorer"
 import { ReviewPanel } from "@/components/ReviewPanel"
 import { OutputPanel } from "@/components/OutputPanel"
+import { GoalSummaryCard, GoalTree } from "@/features/goals"
+import { DeliverablesPanel } from "@/features/deliverables"
+import { FEATURE_DOMAINS } from "@/features"
 
 export interface WorkspacePanelSpec {
   /** Stable dock leaf id (persisted in the layout document). */
@@ -51,10 +55,46 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelSpec[] = [
   { id: "files", titleKey: "files.title" },
   { id: "sessions", titleKey: "sessions.title" },
   { id: "artifacts", titleKey: "artifacts.title" },
+  { id: "goals", titleKey: "goals.title" },
+  { id: "deliverables", titleKey: "deliverables.title" },
 ]
 
 /** Storage key for the workspace sidebar's dock layout. */
 export const WORKSPACE_DOCK_STORAGE_KEY = "maximilian.workspace-dock-layout"
+
+/**
+ * Panel ids whose FEATURE_DOMAINS entry answers to a different id
+ * (src/features/index.ts). Everything else maps by shared id.
+ */
+export const WORKSPACE_PANEL_DOMAIN_ALIASES: Readonly<Record<string, string>> = {
+  agent: "chat", // the agent leaf hosts the chat domain's conversation surface
+}
+
+/** One row of the WORKSPACE_PANELS ↔ FEATURE_DOMAINS correspondence. */
+export interface WorkspacePanelDomain {
+  /** WORKSPACE_PANELS leaf id. */
+  panelId: string
+  /** The panel's FEATURE_DOMAINS id, null while the domain is pending. */
+  domainId: string | null
+  /** The leaf's i18n title key (same-id overlaps share the domain's key). */
+  titleKey: string
+}
+
+/**
+ * WORKSPACE_PANELS ↔ FEATURE_DOMAINS correspondence — a pure projection
+ * of the two registries, no third hardcoded list. A panel maps to the
+ * FEATURE_DOMAINS entry with its id (or its alias's id); registry-only
+ * ids that FEATURE_DOMAINS has not grown yet surface as null so the gap
+ * stays visible and tested until the full unification lands.
+ */
+export function workspacePanelDomains(): WorkspacePanelDomain[] {
+  return WORKSPACE_PANELS.map((panel) => {
+    const alias = WORKSPACE_PANEL_DOMAIN_ALIASES[panel.id]
+    const domainId =
+      alias ?? (FEATURE_DOMAINS.some((domain) => domain.id === panel.id) ? panel.id : null)
+    return { panelId: panel.id, domainId, titleKey: panel.titleKey }
+  })
+}
 
 /** Sidebar default: every registered panel, stacked top → bottom. */
 export function createWorkspaceDockModel(): DockModel {
@@ -107,6 +147,15 @@ export function WorkspaceDockSidebar({
         return <SessionsPanel workspaceId={workspace?.id} />
       case "artifacts":
         return <ArtifactsExplorer workspaceId={workspace?.id} />
+      case "goals":
+        return (
+          <div className="space-y-2">
+            <GoalTree workspace={workspace} />
+            <GoalSummaryCard workspace={workspace} />
+          </div>
+        )
+      case "deliverables":
+        return <DeliverablesPanel workspaceId={workspace?.id} />
       default:
         return null
     }
@@ -116,7 +165,7 @@ export function WorkspaceDockSidebar({
     <div data-testid="workspace-dock-sidebar" className="flex h-full min-h-0 flex-col gap-2">
       {/* Add-panel menu (top of the sidebar): lists every registered panel
           that is not currently docked; picking one reopens its leaf. Next
-          to it, "Reset layout" restores both persisted trees — the seven
+          to it, "Reset layout" restores both persisted trees — the nine
           registry panels here and the shell dock's default conversation
           grid (chat | timeline) — and mirrors the reset to storage. */}
       <div className="relative flex shrink-0 items-center justify-end gap-2">
@@ -183,7 +232,7 @@ export function WorkspaceDockSidebar({
 
       {/* The workspace's final review / live output summary keeps its
           always-visible slot below the dock — dock residency covers the
-          seven registry panels; this conditional pair stays a plain strip. */}
+          nine registry panels; this conditional pair stays a plain strip. */}
       <div className="max-h-64 shrink-0 overflow-y-auto">
         {workspace?.review ? (
           <ReviewPanel workspace={workspace} />
