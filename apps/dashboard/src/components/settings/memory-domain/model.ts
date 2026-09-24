@@ -8,7 +8,10 @@
  * per-role memory buckets (userFeedback / reviewSuggestions /
  * commonErrors / goodExamples) plus the per-bucket efficacy ledger out of
  * the existing GET /api/evolution/agents payload (facade.profiles).
- * Read-only — nothing here writes.
+ * Read-only rendering plus pure export/import helpers: the envelope builder
+ * and strict import parser here never touch the network or the store — the
+ * write-back itself is the POST /evolution/agents/{role}/memory-import
+ * route, called from the data hook.
  */
 
 export const MEMORY_BUCKETS = [
@@ -238,4 +241,224 @@ export function searchRoleEntries(
     buckets.push({ ...bucket, entries })
   }
   return { buckets, matches }
+}
+
+// ── Export / import (real JSON handoff through the memory-import route) ─────
+
+/** kind marker of the export envelope; the import parser requires it loosely. */
+export const MEMORY_EXPORT_KIND = "maximilian-role-memory" as const
+export const MEMORY_EXPORT_VERSION = 1
+
+/** One entry as the export writes it and the import route accepts it. */
+export interface MemoryExportEntry {
+  content: string
+  mime: string
+  metadata?: Record<string, unknown>
+}
+
+export interface MemoryExportEnvelope {
+  kind: typeof MEMORY_EXPORT_KIND
+  version: number
+  role: string
+  exportedAt: string
+  buckets: Partial<Record<MemoryBucketName, MemoryExportEntry[]>>
+  efficacy?: unknown
+  archived?: unknown
+}
+
+/**
+ * Coerce one raw entry into the normalized { content, mime, metadata? } form:
+ * legacy plain strings become text/plain entries, objects need a string
+ * content (mime defaults), anything else is dropped. Defensive — the raw
+ * memory is passthrough JSON.
+ */
+export function toExportEntry(entry: unknown): MemoryExportEntry | null {
+  if (typeof entry === "string") {
+    return entry.length > 0 ? { content: entry, mime: "text/plain" } : null
+  }
+  if (entry != null && typeof entry === "object") {
+    const obj = entry as Record<string, unknown>
+    if (typeof obj.content !== "string" || obj.content.length === 0) return null
+    const out: MemoryExportEntry = {
+      content: obj.content,
+      mime: typeof obj.mime === "string" && obj.mime.length > 0 ? obj.mime : "text/plain",
+    }
+    if (obj.metadata != null && typeof obj.metadata === "object") {
+      out.metadata = obj.metadata as Record<string, unknown>
+    }
+    return out
+  }
+  return null
+}
+
+function toExportBucket(raw: unknown): MemoryExportEntry[] {
+  if (!Array.isArray(raw)) return []
+  const entries: MemoryExportEntry[] = []
+  for (const item of raw) {
+    const entry = toExportEntry(item)
+    if (entry !== null) entries.push(entry)
+  }
+  return entries
+}
+
+/**
+ * Build the export envelope from the role's RAW profile row (not the view):
+ * buckets are normalized to { content, mime, metadata? } entries, efficacy
+ * and the curator archive ride along untouched when present, so an
+ * export→import round trip restores what the viewer saw. Returns null when
+ * the row has no usable role/memory shape.
+ */
+export function buildMemoryExportEnvelope(
+  role: string,
+  rawRow: unknown,
+  exportedAt: string,
+): MemoryExportEnvelope | null {
+  if (!role) return null
+  const memory =
+    rawRow != null &&
+    typeof rawRow === "object" &&
+    (rawRow as Record<string, unknown>).memory != null
+      ? ((rawRow as Record<string, unknown>).memory as Record<string, unknown>)
+      : null
+  const buckets: Partial<Record<MemoryBucketName, MemoryExportEntry[]>> = {}
+  for (const name of MEMORY_BUCKETS) {
+    buckets[name] = toExportBucket(memory?.[name])
+  }
+  const envelope: MemoryExportEnvelope = {
+    kind: MEMORY_EXPORT_KIND,
+    version: MEMORY_EXPORT_VERSION,
+    role,
+    exportedAt,
+    buckets,
+  }
+  if (memory?.efficacy != null && typeof memory.efficacy === "object") {
+    envelope.efficacy = memory.efficacy
+  }
+  if (memory?.archived != null && typeof memory.archived === "object") {
+    envelope.archived = memory.archived
+  }
+  return envelope
+}
+
+/** Per-bucket entry counts of an export envelope (confirm-dialog summary). */
+export function exportBucketCounts(
+  envelope: MemoryExportEnvelope,
+): Partial<Record<MemoryBucketName, number>> {
+  const counts: Partial<Record<MemoryBucketName, number>> = {}
+  for (const name of MEMORY_BUCKETS) {
+    counts[name] = envelope.buckets[name]?.length ?? 0
+  }
+  return counts
+}
+
+// ── Import parsing (frontend pre-validation; the route re-validates) ────────
+
+export type MemoryImportErrorCode =
+  | "invalidJson"
+  | "notObject"
+  | "missingBuckets"
+  | "unknownBucket"
+  | "bucketNotArray"
+  | "invalidEntry"
+  | "emptyImport"
+
+export interface MemoryImportParseError {
+  code: MemoryImportErrorCode
+  /** Offending bucket name or 1-based entry index, for {bucket}/{index}. */
+  detail?: string
+}
+
+export type MemoryImportParseResult =
+  | {
+      ok: true
+      buckets: Partial<Record<MemoryBucketName, MemoryExportEntry[]>>
+      counts: Partial<Record<MemoryBucketName, number>>
+      totalEntries: number
+      efficacy?: unknown
+      archived?: unknown
+    }
+  | { ok: false; error: MemoryImportParseError }
+
+/**
+ * Strict client-side validation of a memory JSON file before the confirm
+ * dialog: top-level object with a `buckets` object whose keys are the four
+ * known buckets, each an array of entries that carry non-empty string
+ * `content` AND string `mime` fields; the file must contain at least one
+ * entry overall. `efficacy` / `archived` are passed through only when they
+ * are objects. The backend route re-validates and rejects 400 on drift.
+ */
+export function parseMemoryImportFile(text: string): MemoryImportParseResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { ok: false, error: { code: "invalidJson" } }
+  }
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: { code: "notObject" } }
+  }
+  const root = parsed as Record<string, unknown>
+  const rawBuckets = root.buckets
+  if (rawBuckets == null || typeof rawBuckets !== "object" || Array.isArray(rawBuckets)) {
+    return { ok: false, error: { code: "missingBuckets" } }
+  }
+  const known = new Set<string>(MEMORY_BUCKETS)
+  const buckets: Partial<Record<MemoryBucketName, MemoryExportEntry[]>> = {}
+  // Every known bucket gets a count (0 when the file omits it) so the
+  // confirm dialog can show the full four-bucket replace picture.
+  const counts: Partial<Record<MemoryBucketName, number>> = {}
+  for (const name of MEMORY_BUCKETS) counts[name] = 0
+  let totalEntries = 0
+  for (const [key, value] of Object.entries(rawBuckets as Record<string, unknown>)) {
+    if (!known.has(key)) return { ok: false, error: { code: "unknownBucket", detail: key } }
+    const name = key as MemoryBucketName
+    if (!Array.isArray(value)) {
+      return { ok: false, error: { code: "bucketNotArray", detail: key } }
+    }
+    const entries: MemoryExportEntry[] = []
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]
+      if (item == null || typeof item !== "object" || Array.isArray(item)) {
+        return { ok: false, error: { code: "invalidEntry", detail: `${key}:${i + 1}` } }
+      }
+      const obj = item as Record<string, unknown>
+      if (typeof obj.content !== "string" || obj.content.length === 0) {
+        return { ok: false, error: { code: "invalidEntry", detail: `${key}:${i + 1}` } }
+      }
+      if (typeof obj.mime !== "string" || obj.mime.length === 0) {
+        return { ok: false, error: { code: "invalidEntry", detail: `${key}:${i + 1}` } }
+      }
+      const entry: MemoryExportEntry = { content: obj.content, mime: obj.mime }
+      if (obj.metadata != null && typeof obj.metadata === "object") {
+        entry.metadata = obj.metadata as Record<string, unknown>
+      }
+      entries.push(entry)
+    }
+    buckets[name] = entries
+    counts[name] = entries.length
+    totalEntries += entries.length
+  }
+  if (totalEntries === 0) return { ok: false, error: { code: "emptyImport" } }
+  const rootRec = root as Record<string, unknown>
+  return {
+    ok: true,
+    buckets,
+    counts,
+    totalEntries,
+    efficacy:
+      rootRec.efficacy != null && typeof rootRec.efficacy === "object"
+        ? rootRec.efficacy
+        : undefined,
+    archived:
+      rootRec.archived != null && typeof rootRec.archived === "object"
+        ? rootRec.archived
+        : undefined,
+  }
+}
+
+/** Suggested download filename for one role's export. */
+export function exportFileName(role: string, exportedAt: string): string {
+  const day = exportedAt.slice(0, 10) || "export"
+  const safe = role.replace(/[^a-zA-Z0-9_-]+/g, "_") || "role"
+  return `maximilian-memory-${safe}-${day}.json`
 }

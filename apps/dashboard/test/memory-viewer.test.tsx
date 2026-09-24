@@ -166,8 +166,11 @@ describe("memory viewer model", () => {
 // ── Render smoke: expansion, search, ledger, gating badge ───────────────────
 
 vi.mock("@/hooks/useSettingsQueries", () => ({
+  SUBAGENTS_QUERY_KEY: ["settings-deep", "subagents"],
+  MIGRATIONS_QUERY_KEY: ["settings-deep", "migrations"],
   useSubagentProfiles: vi.fn(),
   useMigrationCandidates: vi.fn(),
+  useMemoryImport: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }))
 
 import * as settingsHooks from "@/hooks/useSettingsQueries"
@@ -176,6 +179,12 @@ const mockedSettings = vi.mocked(settingsHooks)
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // resetAllMocks clears the module-factory implementation; the memory
+  // viewer renders useMemoryImport() on every pass, so re-seed it.
+  mockedSettings.useMemoryImport.mockReturnValue({
+    mutate: vi.fn(),
+    isPending: false,
+  } as never)
 })
 
 const payload = {

@@ -90,6 +90,7 @@ export const API_PATHS = [
   "POST /auth/refresh",
   "POST /auth/register",
   "POST /chat",
+  "POST /evolution/agents/{role}/memory-import",
   "POST /evolution/evolve/{role}",
   "POST /evolution/feedback",
   "POST /evolution/oracle-triad",
@@ -125,5 +126,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 112. */
-export const API_PATH_COUNT = 112
+/** Number of routes in the backend contract: 113. */
+export const API_PATH_COUNT = 113

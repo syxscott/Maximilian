@@ -15,11 +15,15 @@
  * what the unit tests exercise.
  */
 
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { z } from "zod"
 import { BASE, authHeaders, fetchJson, usageApi } from "../api"
 
 const SETTINGS_DEEP_PREFIX = "settings-deep" as const
+
+/** Stable query keys, exported so domains can invalidate after mutations. */
+export const SUBAGENTS_QUERY_KEY = [SETTINGS_DEEP_PREFIX, "subagents"] as const
+export const MIGRATIONS_QUERY_KEY = [SETTINGS_DEEP_PREFIX, "migrations"] as const
 
 // ── Provider presets catalog (GET /system/provider-presets) ────────────────
 
@@ -132,10 +136,67 @@ export type AgentProfilesResponse = z.infer<typeof AgentProfilesResponseSchema>
 
 export function useSubagentProfiles() {
   return useQuery<AgentProfilesResponse>({
-    queryKey: [SETTINGS_DEEP_PREFIX, "subagents"],
+    queryKey: SUBAGENTS_QUERY_KEY,
     queryFn: ({ signal }) =>
       fetchSettingsDeepJson("/evolution/agents?limit=100", AgentProfilesResponseSchema, signal),
     staleTime: 30_000,
+  })
+}
+
+// ── Role memory import (POST /evolution/agents/{role}/memory-import) ────────
+
+/** One normalized memory entry as the import route accepts it. */
+export interface MemoryImportEntry {
+  content: string
+  mime: string
+  metadata?: Record<string, unknown>
+}
+
+export interface MemoryImportInput {
+  role: string
+  buckets: Record<string, MemoryImportEntry[]>
+  efficacy?: unknown
+  archived?: unknown
+}
+
+const MemoryImportResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    role: z.string(),
+    imported: z.record(z.string(), z.number()),
+    totalEntries: z.number(),
+  })
+  .passthrough()
+
+export type MemoryImportResponse = z.infer<typeof MemoryImportResponseSchema>
+
+export function useMemoryImport() {
+  const queryClient = useQueryClient()
+  return useMutation<MemoryImportResponse, Error, MemoryImportInput>({
+    mutationFn: async (input) => {
+      const res = await fetch(
+        `${BASE}/evolution/agents/${encodeURIComponent(input.role)}/memory-import`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            buckets: input.buckets,
+            ...(input.efficacy !== undefined ? { efficacy: input.efficacy } : {}),
+            ...(input.archived !== undefined ? { archived: input.archived } : {}),
+          }),
+        },
+      )
+      const body = (await res.json().catch(() => null)) as
+        (Record<string, unknown> & { error?: string }) | null
+      if (!res.ok) {
+        throw new Error(body?.error ?? `memory import failed (${res.status} ${res.statusText})`)
+      }
+      return MemoryImportResponseSchema.parse(body)
+    },
+    onSuccess: () => {
+      // The viewer reads GET /evolution/agents — refresh it after a write.
+      void queryClient.invalidateQueries({ queryKey: SUBAGENTS_QUERY_KEY })
+    },
   })
 }
 
@@ -218,7 +279,7 @@ export type MigrationsStatus = z.infer<typeof MigrationsStatusSchema>
 
 export function useMigrationCandidates() {
   return useQuery<MigrationsStatus>({
-    queryKey: [SETTINGS_DEEP_PREFIX, "migrations"],
+    queryKey: MIGRATIONS_QUERY_KEY,
     queryFn: ({ signal }) =>
       fetchSettingsDeepJson("/system/migrations", MigrationsStatusSchema, signal),
     staleTime: 60_000,

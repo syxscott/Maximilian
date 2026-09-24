@@ -17,6 +17,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { getConfig } from "@max/config"
 import { Vault } from "@max/core"
+import type { EvolutionFacade } from "@max/evolution"
 import { sessionStoreStatusHandler } from "./system.js"
 import { ErrorSchema } from "../schemas.js"
 
@@ -280,3 +281,151 @@ async function dirExists(dir: string): Promise<boolean> {
 }
 
 export { migrationsStatusRoute }
+
+// ── Role memory import (real write-back over facade.profiles) ───────────────
+//
+// The dashboard memory domain can export a role's memory JSON; this is the
+// matching import endpoint. Validation is strict on purpose — the payload
+// replaces live prompt-injection material, so a structurally invalid file is
+// rejected with 400 instead of being coerced into the store.
+
+/** The four active memory buckets (mirrors @max/evolution AgentMemory). */
+const MEMORY_BUCKET_KEYS = [
+  "userFeedback",
+  "reviewSuggestions",
+  "commonErrors",
+  "goodExamples",
+] as const
+
+/** Hard per-bucket ceiling — imports are admin maintenance, not bulk loads. */
+const MEMORY_IMPORT_BUCKET_CAP = 500
+
+const MemoryEntryInputSchema = z.object({
+  content: z.string().min(1),
+  mime: z.string().min(1),
+  metadata: z.record(z.unknown()).optional(),
+})
+
+const MemoryBucketsInputSchema = z
+  .object({
+    userFeedback: z.array(MemoryEntryInputSchema).max(MEMORY_IMPORT_BUCKET_CAP).optional(),
+    reviewSuggestions: z.array(MemoryEntryInputSchema).max(MEMORY_IMPORT_BUCKET_CAP).optional(),
+    commonErrors: z.array(MemoryEntryInputSchema).max(MEMORY_IMPORT_BUCKET_CAP).optional(),
+    goodExamples: z.array(MemoryEntryInputSchema).max(MEMORY_IMPORT_BUCKET_CAP).optional(),
+  })
+  .refine((buckets) => MEMORY_BUCKET_KEYS.some((key) => (buckets[key]?.length ?? 0) > 0), {
+    message: "import contains no entries",
+  })
+
+const MemoryEfficacyInputSchema = z.record(
+  z.object({
+    injectedCount: z.number().int().nonnegative(),
+    deltaSum: z.number(),
+  }),
+)
+
+const MemoryImportBodySchema = z
+  .object({
+    buckets: MemoryBucketsInputSchema,
+    /** Optional ledger restore; omitted → the role keeps its current ledger. */
+    efficacy: MemoryEfficacyInputSchema.optional(),
+    /** Curator quarantine restore; omitted → the role keeps its archive. */
+    archived: z.record(z.array(MemoryEntryInputSchema)).optional(),
+  })
+  .passthrough()
+
+const memoryImportRoute = createRoute({
+  method: "post",
+  path: "/evolution/agents/{role}/memory-import",
+  tags: ["evolution"],
+  request: {
+    params: z.object({ role: z.string().min(1) }),
+    body: { content: { "application/json": { schema: MemoryImportBodySchema } } },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            ok: z.literal(true),
+            role: z.string(),
+            imported: z.record(z.string(), z.number()),
+            totalEntries: z.number().int().nonnegative(),
+          }),
+        },
+      },
+      description: "Memory imported (per-bucket entry counts written)",
+    },
+    400: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Invalid memory structure",
+    },
+    404: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Profile not found for role",
+    },
+  },
+})
+
+export interface MemoryImportDeps {
+  facade: EvolutionFacade
+}
+
+/**
+ * Handler factory for POST /evolution/agents/{role}/memory-import. Bucket
+ * semantics: a bucket key present in the body replaces that bucket's entries
+ * wholesale; keys left out keep the role's current entries (the dashboard
+ * always sends all four, so its import is a full replace — the API stays
+ * minimally destructive for partial payloads). `efficacy` / `archived` are
+ * restored only when the body carries them; `totalEntries` is recomputed
+ * from the resulting buckets.
+ */
+export function memoryImportHandler(deps: MemoryImportDeps) {
+  return async (c: Context) => {
+    const role = c.req.param("role")
+    if (!role) return c.json({ error: "Missing role" }, 400)
+
+    let rawBody: unknown
+    try {
+      rawBody = await c.req.json()
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400)
+    }
+    const parsed = MemoryImportBodySchema.safeParse(rawBody)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      const where = issue?.path.length ? ` at ${issue.path.join(".")}` : ""
+      return c.json({ error: `Invalid memory import: ${issue?.message ?? "unknown"}${where}` }, 400)
+    }
+
+    const profile = await deps.facade.profiles.get(role)
+    if (!profile) return c.json({ error: "Profile not found" }, 404)
+
+    const buckets = parsed.data.buckets
+    const nextMemory = {
+      ...profile.memory,
+      userFeedback: buckets.userFeedback ?? profile.memory.userFeedback,
+      reviewSuggestions: buckets.reviewSuggestions ?? profile.memory.reviewSuggestions,
+      commonErrors: buckets.commonErrors ?? profile.memory.commonErrors,
+      goodExamples: buckets.goodExamples ?? profile.memory.goodExamples,
+      efficacy: parsed.data.efficacy ?? profile.memory.efficacy,
+      archived: parsed.data.archived ?? profile.memory.archived,
+    }
+    nextMemory.totalEntries = MEMORY_BUCKET_KEYS.reduce(
+      (sum, key) => sum + nextMemory[key].length,
+      0,
+    )
+    await deps.facade.profiles.save({ ...profile, memory: nextMemory })
+
+    return c.json({
+      ok: true as const,
+      role,
+      imported: Object.fromEntries(
+        MEMORY_BUCKET_KEYS.map((key) => [key, buckets[key]?.length ?? 0]),
+      ),
+      totalEntries: nextMemory.totalEntries,
+    })
+  }
+}
+
+export { memoryImportRoute }

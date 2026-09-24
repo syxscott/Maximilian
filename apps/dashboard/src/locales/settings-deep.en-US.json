@@ -89,8 +89,8 @@
   "settingsDeep.store.table.usage": "Usage",
   "settingsDeep.store.table.steering_queue": "Steering queue",
   "settingsDeep.store.disabledHint": "Set SESSION_STORE_ENABLED=true to enable the session history side store",
-  "settingsDeep.migrations.title": "Migration candidates",
-  "settingsDeep.migrations.description": "Sizing profile of the API contract, session store and i18n core dictionary (read-only)",
+  "settingsDeep.migrations.title": "System status",
+  "settingsDeep.migrations.description": "API contract, session store and i18n core dictionary — open a block to drill into its raw JSON",
   "settingsDeep.migrations.api": "API contract",
   "settingsDeep.migrations.openapiRoutes": "Contract routes",
   "settingsDeep.migrations.sessionStore": "Session store",
@@ -194,5 +194,8 @@
     "tester": {
       "pickModel": "Model to test"
     }
-  }
+  },
+  "settingsDeep.migrations.refreshedAt": "Refreshed {time}",
+  "settingsDeep.migrations.refreshNow": "Refresh",
+  "settingsDeep.migrations.rawJson": "Raw JSON"
 }

@@ -185,8 +185,11 @@ describe("skills-domain model", () => {
 // ── Render smoke ─────────────────────────────────────────────────────────────
 
 vi.mock("@/hooks/useSettingsQueries", () => ({
+  SUBAGENTS_QUERY_KEY: ["settings-deep", "subagents"],
+  MIGRATIONS_QUERY_KEY: ["settings-deep", "migrations"],
   useSubagentProfiles: vi.fn(),
   useMigrationCandidates: vi.fn(),
+  useMemoryImport: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }))
 
 import * as settingsHooks from "@/hooks/useSettingsQueries"
@@ -195,6 +198,12 @@ const mockedSettings = vi.mocked(settingsHooks)
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // resetAllMocks clears the module-factory implementation; MemoryDomain
+  // renders useMemoryImport() on every pass, so re-seed it.
+  mockedSettings.useMemoryImport.mockReturnValue({
+    mutate: vi.fn(),
+    isPending: false,
+  } as never)
 })
 
 describe("settings domains render smoke", () => {

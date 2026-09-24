@@ -80,6 +80,7 @@
   "POST /auth/refresh",
   "POST /auth/register",
   "POST /chat",
+  "POST /evolution/agents/{role}/memory-import",
   "POST /evolution/evolve/{role}",
   "POST /evolution/feedback",
   "POST /evolution/oracle-triad",

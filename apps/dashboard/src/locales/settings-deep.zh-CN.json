@@ -89,8 +89,8 @@
   "settingsDeep.store.table.usage": "用量",
   "settingsDeep.store.table.steering_queue": "转向队列",
   "settingsDeep.store.disabledHint": "设置 SESSION_STORE_ENABLED=true 以启用会话历史侧存储",
-  "settingsDeep.migrations.title": "迁移候选",
-  "settingsDeep.migrations.description": "API 契约、会话存储与 i18n 核心字典的规模画像（只读）",
+  "settingsDeep.migrations.title": "系统状态",
+  "settingsDeep.migrations.description": "API 契约、会话存储与 i18n 核心字典状态——点开子卡可下钻原始 JSON",
   "settingsDeep.migrations.api": "API 契约",
   "settingsDeep.migrations.openapiRoutes": "契约路由数",
   "settingsDeep.migrations.sessionStore": "会话存储",
@@ -194,5 +194,8 @@
     "tester": {
       "pickModel": "选择要测试的模型"
     }
-  }
+  },
+  "settingsDeep.migrations.refreshedAt": "刷新于 {time}",
+  "settingsDeep.migrations.refreshNow": "刷新",
+  "settingsDeep.migrations.rawJson": "原始 JSON"
 }

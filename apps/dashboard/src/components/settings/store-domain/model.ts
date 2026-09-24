@@ -140,3 +140,30 @@ export function toMigrationsStatusView(raw: unknown): MigrationsStatusView {
     },
   }
 }
+
+// ── System-status follow-ups: refresh clock + raw JSON drill-down ───────────
+
+/**
+ * Local wall-clock rendering of a query `dataUpdatedAt` timestamp as
+ * HH:MM:SS (deterministic padding, locale-independent digits). Undefined /
+ * non-finite input → null (the card then shows no refresh time yet).
+ */
+export function formatClock(ts: number | undefined): string | null {
+  if (ts === undefined || !Number.isFinite(ts) || ts <= 0) return null
+  const d = new Date(ts)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+/**
+ * Pretty-print one raw status section for the <details> drill-down.
+ * null → the caller renders the localized "no data" state.
+ */
+export function rawJsonText(value: unknown): string | null {
+  if (value === undefined || value === null) return null
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return null
+  }
+}
