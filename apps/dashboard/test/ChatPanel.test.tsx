@@ -102,17 +102,24 @@ describe("ChatPanel", () => {
   })
 
   // 会话顶格渲染: the conversation column has no standalone heading row —
-  // the title collapses into a small badge inside the timeline's toolbar
-  // row (the wrapper overlays it on the row's reserved left edge), so the
-  // timeline gains the ~2 rows the old text-lg heading consumed.
-  it("renders the title as a compact badge in the timeline toolbar row, not a heading", () => {
+  // the title rides IN the timeline's toolbar row via the toolbarLead
+  // slot (a flex sibling of the find button), so the timeline keeps the
+  // ~2 rows the old text-lg heading consumed in both dock and
+  // standalone modes.
+  it("renders the title as a compact badge inside the timeline toolbar row, not a heading", () => {
     render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} />)
     const badge = screen.getByTestId("chat-title-badge")
     expect(badge).toBeInTheDocument()
     // The i18n core title (chat.title), now compact rather than an h2 row.
     expect(badge.textContent).toMatch(/chat|conversation/i)
-    // The shell hosts the overlay + timeline; no h2 heading row remains.
-    expect(screen.getByTestId("chat-timeline-shell")).toBeInTheDocument()
+    // The badge is a flex sibling of the toolbar's find button — native
+    // alignment, no absolutely-positioned overlay, no reserved margin.
+    const toolbarRow = screen.getByRole("button", { name: /find/i }).parentElement
+    expect(toolbarRow?.contains(badge)).toBe(true)
+    expect(badge.className).not.toContain("absolute")
+    const shell = screen.getByTestId("chat-timeline-shell")
+    expect(shell.className).not.toContain("absolute")
+    expect(shell.className).not.toContain("ml-20")
     expect(document.querySelector("h2")).toBeNull()
     // Button inventory unchanged (the badge is not a button).
     expect(screen.getAllByRole("button")).toHaveLength(9)
@@ -124,5 +131,69 @@ describe("ChatPanel", () => {
     )
     expect(screen.queryByTestId("chat-title-badge")).toBeNull()
     expect(screen.getByTestId("chat-timeline-shell")).toBeInTheDocument()
+  })
+
+  // 两态一致性: dock (showHeading=false) and standalone (true) differ ONLY
+  // by the badge — toolbar row and scroll region keep identical classes,
+  // so padding and the scrolling box are the same in both modes.
+  it("keeps toolbar and scroll geometry identical across dock and standalone modes", () => {
+    const dock = render(
+      <ChatPanel onSubmit={() => {}} submitting={false} workspace={null} showHeading={false} />,
+    )
+    const dockToolbar = screen.getByRole("button", { name: /find/i }).parentElement?.className
+    const dockScroll = screen.getByTestId("conversation-timeline").className
+    dock.unmount()
+
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} />)
+    expect(screen.getByRole("button", { name: /find/i }).parentElement?.className).toBe(dockToolbar)
+    expect(screen.getByTestId("conversation-timeline").className).toBe(dockScroll)
+    // The scroll region is the overflow owner in both modes.
+    expect(screen.getByTestId("conversation-timeline").className).toContain("overflow-y-auto")
+  })
+
+  // 高度基线: the conversation column and the sidebar column are grid
+  // siblings on the same 1fr row, both full-height — one baseline.
+  it("aligns the conversation column and the sidebar column on the same height baseline", () => {
+    render(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={null}
+        sidebar={<div data-testid="ws-sidebar">sidebar</div>}
+      />,
+    )
+    const column = screen.getByTestId("chat-timeline-shell").parentElement
+    expect(column?.className).toContain("h-full")
+    expect(column?.className).toContain("min-h-0")
+    const aside = document.querySelector("aside")
+    expect(aside?.className).toContain("h-full")
+    expect(aside?.className).toContain("overflow-y-auto")
+    // Grid siblings: same row container, same baseline.
+    expect(aside?.parentElement).toBe(column?.parentElement)
+  })
+
+  // 键盘: Cmd/Ctrl+F opens find ONLY when the focus already lives inside
+  // the timeline container (the browser's own find stays untouched
+  // elsewhere); Esc leaves find mode entirely.
+  it("opens find with Cmd/Ctrl+F only when focus is inside the timeline, Esc closes", async () => {
+    const user = userEvent.setup()
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} />)
+    expect(screen.queryByTestId("timeline-find")).toBeNull()
+
+    // Focus OUTSIDE the timeline (composer textarea) — no hijack.
+    await user.click(screen.getByPlaceholderText(/enter your request/i))
+    await user.keyboard("{Control>}{f}{/Control}")
+    expect(screen.queryByTestId("timeline-find")).toBeNull()
+
+    // Focus INSIDE the timeline (a toolbar button) — find opens, input
+    // receives the focus.
+    await user.click(screen.getByRole("button", { name: /prev task/i }))
+    await user.keyboard("{Meta>}{f}{/Meta}")
+    expect(screen.getByTestId("timeline-find")).toBeInTheDocument()
+    expect(screen.getByTestId("timeline-find")).toHaveFocus()
+
+    // Esc closes the box again.
+    await user.keyboard("{Escape}")
+    expect(screen.queryByTestId("timeline-find")).toBeNull()
   })
 })

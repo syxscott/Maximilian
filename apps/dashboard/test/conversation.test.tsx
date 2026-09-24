@@ -1030,6 +1030,193 @@ describe("ConversationTimeline rendering", () => {
   })
 })
 
+// ── live-tail frozen counts (component-level) ───────────────────────────────
+
+/** Pin jsdom's missing layout metrics so onScroll's at-bottom math runs. */
+function pinScrollMetrics(el: HTMLElement, scrollHeight: number, clientHeight: number) {
+  Object.defineProperty(el, "scrollHeight", { configurable: true, value: scrollHeight })
+  Object.defineProperty(el, "clientHeight", { configurable: true, value: clientHeight })
+}
+
+describe("ConversationTimeline live-tail", () => {
+  /** Two standalone narration events → two units (workspace is null). */
+  const notes = (n: number): RuntimeEvent[] =>
+    Array.from({ length: n }, (_, i) => textEv(`note ${i}`))
+
+  it("shows no jump affordance while attached", () => {
+    render(<ConversationTimeline events={notes(2)} workspace={null} live={true} />)
+    expect(screen.queryByTestId("jump-to-latest")).toBeNull()
+  })
+
+  it("hides the jump affordance when detached with a zero frozen count", () => {
+    const { container } = render(
+      <ConversationTimeline events={notes(2)} workspace={null} live={true} />,
+    )
+    const el = screen.getByTestId("conversation-timeline")
+    pinScrollMetrics(el, 2000, 500)
+    el.scrollTop = 1000 // 2000 − 1000 − 500 ≥ 48 → detached
+    fireEvent.scroll(el)
+    // Detached at the current end: nothing pending, so the floating
+    // button stays out of the way — scrolling down is all it takes.
+    expect(screen.queryByTestId("jump-to-latest")).toBeNull()
+    expect(container).toBeTruthy()
+  })
+
+  it("accumulates several arrivals against one freeze point while detached", () => {
+    const { rerender } = render(
+      <ConversationTimeline events={notes(2)} workspace={null} live={true} />,
+    )
+    const el = screen.getByTestId("conversation-timeline")
+    pinScrollMetrics(el, 2000, 500)
+    el.scrollTop = 1000
+    fireEvent.scroll(el)
+    // First batch of arrivals after the freeze.
+    rerender(<ConversationTimeline events={notes(4)} workspace={null} live={true} />)
+    expect(screen.getByTestId("jump-to-latest")).toHaveTextContent("+2")
+    // Second batch: the count grows on the SAME freeze point — a later
+    // scroll/must-not-reset path never re-records it.
+    rerender(<ConversationTimeline events={notes(5)} workspace={null} live={true} />)
+    expect(screen.getByTestId("jump-to-latest")).toHaveTextContent("+3")
+  })
+
+  it("releases the freeze at the bottom and re-freezes fresh on the next detach", () => {
+    const { rerender } = render(
+      <ConversationTimeline events={notes(2)} workspace={null} live={true} />,
+    )
+    const el = screen.getByTestId("conversation-timeline")
+    pinScrollMetrics(el, 2000, 500)
+    el.scrollTop = 1000
+    fireEvent.scroll(el)
+    rerender(<ConversationTimeline events={notes(4)} workspace={null} live={true} />)
+    expect(screen.getByTestId("jump-to-latest")).toHaveTextContent("+2")
+
+    // Scroll back to the bottom — the episode ends, the affordance goes.
+    el.scrollTop = 1500 // 2000 − 1500 − 500 < 48 → attached again
+    fireEvent.scroll(el)
+    expect(screen.queryByTestId("jump-to-latest")).toBeNull()
+
+    // More arrivals while attached → still no affordance.
+    rerender(<ConversationTimeline events={notes(6)} workspace={null} live={true} />)
+    expect(screen.queryByTestId("jump-to-latest")).toBeNull()
+
+    // Detach again: the freeze point is the CURRENT end (6), so one new
+    // arrival counts +1 — not the stale +4 a carried-over point would give.
+    el.scrollTop = 0
+    fireEvent.scroll(el)
+    rerender(<ConversationTimeline events={notes(7)} workspace={null} live={true} />)
+    expect(screen.getByTestId("jump-to-latest")).toHaveTextContent("+1")
+  })
+
+  it("drops the stale frozen count when the workspace switches", () => {
+    const { rerender } = render(
+      <ConversationTimeline events={notes(2)} workspace={ws()} live={true} />,
+    )
+    const el = screen.getByTestId("conversation-timeline")
+    pinScrollMetrics(el, 2000, 500)
+    el.scrollTop = 1000
+    fireEvent.scroll(el)
+    rerender(<ConversationTimeline events={notes(4)} workspace={ws()} live={true} />)
+    expect(screen.getByTestId("jump-to-latest")).toHaveTextContent("+2")
+
+    // A different workspace stream invalidates a unit-COUNT freeze point.
+    rerender(<ConversationTimeline events={notes(2)} workspace={ws({ id: "w2" })} live={true} />)
+    expect(screen.queryByTestId("jump-to-latest")).toBeNull()
+  })
+})
+
+// ── find highlight tiers + in-scope hotkeys (component-level) ───────────────
+
+describe("ConversationTimeline find tiers and hotkeys", () => {
+  it("Enter steps the current match to amber highlights while the others stay default", () => {
+    const { container } = render(
+      <ConversationTimeline
+        events={[textEv("alpha one"), textEv("alpha two")]}
+        workspace={null}
+        live={false}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "alpha" } })
+    expect(screen.getByText("2 matches")).toBeInTheDocument()
+    // No cursor yet: every match keeps the default mark backdrop.
+    expect(container.querySelectorAll("mark")).toHaveLength(2)
+    expect(container.querySelectorAll('[data-testid="mark-current"]')).toHaveLength(0)
+
+    // Enter #1 — the first match is current: amber mark, solid current
+    // border on its turn, and the window anchored at that turn.
+    fireEvent.keyDown(screen.getByTestId("timeline-find"), { key: "Enter" })
+    expect(screen.getByTestId("find-current-position")).toHaveTextContent("1/2")
+    const first = container.querySelectorAll("mark")
+    expect(first[0]).toHaveAttribute("data-testid", "mark-current")
+    expect(first[0]).toHaveClass("bg-amber-300")
+    expect(first[1]).not.toHaveAttribute("data-testid", "mark-current")
+    expect(first[0]?.closest('[data-testid="turn-group"]')).toHaveAttribute(
+      "data-current-turn",
+      "true",
+    )
+    expect(first[1]?.closest('[data-testid="turn-group"]')).not.toHaveAttribute("data-current-turn")
+    expect(screen.getByTestId("conversation-window")).toHaveAttribute("data-anchor-offset", "0")
+
+    // Enter #2 — wraps to the second match and re-pins the window head at
+    // its turn: the earlier match's turn is now hidden above the window
+    // (turn-navigation anchor semantics), leaving exactly one mark.
+    fireEvent.keyDown(screen.getByTestId("timeline-find"), { key: "Enter" })
+    expect(screen.getByTestId("find-current-position")).toHaveTextContent("2/2")
+    const second = container.querySelectorAll("mark")
+    expect(second).toHaveLength(1)
+    expect(second[0]).toHaveAttribute("data-testid", "mark-current")
+    expect(second[0]?.closest('[data-testid="turn-group"]')).toHaveAttribute(
+      "data-turn-id",
+      "msg-1",
+    )
+    expect(second[0]?.closest('[data-testid="turn-group"]')).toHaveAttribute(
+      "data-current-turn",
+      "true",
+    )
+    expect(screen.getByTestId("conversation-window")).toHaveAttribute("data-anchor-offset", "1")
+    expect(screen.getByTestId("conversation-window")).toHaveAttribute("data-hidden-before", "1")
+  })
+
+  it("resets the find cursor when the query changes", () => {
+    const { container } = render(
+      <ConversationTimeline
+        events={[textEv("alpha one"), textEv("alpha two")]}
+        workspace={null}
+        live={false}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    const input = screen.getByTestId("timeline-find")
+    fireEvent.change(input, { target: { value: "alpha" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(screen.getByTestId("find-current-position")).toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: "one" } })
+    expect(screen.getByText("1 matches")).toBeInTheDocument()
+    expect(screen.queryByTestId("find-current-position")).not.toBeInTheDocument()
+    expect(container.querySelectorAll('[data-testid="mark-current"]')).toHaveLength(0)
+  })
+
+  it("Cmd/Ctrl+F on a toolbar control opens find and Esc leaves find mode entirely", () => {
+    const { container } = render(
+      <ConversationTimeline events={[textEv("alpha one")]} workspace={null} live={false} />,
+    )
+    expect(screen.queryByTestId("timeline-find")).toBeNull()
+    // The hotkey is bound to the timeline container: the keydown fires on
+    // a toolbar button (focus inside) and bubbles up to it.
+    fireEvent.keyDown(screen.getByRole("button", { name: /find/i }), { key: "f", metaKey: true })
+    expect(screen.getByTestId("timeline-find")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "alpha" } })
+    expect(container.querySelectorAll("mark")).toHaveLength(1)
+
+    fireEvent.keyDown(screen.getByTestId("timeline-find"), { key: "Escape" })
+    expect(screen.queryByTestId("timeline-find")).toBeNull()
+    expect(container.querySelectorAll("mark")).toHaveLength(0)
+    expect(screen.queryByText(/matches/)).toBeNull()
+  })
+})
+
 // ── windowTurns (deep-surface windowing) ────────────────────────────────────
 
 /** Standalone narration events — each becomes its own `msg-N` turn. */

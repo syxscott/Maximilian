@@ -130,43 +130,41 @@ export function ChatPanel({
         gridTemplateRows: "1fr",
       }}
     >
-      {/* Main conversation column */}
-      <div className="flex flex-col h-full min-w-0">
+      {/* Main conversation column — `min-h-0` keeps the timeline's
+          scroll region the single overflow owner of the row. */}
+      <div className="flex h-full min-h-0 min-w-0 flex-col">
         {!workspace && (
           <div className="mb-2">
             <EmptyState onOpenProviders={onOpenProviders} onOpenPalette={onOpenPalette} />
           </div>
         )}
 
-        {/* 会话顶格渲染: the conversation column no longer spends a full
-            heading row above the timeline. When the panel owns a title
-            (standalone use) it collapses into a small badge placed
-            INSIDE the timeline's toolbar row — the wrapper reserves the
-            left edge of that row (ml on its first child) and overlays
-            the badge on it, so ConversationTimeline gains the ~36px a
-            text-lg heading used to occupy (≈2 more chat lines at
-            1080p). Dock-hosted panels already pass showHeading={false};
-            the jump-to-latest affordance inside the timeline stays as
-            is. */}
-        <div
-          className={`relative flex min-h-0 flex-1 flex-col${
-            showHeading ? " [&>div:first-child>div:first-child]:ml-20" : ""
-          }`}
-          data-testid="chat-timeline-shell"
-        >
-          {showHeading && (
-            <div className="absolute left-0 top-0 z-10 flex h-7 items-center">
-              <Badge
-                variant="secondary"
-                className="h-5 max-w-[72px] truncate px-1.5 text-[10px] font-normal text-muted-foreground"
-                title={t("chat.title")}
-                data-testid="chat-title-badge"
-              >
-                {t("chat.title")}
-              </Badge>
-            </div>
-          )}
-          <ConversationTimeline events={events} workspace={workspace} live={live} />
+        {/* 会话顶格渲染: the conversation column spends no heading row.
+            When the panel owns a title (standalone use) it rides IN the
+            timeline's toolbar row via the `toolbarLead` slot — natively
+            flex-aligned with the find/navigator buttons, so there is no
+            overlay or reserved margin to keep in sync. Dock-hosted
+            panels pass showHeading={false} and render the identical
+            geometry minus the badge: same paddings, same scroll region,
+            same column baseline in both modes. */}
+        <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-timeline-shell">
+          <ConversationTimeline
+            events={events}
+            workspace={workspace}
+            live={live}
+            toolbarLead={
+              showHeading ? (
+                <Badge
+                  variant="secondary"
+                  className="h-5 max-w-[72px] truncate px-1.5 text-[10px] font-normal text-muted-foreground"
+                  title={t("chat.title")}
+                  data-testid="chat-title-badge"
+                >
+                  {t("chat.title")}
+                </Badge>
+              ) : undefined
+            }
+          />
         </div>
 
         <div className="pt-2 border-t border-border">
@@ -251,9 +249,11 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* Workspace sidebar column (OpenHands-style layout). */}
+      {/* Workspace sidebar column (OpenHands-style layout). Same 1fr row
+          as the conversation column and an explicit h-full, so both
+          columns share one height baseline; overflow stays inside. */}
       {showSidebar && (
-        <aside className="border border-border rounded-md p-3 overflow-y-auto bg-card/40 min-w-0">
+        <aside className="h-full min-h-0 overflow-y-auto rounded-md border border-border bg-card/40 p-3 min-w-0">
           {sidebar}
         </aside>
       )}

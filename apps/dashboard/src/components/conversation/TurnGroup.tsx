@@ -99,15 +99,37 @@ function PermissionLine({ unit }: { unit: Extract<ConversationUnit, { kind: "per
 /**
  * Render `text` with the find hits' occurrence ranges wrapped in
  * <mark> — the interval semantics come straight from
- * buildConversationFindIndex (start/end per field).
+ * buildConversationFindIndex (start/end per field). When `current` the
+ * unit hosts the find cursor's CURRENT match: its marks render amber so
+ * they stand out against the other matches' default mark backdrop.
  */
-function HighlightedText({ text, hits }: { text: string; hits: FindHit[] | undefined }) {
+function HighlightedText({
+  text,
+  hits,
+  current = false,
+}: {
+  text: string
+  hits: FindHit[] | undefined
+  current?: boolean
+}) {
   if (!hits || hits.length === 0) return <>{text}</>
   const nodes: ReactNode[] = []
   let cursor = 0
   hits.forEach((hit, i) => {
     if (hit.start > cursor) nodes.push(text.slice(cursor, hit.start))
-    nodes.push(<mark key={i}>{text.slice(hit.start, hit.end)}</mark>)
+    nodes.push(
+      current ? (
+        <mark
+          key={i}
+          className="rounded-sm bg-amber-300 text-foreground"
+          data-testid="mark-current"
+        >
+          {text.slice(hit.start, hit.end)}
+        </mark>
+      ) : (
+        <mark key={i}>{text.slice(hit.start, hit.end)}</mark>
+      ),
+    )
     cursor = hit.end
   })
   if (cursor < text.length) nodes.push(text.slice(cursor))
@@ -117,9 +139,11 @@ function HighlightedText({ text, hits }: { text: string; hits: FindHit[] | undef
 function TurnUnitView({
   unit,
   textHighlights,
+  currentUnitKey,
 }: {
   unit: ConversationUnit
   textHighlights?: Map<string, FindHit[]>
+  currentUnitKey?: string
 }) {
   switch (unit.kind) {
     case "task":
@@ -131,7 +155,11 @@ function TurnUnitView({
           className={`whitespace-pre-wrap text-sm ${unit.role === "user" ? "text-foreground" : "text-foreground/90"}`}
           data-testid="turn-text"
         >
-          <HighlightedText text={unit.text} hits={textHighlights?.get(unit.key)} />
+          <HighlightedText
+            text={unit.text}
+            hits={textHighlights?.get(unit.key)}
+            current={unit.key === currentUnitKey}
+          />
         </p>
       )
     case "tool":
@@ -191,21 +219,35 @@ export function TurnGroup({
   turn,
   highlighted = false,
   textHighlights,
+  currentUnitKey,
 }: {
   turn: TurnModel
   /** Find-active marker — amber border on turns that contain a match. */
   highlighted?: boolean
   /** Unit key → matched ranges inside the unit's text (find highlight). */
   textHighlights?: Map<string, FindHit[]>
+  /** Unit key of the find cursor's CURRENT match — a tier above the
+   *  plain amber "contains a match" border, and the unit's marks render
+   *  amber instead of the default mark backdrop. */
+  currentUnitKey?: string
 }) {
   useLocale()
+  const hostsCurrentMatch =
+    currentUnitKey !== undefined && turn.units.some((unit) => unit.key === currentUnitKey)
   return (
     <section
-      className={`rounded-lg border bg-card/60 p-3 ${highlighted ? "border-amber-500/60" : "border-border"}`}
+      className={`rounded-lg border bg-card/60 p-3 ${
+        hostsCurrentMatch
+          ? "border-amber-500"
+          : highlighted
+            ? "border-amber-500/60"
+            : "border-border"
+      }`}
       style={{ marginLeft: (turn.depth - 1) * 16 }}
       data-testid="turn-group"
       data-turn-id={turn.turnId}
       data-turn-depth={turn.depth}
+      data-current-turn={hostsCurrentMatch ? "true" : undefined}
     >
       <header className="flex items-center gap-2">
         <span
@@ -230,7 +272,12 @@ export function TurnGroup({
       {turn.units.length > 0 && (
         <div className="mt-2 space-y-1">
           {turn.units.map((unit) => (
-            <TurnUnitView key={unit.key} unit={unit} textHighlights={textHighlights} />
+            <TurnUnitView
+              key={unit.key}
+              unit={unit}
+              textHighlights={textHighlights}
+              currentUnitKey={currentUnitKey}
+            />
           ))}
         </div>
       )}

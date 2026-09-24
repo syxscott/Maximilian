@@ -31,6 +31,7 @@ export function ConversationWindow({
   turnDepth,
   highlightTurnIds,
   textHighlights,
+  currentUnitKey,
   turnHeights,
   loadEarlierHint,
 }: {
@@ -49,6 +50,9 @@ export function ConversationWindow({
   highlightTurnIds?: Set<string>
   /** Unit key → matched ranges inside the unit's text (find highlight). */
   textHighlights?: Map<string, FindHit[]>
+  /** Unit key of the CURRENT find match — its highlights render amber
+   *  (the cursor's match), others keep the default mark backdrop. */
+  currentUnitKey?: string
   /** Turn id → estimated pixel height — reserves that height as the
    *  card wrapper's minHeight and renders a placeholder bar per card so
    *  the scrollbar ratio stays real while windowed. */
@@ -124,6 +128,7 @@ export function ConversationWindow({
               turn={turn}
               highlighted={highlightTurnIds?.has(turn.turnId) ?? false}
               textHighlights={textHighlights}
+              currentUnitKey={currentUnitKey}
             />
             {spacer !== undefined && (
               <div

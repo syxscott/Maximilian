@@ -22,10 +22,17 @@
  *
  * Retained surface capabilities, all driven by the pipeline:
  *   - find: buildConversationFindIndex interval matches, filtered to
- *     matching turns with <mark> ranges inside text units;
+ *     matching turns with <mark> ranges inside text units; Enter steps
+ *     the find cursor through the matches and the CURRENT match's
+ *     highlights render amber (others keep the default mark backdrop);
+ *   - in-scope hotkeys: Cmd/Ctrl+F opens find only when the focus
+ *     already lives inside the timeline, Esc leaves find mode;
+ *   - toolbarLead slot: the standalone panel's title badge rides the
+ *     toolbar row, so both dock and standalone modes share geometry;
  *   - turn navigation: anchors on task turns, adjacentAnchor semantics
  *     expressed as window anchors;
- *   - live-tail: liveTailState frozen count on the jump affordance;
+ *   - live-tail: liveTailState frozen count on the jump affordance
+ *     (hidden entirely at a zero pending count);
  *   - share: the pipeline's toConversationMarkdown;
  *   - virtual-height estimation: over VIRTUAL_HEIGHT_THRESHOLD the
  *     toolbar shows the total estimate beside the find box, the
@@ -39,7 +46,7 @@
  * jump-to-latest affordance when detached.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from "react"
 import { Input } from "@/components/ui/input"
 import { adjacentAnchor, turnAnchors } from "@/lib/timeline-view"
 import {
@@ -91,11 +98,19 @@ export function ConversationTimeline({
   events,
   workspace,
   live,
+  toolbarLead,
 }: {
   events: RuntimeEvent[]
   workspace: Workspace | null
   /** true while a run is in flight — enables auto-tail. */
   live: boolean
+  /**
+   * Optional node rendered at the head of the toolbar row — the panel
+   * title badge in full-bleed standalone mode. Riding the toolbar row
+   * (instead of an overlaid heading) keeps every mode's geometry
+   * identical: no heading row spent, native flex alignment.
+   */
+  toolbarLead?: ReactNode
 }) {
   useLocale()
   // The pipeline: events → paired/retry-folded units → turn groups.
@@ -110,6 +125,10 @@ export function ConversationTimeline({
   const [query, setQuery] = useState("")
   const [anchorTurnId, setAnchorTurnId] = useState<string | null>(null)
   const [cursor, setCursor] = useState(-1)
+  /** Find cursor — index into findMatches (the CURRENT match a Enter
+   *  step points at). Separate from the turn-navigator `cursor` so the
+   *  two navigations never corrupt each other's position. */
+  const [findCursor, setFindCursor] = useState(-1)
   const [showFind, setShowFind] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -123,9 +142,12 @@ export function ConversationTimeline({
   )
   const highlights = useMemo(() => textHighlightMap(findMatches), [findMatches])
 
-  // The windowed stream: unfiltered, or cut down to matching turns under
-  // an active find (the window then windows only what matched).
+  // The CURRENT match (the one the find cursor points at) — its unit's
+  // marks render amber while every other match keeps the default mark
+  // background, so the eye can follow Enter-step navigation.
   const findActiveQuery = findActive(query)
+  const currentMatch =
+    findActiveQuery && findCursor >= 0 ? (findMatches[findCursor] ?? undefined) : undefined
   const displayedUnits = useMemo(
     () => (findActiveQuery ? units.filter((u) => matchedTurnIds.has(u.turnId)) : units),
     [units, findActiveQuery, matchedTurnIds],
@@ -161,6 +183,20 @@ export function ConversationTimeline({
     setAnchorTurnId(displayedTurns[next]?.turnId ?? null)
   }
 
+  // Find navigation: Enter steps the cursor through findMatches (with
+  // wrap-around) and anchors the window at the match's turn, mirroring
+  // the turn navigator's anchor semantics.
+  const advanceFindCursor = () => {
+    if (!findActiveQuery || findMatches.length === 0) {
+      setFindCursor(-1)
+      return
+    }
+    const next = findCursor < 0 ? 0 : (findCursor + 1) % findMatches.length
+    setFindCursor(next)
+    const turnId = findMatches[next]?.turnId
+    if (turnId) setAnchorTurnId(turnId)
+  }
+
   const copyShare = async () => {
     try {
       await navigator.clipboard.writeText(
@@ -184,6 +220,14 @@ export function ConversationTimeline({
     [units, detached, live, frozenAt],
   )
 
+  // A workspace switch drops the tail state: a freeze point recorded as
+  // a unit COUNT is meaningless against another stream.
+  const workspaceId = workspace?.id
+  useEffect(() => {
+    setDetached(false)
+    setFrozenAt(null)
+  }, [workspaceId])
+
   useEffect(() => {
     const el = scrollRef.current
     // An anchored window scrolls to ITS anchor — never fight it with the
@@ -197,13 +241,46 @@ export function ConversationTimeline({
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
     setDetached(!atBottom)
-    if (atBottom) setFrozenAt(null)
-    else if (frozenAt === null) setFrozenAt(units.length)
+    if (atBottom) {
+      // Released — drop the freeze point so the NEXT detach records a
+      // fresh one; a count never spans two detached episodes.
+      setFrozenAt(null)
+    } else {
+      // Functional update: a fast scroll can fire twice between renders —
+      // only the FIRST event (prev === null) records the freeze point, so
+      // later arrivals accumulate against it instead of resetting it.
+      setFrozenAt((prev) => (prev === null ? units.length : prev))
+    }
   }
 
+  // In-scope find hotkey: React's synthetic keydown fires only when the
+  // focus already lives inside this container, so Cmd/Ctrl+F here never
+  // hijacks the browser's own find elsewhere on the page. Esc leaves
+  // find mode entirely (box closed, query cleared, cursor reset).
+  const onContainerKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault()
+      setShowFind(true)
+      return
+    }
+    if (e.key === "Escape" && showFind) {
+      e.preventDefault()
+      setShowFind(false)
+      setQuery("")
+      setFindCursor(-1)
+    }
+  }
+
+  // Opening find hands the focus to the input.
+  const findInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (showFind) findInputRef.current?.focus()
+  }, [showFind])
+
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col" onKeyDown={onContainerKeyDown}>
       <div className="mb-2 flex items-center gap-2">
+        {toolbarLead}
         <Button
           variant="ghost"
           size="sm"
@@ -253,10 +330,18 @@ export function ConversationTimeline({
       {showFind && (
         <div className="mb-2">
           <Input
+            ref={findInputRef}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
               setCursor(-1)
+              setFindCursor(-1)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                advanceFindCursor()
+              }
             }}
             placeholder={t("timeline.findPlaceholder")}
             aria-label={t("timeline.find")}
@@ -266,6 +351,12 @@ export function ConversationTimeline({
           {findActiveQuery && (
             <p className="mt-1 text-xs text-muted-foreground">
               {findMatches.length} {t("timeline.matchCount")}
+              {currentMatch !== undefined && findCursor >= 0 && (
+                <span data-testid="find-current-position">
+                  {" "}
+                  · {findCursor + 1}/{findMatches.length}
+                </span>
+              )}
             </p>
           )}
         </div>
@@ -286,6 +377,7 @@ export function ConversationTimeline({
             turnDepth={turnDepth}
             highlightTurnIds={findActiveQuery ? matchedTurnIds : undefined}
             textHighlights={findActiveQuery ? highlights : undefined}
+            currentUnitKey={currentMatch?.key}
             turnHeights={turnHeights}
             loadEarlierHint={
               overHeightBudget
@@ -301,7 +393,10 @@ export function ConversationTimeline({
         )}
       </div>
 
-      {live && detached && (
+      {/* Jump affordance only when detached AND something is actually
+          pending — at frozenCount 0 scrolling down is all it takes, so
+          the floating button would just cover the tail. */}
+      {live && detached && tail.frozenCount > 0 && (
         <Button
           size="sm"
           variant="secondary"
@@ -309,13 +404,13 @@ export function ConversationTimeline({
           onClick={() => {
             setDetached(false)
             setAnchorTurnId(null)
+            setFrozenAt(null)
             const el = scrollRef.current
             if (el) el.scrollTop = el.scrollHeight
           }}
           data-testid="jump-to-latest"
         >
-          ↓ {t("timeline.jumpToLatest")}
-          {tail.frozenCount > 0 ? ` · +${tail.frozenCount}` : ""}
+          ↓ {t("timeline.jumpToLatest")} · +{tail.frozenCount}
         </Button>
       )}
     </div>
