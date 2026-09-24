@@ -1,5 +1,6 @@
 import { useLocale, t } from "@max/i18n"
 import { WaveIndicator, computeWaves } from "./_helpers/WaveIndicator"
+import { useTaskSelectionStore, useSelectedTaskId } from "@/stores/taskSelectionStore"
 import type { Workspace } from "../api"
 
 interface Props {
@@ -66,6 +67,12 @@ const STATUS_DOT: Record<string, string> = {
 
 export function TaskPanel({ workspace }: Props) {
   useLocale()
+  // Cross-pane selection (taskSelectionStore): clicking a task row selects
+  // it here; the trajectory pane's filter reads the same store so the two
+  // panes stay in sync without importing each other.
+  const selectedTaskId = useSelectedTaskId()
+  const selectTask = (taskId: string) =>
+    useTaskSelectionStore.getState().select(taskId, "taskPanel")
   const tasks = workspace?.plan?.tasks ?? []
   if (tasks.length === 0) {
     return (
@@ -96,7 +103,12 @@ export function TaskPanel({ workspace }: Props) {
           {tasks.map((task) => (
             <li
               key={task.id}
-              className="task-row flex items-center gap-2 px-3 py-1.5 text-xs font-mono"
+              className={`task-row flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs font-mono ${
+                selectedTaskId === task.id ? "bg-accent" : ""
+              }`}
+              data-task-id={task.id}
+              data-selected={selectedTaskId === task.id || undefined}
+              onClick={() => selectTask(task.id)}
             >
               <span
                 className={`task-row__status task-row__status--${task.status} inline-block w-1.5 h-1.5 rounded-full ${STATUS_DOT[task.status] ?? STATUS_DOT.pending}`}
@@ -129,8 +141,13 @@ export function TaskPanel({ workspace }: Props) {
               return (
                 <li
                   key={task.id}
-                  className="task-row flex items-center gap-2"
+                  className={`task-row flex cursor-pointer items-center gap-2 ${
+                    selectedTaskId === task.id ? "bg-accent" : ""
+                  }`}
                   style={{ paddingLeft: depth * 16 }}
+                  data-task-id={task.id}
+                  data-selected={selectedTaskId === task.id || undefined}
+                  onClick={() => selectTask(task.id)}
                 >
                   <span
                     className={
@@ -162,9 +179,14 @@ export function TaskPanel({ workspace }: Props) {
             return (
               <li
                 key={task.id}
-                className="task-row flex items-center gap-2 opacity-80 hover:opacity-100"
+                className={`task-row flex cursor-pointer items-center gap-2 opacity-80 hover:opacity-100 ${
+                  selectedTaskId === task.id ? "bg-accent" : ""
+                }`}
                 style={{ paddingLeft: depth * 16 }}
                 title={task.description}
+                data-task-id={task.id}
+                data-selected={selectedTaskId === task.id || undefined}
+                onClick={() => selectTask(task.id)}
               >
                 <span className="text-muted-foreground">▸</span>
                 <span className="truncate flex-1">{task.description}</span>

@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -10,6 +11,7 @@ import { ConversationTimeline } from "./ConversationTimeline"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { useLocale, t } from "@max/i18n"
+import { useComposerDraftStore } from "@/stores/composerDraftStore"
 import type { Workspace } from "../api"
 
 const PRESET_KEYS = ["preset.todo", "preset.scraper", "preset.blog"] as const
@@ -75,6 +77,19 @@ export function ChatPanel({
   const messageRegister = register("message")
   const mention = useMention(mentionSuggestions)
 
+  // Per-workspace unsent draft (composerDraftStore, persisted): every
+  // keystroke saves it under the workspace id, submitting clears it, and
+  // switching workspaces restores the draft that belongs to the newly
+  // active one. Without a workspace (first submit) nothing persists.
+  const workspaceId = workspace?.id
+  const setDraft = useComposerDraftStore((s) => s.setDraft)
+  const clearDraft = useComposerDraftStore((s) => s.clearDraft)
+  useEffect(() => {
+    if (!workspaceId) return
+    const saved = useComposerDraftStore.getState().drafts[workspaceId]
+    reset({ message: saved ?? "" })
+  }, [workspaceId, reset])
+
   function submit(text?: string) {
     if (text) {
       // Preset button path. Validate against the same Zod schema as the
@@ -89,7 +104,11 @@ export function ChatPanel({
     } else {
       handleSubmit((data) => {
         onSubmit(data.message.trim())
-        reset()
+        // Explicit empty reset — a bare reset() would restore the values the
+        // draft-restore effect last applied, not a clean slate.
+        reset({ message: "" })
+        // The draft was just sent — drop it from the store + storage.
+        if (workspaceId) clearDraft(workspaceId)
       })()
     }
   }
@@ -126,6 +145,8 @@ export function ChatPanel({
               onChange={(e) => {
                 messageRegister.onChange(e)
                 mention.onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
+                // Save the unsent draft for this workspace (persisted).
+                if (workspaceId) setDraft(workspaceId, e.target.value)
               }}
               onKeyDown={(e) => {
                 if (mention.onKeyDown(e)) return

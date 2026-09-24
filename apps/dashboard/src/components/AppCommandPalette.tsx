@@ -2,11 +2,14 @@
  * AppCommandPalette — Cmd+K 全局命令面板。
  *
  * 借鉴 cmdk / Raycast / Linear：键盘可达、跨 tab 跳转、设置项快速访问。
+ * 查询历史接入 searchStore：执行一条命令会把它的标签 commit 进 recent
+ * （持久化、去重、上限 10 条），并在面板顶部渲染 "Recent" 分组供回放。
  */
 
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
 import { CommandPalette, type CommandGroup } from "@max/ui-react"
 import { useLocale, t } from "@max/i18n"
+import { useSearchStore, useRecentSearches } from "@/stores/searchStore"
 
 export interface AppCommandPaletteProps {
   open: boolean
@@ -23,8 +26,31 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
   const locale = useLocale().locale
   void locale
 
+  // Commit an executed command's label into the persisted recent list
+  // (searchStore: front-insert, dedupe, cap at 10, localStorage-backed).
+  const recordCommand = useCallback((label: string) => {
+    const search = useSearchStore.getState()
+    search.setQuery(label)
+    search.commitSearch()
+  }, [])
+
+  const recent = useRecentSearches()
+
   const groups: CommandGroup[] = useMemo(
     () => [
+      ...(recent.length > 0
+        ? [
+            {
+              id: "recent",
+              heading: "Recent",
+              items: recent.map((label) => ({
+                id: `recent.${label}`,
+                label,
+                onSelect: () => recordCommand(label),
+              })),
+            },
+          ]
+        : []),
       {
         id: "navigation",
         heading: "Navigation",
@@ -32,31 +58,44 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           {
             id: "nav.workspace",
             label: t("nav.workspace"),
-            onSelect: () => props.onNavigate("workspace"),
+            onSelect: () => {
+              recordCommand(t("nav.workspace"))
+              props.onNavigate("workspace")
+            },
             shortcut: "G W",
           },
           {
             id: "nav.executions",
             label: t("nav.executions"),
-            onSelect: () => props.onNavigate("executions"),
+            onSelect: () => {
+              recordCommand(t("nav.executions"))
+              props.onNavigate("executions")
+            },
             shortcut: "G E",
           },
           {
             id: "nav.governance",
             label: t("nav.governance"),
-            onSelect: () => props.onNavigate("governance"),
+            onSelect: () => {
+              recordCommand(t("nav.governance"))
+              props.onNavigate("governance")
+            },
             shortcut: "G G",
           },
           {
             id: "nav.evolution",
             label: t("nav.evolution"),
-            onSelect: () => props.onNavigate("evolution"),
+            onSelect: () => {
+              recordCommand(t("nav.evolution"))
+              props.onNavigate("evolution")
+            },
             shortcut: "G V",
           },
           {
             id: "nav.usage",
             label: t("nav.usage"),
             onSelect: () => {
+              recordCommand(t("nav.usage"))
               props.onNavigate("usage")
               props.onOpenUsage()
             },
@@ -65,13 +104,19 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
           {
             id: "nav.providers",
             label: t("nav.providers"),
-            onSelect: () => props.onNavigate("providers"),
+            onSelect: () => {
+              recordCommand(t("nav.providers"))
+              props.onNavigate("providers")
+            },
             shortcut: "G P",
           },
           {
             id: "nav.settings",
             label: t("nav.settings"),
-            onSelect: () => props.onNavigate("settings"),
+            onSelect: () => {
+              recordCommand(t("nav.settings"))
+              props.onNavigate("settings")
+            },
             shortcut: "G S",
           },
         ],
@@ -88,6 +133,7 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
             id: "act.toggleTheme",
             label: "Toggle theme",
             onSelect: () => {
+              recordCommand("Toggle theme")
               props.onToggleTheme()
               props.onOpenChange(false)
             },
@@ -101,12 +147,17 @@ export function AppCommandPalette(props: AppCommandPaletteProps) {
         ],
       },
     ],
-    // Spread the callbacks out so the memo only re-fires when one of them
-    // actually changes. With `[props]` (a fresh object every render) the
-    // memo ran every parent render — fine perf-wise today, but it makes
-    // the CommandPalette think the palette is "new" on every keystroke
-    // when the user is typing into a focused element upstream.
-    [props.onNavigate, props.onOpenChange, props.onToggleTheme, props.onOpenUsage],
+    // Recent history and the recording callback participate in the deps so
+    // the "Recent" group tracks the store, and the memo only re-fires when
+    // one of them actually changes.
+    [
+      props.onNavigate,
+      props.onOpenChange,
+      props.onToggleTheme,
+      props.onOpenUsage,
+      recent,
+      recordCommand,
+    ],
   )
 
   return (

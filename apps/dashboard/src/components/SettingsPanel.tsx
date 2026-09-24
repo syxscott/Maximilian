@@ -28,7 +28,12 @@ import { ProviderModelTester } from "./settings/providers-manager/ProviderModelT
 import { SubagentsDomain } from "./settings/subagents-domain/SubagentsDomain"
 import { UsageDomain } from "./settings/usage-domain/UsageDomain"
 import { SessionStoreStatusCard } from "./settings/store-domain/SessionStoreStatusCard"
-import { useMemo, useState as useReactState } from "react"
+import { JobsDomainSection } from "./settings/sections"
+import { AutomationsDomain } from "./settings/automations-domain/AutomationsDomain"
+import { MemoryDomain } from "./settings/memory-domain/MemoryDomain"
+import { SkillsDomain } from "./settings/skills-domain/SkillsDomain"
+import { useSettingsUiStore, useActiveSection } from "@/stores/settingsUiStore"
+import { useMemo } from "react"
 import { t } from "@max/i18n"
 
 // ── Accent color ────────────────────────────────────────────────────────────
@@ -132,7 +137,11 @@ export function SettingsPanel() {
   }
 
   // Settings center v2: segmented domains (ZCode settings/ borrowing).
-  const [section, setSection] = useReactState<SettingsSectionId>("appearance")
+  // The active section lives in settingsUiStore (shared with the nav) —
+  // a reload or re-entry resets it to the appearance default.
+  const storedSection = useActiveSection()
+  const setSection = useSettingsUiStore((s) => s.setSection)
+  const section: SettingsSectionId = storedSection ?? "appearance"
   const clientSections = useMemo(
     () => new Set(["appearance", "language", "performance"] as const).has(section as never),
     [section],
@@ -158,6 +167,10 @@ export function SettingsPanel() {
           {section === "subagents" && <SubagentsDomain />}
           {section === "usageCharts" && <UsageDomain />}
           {section === "store" && <SessionStoreStatusCard />}
+          {section === "automations" && <AutomationsDomain />}
+          {section === "jobs" && <JobsDomainSection />}
+          {section === "memory" && <MemoryDomain />}
+          {section === "skills" && <SkillsDomain />}
         </div>
       )}
       <div className={clientSections ? "space-y-6" : "hidden"}>

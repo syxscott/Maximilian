@@ -12,7 +12,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { useHealth, useWorkspaces } from "@/lib/api/hooks"
 import { useLocale, t } from "@max/i18n"
 import { chatApi, openWorkspaceStream } from "./api"
-import type { Workspace, RuntimeEvent, WorkspaceStreamHandle } from "./api"
+import type { Workspace, RuntimeEvent, WorkspaceStreamHandle, Health } from "./api"
 import { ChatPanel } from "./components/ChatPanel"
 import { SubagentsPanel } from "./components/SubagentsPanel"
 import { TrajectoryPanel } from "./features/trajectory"
@@ -35,10 +35,93 @@ import { LocaleSwitcher } from "./components/LocaleSwitcher"
 import { LiveUsagePill } from "./components/LiveUsagePill"
 import { PermissionDialog } from "./components/PermissionDialog"
 import { AppCommandPalette } from "./components/AppCommandPalette"
+import { ToastHost } from "./components/ToastHost"
 import { commandsWithKeybinds, type Keybind } from "./lib/commands"
 import { permissionsApi, type PendingPermission } from "./lib/permissions"
 import { usePerfTier } from "./lib/perf-tier"
 import { useTheme } from "./lib/theme"
+import {
+  useConnectionStore,
+  useConnectionStatus,
+  useConnectionError,
+  healthLabelKey,
+} from "./stores/connectionStore"
+import { useSessionProjectionStore } from "./stores/sessionProjectionStore"
+import { useWorkspacePrefs, useWorkspacePrefsStore } from "./stores/workspacePrefsStore"
+import { useNotificationStore } from "./stores/notificationStore"
+
+/** Prefs key for shell-level state before any workspace is active. */
+const SHELL_PREFS_KEY = "__app__"
+
+// ── Connection store plumbing (single writer: the App layer) ────────────────
+
+/**
+ * Inject the transport health into connectionStore — the store's only
+ * writer. Query observations flow through setHealth (ok → reachable,
+ * anything else → degraded); query failures flow through setError so the
+ * error stays sticky until a healthy observation replaces it.
+ */
+export function useConnectionSync(
+  health: { status: string } | undefined,
+  healthError: unknown,
+): void {
+  useEffect(() => {
+    if (healthError) {
+      useConnectionStore
+        .getState()
+        .setError(healthError instanceof Error ? healthError.message : String(healthError))
+      return
+    }
+    if (health) {
+      useConnectionStore.getState().setHealth(health.status === "ok" ? "reachable" : "degraded")
+    }
+  }, [health, healthError])
+}
+
+/**
+ * The header health pill — rendered purely from connectionStore state
+ * (plus the telemetry details the store intentionally doesn't hold).
+ */
+export function ConnectionBanner({ health }: { health: Health | undefined }) {
+  const status = useConnectionStatus()
+  const error = useConnectionError()
+  const lastCheckedAt = useConnectionStore((s) => s.lastCheckedAt)
+  // Nothing observed yet and no failure recorded — render nothing (the
+  // pre-first-poll state matches the old header's "no pill" behavior).
+  if (lastCheckedAt === null && error === null) return null
+  if (status !== "reachable") {
+    return (
+      <div
+        className="flex items-center gap-2 text-sm text-destructive"
+        data-testid="connection-banner"
+      >
+        <span className="inline-block w-2 h-2 rounded-full bg-destructive" />
+        <span>{t(healthLabelKey(status))}</span>
+        {error && (
+          <span className="max-w-64 truncate text-xs text-muted-foreground">
+            {t("stores.connection.lastError", { message: error.message })}
+          </span>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div
+      className="flex items-center gap-3 text-sm text-muted-foreground"
+      data-testid="connection-banner"
+    >
+      <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+      <span>{t(healthLabelKey(status))}</span>
+      {health && (
+        <>
+          <span>{t("app.footer.telemetry", { telemetry: health.telemetry })}</span>
+          <span>{t("app.footer.meta", { meta: health.metaAgent })}</span>
+          <span>{t("app.footer.providersCount", { count: health.providers.length })}</span>
+        </>
+      )}
+    </div>
+  )
+}
 
 // Lazy-load the heavier panels so the initial bundle stays light. On high
 // perf tier, eager loading is fine but lazy still saves parse time on first
@@ -84,11 +167,29 @@ export function App() {
   // <html> before any tab paints its heavy components.
   usePerfTier()
 
-  // Workspace state
+  // ── Connection store injection (single writer: the App layer) ────────────
+  // useHealth observations flow into connectionStore via setHealth; query
+  // failures flow through setError. The header banner renders the store
+  // state, so the status pill, the sticky error and any future consumer
+  // all read one source of truth.
+  useConnectionSync(health, healthError)
+
+  // ── Session projection store injection ───────────────────────────────────
+  // The workspace event stream lives in the `events` useState below; a
+  // parallel effect mirrors every change into sessionProjectionStore, which
+  // derives the turns / last-activity / running-tasks projection. The
+  // trajectory and subagents panels read the store (selectors) instead of
+  // threading the array through props again.
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [events, setEvents] = useState<RuntimeEvent[]>([])
+  useEffect(() => {
+    useSessionProjectionStore.getState().setEvents(events)
+  }, [events])
   const [submitting, setSubmitting] = useState(false)
-  const [sidebarHidden, setSidebarHidden] = useState(false)
+  // Sidebar visibility is a workspace preference now: it persists per
+  // workspace (or app-wide before one is open) via workspacePrefsStore.
+  const sidebarPrefsKey = workspace?.id ?? SHELL_PREFS_KEY
+  const sidebarHidden = useWorkspacePrefs(sidebarPrefsKey).sidebarHidden
   // Holds the active stream handle returned by `openWorkspaceStream`.
   // The implementation switched from native EventSource to fetch +
   // ReadableStream so the Authorization bearer token can ride along;
@@ -141,25 +242,26 @@ export function App() {
     return [...roles].map((token) => ({ token, description: t("mention.agentRole") }))
   }, [workspace?.plan?.tasks])
 
-  // Task ids seen on this workspace's stream (trajectory filter options).
-  const eventTaskIds = useMemo(() => {
-    const ids: string[] = []
-    for (const e of events) {
-      const id = (e as { taskId?: unknown }).taskId
-      if (typeof id === "string" && !ids.includes(id)) ids.push(id)
-    }
-    return ids
-  }, [events])
-
   // Ref bridge so the global keyboard layer (mounted once) can invoke the
   // latest abortSubmission without re-binding its listener.
   const abortSubmissionRef = useRef<() => void>(() => {})
+  // Same bridge pattern for the sidebar toggle: the keyboard layer reads
+  // the latest closure without re-binding, and the toggle writes the
+  // workspace-prefs store for the currently active prefs key.
+  const toggleSidebarRef = useRef<() => void>(() => {})
   const stopStream = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.close()
       streamRef.current = null
     }
   }, [])
+
+  // Toggle the sidebar through the prefs store (persisted per workspace).
+  toggleSidebarRef.current = () => {
+    const key = sidebarPrefsKey
+    const current = useWorkspacePrefsStore.getState().prefs[key]?.sidebarHidden ?? false
+    useWorkspacePrefsStore.getState().updatePrefs(key, { sidebarHidden: !current })
+  }
 
   // Abort the in-flight submission + close the SSE stream. Bound to the
   // Stop button in ChatPanel. STOPS UI ONLY: this aborts the browser
@@ -212,6 +314,12 @@ export function App() {
         setEvents([])
       } catch (err) {
         console.error("pickWorkspace failed", err)
+        // Real notification (notificationStore → ToastHost): the switch the
+        // user asked for did not happen, so say so instead of failing
+        // silently in the console.
+        useNotificationStore.getState().push("error", "shell.notify.workspaceSwitchFailed", {
+          workspaceId: id,
+        })
       }
     },
     [stopStream],
@@ -420,6 +528,10 @@ export function App() {
         })
       } catch (err) {
         console.error("[perms] answer failed", err)
+        // Real notification: the decision was NOT delivered — leave the
+        // dialog open and tell the user, or they'd believe the tool is
+        // unblocked while the backend is still waiting.
+        useNotificationStore.getState().push("error", "shell.notify.permissionFailed")
         // Leave the dialog open so the user can retry. A subsequent
         // permission-resolved event (if the request actually did
         // reach the server) is idempotent and still closes the
@@ -434,6 +546,14 @@ export function App() {
       const target = pendingPermissions.values().next().value as PendingPermission | undefined
       if (!target || target.kind !== "approval") return
       const id = target.requestId
+      // A rejection is a steering decision the agent will see — surface it
+      // as a notification so the user gets feedback beyond the dialog
+      // closing.
+      if (decision === "reject") {
+        useNotificationStore
+          .getState()
+          .push("warning", "shell.notify.steeringRejected", { task: target.taskId || id })
+      }
       try {
         await permissionsApi.answerApproval(id, decision, comment)
         // Same reasoning as answerPermission above: only close on
@@ -514,7 +634,7 @@ export function App() {
         e.preventDefault()
         if (command.navigateTo) setTab(command.navigateTo)
         if (command.action === "open-palette") setCommandOpen(true)
-        if (command.action === "toggle-sidebar") setSidebarHidden((h) => !h)
+        if (command.action === "toggle-sidebar") toggleSidebarRef.current()
         if (command.action === "stop-stream") abortSubmissionRef.current()
         return
       }
@@ -538,6 +658,8 @@ export function App() {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Toaster />
+      {/* Durable notification stack (notificationStore consumer). */}
+      <ToastHost />
       <PermissionDialog
         pending={currentPending}
         queueSize={pendingPermissions.size}
@@ -560,21 +682,9 @@ export function App() {
           <span className="text-muted-foreground text-base font-medium">{t("app.subtitle")}</span>
         </h1>
         <div className="flex items-center gap-3">
-          {healthError ? (
-            <div className="flex items-center gap-2 text-sm text-destructive">
-              <span className="inline-block w-2 h-2 rounded-full bg-destructive" />
-              <span>{t("app.backendUnreachable")}</span>
-            </div>
-          ) : health ? (
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${health.status === "ok" ? "bg-green-500" : "bg-destructive"}`}
-              />
-              <span>{t("app.footer.telemetry", { telemetry: health.telemetry })}</span>
-              <span>{t("app.footer.meta", { meta: health.metaAgent })}</span>
-              <span>{t("app.footer.providersCount", { count: health.providers.length })}</span>
-            </div>
-          ) : null}
+          {/* Health banner — rendered from connectionStore state (injected
+              from useHealth above), so every consumer shares one status. */}
+          <ConnectionBanner health={health} />
           <LiveUsagePill onOpenUsage={() => setTab("usage")} />
           <LocaleSwitcher />
           <ThemeToggle />
@@ -629,8 +739,10 @@ export function App() {
                       }
                     />
                     <TaskPanel workspace={workspace} />
-                    <SubagentsPanel events={events} />
-                    <TrajectoryPanel events={events} taskIds={eventTaskIds} />
+                    {/* Trajectory + subagents read the session projection
+                        store (kept in sync with `events` above). */}
+                    <SubagentsPanel />
+                    <TrajectoryPanel />
                     <FileChangesPanel events={events} />
                     <SessionsPanel workspaceId={workspace?.id} />
                     <ArtifactsExplorer workspaceId={workspace?.id} />

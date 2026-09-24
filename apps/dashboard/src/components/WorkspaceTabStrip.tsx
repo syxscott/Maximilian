@@ -8,13 +8,16 @@
  * titlebar-tab-strip borrowing, minimal form): horizontal tabs for the
  * recent workspaces with active highlight, per-tab close (local hide —
  * the workspace itself stays on the server) and an overflow counter.
- * Pure model helpers live here too (tested): tab list maintenance and
+ * Closed-tab state lives in workspacePrefsStore (persisted per workspace
+ * as `tabClosed`), so a closed tab stays closed across reloads. Pure
+ * model helpers live here too (tested): tab list maintenance and
  * overflow slicing.
  */
 
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
+import { useWorkspacePrefsStore } from "@/stores/workspacePrefsStore"
 
 export const MAX_VISIBLE_TABS = 6
 
@@ -37,16 +40,19 @@ export function WorkspaceTabStrip({
   workspaces,
   activeId,
   onPick,
-  onClose,
 }: {
   workspaces: string[]
   activeId?: string
   onPick: (id: string) => void
-  /** Closing a tab only hides it from the strip. */
-  onClose?: (id: string) => void
 }) {
   useLocale()
-  const [closed, setClosed] = useState<Set<string>>(new Set())
+  // Closed tabs are persisted in the workspace-prefs store (one boolean
+  // per workspace) instead of component state, so they survive reloads.
+  const prefs = useWorkspacePrefsStore((s) => s.prefs)
+  const closed = useMemo(
+    () => new Set(Object.keys(prefs).filter((id) => prefs[id]?.tabClosed === true)),
+    [prefs],
+  )
   const visible = useMemo(() => workspaces.filter((id) => !closed.has(id)), [workspaces, closed])
   const shown = visible.slice(0, MAX_VISIBLE_TABS)
   const overflow = visible.length - shown.length
@@ -76,16 +82,17 @@ export function WorkspaceTabStrip({
             >
               {id}
             </button>
-            {onClose && (
-              <button
-                type="button"
-                className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() => setClosed(new Set([...closed, id]))}
-                aria-label={`${t("tabs.close")} ${id}`}
-              >
-                ×
-              </button>
-            )}
+            <button
+              type="button"
+              className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+              // Closing only hides the tab; the prefs record marks it so the
+              // strip keeps it closed after a reload too.
+              onClick={() => useWorkspacePrefsStore.getState().updatePrefs(id, { tabClosed: true })}
+              aria-label={`${t("tabs.close")} ${id}`}
+              data-testid={`workspace-tab-close-${id}`}
+            >
+              ×
+            </button>
           </div>
         )
       })}

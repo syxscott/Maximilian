@@ -24,6 +24,9 @@ export interface WorkspacePrefs {
   sortOrder: WorkspaceSortOrder
   /** Epoch ms of the last visit — drives "recent" ordering elsewhere. */
   lastVisitedAt: number
+  /** Workspace tab closed in the titlebar strip (only ever present as true —
+   *  absent/false means the tab is open). Consumed by WorkspaceTabStrip. */
+  tabClosed?: boolean
 }
 
 export function defaultWorkspacePrefs(now = 0): WorkspacePrefs {
@@ -45,7 +48,14 @@ export function parseWorkspacePrefs(value: unknown): WorkspacePrefs {
     typeof o.lastVisitedAt === "number" && Number.isFinite(o.lastVisitedAt)
       ? o.lastVisitedAt
       : base.lastVisitedAt
-  return { sidebarHidden: o.sidebarHidden === true, sortOrder, lastVisitedAt }
+  return {
+    sidebarHidden: o.sidebarHidden === true,
+    sortOrder,
+    lastVisitedAt,
+    // Only ever materialized as true so the default record shape stays
+    // byte-compatible with pre-tabClosed payloads and tests.
+    ...(o.tabClosed === true ? { tabClosed: true } : {}),
+  }
 }
 
 /** Defensive parse of the whole persisted map — only string-keyed entries survive. */

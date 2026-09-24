@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { useLocale, t } from "@max/i18n"
 import { deriveAgentRuns, type AgentRunState } from "@/lib/agent-events"
 import type { RuntimeEvent } from "@/api"
+import { useSessionProjectionStore } from "@/stores/sessionProjectionStore"
 
 const STATE_BADGE: Record<
   AgentRunState,
@@ -27,8 +28,12 @@ const STATE_BADGE: Record<
   skipped: { variant: "outline", key: "subagents.state.skipped" },
 }
 
-export function SubagentsPanel({ events }: { events: RuntimeEvent[] }) {
+export function SubagentsPanel({ events: eventsProp }: { events?: RuntimeEvent[] }) {
   useLocale()
+  // Session projection store (App injects the workspace event stream via
+  // setEvents); an explicit prop still wins so callers can render in isolation.
+  const storeEvents = useSessionProjectionStore((s) => s.events)
+  const events = eventsProp ?? storeEvents
   const runs = useMemo(() => [...deriveAgentRuns(events).values()], [events])
   // Running first, then failures, then the rest — newest task ids first
   // within a group (Map preserves insertion order = stream order).

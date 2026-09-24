@@ -18,6 +18,8 @@ import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
 import { deriveTrajectory, type TrajectoryEntry } from "@/lib/agent-events"
 import type { RuntimeEvent } from "@/api"
+import { useSessionProjectionStore } from "@/stores/sessionProjectionStore"
+import { useTaskSelectionStore, useSelectedTaskId } from "@/stores/taskSelectionStore"
 
 const KIND_STYLE: Record<TrajectoryEntry["kind"], string> = {
   task: "text-foreground",
@@ -27,22 +29,52 @@ const KIND_STYLE: Record<TrajectoryEntry["kind"], string> = {
   steering: "text-purple-600 dark:text-purple-400",
 }
 
+/** Distinct task ids seen on the stream, in arrival order (filter options). */
+function deriveTaskIds(events: RuntimeEvent[]): string[] {
+  const ids: string[] = []
+  for (const e of events) {
+    const id = (e as { taskId?: unknown }).taskId
+    if (typeof id === "string" && !ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
 export function TrajectoryPanel({
-  events,
-  taskIds,
+  events: eventsProp,
+  taskIds: taskIdsProp,
 }: {
-  events: RuntimeEvent[]
-  /** Task ids seen in this workspace (for the filter select). */
-  taskIds: string[]
+  /** Live events; omitted = read the sessionProjectionStore (App-injected). */
+  events?: RuntimeEvent[]
+  /** Task ids seen in this workspace (for the filter select); omitted =
+   *  derived from the sessionProjectionStore events. */
+  taskIds?: string[]
 }) {
   useLocale()
-  const [filter, setFilter] = useState<string>("all")
+  // Session projection store (App injects the workspace event stream via
+  // setEvents); explicit props still win so callers can render in isolation.
+  const storeEvents = useSessionProjectionStore((s) => s.events)
+  const events = eventsProp ?? storeEvents
+  const taskIds = useMemo(() => taskIdsProp ?? deriveTaskIds(events), [taskIdsProp, events])
+  // Cross-pane task selection: the filter reads the same store the task
+  // panel writes ("taskPanel" source), so selecting a task there focuses
+  // this pane's timeline. Picking a task here records a "timeline" source;
+  // picking "all" clears the shared selection.
+  const selectedTaskId = useSelectedTaskId()
   const [expanded, setExpanded] = useState(false)
+  const filter = selectedTaskId ?? "all"
 
   const entries = useMemo(() => {
     const all = deriveTrajectory(events, filter === "all" ? undefined : filter)
     return expanded ? all : all.slice(-40)
   }, [events, filter, expanded])
+
+  const onFilterChange = (value: string) => {
+    if (value === "all") {
+      useTaskSelectionStore.getState().clear()
+    } else {
+      useTaskSelectionStore.getState().select(value, "timeline")
+    }
+  }
 
   return (
     <Card>
@@ -53,7 +85,7 @@ export function TrajectoryPanel({
             aria-label={t("trajectory.filter")}
             className="h-7 rounded-md border border-border bg-background px-2 text-xs"
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            onChange={(e) => onFilterChange(e.target.value)}
           >
             <option value="all">{t("trajectory.filter.all")}</option>
             {taskIds.map((id) => (

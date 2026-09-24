@@ -14,13 +14,27 @@
  */
 import { create } from "zustand"
 
-/** Section ids the settings shell knows about (one expandable block each). */
+/**
+ * Section ids the settings shell knows about (one nav entry + one branch
+ * each). This is the canonical list the shell actually renders — see
+ * components/settings/sections.tsx SETTINGS_SECTIONS for the nav labels.
+ */
 export const SETTINGS_SECTIONS = [
-  "general",
-  "providers",
-  "shortcuts",
-  "permissions",
   "appearance",
+  "language",
+  "performance",
+  "flags",
+  "tenants",
+  "providers",
+  "vault",
+  "oracle",
+  "subagents",
+  "usageCharts",
+  "store",
+  "automations",
+  "jobs",
+  "memory",
+  "skills",
 ] as const
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]

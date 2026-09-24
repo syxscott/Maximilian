@@ -1,0 +1,14 @@
+{
+  "shell": {
+    "notify": {
+      "workspaceSwitchFailed": "Failed to open workspace {workspaceId}",
+      "steeringRejected": "Steering rejected — the run continues without it",
+      "permissionFailed": "Failed to deliver the permission decision",
+      "jobCreated": "Job \"{name}\" created",
+      "dismiss": "Dismiss notification"
+    },
+    "onboarding": {
+      "skip": "Skip tour"
+    }
+  }
+}

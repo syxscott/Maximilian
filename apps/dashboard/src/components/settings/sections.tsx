@@ -15,7 +15,7 @@
  * mounted.
  */
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,19 +23,22 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useLocale, t } from "@max/i18n"
 import { systemApi, ProviderListResponseSchema } from "@/api"
+import { useJobs } from "@/hooks/useJobsQueries"
+import { useJobsStore } from "@/stores/jobsStore"
+import { useNotificationStore } from "@/stores/notificationStore"
+import type { SettingsSection } from "@/stores/settingsUiStore"
+import { JobsPanel } from "./jobs-domain/JobsPanel"
+import { AutomationsDomain } from "./automations-domain/AutomationsDomain"
+import { MemoryDomain } from "./memory-domain/MemoryDomain"
+import { SkillsDomain } from "./skills-domain/SkillsDomain"
 
-export type SettingsSectionId =
-  | "appearance"
-  | "language"
-  | "performance"
-  | "flags"
-  | "tenants"
-  | "providers"
-  | "vault"
-  | "oracle"
-  | "subagents"
-  | "usageCharts"
-  | "store"
+/**
+ * Section ids come from the settings-center store (the canonical shell
+ * list — see stores/settingsUiStore.ts). Typing the nav entries with it
+ * makes a nav/store drift a compile error instead of a silent dead
+ * section.
+ */
+export type SettingsSectionId = SettingsSection
 
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; titleKey: string }> = [
   { id: "appearance", titleKey: "settings.appearance.title" },
@@ -49,6 +52,10 @@ export const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; titleKey: string 
   { id: "subagents", titleKey: "settingsDeep.subagents.title" },
   { id: "usageCharts", titleKey: "settingsDeep.usage.title" },
   { id: "store", titleKey: "settingsDeep.store.title" },
+  { id: "automations", titleKey: "automations.title" },
+  { id: "jobs", titleKey: "jobs.title" },
+  { id: "memory", titleKey: "memory.title" },
+  { id: "skills", titleKey: "skills.title" },
 ]
 
 export function SettingsSectionNav({
@@ -326,5 +333,60 @@ export function ProvidersHealthSection() {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// ── Jobs section (jobsStore bridge) ─────────────────────────────────────────
+
+/**
+ * Jobs section = the jobs-domain JobsPanel plus the store wiring around
+ * it: the react-query snapshot is injected into jobsStore (setJobs, the
+ * store's only write path) and the store's live state is read back into
+ * a summary strip, so the shared jobs store is genuinely consumed. A job
+ * id that appears for the first time (i.e. was just created) fires a
+ * notification-store push — the ToastHost surfaces it.
+ */
+export function JobsDomainSection() {
+  useLocale()
+  const jobsQuery = useJobs()
+  const setJobs = useJobsStore((s) => s.setJobs)
+  const jobs = useJobsStore((s) => s.jobs)
+
+  useEffect(() => {
+    // Inject the fresh snapshot; parseJobs drops malformed entries.
+    setJobs(jobsQuery.data)
+  }, [jobsQuery.data, setJobs])
+
+  // Notify on newly created jobs: an id we have not seen in any previous
+  // snapshot means a create (or an external writer) landed.
+  const seenIdsRef = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const rows = jobsQuery.data?.jobs ?? []
+    if (seenIdsRef.current === null) {
+      seenIdsRef.current = new Set(rows.map((j) => j.id))
+      return
+    }
+    const seen = seenIdsRef.current
+    for (const row of rows) {
+      if (!seen.has(row.id)) {
+        useNotificationStore.getState().push("success", "shell.notify.jobCreated", {
+          name: row.name,
+        })
+      }
+    }
+    seenIdsRef.current = new Set(rows.map((j) => j.id))
+  }, [jobsQuery.data])
+
+  const running = jobs.filter((j) => j.state === "running").length
+  const failed = jobs.filter((j) => j.state === "failed").length
+
+  return (
+    <div className="space-y-3" data-testid="settings-jobs-section">
+      <p className="text-xs text-muted-foreground" data-testid="jobs-store-summary">
+        {t("stores.jobs.title")}: {jobs.length} · {t("stores.jobs.stateRunning")} {running} ·{" "}
+        {t("stores.jobs.stateFailed")} {failed}
+      </p>
+      <JobsPanel />
+    </div>
   )
 }

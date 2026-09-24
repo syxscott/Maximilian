@@ -21,7 +21,8 @@ describe("ChatPanel", () => {
     expect(screen.getByPlaceholderText(/enter your request/i)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /send/i })).toBeDisabled()
     // 3 presets + send + 4 timeline toolbar buttons (find / prev / next / share)
-    expect(screen.getAllByRole("button")).toHaveLength(8)
+    // + the onboarding "Skip tour" button in the empty state.
+    expect(screen.getAllByRole("button")).toHaveLength(9)
   })
 
   it("enables Send when text is entered", async () => {
