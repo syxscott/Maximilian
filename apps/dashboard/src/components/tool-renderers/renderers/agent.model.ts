@@ -4,9 +4,12 @@
 // Licensed under the MIT License. See LICENSE in the project root.
 
 /**
- * Agent/task tool model layer: agent, task, task-output, task-stop,
- * explore, plan-guidance. Inputs are passthrough JSON — every extractor
- * is defensive (missing fields, wrong types, malformed payloads).
+ * Agent/task family model layer: agent, task-output, task-stop, explore,
+ * plan-guidance. Inputs are passthrough JSON of the runtime tool-start
+ * event (tool-integration.ts ToolCall.input) — every extractor is
+ * defensive (missing fields, wrong types, malformed payloads) and keyed to
+ * the fields each tool actually carries; task/agent itself lives in
+ * task.model.ts / this file respectively.
  */
 
 import {
@@ -16,6 +19,7 @@ import {
   jsonPreview,
   oneLine,
   pickArray,
+  pickBool,
   pickNum,
   pickStr,
   row,
@@ -24,48 +28,57 @@ import {
   type ToolViewModel,
 } from "./shared.model"
 
+// ── agent ────────────────────────────────────────────────────────────────────
+
 export function extractAgent(input: unknown): ToolViewModel {
   const obj = asRecord(input)
-  const role = pickStr(obj, ["agentRole", "role", "persona", "agent"])
-  const name = pickStr(obj, ["name", "agentName", "id"])
-  const prompt = pickStr(obj, ["prompt", "task", "instructions", "message"])
-  if (!role && !name && !prompt) return emptyVm()
+  const name = pickStr(obj, ["name", "agentName", "agent", "id"])
+  const persona = pickStr(obj, ["system", "persona", "systemPrompt"])
+  const model = pickStr(obj, ["model", "modelId", "subagentModel"])
+  const prompt = pickStr(obj, ["prompt", "task", "instructions", "message", "ask"])
+  const agentRole = pickStr(obj, ["agentRole", "role"])
+  if (
+    name === undefined &&
+    persona === undefined &&
+    model === undefined &&
+    prompt === undefined &&
+    agentRole === undefined
+  ) {
+    return emptyVm()
+  }
   const rows: Array<RendererRow | undefined> = [
-    row(FIELDS.agent, role),
-    row(FIELDS.name, name),
-    row(FIELDS.prompt, prompt),
+    row(FIELDS.name, name, true),
+    row(FIELDS.agent, agentRole),
+    row(FIELDS.provider, model, true),
+    persona === undefined ? undefined : row(FIELDS.description, oneLine(persona, 200)),
   ]
+  const headline = name ?? (agentRole === undefined ? "" : `@${agentRole}`)
   return vmFrom(
     rows.filter((r) => r !== undefined),
-    oneLine(role ? `@${role}` : (prompt ?? name ?? "")),
+    oneLine(headline || (prompt ?? "")),
+    prompt === undefined ? undefined : { text: prompt, maxLines: 10 },
   )
 }
 
-export function extractTask(input: unknown): ToolViewModel {
-  const obj = asRecord(input)
-  const taskId = pickStr(obj, ["taskId", "task_id", "id", "name"])
-  const status = pickStr(obj, ["status", "state"])
-  const description = pickStr(obj, ["description", "content", "subject", "prompt"])
-  if (!taskId && !status && !description) return emptyVm()
-  const rows: Array<RendererRow | undefined> = [
-    row(FIELDS.id, taskId, true),
-    row(FIELDS.status, status),
-    row(FIELDS.description, description),
-  ]
-  return vmFrom(
-    rows.filter((r) => r !== undefined),
-    oneLine(taskId ?? description ?? ""),
-  )
-}
+// ── task-output ──────────────────────────────────────────────────────────────
 
 export function extractTaskOutput(input: unknown): ToolViewModel {
   const obj = asRecord(input)
-  const taskId = pickStr(obj, ["taskId", "task_id", "id"])
+  const taskId = pickStr(obj, ["taskId", "task_id", "id", "shellId"])
   const timeout = pickNum(obj, ["timeoutMs", "timeout_ms", "timeout"])
+  const block = pickBool(obj, ["block", "wait", "blocking"])
   const output = pickStr(obj, ["output", "result", "stdout"])
-  if (!taskId && timeout === undefined && !output) return emptyVm()
+  if (
+    taskId === undefined &&
+    timeout === undefined &&
+    block === undefined &&
+    output === undefined
+  ) {
+    return emptyVm()
+  }
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.id, taskId, true),
+    block === undefined ? undefined : row(FIELDS.block, block ? "true" : "false", true),
     timeout === undefined ? undefined : row(FIELDS.timeout, timeout),
     output === undefined ? undefined : row(FIELDS.result, jsonPreview(output, 240), true),
   ]
@@ -75,13 +88,17 @@ export function extractTaskOutput(input: unknown): ToolViewModel {
   )
 }
 
+// ── task-stop ────────────────────────────────────────────────────────────────
+
 export function extractTaskStop(input: unknown): ToolViewModel {
   const obj = asRecord(input)
   const taskId = pickStr(obj, ["taskId", "task_id", "id", "shellId"])
-  const reason = pickStr(obj, ["reason", "cause"])
-  if (!taskId && !reason) return emptyVm()
+  const reason = pickStr(obj, ["reason", "cause", "because"])
+  const force = pickBool(obj, ["force", "aggressive"])
+  if (taskId === undefined && reason === undefined && force === undefined) return emptyVm()
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.id, taskId, true),
+    force === undefined ? undefined : row(FIELDS.force, force ? "true" : "false", true),
     row(FIELDS.reason, reason),
   ]
   return vmFrom(
@@ -90,12 +107,14 @@ export function extractTaskStop(input: unknown): ToolViewModel {
   )
 }
 
+// ── explore ──────────────────────────────────────────────────────────────────
+
 export function extractExplore(input: unknown): ToolViewModel {
   const obj = asRecord(input)
   const query = pickStr(obj, ["query", "topic", "question", "goal", "prompt"])
   const paths = pickArray(obj, ["paths", "dirs", "directories", "targets"])
   const base = pickStr(obj, ["path", "root", "cwd"])
-  if (!query && !paths && !base) return emptyVm()
+  if (query === undefined && paths === undefined && base === undefined) return emptyVm()
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.query, query),
     base === undefined ? undefined : row(FIELDS.path, base, true),
@@ -109,14 +128,28 @@ export function extractExplore(input: unknown): ToolViewModel {
   )
 }
 
+// ── plan-guidance (the "plan" tool) ─────────────────────────────────────────
+
 export function extractPlanGuidance(input: unknown): ToolViewModel {
   const obj = asRecord(input)
   const goal = pickStr(obj, ["goal", "objective", "plan", "guidance", "message"])
   const phase = pickStr(obj, ["phase", "stage", "step"])
-  if (!goal && !phase) return emptyVm()
-  const rows: Array<RendererRow | undefined> = [row(FIELDS.goal, goal), row(FIELDS.phase, phase)]
+  const steps = pickArray(obj, ["steps", "tasks", "milestones"])
+  const revision = pickNum(obj, ["revision", "version", "iteration"])
+  if (goal === undefined && phase === undefined && steps === undefined && revision === undefined) {
+    return emptyVm()
+  }
+  const rows: Array<RendererRow | undefined> = [
+    row(FIELDS.goal, goal),
+    row(FIELDS.phase, phase),
+    steps === undefined ? undefined : row(FIELDS.count, steps.length),
+    revision === undefined ? undefined : row(FIELDS.id, `r${revision}`, true),
+  ]
   return vmFrom(
     rows.filter((r) => r !== undefined),
     oneLine(goal ?? phase ?? ""),
+    steps === undefined
+      ? undefined
+      : { text: steps.map((s, i) => `${i + 1}. ${jsonPreview(s, 120)}`).join("\n"), maxLines: 12 },
   )
 }

@@ -10,6 +10,12 @@
  * `summarize` (one-line) and a `detail` (structured rows) extraction.
  * Mirrors the DisciplineFiles model/presentation split of ZCode's
  * ToolCallBlocks.
+ *
+ * The core tools (bash/read/glob/grep/permission/lsp) are keyed to the REAL
+ * input schemas in packages/tools/src via renderers/core.model.ts — the
+ * read/write/edit target is `path` (the schema field), not the historical
+ * `file_path` alias. write/edit detail rendering lives in
+ * renderers/edit-inline-diff.model.ts (inline oldString/newString diff).
  */
 
 export interface ToolInputRows {
@@ -41,25 +47,28 @@ function rowsFrom(
   return { rows, title: "" }
 }
 
+import { extractFileChange } from "./renderers/edit-inline-diff.model"
+import { coreHeadline, coreInputRows } from "./renderers/core.model"
+
 export function summarizeToolInput(tool: string, input: unknown): string {
   const obj = (input ?? {}) as Record<string, unknown>
   switch (tool) {
     case "bash":
-      return head(str(obj.command) ?? "")
     case "read":
-      return head(str(obj.file_path) ?? "")
-    case "write":
-      return head(str(obj.file_path) ?? "")
-    case "edit":
-      return head(str(obj.file_path) ?? "")
     case "glob":
-      return head(str(obj.pattern) ?? "")
     case "grep":
-      return head(str(obj.pattern) ?? "")
     case "permission":
-      return head(str(obj.tool) ?? "")
-    case "lsp":
-      return head(str(obj.method) ?? "")
+    case "lsp": {
+      // Schema-aligned extraction (packages/tools input schemas) — see
+      // core.model.ts for the per-tool key sets. Falls back to the raw
+      // JSON (or the tool name) when nothing lands, like the default arm.
+      const core = coreHeadline(tool, obj)
+      if (core !== undefined && core.length > 0) return head(core)
+      return head(Object.keys(obj).length > 0 ? JSON.stringify(obj) : tool)
+    }
+    case "write":
+    case "edit":
+      return head(extractFileChange(tool, obj).headline)
     default: {
       // Dedicated renderers expose a headline extractor (see renderers/)
       // — reuse it so collapsed lines read as a target, not raw JSON.
@@ -76,9 +85,9 @@ export function summarizeToolInput(tool: string, input: unknown): string {
 // Headline extractors for the per-tool renderers (same family model files
 // the bodies use). Ordered map — presentation never touches raw fields.
 import { extractWebfetch, extractSearch, extractMcp } from "./renderers/web.model"
+import { extractTask } from "./renderers/task.model"
 import {
   extractAgent,
-  extractTask,
   extractTaskOutput,
   extractTaskStop,
   extractExplore,
@@ -156,59 +165,47 @@ const HEADLINE_EXTRACTORS: Record<string, HeadlineExtractor> = {
 export function toolInputRows(tool: string, input: unknown): ToolInputRows {
   const obj = (input ?? {}) as Record<string, unknown>
   switch (tool) {
-    case "bash": {
-      const r = rowsFrom(obj, [
-        ["command", "command", true],
-        ["timeout", "timeout (ms)"],
-      ])
-      r.title = head(str(obj.command) ?? "")
-      return r
-    }
-    case "read": {
-      const r = rowsFrom(obj, [
-        ["file_path", "file", true],
-        ["offset", "offset"],
-        ["limit", "limit"],
-      ])
-      r.title = head(str(obj.file_path) ?? "")
-      return r
-    }
+    case "bash":
+    case "read":
+    case "glob":
+    case "grep":
+    case "permission":
+    case "lsp":
+      // Schema-aligned rows (core.model.ts); labels are the shortened
+      // field names — this generic view is the fallback, the dedicated
+      // bodies resolve localized labels through t().
+      return { rows: coreInputRows(tool, obj), title: head(coreHeadline(tool, obj) ?? "") }
     case "write": {
-      const r = rowsFrom(obj, [
-        ["file_path", "file", true],
-        ["content", "content", true],
-      ])
-      r.title = head(str(obj.file_path) ?? "")
+      // Schema keys (write.ts {path, content}) with the historical generic
+      // labels the timeline tests assert on — the dedicated body renders
+      // the full rows + all-added diff via extractFileChange.
+      const change = extractFileChange("write", obj)
       const content = str(obj.content)
-      if (content) {
-        r.rows.push({ label: "bytes", value: String(new TextEncoder().encode(content).length) })
+      const rows: ToolInputRows["rows"] = [
+        { label: "file", value: head(change.headline), mono: true },
+      ]
+      if (content !== undefined) {
+        rows.push({ label: "bytes", value: String(utf8Length(content)) })
       }
-      return r
+      return { rows, title: head(change.headline) }
     }
     case "edit": {
-      const r = rowsFrom(obj, [
-        ["file_path", "file", true],
-        ["oldString", "old", true],
-        ["newString", "new", true],
-      ])
-      r.title = head(str(obj.file_path) ?? "")
-      return r
-    }
-    case "glob": {
-      const r = rowsFrom(obj, [
-        ["pattern", "pattern", true],
-        ["path", "base", true],
-      ])
-      r.title = head(str(obj.pattern) ?? "")
-      return r
-    }
-    case "grep": {
-      const r = rowsFrom(obj, [
-        ["pattern", "pattern", true],
-        ["path", "base", true],
-      ])
-      r.title = head(str(obj.pattern) ?? "")
-      return r
+      // Schema keys (edit.ts {path, oldString, newString, replaceAll}) —
+      // generic rows keep the "file/old/new" contract; the inline diff in
+      // the dedicated body shows the real pair.
+      const change = extractFileChange("edit", obj)
+      const oldText = str(obj.oldString)
+      const newText = str(obj.newString)
+      const rows: ToolInputRows["rows"] = [
+        { label: "file", value: head(change.headline), mono: true },
+      ]
+      if (oldText !== undefined) {
+        rows.push({ label: "old", value: head(oldText, 200), mono: true })
+      }
+      if (newText !== undefined) {
+        rows.push({ label: "new", value: head(newText, 200), mono: true })
+      }
+      return { rows, title: head(change.headline) }
     }
     default: {
       const keys = Object.keys(obj)

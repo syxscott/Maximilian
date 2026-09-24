@@ -3,7 +3,11 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** escalate renderer — glyph + body over extractEscalate. */
+/**
+ * escalate renderer — raise a blocker to the coordinator. Body shows the
+ * target, severity and the escalation reason, with optional background
+ * context as a monospace block (coordination.model.ts extractEscalate).
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"

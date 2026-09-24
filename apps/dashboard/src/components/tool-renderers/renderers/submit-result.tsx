@@ -3,7 +3,12 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** submit-result renderer — glyph + body over extractSubmitResult. */
+/**
+ * submit-result renderer — final task report. Body shows the summary, the
+ * owning task id and the result payload as a clamped monospace block
+ * (coordination.model.ts extractSubmitResult); JSON fallback for opaque
+ * payloads.
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"

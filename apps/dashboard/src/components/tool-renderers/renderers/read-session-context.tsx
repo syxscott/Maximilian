@@ -3,7 +3,11 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** read-session-context renderer — glyph + body over extractReadSessionContext. */
+/**
+ * read-session-context renderer — pull context from a prior session. Body
+ * shows the session id, the focused query, the retrieval strategy and the
+ * token budget (coordination.model.ts extractReadSessionContext).
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"

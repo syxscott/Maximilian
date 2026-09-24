@@ -3,7 +3,12 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** task-output renderer — glyph + body over extractTaskOutput. */
+/**
+ * task-output renderer — TaskOutput retrieval. Body shows the target task
+ * id, the block/wait flag and timeout, plus a clamped monospace preview of
+ * a retrieved output when the payload already carries one (see
+ * agent.model.ts extractTaskOutput).
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"

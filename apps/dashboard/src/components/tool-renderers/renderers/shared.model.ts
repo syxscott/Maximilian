@@ -41,29 +41,50 @@ export interface ToolViewModel {
 
 export const FIELDS = {
   agent: "toolRenderers.fields.agent",
+  allowedDomains: "toolRenderers.fields.allowedDomains",
   answer: "toolRenderers.fields.answer",
   args: "toolRenderers.fields.args",
+  blockedDomains: "toolRenderers.fields.blockedDomains",
+  block: "toolRenderers.fields.block",
+  bytes: "toolRenderers.fields.bytes",
   command: "toolRenderers.fields.command",
+  content: "toolRenderers.fields.content",
+  context: "toolRenderers.fields.context",
   count: "toolRenderers.fields.count",
   description: "toolRenderers.fields.description",
   file: "toolRenderers.fields.file",
+  force: "toolRenderers.fields.force",
   from: "toolRenderers.fields.from",
   goal: "toolRenderers.fields.goal",
+  host: "toolRenderers.fields.host",
   id: "toolRenderers.fields.id",
   images: "toolRenderers.fields.images",
+  include: "toolRenderers.fields.include",
   interval: "toolRenderers.fields.interval",
+  language: "toolRenderers.fields.language",
   limit: "toolRenderers.fields.limit",
+  limitDefault: "toolRenderers.fields.limitDefault",
+  lines: "toolRenderers.fields.lines",
+  maxTokens: "toolRenderers.fields.maxTokens",
   message: "toolRenderers.fields.message",
   mode: "toolRenderers.fields.mode",
+  multiSelect: "toolRenderers.fields.multiSelect",
   name: "toolRenderers.fields.name",
+  offset: "toolRenderers.fields.offset",
   options: "toolRenderers.fields.options",
   path: "toolRenderers.fields.path",
+  pattern: "toolRenderers.fields.pattern",
   phase: "toolRenderers.fields.phase",
+  priority: "toolRenderers.fields.priority",
   prompt: "toolRenderers.fields.prompt",
   provider: "toolRenderers.fields.provider",
+  progress: "toolRenderers.fields.progress",
   query: "toolRenderers.fields.query",
   question: "toolRenderers.fields.question",
+  range: "toolRenderers.fields.range",
   reason: "toolRenderers.fields.reason",
+  replaceAll: "toolRenderers.fields.replaceAll",
+  requests: "toolRenderers.fields.requests",
   result: "toolRenderers.fields.result",
   run: "toolRenderers.fields.run",
   schedule: "toolRenderers.fields.schedule",
@@ -73,13 +94,17 @@ export const FIELDS = {
   skill: "toolRenderers.fields.skill",
   status: "toolRenderers.fields.status",
   strategy: "toolRenderers.fields.strategy",
+  subagent: "toolRenderers.fields.subagent",
   summary: "toolRenderers.fields.summary",
   target: "toolRenderers.fields.target",
   timeout: "toolRenderers.fields.timeout",
+  timeoutDefault: "toolRenderers.fields.timeoutDefault",
   title: "toolRenderers.fields.title",
   tool: "toolRenderers.fields.tool",
+  uri: "toolRenderers.fields.uri",
   url: "toolRenderers.fields.url",
   workflow: "toolRenderers.fields.workflow",
+  workdir: "toolRenderers.fields.workdir",
 } as const
 
 /** Narrow `unknown` to a plain object; anything else becomes {}. */
@@ -170,6 +195,11 @@ export function truncateLines(
   const total = lines.length
   if (total <= max) return { text, overflow: 0, total }
   return { text: lines.slice(0, max).join("\n"), overflow: total - max, total }
+}
+
+/** Byte length of a string in UTF-8 (payload-size rows). */
+export function utf8Length(text: string): number {
+  return new TextEncoder().encode(text).length
 }
 
 /** Optional row builder — skips undefined/empty values. */

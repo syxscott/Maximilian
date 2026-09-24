@@ -3,7 +3,11 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** webfetch renderer — glyph + body over extractWebfetch. */
+/**
+ * webfetch renderer — URL fetch with a model-side prompt. Body shows the
+ * URL, the derived host (web.model.ts urlHost) and the prompt; JSON
+ * fallback when the payload is opaque.
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"

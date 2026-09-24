@@ -16,6 +16,7 @@ import type { ToolCallProps, ToolRendererDef } from "../registry"
 import { AGENT_GLYPH, AgentBody } from "./agent"
 import { ASK_QUESTION_GLYPH, AskQuestionBody } from "./ask-question"
 import { CHANGES_GROUP_GLYPH, ChangesGroupBody } from "./groups"
+import { BashBody, GlobBody, GrepBody, LspBody, PermissionBody, ReadBody } from "./core"
 import { CREATE_WORKFLOW_GLYPH, CreateWorkflowBody } from "./create-workflow"
 import { CRON_CREATE_GLYPH, CronCreateBody } from "./cron-create"
 import { CUA_GROUP_GLYPH, CuaGroupBody } from "./groups"
@@ -62,13 +63,14 @@ import { WORKFLOW_DIAGNOSTICS_GLYPH, WorkflowDiagnosticsBody } from "./workflow-
 export type { ToolCallProps, ToolRendererDef }
 
 export const RENDERERS: Record<string, ToolRendererDef> = {
-  // pre-existing core tools — glyph-only (generic DefaultBody detail view)
-  bash: { glyph: "$" },
-  read: { glyph: "›" },
-  glob: { glyph: "*" },
-  grep: { glyph: "=" },
-  permission: { glyph: "-key" },
-  lsp: { glyph: "◇" },
+  // core tools (packages/tools schemas) — dedicated bodies over
+  // core.model.ts; edit/write below use the inline-diff body
+  bash: { glyph: "$", Body: BashBody },
+  read: { glyph: "›", Body: ReadBody },
+  glob: { glyph: "*", Body: GlobBody },
+  grep: { glyph: "=", Body: GrepBody },
+  permission: { glyph: "-key", Body: PermissionBody },
+  lsp: { glyph: "◇", Body: LspBody },
 
   // file changes — inline diff bodies (DiffPreview.extractChange reuse)
   edit: { glyph: "±", Body: EditInlineDiffBody },

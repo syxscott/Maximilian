@@ -3,7 +3,11 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** switch-mode renderer — glyph + body over extractSwitchMode. */
+/**
+ * switch-mode renderer — execution-mode transition. Body shows the target
+ * mode, the mode left behind and the stated reason
+ * (coordination.model.ts extractSwitchMode); JSON fallback otherwise.
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"

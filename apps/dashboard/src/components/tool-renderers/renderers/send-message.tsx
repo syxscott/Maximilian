@@ -3,7 +3,11 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** send-message renderer — glyph + body over extractSendMessage. */
+/**
+ * send-message renderer — inter-agent message. Body shows the recipient
+ * and the summary headline, with the full message text as a monospace
+ * block (coordination.model.ts extractSendMessage).
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"

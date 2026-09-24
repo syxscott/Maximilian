@@ -3,7 +3,11 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** plan-guidance renderer — glyph + body over extractPlanGuidance. */
+/**
+ * plan-guidance renderer (the "plan" tool). Body shows the plan goal, the
+ * current phase, the step count and revision, plus the numbered step list
+ * as a monospace block (see agent.model.ts extractPlanGuidance).
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"

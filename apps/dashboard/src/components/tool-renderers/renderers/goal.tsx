@@ -3,7 +3,11 @@
 //
 // Licensed under the MIT License. See LICENSE in the project root.
 
-/** goal renderer — glyph + body over extractGoal. */
+/**
+ * goal renderer — goal registration/progress. Body shows the goal text,
+ * its status and the percent progress when the payload carries one
+ * (coordination.model.ts extractGoal); JSON fallback otherwise.
+ */
 
 import type { ToolCallProps } from "../registry"
 import { BodyShell } from "./common"
