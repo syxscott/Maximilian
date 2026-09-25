@@ -68,6 +68,15 @@
  * packages/core/src/types.ts TodoItem), create/save-workflow ignored the
  * script + declared-args payload, and eval-workflow-snippet dropped the
  * path form.
+ *
+ * The "round-3 polish" closes the audit's low-density remainder: the group
+ * renderers gain a countOutcomes summary row (✓ ok / ✗ failed / unrecorded
+ * badges), ToolCallBlock carries the failure error on the collapsed row as
+ * a single truncated red line with the full text in its title tooltip, and
+ * the last sub-3-field bodies are topped up (skill's args key count, todo's
+ * per-status tallies + done/total line, exit-plan-mode's allow-list
+ * preview, eval-workflow-snippet's snippet line count) — leaving only edit
+ * and list-apps as deliberate primary-plus-fallback entries.
  */
 
 import { describe, it, expect, afterEach } from "vitest"
@@ -174,7 +183,10 @@ import {
   extractBrowserNavigate,
   extractBrowserAction,
 } from "../src/components/tool-renderers/renderers/browser.model"
-import { extractGroupChildren } from "../src/components/tool-renderers/renderers/group.model"
+import {
+  countOutcomes,
+  extractGroupChildren,
+} from "../src/components/tool-renderers/renderers/group.model"
 import { extractFileChange } from "../src/components/tool-renderers/renderers/edit-inline-diff.model"
 import { usageOf } from "../src/components/tool-renderers/renderers/shared.model"
 
@@ -2149,6 +2161,7 @@ describe("remaining twelve — model extensions", () => {
     expect(vm.rows.map((r) => r.labelKey)).toEqual([
       "toolRenderers.fields.timeout",
       "toolRenderers.fields.assertions",
+      "toolRenderers.fields.lines",
     ])
     expect(vm.rows[1]?.value).toBe("2")
     // assertion_count alias, and expects arrays land the same way.
@@ -3324,7 +3337,7 @@ describe("completion fixtures — prompt display family", () => {
       toolEnd("exit-plan-mode"),
     )
     expect(rowValue("Lines")).toBe("2")
-    expect(rowValue("Prompts")).toBe("1")
+    expect(rowValue("Prompts")).toBe("1 · run tests")
     expect(screen.getByTestId("tool-code")).toHaveTextContent("Step 2")
   })
 
@@ -3589,17 +3602,24 @@ describe("renderer field audit — full verification matrix", () => {
     expect(LOW_DENSITY_RENDERERS.sort()).toEqual(
       [
         "edit", // inline diff is the payload; file/replaceAll rows ride beside it
-        "todo", // count/summary rows + the normalized checklist
-        "todo-read",
-        "todo-write",
-        "skill", // schema-complete: the real surface is exactly { skill, args }
-        "exit-plan-mode", // plan document block + lines/prompts rows
-        "eval-workflow-snippet", // snippet block + timeout/assertion/path rows
         "list-apps", // count row + numbered roster block (no input fields exist)
       ].sort(),
     )
     for (const tool of LOW_DENSITY_RENDERERS) {
       expect(RENDERERS[tool]?.Body, tool).toBeDefined()
+    }
+  })
+
+  it("the polish round lifted the former low-density bodies to full", () => {
+    for (const tool of [
+      "todo",
+      "todo-read",
+      "todo-write", // done/total tallies over the normalized checklist
+      "skill", // skill · args key count · args preview
+      "exit-plan-mode", // plan block + lines + prompts count/labels row
+      "eval-workflow-snippet", // snippet block + timeout/assertions/path/lines
+    ]) {
+      expect(RENDERER_FIELD_AUDIT[tool]?.density, tool).toBe("full")
     }
   })
 })
@@ -3779,5 +3799,249 @@ describe("audit fixes — eval-workflow-snippet accepts the path form", () => {
     expect(rowValue("Timeout")).toBe("1000")
     expect(rowValue("Path")).toBeUndefined()
     expect(screen.getByTestId("tool-code")).toHaveTextContent("const a = 1")
+  })
+})
+
+// ── round-3 polish — outcome stats, inline errors, low-density top-ups ──────
+
+describe("polish — group outcome stats (countOutcomes)", () => {
+  it("tallies ok / failed / unknown and the total", () => {
+    const stats = countOutcomes([
+      { tool: "bash", input: {}, ok: true },
+      { tool: "bash", input: {}, ok: false },
+      { tool: "bash", input: {}, ok: true },
+      { tool: "read", input: {} },
+    ])
+    expect(stats).toEqual({ total: 4, ok: 2, failed: 1, unknown: 1 })
+  })
+
+  it("an all-success group reports zero failures and zero unrecorded", () => {
+    const stats = countOutcomes(
+      Array.from({ length: 3 }, (_, i) => ({
+        tool: "bash",
+        input: { command: `c${i}` },
+        ok: true,
+      })),
+    )
+    expect(stats).toEqual({ total: 3, ok: 3, failed: 0, unknown: 0 })
+  })
+
+  it("an empty group tallies to all-zero", () => {
+    expect(countOutcomes([])).toEqual({ total: 0, ok: 0, failed: 0, unknown: 0 })
+  })
+
+  it("envelope success aliases normalize into the ok tally", () => {
+    const { children } = extractGroupChildren(
+      { items: [{ success: true }, { success: false, tool: "edit" }, { tool: "read" }] },
+      "execute",
+    )
+    expect(countOutcomes(children)).toEqual({ total: 3, ok: 1, failed: 1, unknown: 1 })
+  })
+
+  it("execute-group body renders the ok/failed badges; unrecorded only when present", () => {
+    renderInput("execute-group", {
+      items: [
+        { tool: "bash", command: "ok-one", ok: true },
+        { tool: "bash", command: "bad-one", ok: false, error: "exit 1" },
+      ],
+    })
+    expect(screen.getByTestId("tool-group-outcomes")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-group-ok")).toHaveTextContent("1 ok")
+    expect(screen.getByTestId("tool-group-failed")).toHaveTextContent("1 failed")
+    expect(screen.queryByTestId("tool-group-unknown")).toBeNull()
+  })
+
+  it("children without outcome flags surface the unrecorded badge", () => {
+    renderInput("cua-group", { items: [{ action: "click" }, { action: "type" }] })
+    expect(screen.getByTestId("tool-group-unknown")).toHaveTextContent("2 unrecorded")
+    expect(screen.getByTestId("tool-group-ok")).toHaveTextContent("0 ok")
+  })
+
+  it("changes-group keeps the count line beside the badges", () => {
+    renderInput("changes-group", {
+      items: [
+        { oldString: "a", newString: "b", ok: true },
+        { content: "x", ok: true },
+        { oldString: "c", newString: "d", ok: false },
+      ],
+    })
+    expect(screen.getByTestId("tool-group-count")).toHaveTextContent("3 sub-calls")
+    expect(screen.getByTestId("tool-group-ok")).toHaveTextContent("2 ok")
+    expect(screen.getByTestId("tool-group-failed")).toHaveTextContent("1 failed")
+  })
+})
+
+describe("polish — ToolCallBlock collapsed inline error", () => {
+  it("a collapsed failed call shows the error as one truncated red line with a full-text title", () => {
+    const longError = `ECONNRESET while streaming: ${"x".repeat(300)}`
+    render(<ToolCallBlock tool="bash" input={{ command: "deploy" }} ok={false} error={longError} />)
+    const line = screen.getByTestId("tool-error-collapsed")
+    expect(line).toHaveTextContent("ECONNRESET")
+    expect(line.className).toContain("truncate")
+    expect(line.className).toContain("text-destructive")
+    expect(line.getAttribute("title")).toBe(longError)
+  })
+
+  it("the inline row is hidden while expanded (ErrorBlock owns the open state)", () => {
+    render(
+      <ToolCallBlock
+        tool="bash"
+        input={{ command: "deploy" }}
+        ok={false}
+        error="boom"
+        defaultOpen
+      />,
+    )
+    expect(screen.queryByTestId("tool-error-collapsed")).toBeNull()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("boom")
+  })
+
+  it("successful or error-free collapsed calls render no inline error", () => {
+    render(<ToolCallBlock tool="bash" input={{ command: "ls" }} ok />)
+    expect(screen.queryByTestId("tool-error-collapsed")).toBeNull()
+  })
+
+  it("toggling from collapsed to open swaps the inline row for the ErrorBlock", () => {
+    render(<ToolCallBlock tool="task" input={{ prompt: "p" }} ok={false} error="timed out" />)
+    expect(screen.getByTestId("tool-error-collapsed")).toHaveTextContent("timed out")
+    fireEvent.click(screen.getByRole("button"))
+    expect(screen.queryByTestId("tool-error-collapsed")).toBeNull()
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("timed out")
+  })
+})
+
+describe("polish — skill arg-key count", () => {
+  it("object args land three structured rows (skill · arg keys · args preview)", () => {
+    const vm = extractSkill({ skill: "pdf", args: { page: 1, dir: "asc" } })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.skill",
+      "toolRenderers.fields.argsKeys",
+      "toolRenderers.fields.args",
+    ])
+    expect(vm.rows[1]?.value).toBe("2")
+  })
+
+  it("string args keep the preview row without a count; bare skill stays single-row", () => {
+    const stringArgs = extractSkill({ skill: "pdf", args: "landscape" })
+    expect(stringArgs.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.skill",
+      "toolRenderers.fields.args",
+    ])
+    expect(extractSkill({ skill: "pdf" }).rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.skill",
+    ])
+  })
+
+  it("event fixture: skill body shows the localized arg-key row", () => {
+    renderPair(toolStart("skill", { skill: "xlsx", args: { sheet: "q3" } }), toolEnd("skill"))
+    expect(rowValue("Arg keys")).toBe("1")
+    expect(rowValue("Args")).toContain("sheet")
+  })
+})
+
+describe("polish — todo status tallies", () => {
+  it("counts each normalized status including alias spellings", () => {
+    const vm = extractTodo({
+      todos: [
+        { content: "a", status: "done" },
+        { content: "b", status: "in_progress" },
+        { content: "c", status: "active" },
+        { content: "d", status: "canceled" },
+        { content: "e", status: "pending" },
+      ],
+    })
+    expect(vm.statusCounts).toEqual({ pending: 1, in_progress: 2, completed: 1, cancelled: 1 })
+  })
+
+  it("empty and malformed payloads tally to zero", () => {
+    expect(extractTodo({}).statusCounts).toEqual({
+      pending: 0,
+      in_progress: 0,
+      completed: 0,
+      cancelled: 0,
+    })
+    expect(extractTodo(null).statusCounts.completed).toBe(0)
+  })
+
+  it("event fixture: the body leads with the done/total progress line", () => {
+    renderPair(
+      toolStart("todo", {
+        todos: [
+          { content: "a", status: "completed" },
+          { content: "b", status: "completed" },
+          { content: "c", status: "pending" },
+        ],
+      }),
+      toolEnd("todo"),
+    )
+    expect(screen.getByTestId("todo-stats")).toHaveTextContent("2/3 done")
+  })
+
+  it("zh-CN renders the progress line localized", () => {
+    setLocale("zh-CN")
+    renderPair(
+      toolStart("todo", { todos: [{ content: "a", status: "completed" }] }),
+      toolEnd("todo"),
+    )
+    expect(screen.getByTestId("todo-stats")).toHaveTextContent("已完成 1/1")
+  })
+})
+
+describe("polish — exit-plan-mode allow-list preview", () => {
+  it("the prompts row carries the count plus the first allow-list labels", () => {
+    const vm = extractExitPlanMode({
+      plan: "# Step 1",
+      allowedPrompts: ["bash(git:*)", "npm run test", { label: "docker build" }],
+    })
+    const prompts = vm.rows.find((r) => r.labelKey === "toolRenderers.fields.prompts")
+    expect(prompts?.value).toBe("3 · bash(git:*), npm run test, docker build")
+    expect(vm.code?.text).toBe("# Step 1")
+  })
+
+  it("non-string entries fall back to their label field or a JSON preview", () => {
+    const vm = extractExitPlanMode({ allowedPrompts: [{ tool: "webfetch" }, 42] })
+    const prompts = vm.rows.find((r) => r.labelKey === "toolRenderers.fields.prompts")
+    expect(prompts?.value).toBe("2 · webfetch, 42")
+  })
+
+  it("an empty allow-list still reports the zero count", () => {
+    const vm = extractExitPlanMode({ plan: "p", allowedPrompts: [] })
+    const prompts = vm.rows.find((r) => r.labelKey === "toolRenderers.fields.prompts")
+    expect(prompts?.value).toBe("0")
+  })
+})
+
+describe("polish — eval-workflow-snippet line count", () => {
+  it("a code snippet gains the derived lines row beside its block", () => {
+    const vm = extractEvalWorkflowSnippet({ code: "const a = 1\nconst b = 2" })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual(["toolRenderers.fields.lines"])
+    expect(vm.rows[0]?.value).toBe("2")
+    expect(vm.code?.text).toContain("const b = 2")
+  })
+
+  it("the path-only form stays untouched (no invented line count)", () => {
+    const vm = extractEvalWorkflowSnippet({ path: "s.dwf.ts", timeoutMs: 500 })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.timeout",
+      "toolRenderers.fields.path",
+    ])
+  })
+})
+
+describe("polish — i18n keys for the new surfaces", () => {
+  it("both locales carry the outcome/progress/argsKeys keys", () => {
+    const keys = [
+      "toolRenderers.group.ok",
+      "toolRenderers.group.failed",
+      "toolRenderers.group.unknown",
+      "toolRenderers.todo.doneCount",
+      "toolRenderers.fields.argsKeys",
+    ]
+    for (const key of keys) {
+      expect(enDomain[key as keyof typeof enDomain], key).toBeDefined()
+      expect(zhDomain[key as keyof typeof zhDomain], key).toBeDefined()
+    }
+    expect(zhDomain["toolRenderers.todo.doneCount" as keyof typeof zhDomain]).toContain("{done}")
   })
 })

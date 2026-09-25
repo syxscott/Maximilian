@@ -46,6 +46,7 @@ export const FIELDS = {
   answer: "toolRenderers.fields.answer",
   app: "toolRenderers.fields.app",
   args: "toolRenderers.fields.args",
+  argsKeys: "toolRenderers.fields.argsKeys",
   assertions: "toolRenderers.fields.assertions",
   blockedDomains: "toolRenderers.fields.blockedDomains",
   block: "toolRenderers.fields.block",

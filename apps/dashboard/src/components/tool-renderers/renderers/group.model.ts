@@ -7,7 +7,9 @@
  * Group-renderer model layer: execute-group / changes-group / cua-group
  * receive their sub-calls as a passthrough array (input.items or
  * input.calls — defensive candidates) and re-render them recursively via
- * ToolCallBlock, clamped to GROUP_LIMIT with an overflow note.
+ * ToolCallBlock, clamped to GROUP_LIMIT with an overflow note. The body
+ * opens with a summary stats row tallied by countOutcomes (ok / failed /
+ * unrecorded badges).
  */
 
 import { asRecord, jsonPreview, pickArray, pickBool, pickNum, pickStr } from "./shared.model"
@@ -30,6 +32,32 @@ export interface GroupViewModel {
   total: number
   shown: number
   overflow: number
+}
+
+/** Outcome tallies for a group's sub-calls (the summary stats row). */
+export interface GroupOutcomeStats {
+  total: number
+  ok: number
+  failed: number
+  /** Children that carry no ok/success flag — outcome not recorded. */
+  unknown: number
+}
+
+/**
+ * Pure tally over normalized children: ok=true → ok, ok=false → failed,
+ * everything else (flag absent) → unknown. The body renders these as the
+ * success/failure count badges above the recursive child list.
+ */
+export function countOutcomes(children: GroupChild[]): GroupOutcomeStats {
+  let ok = 0
+  let failed = 0
+  let unknown = 0
+  for (const child of children) {
+    if (child.ok === true) ok += 1
+    else if (child.ok === false) failed += 1
+    else unknown += 1
+  }
+  return { total: children.length, ok, failed, unknown }
 }
 
 const EMPTY: GroupViewModel = { children: [], total: 0, shown: 0, overflow: 0 }

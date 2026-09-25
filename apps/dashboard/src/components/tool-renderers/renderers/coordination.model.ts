@@ -6,7 +6,7 @@
 /**
  * Coordination tool model layer: ask-question, goal, escalate, todo,
  * send-message, respond-to-coordinator, submit-result, switch-mode,
- * list-models, read-session-context (+ skill, unchanged). Inputs are the
+ * list-models, read-session-context (+ skill). Inputs are the
  * passthrough `input` of the runtime tool-start event, so extraction is
  * defensive — but the candidate keys track what each tool really sends
  * (e.g. todo's {todos:[{content,status,priority}]} and ask-question's
@@ -17,8 +17,10 @@
  * arrow), send-message adds a clamped message preview row, submit-result
  * reports the metadata key count, respond-to-coordinator carries the
  * addressed coordinator + response type, list-models normalizes the
- * returned model ids into a numbered block and read-session-context keeps
- * the returned context summary as a clamped block.
+ * returned model ids into a numbered block, read-session-context keeps
+ * the returned context summary as a clamped block and todo/skill carry
+ * the round-3 polish tallies (todo: per-status counts, skill: the args
+ * key count).
  */
 
 import {
@@ -52,9 +54,27 @@ export interface TodoItem {
   priority?: string
 }
 
+/** Per-status tallies over the normalized items (done/total stats line). */
+export type TodoStatusCounts = Record<TodoStatus, number>
+
+const EMPTY_STATUS_COUNTS: TodoStatusCounts = {
+  pending: 0,
+  in_progress: 0,
+  completed: 0,
+  cancelled: 0,
+}
+
+function tallyStatuses(items: TodoItem[]): TodoStatusCounts {
+  const counts: TodoStatusCounts = { ...EMPTY_STATUS_COUNTS }
+  for (const item of items) counts[item.status] += 1
+  return counts
+}
+
 export interface TodoViewModel extends ToolViewModel {
   /** Normalized items; the body renders these as a checklist. */
   items: TodoItem[]
+  /** Status tallies — the body shows the completed/total progress line. */
+  statusCounts: TodoStatusCounts
 }
 
 function normalizeStatus(raw: unknown): TodoStatus {
@@ -79,7 +99,7 @@ export function extractTodo(input: unknown): TodoViewModel {
   const todos = pickArray(obj, ["todos", "items", "tasks", "list"])
   const first = pickStr(obj, ["todo", "task", "text"])
   if (todos === undefined && first === undefined) {
-    return { ...emptyVm(), items: [] }
+    return { ...emptyVm(), items: [], statusCounts: { ...EMPTY_STATUS_COUNTS } }
   }
   const items = todos === undefined ? [] : todos.map(normalizeTodo)
   const shown = items.filter((t) => t.content.length > 0)
@@ -97,6 +117,7 @@ export function extractTodo(input: unknown): TodoViewModel {
       todos ? `×${todos.length}` : oneLine(first ?? ""),
     ),
     items,
+    statusCounts: tallyStatuses(items),
   }
 }
 
@@ -517,15 +538,22 @@ export function extractReadSessionContext(input: unknown): ReadSessionContextVie
   }
 }
 
-// ── skill (unchanged scope) ──────────────────────────────────────────────────
+// ── skill ────────────────────────────────────────────────────────────────────
 
+/**
+ * The real surface is exactly { skill, args } — the round-3 polish adds
+ * the derived args key-count row so object payloads land three
+ * structured dimensions (skill · arg keys · args preview).
+ */
 export function extractSkill(input: unknown): ToolViewModel {
   const obj = asRecord(input)
   const skill = pickStr(obj, ["skill", "skillName", "name", "id"])
   const args = obj["args"] ?? obj["arguments"] ?? obj["input"]
+  const argsKeyCount = Object.keys(asRecord(args)).length
   if (skill === undefined && args === undefined) return emptyVm()
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.skill, skill, true),
+    argsKeyCount > 0 ? row(FIELDS.argsKeys, argsKeyCount) : undefined,
     args === undefined ? undefined : row(FIELDS.args, jsonPreview(args, 240), true),
   ]
   return vmFrom(

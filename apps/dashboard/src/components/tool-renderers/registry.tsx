@@ -8,10 +8,11 @@
  * resolveRenderer + per-tool renderers). One <ToolCallBlock> renders any
  * tool call; the registry picks the per-tool presentation and falls back
  * to a generic key/value view for tools without a dedicated renderer.
- * The collapsed line is always: icon · tool · one-line summary · outcome.
- * The expanded detail mounts the ai-elements widgets that apply to every
- * tool: LatencyMeter for the measured call duration and ErrorBlock for
- * the failure path.
+ * The collapsed line is always: icon · tool · one-line summary · outcome —
+ * with a failure error it also carries that error as a single-line,
+ * truncated red row (full text in the title tooltip); the expanded detail
+ * mounts the ai-elements widgets that apply to every tool: LatencyMeter
+ * for the measured call duration and ErrorBlock for the failure path.
  */
 
 import { useState, type ComponentType } from "react"
@@ -99,6 +100,15 @@ export function ToolCallBlock(props: ToolCallProps) {
           </Badge>
         )}
       </button>
+      {!open && error && (
+        <p
+          className="truncate border-t border-destructive/30 px-2 py-1 text-xs text-destructive"
+          title={error}
+          data-testid="tool-error-collapsed"
+        >
+          {error}
+        </p>
+      )}
       {open && (
         <div className="border-t border-border/60 px-2 py-1.5">
           {durationMs !== undefined && <LatencyMeter ms={durationMs} className="mb-1" />}

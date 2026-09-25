@@ -8,9 +8,10 @@
  * todo-write tool names. Beyond the count/summary rows the body renders
  * the NORMALIZED items (coordination.model.ts) as a real checklist:
  * status glyph (○ pending / ◐ in progress / ✓ completed / ✕ cancelled),
- * content text, optional priority badge. The localized title follows the
- * concrete tool name; falls back to the generic JSON preview when the
- * payload carries no todo-like array.
+ * content text, optional priority badge — headed by the done/total
+ * progress line tallied from the normalized statuses. The localized
+ * title follows the concrete tool name; falls back to the generic JSON
+ * preview when the payload carries no todo-like array.
  */
 
 import { useLocale, t } from "@max/i18n"
@@ -83,6 +84,14 @@ export function TodoBody({ tool, input }: ToolCallProps) {
       >
         {t(`toolRenderers.${tool}.title`)}
       </p>
+      {vm.items.length > 0 && (
+        <p className="mb-0.5 text-[10px] text-muted-foreground" data-testid="todo-stats">
+          {t("toolRenderers.todo.doneCount", {
+            done: vm.statusCounts.completed,
+            total: vm.items.length,
+          })}
+        </p>
+      )}
       {visible.length > 0 ? (
         <ul className="space-y-0.5" data-testid="todo-list">
           {visible.map((item, i) => (

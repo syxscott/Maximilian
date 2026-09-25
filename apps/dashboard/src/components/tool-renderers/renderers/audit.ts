@@ -5,7 +5,8 @@
 
 /**
  * RENDERER_FIELD_AUDIT — the full verification matrix for the RENDERERS
- * table (round-3 "real event field" completion pass). One entry per
+ * table (round-3 "real event field" completion pass + the polish round
+ * that closed the remaining low-density bodies). One entry per
  * registry key (kept 1:1 with RENDERERS — a test fails if the two drift):
  *
  *   fields  → the canonical payload fields the extractor reads, each
@@ -14,13 +15,15 @@
  *   density → how the verified fields land in the Body:
  *               "full"                    ≥3 payload dimensions (rows,
  *                                         chips, blocks combined);
- *               "primary-plus-fallback"   ≤2 field rows, but the primary
- *                                         payload renders as a structured
- *                                         block (diff / checklist / code /
- *                                         roster) — nothing further to add;
+ *               "primary-plus-fallback"   the primary payload renders as a
+ *                                         structured block (diff / roster)
+ *                                         with typed rows beside it — the
+ *                                         deliberate remainder (edit,
+ *                                         list-apps);
  *               "schema-complete"         the real payload only carries ≤2
  *                                         fields — inventing rows would
- *                                         misreport the event;
+ *                                         misreport the event (unused
+ *                                         since the polish round);
  *   note    → default-value checks and deliberate omissions.
  *
  * Real sources, three classes:
@@ -270,8 +273,8 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
   "exit-plan-mode": {
     fields: { plan: S_PASSTHROUGH, allowedPrompts: S_PASSTHROUGH },
     source: S_PASSTHROUGH,
-    density: "primary-plus-fallback",
-    note: "Real payload = { plan, allowedPrompts }; the plan document itself is the approval surface (clamped block).",
+    density: "full",
+    note: "Real payload = { plan, allowedPrompts }; the plan document renders as the clamped block, the prompts row carries the count plus the first allow-list labels.",
   },
 
   // ── coordination (② passthrough, todo enum from core types) ────────────────
@@ -310,26 +313,26 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
       priority: S_TODO,
     },
     source: S_TODO,
-    density: "primary-plus-fallback",
-    note: "Runtime TodoItem status enum is pending|in_progress|completed|cancelled — all four normalize; the checklist is the body.",
+    density: "full",
+    note: "Runtime TodoItem status enum is pending|in_progress|completed|cancelled — all four normalize; the done/total stats line is tallied from the normalized statuses above the checklist body.",
   },
   "todo-read": {
     fields: { todos: S_TODO },
     source: S_TODO,
-    density: "primary-plus-fallback",
-    note: "Same payload and checklist body as todo.",
+    density: "full",
+    note: "Same payload, status tallies and checklist body as todo.",
   },
   "todo-write": {
     fields: { todos: S_TODO },
     source: S_TODO,
-    density: "primary-plus-fallback",
-    note: "Same payload and checklist body as todo.",
+    density: "full",
+    note: "Same payload, status tallies and checklist body as todo.",
   },
   skill: {
     fields: { skill: S_PASSTHROUGH, args: S_PASSTHROUGH },
     source: S_PASSTHROUGH,
-    density: "schema-complete",
-    note: "The real surface is exactly { skill, args } — the args preview row is the structured fallback.",
+    density: "full",
+    note: "The real surface is exactly { skill, args }; object args land three dimensions (skill · derived args key count · args preview row), string/array args the preview row only.",
   },
   "send-message": {
     fields: { to: S_PASSTHROUGH, summary: S_PASSTHROUGH, message: S_PASSTHROUGH },
@@ -597,8 +600,8 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
       assertions: S_WORKFLOW_FACADE,
     },
     source: S_WORKFLOW,
-    density: "primary-plus-fallback",
-    note: "code|path are exclusive; the snippet itself is the primary block, timeout/assertion(/path) rows ride beside it.",
+    density: "full",
+    note: "code|path are exclusive; the snippet itself is the primary block, timeout/assertion/path rows and the derived snippet line count ride beside it.",
   },
   "workflow-diagnostics": {
     fields: { runId: S_WORKFLOW, workflowId: S_WORKFLOW, phase: S_WORKFLOW, status: S_WORKFLOW },
@@ -665,7 +668,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_PASSTHROUGH,
     density: "full",
-    note: "Sub-call envelopes normalize to the ToolCallBlock props; children re-render recursively (GROUP_LIMIT 8).",
+    note: "Sub-call envelopes normalize to the ToolCallBlock props; children re-render recursively (GROUP_LIMIT 8) under the countOutcomes ok/failed summary badges.",
   },
   "changes-group": {
     fields: {
@@ -676,7 +679,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_PASSTHROUGH,
     density: "full",
-    note: "Children without a tool field guess edit/write from their shape (newString/content).",
+    note: "Children without a tool field guess edit/write from their shape (newString/content); the summary row tallies ok/failed via countOutcomes.",
   },
   "cua-group": {
     fields: {
@@ -687,7 +690,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_PASSTHROUGH,
     density: "full",
-    note: "Children without a tool field fall back to cua-action.",
+    note: "Children without a tool field fall back to cua-action; the summary row tallies ok/failed via countOutcomes.",
   },
 }
 

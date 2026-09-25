@@ -8,7 +8,7 @@
  * exit-plan-mode — the agent-prompt-section family. Their payloads lead
  * with a long prompt/plan TEXT, so the extractors keep the full text as
  * the clamped code block and reduce the rest to section metadata (agent
- * identity, model, line counts, allow-list sizes); defensive against
+ * identity, model, line counts, allow-list preview); defensive against
  * missing fields and malformed payloads like every other model file.
  */
 
@@ -16,6 +16,7 @@ import {
   FIELDS,
   asRecord,
   emptyVm,
+  jsonPreview,
   oneLine,
   pickArray,
   pickStr,
@@ -78,9 +79,26 @@ export function extractExitPlanMode(input: unknown): ToolViewModel {
   const plan = pickStr(obj, ["plan", "planMarkdown", "plan_markdown", "markdown", "summary"])
   const prompts = pickArray(obj, ["allowedPrompts", "allowed_prompts", "prompts", "requests"])
   if (plan === undefined && prompts === undefined) return emptyVm()
+  // The prompts row carries the count AND the first labels, so the
+  // allow-list reads as content beside the plan document (round-3 top-up).
+  const promptLabels =
+    prompts === undefined
+      ? []
+      : prompts.map((p) =>
+          typeof p === "string"
+            ? p
+            : (pickStr(asRecord(p), ["label", "value", "prompt", "command", "tool"]) ??
+              jsonPreview(p, 40)),
+        )
+  const promptsValue =
+    prompts === undefined
+      ? undefined
+      : promptLabels.length > 0
+        ? `${prompts.length} · ${promptLabels.slice(0, 3).join(", ")}`
+        : "0"
   const rows: Array<RendererRow | undefined> = [
     plan === undefined ? undefined : row(FIELDS.lines, plan.split("\n").length),
-    prompts === undefined ? undefined : row(FIELDS.prompts, prompts.length),
+    row(FIELDS.prompts, promptsValue),
   ]
   return vmFrom(
     rows.filter((r) => r !== undefined),

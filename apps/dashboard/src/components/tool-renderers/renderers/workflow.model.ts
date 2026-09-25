@@ -293,6 +293,9 @@ export function extractEvalWorkflowSnippet(input: unknown): ToolViewModel {
     timeout === undefined ? undefined : row(FIELDS.timeout, timeout),
     assertions === undefined ? undefined : row(FIELDS.assertions, assertions),
     path === undefined ? undefined : row(FIELDS.path, path, true),
+    // Derived dimension beside the block: the snippet's own line count
+    // (round-3 polish, mirroring create/save-workflow's script lines).
+    code === undefined ? undefined : row(FIELDS.lines, code.split("\n").length),
   ]
   return vmFrom(
     rows.filter((r) => r !== undefined),
