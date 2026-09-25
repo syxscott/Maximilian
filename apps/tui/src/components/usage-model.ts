@@ -114,3 +114,44 @@ export function unpricedCount(summary: unknown): number | null {
   if (typeof count !== "number" || !Number.isFinite(count) || count < 0) return 0
   return Math.round(count)
 }
+
+// ── Rolling windows (GET /api/obs/usage/windows, the 24h line) ──────────────
+
+/** The single rolling-window line under the three summary rows. */
+export interface UsageWindowView {
+  /** The matched window key, e.g. "24h". */
+  window: string
+  requests: string
+  tokens: string
+  cost: string
+}
+
+/**
+ * Pick one rolling window by key — pickWindow(windows, "24h") — and shape it
+ * into the panel's line: requests / real tokens (input + output; cache reads
+ * excluded, the same definition as the summary's realTotalTokens) / cost.
+ * The cost keeps the strict real-cost semantics of the endpoint: a null
+ * costUsd (any unpriced request in the window) renders the honest "—", never
+ * a silently partial total. Returns null when there is no matching bucket
+ * (non-array input, garbage rows, unknown/empty key) so the panel can hide
+ * the line instead of printing fake zeros.
+ */
+export function pickWindow(windows: unknown, key: unknown): UsageWindowView | null {
+  const list = Array.isArray(windows) ? windows : []
+  const wanted = typeof key === "string" && key.length > 0 ? key : ""
+  if (wanted.length === 0) return null
+  for (const raw of list) {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue
+    const bucket = raw as Record<string, unknown>
+    if (bucket.window !== wanted) continue
+    const count = (value: unknown): number =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0
+    return {
+      window: wanted,
+      requests: compactTokens(count(bucket.requests)),
+      tokens: compactTokens(count(bucket.inputTokens) + count(bucket.outputTokens)),
+      cost: formatCostUsd(bucket.costUsd),
+    }
+  }
+  return null
+}

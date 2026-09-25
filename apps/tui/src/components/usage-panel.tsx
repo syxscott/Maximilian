@@ -5,7 +5,8 @@ import Spinner from "ink-spinner"
 
 import type { UsageSummary } from "../api"
 import { useSDK } from "../context/sdk"
-import { cacheHitRate, unpricedCount, usageMetricsFromSummary } from "./usage-model"
+import { useWindows } from "../hooks/useWindows"
+import { cacheHitRate, pickWindow, unpricedCount, usageMetricsFromSummary } from "./usage-model"
 import "../locales/tui-panels"
 
 /**
@@ -13,8 +14,11 @@ import "../locales/tui-panels"
  * metrics (totalRequests / totalTokens / totalCost) as a compact three-line
  * readout, with the dashboard's honest "—" when the window contained
  * unpriced requests (totalCostUsdKnown === false). Deepened with a cache
- * hit-rate line (cache reads over the honest grand total) and a yellow
- * unpriced-request count line shown only when the cost total is partial.
+ * hit-rate line (cache reads over the honest grand total), a yellow
+ * unpriced-request count line shown only when the cost total is partial,
+ * and a rolling-window line under the summary (GET /api/obs/usage/windows
+ * via the useWindows hook): 24h requests / tokens / cost, with the same
+ * honest "—" when the window contains unpriced requests (costUsd null).
  * r refreshes, esc closes.
  */
 export function UsagePanel() {
@@ -23,8 +27,13 @@ export function UsagePanel() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
+  // Rolling windows (5h/24h/7d/30d) — same r-key cadence as the summary.
+  const { windows, refresh: refreshWindows } = useWindows()
 
-  const refresh = useCallback(() => setNonce((n) => n + 1), [])
+  const refresh = useCallback(() => {
+    setNonce((n) => n + 1)
+    refreshWindows()
+  }, [refreshWindows])
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -61,6 +70,9 @@ export function UsagePanel() {
   // and the unpriced-request count (only when the cost total is partial).
   const hitRate = summary != null ? cacheHitRate(summary) : null
   const unpriced = summary != null ? unpricedCount(summary) : null
+  // The rolling 24h window under the three summary lines; hidden entirely
+  // when the endpoint returned no matching bucket (honest absence).
+  const window24h = pickWindow(windows, "24h")
 
   return (
     <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
@@ -93,6 +105,14 @@ export function UsagePanel() {
               {" "}
               {t("tui.usage.cost", "cost")}: {metrics.cost}
             </Text>
+            {window24h !== null ? (
+              <Text color="magenta">
+                {" "}
+                {t("tui.usage.window24h", "24h window")} · {t("tui.usage.requests", "requests")}{" "}
+                {window24h.requests} · {t("tui.usage.tokens", "tokens")} {window24h.tokens} ·{" "}
+                {t("tui.usage.cost", "cost")} {window24h.cost}
+              </Text>
+            ) : null}
             {hitRate !== null ? (
               <Text color="cyan">
                 {" "}

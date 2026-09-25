@@ -22,14 +22,20 @@ import {
   MEMORY_GATING_MIN_SAMPLES,
   MEMORY_PREVIEW_LENGTH,
   buildMemoryExport,
+  cycleEfficacyFilter,
   efficacyLedger,
+  EFFICACY_FILTERS,
+  filterBuckets,
   formatSigned,
   inferGating,
   memoryBuckets,
   memoryExportJson,
   memoryPanelView,
   normalizeMemoryEntry,
+  sortEfficacy,
   truncateEntryPreview,
+  type EfficacyRowView,
+  type MemoryBucketKey,
 } from "../src/components/memory-model"
 
 function entry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -326,5 +332,157 @@ describe("formatSigned (ledger cell formatting)", () => {
     expect(formatSigned(undefined)).toBe("+0.00")
     expect(formatSigned(Number.NaN)).toBe("+0.00")
     expect(formatSigned("junk")).toBe("+0.00")
+  })
+})
+
+// ── Deepened panel: worst-first ledger sort + f-key bucket filter ──────────
+
+function ledgerRow(
+  bucket: MemoryBucketKey,
+  overrides: Partial<EfficacyRowView> = {},
+): EfficacyRowView {
+  return {
+    bucket,
+    labelKey: `tui.memory.bucket.${bucket}`,
+    injectedCount: 0,
+    deltaSum: 0,
+    mean: 0,
+    decision: "inject",
+    evidence: "insufficient",
+    observed: false,
+    ...overrides,
+  }
+}
+
+describe("sortEfficacy (worst-first ledger ordering)", () => {
+  it("sorts by mean ascending — the worst (most negative) bucket heads the list", () => {
+    const sorted = sortEfficacy([
+      ledgerRow("goodExamples", { mean: 0.4, decision: "inject" }),
+      ledgerRow("commonErrors", { mean: -0.9, decision: "skip" }),
+      ledgerRow("userFeedback", { mean: -0.1, decision: "inject" }),
+    ])
+    expect(sorted.map((r) => r.bucket)).toEqual(["commonErrors", "userFeedback", "goodExamples"])
+  })
+
+  it("breaks mean ties by evidence (more samples first), then MEMORY_BUCKETS order", () => {
+    const sorted = sortEfficacy([
+      ledgerRow("goodExamples", { mean: 0, injectedCount: 1 }),
+      ledgerRow("reviewSuggestions", { mean: 0, injectedCount: 5 }),
+      ledgerRow("userFeedback", { mean: 0, injectedCount: 5 }),
+    ])
+    // userFeedback and reviewSuggestions tie at mean 0 / 5 samples → the
+    // earlier MEMORY_BUCKETS slot wins; goodExamples has less evidence.
+    expect(sorted.map((r) => r.bucket)).toEqual([
+      "userFeedback",
+      "reviewSuggestions",
+      "goodExamples",
+    ])
+  })
+
+  it("degrades garbage rows per-field and drops rows without a valid bucket", () => {
+    const sorted = sortEfficacy([
+      null,
+      "junk",
+      42,
+      [],
+      { bucket: "nope", mean: -5 }, // unknown bucket → unlabeled → dropped
+      { bucket: "commonErrors", mean: "x", injectedCount: "3", observed: "yes" },
+      { bucket: "userFeedback", mean: Number.NaN, decision: "skip" },
+    ])
+    expect(sorted).toEqual([
+      {
+        bucket: "userFeedback",
+        labelKey: "tui.memory.bucket.userFeedback",
+        injectedCount: 0,
+        deltaSum: 0,
+        mean: 0,
+        // decision "skip" is kept (it is a real enum value), the rest degraded.
+        decision: "skip",
+        evidence: "insufficient",
+        observed: false,
+      },
+      {
+        bucket: "commonErrors",
+        labelKey: "tui.memory.bucket.commonErrors",
+        injectedCount: 0,
+        deltaSum: 0,
+        mean: 0,
+        decision: "inject",
+        evidence: "insufficient",
+        observed: false,
+      },
+    ])
+    // Mean tie at 0 with equal counts → bucket order broke the tie.
+    expect(sorted.map((r) => r.bucket)).toEqual(["userFeedback", "commonErrors"])
+    expect(sortEfficacy(undefined)).toEqual([])
+    expect(sortEfficacy({ 0: ledgerRow("commonErrors") })).toEqual([])
+  })
+
+  it("never mutates the input array (pure sort)", () => {
+    const input = [ledgerRow("commonErrors", { mean: -1 }), ledgerRow("userFeedback", { mean: 1 })]
+    const snapshot = input.map((r) => ({ ...r }))
+    const sorted = sortEfficacy(input)
+    expect(input).toEqual(snapshot)
+    expect(sorted).not.toBe(input)
+  })
+})
+
+describe("filterBuckets + cycleEfficacyFilter (the f-key bucket filter)", () => {
+  const rows: EfficacyRowView[] = [
+    ledgerRow("commonErrors", { mean: -0.9, decision: "skip", evidence: "sufficient" }),
+    ledgerRow("userFeedback", { mean: -0.1 }),
+    ledgerRow("goodExamples", { mean: 0.4 }),
+  ]
+
+  it("keeps everything on all, only gated rows on skip-only, only injecting on inject-only", () => {
+    expect(filterBuckets(rows, "all").map((r) => r.bucket)).toEqual([
+      "commonErrors",
+      "userFeedback",
+      "goodExamples",
+    ])
+    expect(filterBuckets(rows, "skip-only").map((r) => r.bucket)).toEqual(["commonErrors"])
+    expect(filterBuckets(rows, "inject-only").map((r) => r.bucket)).toEqual([
+      "userFeedback",
+      "goodExamples",
+    ])
+  })
+
+  it("reads a garbage mode as all, drops non-object rows, survives non-array input", () => {
+    expect(filterBuckets(rows, "junk")).toHaveLength(3)
+    expect(filterBuckets(rows, undefined)).toHaveLength(3)
+    expect(filterBuckets([rows[0], null, 42, "junk"], "skip-only")).toEqual([rows[0]])
+    expect(filterBuckets(undefined, "skip-only")).toEqual([])
+    expect(filterBuckets({ 0: rows[0] }, "all")).toEqual([])
+  })
+
+  it("cycles all → skip-only → inject-only → all; unknown modes start at all", () => {
+    expect(EFFICACY_FILTERS).toEqual(["all", "skip-only", "inject-only"])
+    expect(cycleEfficacyFilter("all")).toBe("skip-only")
+    expect(cycleEfficacyFilter("skip-only")).toBe("inject-only")
+    expect(cycleEfficacyFilter("inject-only")).toBe("all")
+    for (const garbage of [undefined, null, "junk", 42]) {
+      expect(cycleEfficacyFilter(garbage)).toBe("all")
+    }
+  })
+
+  it("composes with the ledger and sortEfficacy exactly like the panel uses it", () => {
+    const ledger = efficacyLedger({
+      commonErrors: ["err"],
+      goodExamples: ["example"],
+      efficacy: {
+        commonErrors: { injectedCount: 3, deltaSum: -0.9 }, // mean −0.3 → skip
+        goodExamples: { injectedCount: 4, deltaSum: 1.2 }, // mean +0.3 → inject
+      },
+    })
+    // Worst-first: the gated commonErrors row comes before goodExamples.
+    expect(sortEfficacy(ledger).map((r) => r.bucket)).toEqual(["commonErrors", "goodExamples"])
+    // skip-only keeps only the gated bucket, still in sorted position.
+    expect(filterBuckets(sortEfficacy(ledger), "skip-only").map((r) => r.bucket)).toEqual([
+      "commonErrors",
+    ])
+    // inject-only drops it.
+    expect(filterBuckets(sortEfficacy(ledger), "inject-only").map((r) => r.bucket)).toEqual([
+      "goodExamples",
+    ])
   })
 })

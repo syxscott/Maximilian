@@ -210,6 +210,8 @@ export interface AgentDetailView {
   totalEntries: number
   /** Recent decision scores (newest first, capped) — "recent review scores". */
   recentScores: AgentScorePoint[]
+  /** Best decision scores (highest first, top 3) — "review score top 3". */
+  topScores: AgentScorePoint[]
   /** All from→to decisions, newest first — "version promotions". */
   promotions: AgentPromotionView[]
   versions: string[]
@@ -275,6 +277,7 @@ export function agentDetail(
     version: d.toVersion,
     at: d.at,
   }))
+  const topScoresList = topScores(entry, 3)
   const promotions: AgentPromotionView[] = history.map((d) => ({
     fromVersion: d.fromVersion,
     toVersion: d.toVersion,
@@ -289,6 +292,7 @@ export function agentDetail(
     buckets,
     totalEntries,
     recentScores,
+    topScores: topScoresList,
     promotions,
     versions,
     currentVersion,
@@ -336,4 +340,29 @@ export function versionTimeline(entry: LeaderboardEntryPayload | null | undefine
   }
   // Newest first: unparseable timestamps sort last by string compare on "".
   return out.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""))
+}
+
+// ── Review-score top timeline (detail deepening) ────────────────────────────
+
+/**
+ * A role's best review scores, highest first, capped at `limit` (default 3)
+ * — the "review score top 3" timeline in the expanded detail. Sourced from
+ * the leaderboard entry's versionHistory, the only place per-decision review
+ * scores live (newAvgScore / toVersion / triggeredAt — the profile carries
+ * aggregates only). Decisions without a finite score are skipped rather than
+ * shown as 0; ties keep the timeline's newest-first order (stable sort).
+ * A null / undefined / garbage entry yields [] — the panel's honest "no
+ * review score history yet" empty state.
+ */
+export function topScores(
+  entry: LeaderboardEntryPayload | null | undefined,
+  limit: unknown = 3,
+): AgentScorePoint[] {
+  const cap =
+    typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 3
+  return versionTimeline(entry)
+    .filter((d) => d.newAvgScore != null)
+    .sort((a, b) => (b.newAvgScore as number) - (a.newAvgScore as number))
+    .slice(0, cap)
+    .map((d) => ({ score: d.newAvgScore as number, version: d.toVersion, at: d.at }))
 }

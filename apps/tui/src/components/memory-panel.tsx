@@ -13,13 +13,24 @@ import {
   MEMORY_GATING_EPS,
   MEMORY_GATING_MIN_SAMPLES,
   buildMemoryExport,
+  cycleEfficacyFilter,
+  filterBuckets,
   formatSigned,
   memoryExportJson,
   memoryPanelView,
+  sortEfficacy,
+  type EfficacyFilter,
   type MemoryEntryView,
   type MemoryPanelView,
 } from "./memory-model"
 import "../locales/tui-panels"
+
+/** i18n keys + honest fallbacks for the f-key filter chip. */
+const EFFICACY_FILTER_LABELS: Record<EfficacyFilter, { key: string; fallback: string }> = {
+  all: { key: "tui.memory.efficacy.filter.all", fallback: "all" },
+  "skip-only": { key: "tui.memory.efficacy.filter.skipOnly", fallback: "skip-only" },
+  "inject-only": { key: "tui.memory.efficacy.filter.injectOnly", fallback: "inject-only" },
+}
 
 /**
  * Memory panel — the TUI's read-side counterpart to the deepseek
@@ -31,7 +42,9 @@ import "../locales/tui-panels"
  * deltaSum / mean) with the gating-inference badge. The badge thresholds are
  * the engine's (@max/evolution gatingDecisions: skip iff samples ≥ 3 AND
  * mean < −0.25, strictly), exported from ./memory-model so UI and engine
- * can't drift.
+ * can't drift. The ledger is sorted worst-first (mean ascending — the gated
+ * bucket heads the list) and f cycles a bucket filter over it
+ * (all → skip-only → inject-only).
  *
  * e exports the role's memory as JSON. The TUI has no Blob-download surface
  * (that's the dashboard's pattern), so it copies to the clipboard and
@@ -49,6 +62,8 @@ export function MemoryPanel() {
   const [roleCursor, setRoleCursor] = useState(0)
   const [itemCursor, setItemCursor] = useState(0)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  // f-key filter over the efficacy ledger: all → skip-only → inject-only.
+  const [efficacyFilter, setEfficacyFilter] = useState<EfficacyFilter>("all")
   const [nonce, setNonce] = useState(0)
   // 1s heartbeat so the refresh hint ages without waiting for a keypress.
   const [, setTick] = useState(0)
@@ -175,6 +190,11 @@ export function MemoryPanel() {
       void exportRoleMemory()
       return
     }
+    if (input === "f") {
+      // Cycle the efficacy-ledger bucket filter (all → skip-only → inject-only).
+      setEfficacyFilter((prev) => cycleEfficacyFilter(prev))
+      return
+    }
     if (input === "b" || key.backspace || key.delete) {
       setRole(null)
       setItemCursor(0)
@@ -235,6 +255,7 @@ export function MemoryPanel() {
             cursor={safeItemCursor}
             expandedKey={expandedKey}
             hasProfile={profile != null}
+            filter={efficacyFilter}
           />
         )}
       </Box>
@@ -244,7 +265,7 @@ export function MemoryPanel() {
             ? t("tui.memory.hints.roles", "j/k move · Enter open · r refresh · esc close")
             : t(
                 "tui.memory.hints.role",
-                "j/k move · Enter expand · b roles · e export · r refresh · esc close",
+                "j/k move · Enter expand · b roles · e export · f filter · r refresh · esc close",
               )}
         </Text>
         {(() => {
@@ -265,8 +286,9 @@ function RoleMemoryView(props: {
   cursor: number
   expandedKey: string | null
   hasProfile: boolean
+  filter: EfficacyFilter
 }) {
-  const { view, cursor, expandedKey, hasProfile } = props
+  const { view, cursor, expandedKey, hasProfile, filter } = props
   if (view == null || !hasProfile) {
     return (
       <Text color="gray">{t("tui.memory.roleVanished", "Profile gone — press r to refresh.")}</Text>
@@ -298,7 +320,7 @@ function RoleMemoryView(props: {
           )}
         </Box>
       ))}
-      <EfficacyLedger view={view} />
+      <EfficacyLedger view={view} filter={filter} />
     </Box>
   )
 }
@@ -337,11 +359,16 @@ function EntryLine(props: { entry: MemoryEntryView; selected: boolean; expanded:
   )
 }
 
-function EfficacyLedger(props: { view: MemoryPanelView }) {
-  const { view } = props
-  if (view.efficacy.length === 0) {
+function EfficacyLedger(props: { view: MemoryPanelView; filter: EfficacyFilter }) {
+  const { view, filter } = props
+  const total = view.efficacy.length
+  if (total === 0) {
     return <Text dimColor> {t("tui.memory.noEfficacy", "no efficacy records yet")}</Text>
   }
+  // Worst-first (mean ascending) with the f-key filter applied — the model
+  // layer owns both so the panel just paints the rows it is handed.
+  const rows = filterBuckets(sortEfficacy(view.efficacy), filter)
+  const filterLabel = EFFICACY_FILTER_LABELS[filter] ?? EFFICACY_FILTER_LABELS.all!
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text bold color="cyan">
@@ -354,33 +381,42 @@ function EfficacyLedger(props: { view: MemoryPanelView }) {
             { eps: MEMORY_GATING_EPS, samples: MEMORY_GATING_MIN_SAMPLES },
             `gate: skip when mean < -${MEMORY_GATING_EPS} over ≥ ${MEMORY_GATING_MIN_SAMPLES} samples`,
           )}
+          {"  "}· f: {t(filterLabel.key, filterLabel.fallback)} ({rows.length}/{total})
         </Text>
       </Text>
-      {view.efficacy.map((row) => (
-        <Box key={row.bucket} flexDirection="row">
-          <Text> </Text>
-          <Text>{t(row.labelKey, row.bucket)}</Text>
-          <Text dimColor>
-            {" "}
-            · {t(
-              "tui.memory.efficacy.injected",
-              { count: row.injectedCount },
-              `injected {count}`,
-            )}{" "}
-            · Δ {formatSigned(row.deltaSum)} · mean {formatSigned(row.mean)}
-          </Text>
-          {row.decision === "skip" ? (
-            <Text color="red" bold>
+      {rows.length === 0 ? (
+        <Text dimColor>
+          {" "}
+          {t("tui.memory.efficacy.filter.empty", "no buckets match this filter")}
+        </Text>
+      ) : (
+        rows.map((row) => (
+          <Box key={row.bucket} flexDirection="row">
+            <Text> </Text>
+            <Text>{t(row.labelKey, row.bucket)}</Text>
+            <Text dimColor>
               {" "}
-              [{t("tui.memory.gating.skip", "gated")}]
+              ·{" "}
+              {t(
+                "tui.memory.efficacy.injected",
+                { count: row.injectedCount },
+                `injected {count}`,
+              )}{" "}
+              · Δ {formatSigned(row.deltaSum)} · mean {formatSigned(row.mean)}
             </Text>
-          ) : row.evidence === "insufficient" ? (
-            <Text dimColor> [{t("tui.memory.gating.unsampled", "inject · unsampled")}]</Text>
-          ) : (
-            <Text color="green"> [{t("tui.memory.gating.inject", "inject")}]</Text>
-          )}
-        </Box>
-      ))}
+            {row.decision === "skip" ? (
+              <Text color="red" bold>
+                {" "}
+                [{t("tui.memory.gating.skip", "gated")}]
+              </Text>
+            ) : row.evidence === "insufficient" ? (
+              <Text dimColor> [{t("tui.memory.gating.unsampled", "inject · unsampled")}]</Text>
+            ) : (
+              <Text color="green"> [{t("tui.memory.gating.inject", "inject")}]</Text>
+            )}
+          </Box>
+        ))
+      )}
     </Box>
   )
 }

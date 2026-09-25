@@ -8,6 +8,7 @@
  *   GET  /api/obs/executions
  *   GET  /api/gov/pending
  *   GET  /api/obs/usage/summary?range=...
+ *   GET  /api/obs/usage/windows
  *   POST /api/chat
  * plus the jobs / workspaces endpoints the Jobs / Goals / Usage panels need:
  *   GET    /api/jobs
@@ -110,6 +111,35 @@ export interface ChatResponse {
   workspaceId: string
   planId: string
   status: string
+}
+
+// ── Usage windows (GET /api/obs/usage/windows — the Usage panel's 24h line) ─
+
+/** Rolling look-back keys — mirrors apps/api usage.ts UsageWindowKey. */
+export type UsageWindowKey = "5h" | "24h" | "7d" | "30d"
+
+/**
+ * One rolling usage window bucket — mirrors apps/api usage.ts
+ * UsageWindowBucket. Strict real-cost semantics: costUsd is null when ANY
+ * request in the window lacks a pricing entry (the whole window's total is
+ * unknown, never "silently partial").
+ */
+export interface UsageWindowBucket {
+  window: UsageWindowKey
+  /** Window length in ms. */
+  spanMs: number
+  /** Start of the window (nowMs - spanMs). */
+  startMs: number
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  costUsd: number | null
+  unpricedRequests: number
+}
+
+export interface UsageWindowsResponse {
+  windows: UsageWindowBucket[]
 }
 
 // ── Jobs (GET /api/jobs, DELETE /api/jobs/{id}, POST /api/jobs/{id}/trigger) ──
@@ -289,6 +319,7 @@ export interface MaximilianClient {
     signal?: AbortSignal,
   ): Promise<{ count: number; proposals: PendingProposal[] }>
   getUsageSummary(range: UsageRange, signal?: AbortSignal): Promise<UsageSummary>
+  getUsageWindows(signal?: AbortSignal): Promise<UsageWindowsResponse>
   chat(message: string, signal?: AbortSignal): Promise<ChatResponse>
   listJobs(signal?: AbortSignal): Promise<JobListResponse>
   createJob(input: JobCreateInput, signal?: AbortSignal): Promise<Job>
@@ -349,6 +380,7 @@ export function createMaximilianClient(baseUrl: string, token?: string): Maximil
       getJson<{ count: number; proposals: PendingProposal[] }>("/api/gov/pending", signal),
     getUsageSummary: (range, signal) =>
       getJson<UsageSummary>(`/api/obs/usage/summary?range=${encodeURIComponent(range)}`, signal),
+    getUsageWindows: (signal) => getJson<UsageWindowsResponse>("/api/obs/usage/windows", signal),
     chat: (message, signal) => postJson<ChatResponse>("/api/chat", { message }, signal),
     listJobs: (signal) => getJson<JobListResponse>("/api/jobs", signal),
     createJob: (input, signal) => postJson<Job>("/api/jobs", input, signal),

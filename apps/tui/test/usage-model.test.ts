@@ -9,6 +9,7 @@ import {
   cacheHitRate,
   compactTokens,
   formatCostUsd,
+  pickWindow,
   unpricedCount,
   usageMetrics,
 } from "../src/components/usage-model"
@@ -120,5 +121,97 @@ describe("unpricedCount (deepened panel line)", () => {
     expect(unpricedCount({ totalCostUsdKnown: false, unpricedRequestCount: "3" })).toBe(0)
     expect(unpricedCount({ totalCostUsdKnown: false, unpricedRequestCount: -2 })).toBe(0)
     expect(unpricedCount({ totalCostUsdKnown: false, unpricedRequestCount: 2.6 })).toBe(3)
+  })
+})
+
+describe("pickWindow (the 24h rolling-window line)", () => {
+  const windows = [
+    {
+      window: "5h",
+      spanMs: 5 * 60 * 60 * 1000,
+      startMs: 0,
+      requests: 3,
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 0,
+      costUsd: 0.0123,
+      unpricedRequests: 0,
+    },
+    {
+      window: "24h",
+      spanMs: 24 * 60 * 60 * 1000,
+      startMs: 0,
+      requests: 1234,
+      inputTokens: 700,
+      outputTokens: 300,
+      cacheReadTokens: 1000,
+      costUsd: 4.5678,
+      unpricedRequests: 0,
+    },
+    {
+      window: "7d",
+      spanMs: 7 * 24 * 60 * 60 * 1000,
+      startMs: 0,
+      requests: 9,
+      inputTokens: 10,
+      outputTokens: 20,
+      cacheReadTokens: 0,
+      costUsd: null, // unpriced request in the window
+      unpricedRequests: 2,
+    },
+  ]
+
+  it("picks the requested window and shapes requests / tokens / cost", () => {
+    expect(pickWindow(windows, "24h")).toEqual({
+      window: "24h",
+      requests: "1.23K",
+      tokens: "1.00K", // input + output; cache reads excluded like realTotalTokens
+      cost: "$4.5678",
+    })
+    expect(pickWindow(windows, "5h")).toEqual({
+      window: "5h",
+      requests: "3",
+      tokens: "150",
+      cost: "$0.0123",
+    })
+  })
+
+  it("renders the honest em-dash when the window contains unpriced requests", () => {
+    const unpriced = pickWindow(windows, "7d")
+    expect(unpriced).toEqual({
+      window: "7d",
+      requests: "9",
+      tokens: "30",
+      cost: "—", // costUsd null → unknown, never a silently partial total
+    })
+  })
+
+  it("returns null when there is no matching bucket (unknown key, garbage input)", () => {
+    expect(pickWindow(windows, "30d")).toBeNull()
+    expect(pickWindow(windows, "")).toBeNull()
+    expect(pickWindow(windows, undefined)).toBeNull()
+    expect(pickWindow([], "24h")).toBeNull()
+    expect(pickWindow(undefined, "24h")).toBeNull()
+    expect(pickWindow("junk", "24h")).toBeNull()
+    expect(pickWindow([null, "junk", 42], "24h")).toBeNull()
+    // A non-string window key never matches a string needle.
+    expect(pickWindow([{ window: 24, requests: 1 }], "24h")).toBeNull()
+  })
+
+  it("degrades per-field garbage counts to zero instead of NaN", () => {
+    expect(
+      pickWindow(
+        [
+          {
+            window: "24h",
+            requests: "x",
+            inputTokens: undefined,
+            outputTokens: -5,
+            costUsd: "0.5",
+          },
+        ],
+        "24h",
+      ),
+    ).toEqual({ window: "24h", requests: "0", tokens: "0", cost: "—" })
   })
 })

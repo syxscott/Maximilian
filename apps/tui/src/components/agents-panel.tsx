@@ -14,8 +14,9 @@ import "../locales/tui-panels"
  * /api/evolution/agents + GET /api/evolution/leaderboard): one row per agent
  * role (role name · current version · cumulative tasks · avgScore rating
  * dot), sorted avgScore desc. Enter expands the selected role's detail
- * (memory bucket counts + recent review scores + the version-promotion
- * timeline from the leaderboard's decision history), r refreshes (a live
+ * (memory bucket counts + recent review scores + the best-three review-score
+ * timeline + the version-promotion timeline from the leaderboard's decision
+ * history), r refreshes (a live
  * "updated Ns ago" hint keeps the cadence visible, the jobs-dialog pattern).
  * Both endpoints are read-only here — evolving a role stays an API/CLI
  * concern.
@@ -223,6 +224,20 @@ function AgentDetail(props: { row: AgentRowView; detail: ReturnType<typeof agent
         </>
       ) : (
         <Text dimColor> {t("tui.agents.noScores", "no review decisions recorded yet")}</Text>
+      )}
+      {detail.topScores.length > 0 ? (
+        <>
+          <Text dimColor> {t("tui.agents.detail.topScores", "review score top 3")}:</Text>
+          {detail.topScores.map((s, i) => (
+            <Text key={`top-${s.version}-${i}`} color="green">
+              {" "}
+              #{i + 1} {s.score.toFixed(1)} ★ → {s.version}
+              {s.at != null ? ` · ${s.at.slice(0, 10)}` : ""}
+            </Text>
+          ))}
+        </>
+      ) : (
+        <Text dimColor> {t("tui.agents.noScoreHistory", "no review score history yet")}</Text>
       )}
       {detail.promotions.length > 0 ? (
         <>

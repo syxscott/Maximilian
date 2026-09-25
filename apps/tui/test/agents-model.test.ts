@@ -24,6 +24,7 @@ import {
   buildAgentRows,
   leaderboardByRole,
   scoreGrade,
+  topScores,
   versionTimeline,
 } from "../src/components/agents-model"
 
@@ -175,6 +176,96 @@ describe("leaderboardByRole (headline entry per role)", () => {
   it("ignores garbage entries and non-array input", () => {
     expect(leaderboardByRole([null, 42, { noRole: true }]).size).toBe(0)
     expect(leaderboardByRole("junk").size).toBe(0)
+  })
+})
+
+describe("topScores (review-score top 3 timeline)", () => {
+  function decision(
+    toVersion: string,
+    newAvgScore: number,
+    day: string,
+  ): LeaderboardEntryPayload["versionHistory"][number] {
+    return {
+      fromVersion: "v0",
+      toVersion,
+      outcome: "promoted",
+      oldAvgScore: newAvgScore - 1,
+      newAvgScore,
+      triggeredAt: `2026-09-${day}T00:00:00.000Z`,
+      reason: "test",
+    }
+  }
+
+  it("returns the three highest review scores, best first, from versionHistory", () => {
+    const entry = makeEntry({
+      versionHistory: [
+        decision("v2", 6, "01"),
+        decision("v3", 8.2, "02"),
+        decision("v4", 7.1, "03"),
+        decision("v5", 5.5, "04"),
+      ],
+    })
+    expect(topScores(entry)).toEqual([
+      { score: 8.2, version: "v3", at: "2026-09-02T00:00:00.000Z" },
+      { score: 7.1, version: "v4", at: "2026-09-03T00:00:00.000Z" },
+      { score: 6, version: "v2", at: "2026-09-01T00:00:00.000Z" },
+    ])
+  })
+
+  it("skips decisions without a finite score and caps at the (defensive) limit", () => {
+    const entry = makeEntry({
+      versionHistory: [
+        { garbage: true },
+        decision("v2", 7, "01"),
+        {
+          fromVersion: "v2",
+          toVersion: "v3",
+          outcome: "promoted",
+          oldAvgScore: 7,
+          newAvgScore: "high",
+          triggeredAt: "2026-09-02T00:00:00.000Z",
+          reason: "non-numeric score",
+        },
+        decision("v4", 6, "03"),
+        decision("v5", 9, "04"),
+      ] as unknown as LeaderboardEntryPayload["versionHistory"],
+    })
+    // The unscorable v3 decision is skipped, not shown as a fake 0.
+    expect(topScores(entry)).toEqual([
+      { score: 9, version: "v5", at: "2026-09-04T00:00:00.000Z" },
+      { score: 7, version: "v2", at: "2026-09-01T00:00:00.000Z" },
+      { score: 6, version: "v4", at: "2026-09-03T00:00:00.000Z" },
+    ])
+    expect(topScores(entry, 1)).toEqual([{ score: 9, version: "v5", at: expect.any(String) }])
+    // Garbage limit reads as the default 3; a fractional limit floors.
+    expect(topScores(entry, Number.NaN)).toHaveLength(3)
+    expect(topScores(entry, 1.9)).toHaveLength(1)
+  })
+
+  it("keeps score ties in the timeline's newest-first order (stable sort)", () => {
+    const entry = makeEntry({
+      versionHistory: [decision("v2", 7, "01"), decision("v3", 7, "02")],
+    })
+    expect(topScores(entry).map((s) => s.version)).toEqual(["v3", "v2"])
+  })
+
+  it("is honest about empty history — null entry, no decisions, garbage", () => {
+    expect(topScores(null)).toEqual([])
+    expect(topScores(undefined)).toEqual([])
+    expect(topScores(makeEntry({ versionHistory: [] }))).toEqual([])
+    expect(topScores(makeEntry({ versionHistory: undefined }))).toEqual([])
+    expect(topScores("junk" as unknown as LeaderboardEntryPayload)).toEqual([])
+  })
+
+  it("wires into agentDetail as the detail's topScores field", () => {
+    // makeEntry's history: v2 scored 7.5, v3-candidate scored 6.9.
+    const detail = agentDetail(makeProfile(), makeEntry())
+    expect(detail.topScores.map((s) => [s.version, s.score])).toEqual([
+      ["v2", 7.5],
+      ["v3-candidate", 6.9],
+    ])
+    // No leaderboard entry → empty top timeline (the panel's honest empty state).
+    expect(agentDetail(makeProfile(), null).topScores).toEqual([])
   })
 })
 
@@ -353,6 +444,8 @@ describe("evolution client functions", () => {
       const dict = getDictionary(locale) as Record<string, string> | undefined
       expect(dict?.["tui.agents"]).toBeTruthy()
       expect(dict?.["tui.agents.detail.recentScores"]).toBeTruthy()
+      expect(dict?.["tui.agents.detail.topScores"]).toBeTruthy()
+      expect(dict?.["tui.agents.noScoreHistory"]).toBeTruthy()
       expect(dict?.["tui.cron"]).toBeTruthy()
     }
   })

@@ -188,6 +188,83 @@ export interface EfficacyRowView extends GatingInference {
   labelKey: string
 }
 
+// ── Efficacy ledger sort + bucket filter (deepened panel) ───────────────────
+
+/**
+ * Sort the efficacy ledger worst-first: mean ascending — the most negative
+ * bucket (the one the engine gates out) heads the list, the healthy ones
+ * sink. Mean ties break by evidence (more injected runs = more signal
+ * first), then by MEMORY_BUCKETS order so the result is fully deterministic.
+ *
+ * Defensive: non-array input yields []; each row is re-coerced per-field
+ * (garbage counts/sums degrade to 0, unknown decisions to "inject") and rows
+ * without a valid bucket key are dropped — they cannot be labeled. The
+ * input array is never mutated.
+ */
+export function sortEfficacy(rows: unknown): EfficacyRowView[] {
+  const list = Array.isArray(rows) ? rows : []
+  const numeric = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0
+  const out: EfficacyRowView[] = []
+  for (const raw of list) {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue
+    const record = raw as Record<string, unknown>
+    const bucket = MEMORY_BUCKETS.find((key) => key === record.bucket)
+    if (bucket == null) continue
+    const injectedCount = numeric(record.injectedCount)
+    out.push({
+      bucket,
+      labelKey: `tui.memory.bucket.${bucket}`,
+      injectedCount: injectedCount > 0 ? injectedCount : 0,
+      deltaSum: numeric(record.deltaSum),
+      mean: numeric(record.mean),
+      decision: record.decision === "skip" ? "skip" : "inject",
+      evidence: record.evidence === "sufficient" ? "sufficient" : "insufficient",
+      observed: record.observed === true,
+    })
+  }
+  const order = new Map<MemoryBucketKey, number>(MEMORY_BUCKETS.map((key, i) => [key, i]))
+  return out.sort((a, b) => {
+    if (a.mean !== b.mean) return a.mean - b.mean
+    if (b.injectedCount !== a.injectedCount) return b.injectedCount - a.injectedCount
+    return (order.get(a.bucket) ?? 0) - (order.get(b.bucket) ?? 0)
+  })
+}
+
+/** Bucket-filter mode cycled by the f key over the efficacy ledger. */
+export type EfficacyFilter = "all" | "skip-only" | "inject-only"
+
+/** The f-key cycle order: all → skip-only → inject-only → all. */
+export const EFFICACY_FILTERS: readonly EfficacyFilter[] = ["all", "skip-only", "inject-only"]
+
+/**
+ * Next filter mode in the f-key cycle. Anything that is not a known mode
+ * (including the initial undefined) reads as "all", so the first press
+ * lands on "skip-only".
+ */
+export function cycleEfficacyFilter(current: unknown): EfficacyFilter {
+  const index = EFFICACY_FILTERS.findIndex((mode) => mode === current)
+  return EFFICACY_FILTERS[(index + 1) % EFFICACY_FILTERS.length] ?? "all"
+}
+
+/**
+ * Filter the efficacy ledger's bucket rows by the f-key mode: "all" keeps
+ * every row, "skip-only" only the gated ones ("worst buckets"), "inject-only"
+ * only the injecting ones. Rows pass through untouched (compose with
+ * sortEfficacy for the worst-first order); non-object rows are dropped —
+ * they cannot render. A garbage mode reads as "all"; input never mutates.
+ */
+export function filterBuckets(rows: unknown, mode: unknown): EfficacyRowView[] {
+  const filter: EfficacyFilter = mode === "skip-only" || mode === "inject-only" ? mode : "all"
+  const list = Array.isArray(rows) ? rows : []
+  return list.filter((raw): raw is EfficacyRowView => {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return false
+    if (filter === "all") return true
+    const decision = (raw as { decision?: unknown }).decision
+    return filter === "skip-only" ? decision === "skip" : decision === "inject"
+  })
+}
+
 /**
  * The per-bucket efficacy ledger, in MEMORY_BUCKETS order. A row appears for
  * every bucket that either holds entries or has an efficacy record — the

@@ -109,5 +109,35 @@ describe("panel client functions", () => {
     expect(typeof client.triggerJob).toBe("function")
     expect(typeof client.listWorkspaces).toBe("function")
     expect(typeof client.getWorkspace).toBe("function")
+    expect(typeof client.getUsageWindows).toBe("function")
+  })
+
+  it("fetches rolling usage windows via GET /api/obs/usage/windows", async () => {
+    const windows = [
+      {
+        window: "24h",
+        spanMs: 24 * 60 * 60 * 1000,
+        startMs: 0,
+        requests: 5,
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadTokens: 0,
+        costUsd: null, // unpriced request in the window
+        unpricedRequests: 1,
+      },
+    ]
+    const fetchMock = vi.fn(async () => Promise.resolve(makeResponse({ windows })))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const client = createMaximilianClient("http://localhost:3001", "tok")
+    const result = await client.getUsageWindows()
+
+    const call = fetchMock.mock.calls[0]!
+    expect(call[0]).toBe("http://localhost:3001/api/obs/usage/windows")
+    expect((call[1] as RequestInit).method).toBe("GET")
+    expect(((call[1] as RequestInit).headers as Record<string, string>)["authorization"]).toBe(
+      "Bearer tok",
+    )
+    expect(result.windows).toEqual(windows)
   })
 })
