@@ -10,7 +10,8 @@
  * GROUP_LIMIT with a "还有 N 个" overflow note. A summary stats row above
  * the children carries the outcome badges tallied by countOutcomes
  * (✓ ok / ✗ failed / unrecorded) and the mean sub-call duration from
- * avgDuration (hidden when no child is timed). Nested group envelopes are
+ * avgDuration, humanized by the shell's humanizeDuration (hidden when no
+ * child is timed). Nested group envelopes are
  * bounded by the model's MAX_GROUP_DEPTH: each level passes depth+1 to
  * its children and a body beyond the budget renders the depth note
  * instead of recursing.
@@ -18,6 +19,7 @@
 
 import { useLocale, t } from "@max/i18n"
 import { ToolCallBlock, type ToolCallProps } from "../registry"
+import { humanizeDuration } from "../model"
 import {
   avgDuration,
   countOutcomes,
@@ -119,7 +121,9 @@ function GroupBodyBase({
         </span>
         {avg !== undefined && (
           <span className="text-[10px] text-muted-foreground" data-testid="tool-group-avg">
-            {t("toolRenderers.group.avgDuration", { ms: Math.round(avg) })}
+            {/* Same humanization as the shell's collapsed duration (the
+                {duration} slot carries humanizeDuration's "12.5s"/"2m5s"). */}
+            {t("toolRenderers.group.avgDuration", { duration: humanizeDuration(avg) })}
           </span>
         )}
       </div>

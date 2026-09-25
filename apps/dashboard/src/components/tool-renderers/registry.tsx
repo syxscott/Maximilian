@@ -13,14 +13,19 @@
  * truncated red row prefixed with the ✗ marker (full text in the title
  * tooltip); the expanded detail
  * mounts the ai-elements widgets that apply to every tool: LatencyMeter
- * for the measured call duration and ErrorBlock for the failure path.
+ * for the measured call duration (which reuses @max/i18n formatDuration)
+ * and ErrorBlock for the failure path. The collapsed duration is
+ * humanized by the model layer's humanizeDuration (ms precision below
+ * 1s, then "12.5s" / "2m5s") with the raw milliseconds kept in the
+ * title tooltip — one shared call site, so all RENDERERS entries render
+ * humanized durations.
  */
 
 import { useState, type ComponentType } from "react"
 import { Badge } from "@/components/ui/badge"
 import { ErrorBlock, LatencyMeter } from "@/components/ai-elements"
 import { RENDERERS } from "./renderers"
-import { summarizeToolInput, toolInputRows } from "./model"
+import { humanizeDuration, summarizeToolInput, toolInputRows } from "./model"
 
 export interface ToolCallProps {
   tool: string
@@ -95,7 +100,13 @@ export function ToolCallBlock(props: ToolCallProps) {
           {summarizeToolInput(tool, props.input)}
         </span>
         {durationMs !== undefined && (
-          <span className="shrink-0 text-[10px] text-muted-foreground">{durationMs}ms</span>
+          <span
+            className="shrink-0 text-[10px] text-muted-foreground"
+            title={`${durationMs}ms`}
+            data-testid="tool-duration"
+          >
+            {humanizeDuration(durationMs)}
+          </span>
         )}
         {ok === true && (
           <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px]">

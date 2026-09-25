@@ -257,3 +257,29 @@ export function toolInputRows(tool: string, input: unknown): ToolInputRows {
 export function lineCount(text: string): number {
   return text.split("\n").length
 }
+
+/**
+ * Humanized duration for the ToolCallBlock shell — every renderer's
+ * collapsed line benefits through the one shared call site (registry.tsx):
+ *
+ *   < 1 s    → "842ms"  (sub-second calls keep their millisecond detail,
+ *                        which the rounded second of formatDuration loses)
+ *   < 60 s   → "12.5s"  (one decimal)
+ *   ≥ 60 s   → "2m5s"    (compact minutes + seconds)
+ *
+ * The unit symbols are the locale-neutral SI abbreviations (ms/s/m read
+ * identically in zh-CN and en-US, like the "avg {ms}ms" locale line they
+ * replace); the locale-aware formatter path stays in ai-elements'
+ * LatencyMeter, which reuses @max/i18n formatDuration for the expanded
+ * detail row. Non-finite / negative inputs (passthrough JSON) degrade to
+ * the "—" placeholder the other formatters use.
+ */
+export function humanizeDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—"
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  const totalSeconds = Math.round(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}m${seconds}s`
+}

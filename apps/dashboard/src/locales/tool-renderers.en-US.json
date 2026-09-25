@@ -169,7 +169,7 @@
   "toolRenderers.group.failed": "{count} failed",
   "toolRenderers.group.unknown": "{count} unrecorded",
   "toolRenderers.group.more": "{count} more",
-  "toolRenderers.group.avgDuration": "avg {ms}ms",
+  "toolRenderers.group.avgDuration": "avg {duration}",
   "toolRenderers.code.overflow": "…{count} more lines",
   "toolRenderers.json.raw": "Raw input",
   "toolRenderers.json.empty": "(no fields)",

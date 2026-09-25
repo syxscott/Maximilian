@@ -152,7 +152,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_TOOLS.edit,
     density: "primary-plus-fallback",
-    note: "Body = the real oldString/newString inline diff (DiffPreview) plus file/replaceAll rows; the diff is the payload.",
+    note: "The oldString/newString pair is the payload; the inline diff (DiffPreview) is the primary block, the file/replaceAll rows ride beside it.",
   },
   write: {
     fields: { path: S_TOOLS.write, content: S_TOOLS.write },
@@ -473,7 +473,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     fields: { apps: S_PASSTHROUGH },
     source: S_PASSTHROUGH,
     density: "primary-plus-fallback",
-    note: "The call takes no input fields; the payload is the returned roster — count row + numbered roster block.",
+    note: "The call takes no input fields; the returned roster is the primary block (numbered), the count row rides beside it.",
   },
   screenshot: {
     fields: {

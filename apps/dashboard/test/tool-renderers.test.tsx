@@ -95,6 +95,18 @@
  * group recursion is depth-bounded (MAX_GROUP_DEPTH 3 — GROUP_LIMIT only
  * ever capped the children per level).
  *
+ * The "closing" round locks the audit's converged state (62/62 entries
+ * verified — source and every field→source mapping grounded on a real
+ * packages/ path, no "defensive" placeholder; the two deliberate
+ * primary-plus-fallback notes reworded to the table's unified "<primary>
+ * is the primary block, <rows> ride beside it" shape) and humanizes the
+ * shell's raw-millisecond durations: the model layer's pure
+ * humanizeDuration (ms below 1s, one-decimal seconds, compact MmSSs)
+ * renders on every collapsed line through the one registry call site
+ * (raw ms kept in the title tooltip; the detail row's LatencyMeter keeps
+ * the locale-aware @max/i18n formatDuration) and drives the groups'
+ * average via the group.avgDuration {duration} slot.
+ *
  * The "payload-variant richness" round re-checks the core six against
  * packages/tools/src: every bash/read/edit/write/glob/grep fixture is now
  * built through the typed builders in renderers/test-fixtures.ts (compile
@@ -124,7 +136,11 @@ import {
   resolveToolRenderer,
   type ToolRendererDef,
 } from "../src/components/tool-renderers/registry"
-import { summarizeToolInput, toolInputRows } from "../src/components/tool-renderers/model"
+import {
+  humanizeDuration,
+  summarizeToolInput,
+  toolInputRows,
+} from "../src/components/tool-renderers/model"
 import { RENDERED_TOOLS, RENDERERS } from "../src/components/tool-renderers/renderers/index"
 import {
   LOW_DENSITY_RENDERERS,
@@ -1132,7 +1148,10 @@ describe("event fixtures — core tools", () => {
     const row = screen.getByRole("button")
     expect(row.textContent).toContain("$")
     expect(row.textContent).toContain("pnpm vitest run")
-    expect(row.textContent).toContain("5123ms")
+    // 5123ms humanizes to "5.1s" on the collapsed line (raw ms in the
+    // title tooltip) — see "closing round — humanizeDuration".
+    expect(row.textContent).toContain("5.1s")
+    expect(screen.getByTestId("tool-duration")).toHaveAttribute("title", "5123ms")
     expect(screen.getByText("✓")).toBeInTheDocument()
     expect(rowValue("Workdir")).toBe("apps/dashboard")
     expect(rowValue("Description")).toBe("dashboard suite")
@@ -4493,9 +4512,13 @@ describe("audit round — group avgDuration (render)", () => {
 })
 
 describe("audit round — audit table + i18n sync", () => {
-  it("both locales carry the group.avgDuration key with the {ms} slot", () => {
-    expect(enDomain["toolRenderers.group.avgDuration" as keyof typeof enDomain]).toContain("{ms}")
-    expect(zhDomain["toolRenderers.group.avgDuration" as keyof typeof zhDomain]).toContain("{ms}")
+  it("both locales carry the group.avgDuration key with the {duration} slot", () => {
+    expect(enDomain["toolRenderers.group.avgDuration" as keyof typeof enDomain]).toContain(
+      "{duration}",
+    )
+    expect(zhDomain["toolRenderers.group.avgDuration" as keyof typeof zhDomain]).toContain(
+      "{duration}",
+    )
   })
 
   it("the three group audit entries ground the mean in the child durationMs", () => {
@@ -5175,5 +5198,173 @@ describe("finalization — group nesting depth guard", () => {
     renderInput("execute-group", nestedGroups(5))
     openAllGroupBodies()
     expect(screen.getByTestId("tool-group-depth")).toHaveTextContent("子分组嵌套已达上限（3 层）")
+  })
+})
+
+// ── closing round — duration humanization + audit coverage lock ─────────────
+// The audit table converged to exactly two deliberate primary-plus-fallback
+// entries; this round locks the 62/62 grounded coverage, humanizes the
+// shell's raw-millisecond durations (collapsed line + the groups' average),
+// and unifies the two deliberate notes' wording with the rest of the table.
+
+describe("closing round — humanizeDuration (model)", () => {
+  it("sub-second calls keep their millisecond detail (rounded, ms suffix)", () => {
+    expect(humanizeDuration(0)).toBe("0ms")
+    expect(humanizeDuration(42)).toBe("42ms")
+    expect(humanizeDuration(842.6)).toBe("843ms")
+    expect(humanizeDuration(999)).toBe("999ms")
+  })
+
+  it("the 1s boundary flips from ms to one-decimal seconds", () => {
+    expect(humanizeDuration(999.4)).toBe("999ms")
+    expect(humanizeDuration(1000)).toBe("1.0s")
+    expect(humanizeDuration(1001)).toBe("1.0s")
+    expect(humanizeDuration(12540)).toBe("12.5s")
+  })
+
+  it("the 60s boundary flips from decimal seconds to compact minutes", () => {
+    expect(humanizeDuration(59999)).toBe("60.0s")
+    expect(humanizeDuration(60000)).toBe("1m0s")
+    expect(humanizeDuration(60001)).toBe("1m0s")
+  })
+
+  it("minute-plus durations render compact MmSSs (no padding, no hours tier)", () => {
+    expect(humanizeDuration(65000)).toBe("1m5s")
+    expect(humanizeDuration(125000)).toBe("2m5s")
+    expect(humanizeDuration(3600000)).toBe("60m0s")
+    expect(humanizeDuration(3723000)).toBe("62m3s")
+  })
+
+  it("degrades non-finite and negative passthrough values to the — placeholder", () => {
+    expect(humanizeDuration(Number.NaN)).toBe("—")
+    expect(humanizeDuration(Number.POSITIVE_INFINITY)).toBe("—")
+    expect(humanizeDuration(Number.NEGATIVE_INFINITY)).toBe("—")
+    expect(humanizeDuration(-5)).toBe("—")
+  })
+
+  it("is monotonic across the boundaries (no tier sends the display backwards)", () => {
+    const steps = [0, 500, 999, 1000, 5000, 59999, 60000, 61000, 600000]
+    const rendered = steps.map(humanizeDuration)
+    for (let i = 1; i < rendered.length; i++) {
+      expect(rendered[i] === "—", `${rendered[i]} at ${steps[i]}`).toBe(false)
+    }
+    expect(rendered).toEqual([
+      "0ms",
+      "500ms",
+      "999ms",
+      "1.0s",
+      "5.0s",
+      "60.0s",
+      "1m0s",
+      "1m1s",
+      "10m0s",
+    ])
+  })
+})
+
+describe("closing round — duration surfaces (render)", () => {
+  it("the collapsed line humanizes every renderer's duration through one registry site", () => {
+    renderPair(
+      toolStart("bash", bashPayload({ command: "pnpm build" })),
+      toolEnd("bash", true, 12500),
+    )
+    const duration = screen.getByTestId("tool-duration")
+    expect(duration).toHaveTextContent("12.5s")
+    // The raw milliseconds stay reachable in the title tooltip.
+    expect(duration).toHaveAttribute("title", "12500ms")
+    expect(screen.getByRole("button").textContent).not.toContain("12500ms")
+  })
+
+  it("minute-scale calls collapse to MmSSs while the detail row keeps its rating", () => {
+    renderPair(
+      toolStart("bash", bashPayload({ command: "pnpm test" })),
+      toolEnd("bash", true, 125000),
+    )
+    expect(screen.getByTestId("tool-duration")).toHaveTextContent("2m5s")
+    // The expanded detail's LatencyMeter reuses @max/i18n formatDuration
+    // (the locale-aware path) — 125s rates "slow" there.
+    expect(screen.getByTitle("slow · 2m 5s")).toBeInTheDocument()
+  })
+
+  it("sub-second durations keep the ms precision on the collapsed line", () => {
+    renderPair(toolStart("bash", bashPayload({ command: "echo hi" })), toolEnd("bash", true, 420))
+    expect(screen.getByTestId("tool-duration")).toHaveTextContent("420ms")
+  })
+
+  it("the groups' average duration humanizes past the second mark", () => {
+    renderInput("execute-group", {
+      items: [
+        { tool: "bash", command: "a", ok: true, durationMs: 2000 },
+        { tool: "bash", command: "b", ok: true, durationMs: 3000 },
+      ],
+    })
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("avg 2.5s")
+  })
+
+  it("the groups' average humanizes past the minute mark, en + zh", () => {
+    renderInput("execute-group", {
+      items: [{ tool: "bash", command: "a", ok: true, durationMs: 65000 }],
+    })
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("avg 1m5s")
+    cleanup()
+    setLocale("zh-CN")
+    renderInput("execute-group", {
+      items: [{ tool: "bash", command: "a", ok: true, durationMs: 65000 }],
+    })
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("平均 1m5s")
+  })
+})
+
+describe("closing round — audit coverage locked 62/62", () => {
+  /**
+   * An entry counts as verified when its primary source is a real repo
+   * path (packages/…) and neither it nor any field→source mapping is a
+   * placeholder. The closing round found the table fully grounded — this
+   * assertion locks the 62/62 so a "defensive" placeholder cannot creep
+   * back in.
+   */
+  function verifiedEntries(): string[] {
+    return Object.entries(RENDERER_FIELD_AUDIT)
+      .filter(([, entry]) => {
+        const grounded = (source: string) =>
+          source.length > 0 &&
+          source.startsWith("packages/") &&
+          !source.toLowerCase().includes("defensive")
+        if (!grounded(entry.source)) return false
+        const fields = Object.entries(entry.fields)
+        return fields.length > 0 && fields.every(([, source]) => grounded(source))
+      })
+      .map(([tool]) => tool)
+  }
+
+  it("all 62 registry entries are verified — no empty or defensive source anywhere", () => {
+    expect(Object.keys(RENDERER_FIELD_AUDIT)).toHaveLength(62)
+    expect(verifiedEntries()).toHaveLength(62)
+    expect(new Set(verifiedEntries()).size).toBe(62)
+  })
+
+  it("every optional note is a non-empty sentence carrying a deliberate rationale", () => {
+    for (const [tool, entry] of Object.entries(RENDERER_FIELD_AUDIT)) {
+      if (entry.note === undefined) continue
+      expect(entry.note.length, tool).toBeGreaterThan(20)
+      expect(entry.note.endsWith("."), tool).toBe(true)
+    }
+    // The audit's own claim: every full-density entry either cites default
+    // handling or needs none — the two deliberate ones name their surface.
+    for (const tool of LOW_DENSITY_RENDERERS) {
+      expect(RENDERER_FIELD_AUDIT[tool]?.note, tool).toBeDefined()
+    }
+  })
+
+  it("the two deliberate primary-plus-fallback notes follow the table's unified format", () => {
+    for (const tool of ["edit", "list-apps"]) {
+      const note = RENDERER_FIELD_AUDIT[tool]?.note ?? ""
+      // Same shape as the other entries: "<context>; <primary> is the
+      // primary block, <fallback rows> ride(s) beside it."
+      expect(note, tool).toContain("primary block")
+      expect(note, tool).toMatch(/beside it\.$/)
+    }
+    expect(RENDERER_FIELD_AUDIT.edit?.note).toContain("DiffPreview")
+    expect(RENDERER_FIELD_AUDIT["list-apps"]?.note).toContain("no input fields")
   })
 })
