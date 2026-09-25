@@ -21,6 +21,7 @@
  */
 
 import type { RuntimeEvent, Workspace } from "@/api"
+import { tokenUsageModel } from "@/components/ai-elements/model"
 
 // ── Defensive coercions (passthrough payloads) ──────────────────────────────
 
@@ -312,6 +313,14 @@ export interface TaskStatusUnit extends UnitBase {
   taskId: string
   status: "completed" | "failed" | "skipped"
   error?: string
+  /**
+   * Raw token-usage passthrough from a task-complete's
+   * `result.metadata.usage` (resultUsage — undefined unless at least one
+   * known token field is a finite number). TokenUsageBadge renders it.
+   */
+  usage?: Record<string, unknown>
+  /** task-complete's own `durationMs` (the result latency LatencyMeter rates). */
+  durationMs?: number
 }
 
 export interface ReviewUnit extends UnitBase {
@@ -552,6 +561,14 @@ export function buildTurnFlowItems(
               : e.type === "task-skipped"
                 ? eventField(e, "reason", 500)
                 : undefined,
+          // ai-elements density surfaces (usage badge / latency meter) —
+          // a completed task may carry its result usage + latency.
+          ...(e.type === "task-complete"
+            ? {
+                usage: resultUsage(rec.result),
+                durationMs: asNum(rec.durationMs),
+              }
+            : {}),
         })
         const openIndex = openTaskTurns.indexOf(turnId)
         if (openIndex >= 0) openTaskTurns.splice(openIndex, 1)
@@ -1190,6 +1207,123 @@ export function liveTailState(
   const frozen = asNum(opts.frozenAt)
   const at = frozen === undefined ? total : Math.max(0, Math.min(Math.floor(frozen), total))
   return { followsTail: false, frozenCount: total - at }
+}
+
+// ── ai-elements density surfaces (usage / latency / stats / error detail) ───
+
+/**
+ * Pull the token-usage passthrough out of a task-complete `result`
+ * payload. Candidate shapes, first-known-wins: `result.metadata.usage`
+ * (the documented shape), `result.usage`, and the result object itself.
+ * A candidate qualifies only when tokenUsageModel sees at least one
+ * finite, known token field — garbage shapes yield undefined, so the
+ * turn header simply renders no badge. Defensive: arrays and primitives
+ * never qualify.
+ */
+export function resultUsage(result: unknown): Record<string, unknown> | undefined {
+  if (result === null || typeof result !== "object" || Array.isArray(result)) return undefined
+  const rec = result as Record<string, unknown>
+  const metadata =
+    rec.metadata !== null && typeof rec.metadata === "object" && !Array.isArray(rec.metadata)
+      ? (rec.metadata as Record<string, unknown>)
+      : undefined
+  const candidates = [metadata?.usage, rec.usage, result]
+  for (const candidate of candidates) {
+    if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) continue
+    if (tokenUsageModel(candidate).known) return candidate as Record<string, unknown>
+  }
+  return undefined
+}
+
+export interface TurnResultStats {
+  /** Raw usage passthrough for TokenUsageBadge (undefined = no badge). */
+  usage?: Record<string, unknown>
+  /** The task-complete latency LatencyMeter rates (undefined = no meter). */
+  durationMs?: number
+}
+
+/**
+ * A turn's completion result stats: the usage + durationMs carried by
+ * its LAST completed task-status unit (a re-opened task's newest
+ * completion wins). Turns without a completion — running, failed,
+ * message turns — yield {} and the header renders nothing extra.
+ * Defensive: malformed turns contribute an empty result.
+ */
+export function turnResultStats(turn: TurnModel | null | undefined): TurnResultStats {
+  const out: TurnResultStats = {}
+  if (turn === null || typeof turn !== "object" || !Array.isArray(turn.units)) return out
+  for (const unit of turn.units) {
+    if (unit === null || typeof unit !== "object") continue
+    if (unit.kind !== "task-status" || unit.status !== "completed") continue
+    if (unit.usage !== undefined) out.usage = unit.usage
+    if (unit.durationMs !== undefined) out.durationMs = unit.durationMs
+  }
+  return out
+}
+
+export interface TimelineStats {
+  /** Distinct turn ids in the stream. */
+  turns: number
+  /** Folded tool-call units. */
+  tools: number
+  /** Retry ATTEMPTS (waves fold, attempts sum). */
+  retries: number
+  /** Failed tasks (task-status failed) plus a workspace-level failure. */
+  failed: number
+}
+
+/**
+ * The timeline's top stats row model (turns/tools/retries/failed) —
+ * pure, defensive, straight over the compiled unit stream.
+ */
+export function statsSummary(units: ConversationUnit[]): TimelineStats {
+  const empty: TimelineStats = { turns: 0, tools: 0, retries: 0, failed: 0 }
+  if (!Array.isArray(units)) return empty
+  const turnIds = new Set<string>()
+  let tools = 0
+  let retries = 0
+  let failed = 0
+  for (const unit of units) {
+    if (unit === null || typeof unit !== "object") continue
+    if (typeof unit.turnId === "string") turnIds.add(unit.turnId)
+    if (unit.kind === "tool") tools += 1
+    else if (unit.kind === "retry") retries += asNum(unit.attempts) ?? 0
+    else if (unit.kind === "failed") failed += 1
+    else if (unit.kind === "task-status" && unit.status === "failed") failed += 1
+  }
+  return { turns: turnIds.size, tools, retries, failed }
+}
+
+export interface ConversationErrorDetail {
+  /** Leading "TypeError:"-style prefix, when the string carries one. */
+  name?: string
+  /** Everything before the first stack frame (the whole text without one). */
+  message: string
+  /** The `    at …` tail, when the string embeds a stack trace. */
+  stack?: string
+}
+
+const STACK_FRAME_LINE = /^[ \t]*at\b/
+const ERROR_NAME_PREFIX = /^([A-Z][A-Za-z0-9_]*(?:Error|Exception|Timeout|Failure))\s*:\s*/
+
+/**
+ * Split a raw error string into ErrorBlock's name / message / stack —
+ * event errors arrive as plain strings, and the ones that embed a stack
+ * trace fold it behind the message (no `    at …` frames → message
+ * only). Defensive: non-strings degrade to an empty message.
+ */
+export function errorDetailOf(raw: unknown): ConversationErrorDetail {
+  if (typeof raw !== "string" || raw === "") return { message: "" }
+  const lines = raw.split("\n")
+  const firstFrame = lines.findIndex((line) => STACK_FRAME_LINE.test(line))
+  const head = (firstFrame === -1 ? lines : lines.slice(0, firstFrame)).join("\n").trim()
+  const stack = firstFrame === -1 ? undefined : lines.slice(firstFrame).join("\n").trim()
+  const nameMatch = ERROR_NAME_PREFIX.exec(head)
+  return {
+    name: nameMatch?.[1],
+    message: nameMatch !== null ? head.slice(nameMatch[0].length) : head,
+    stack,
+  }
 }
 
 // ── shareSections (structured share export) ─────────────────────────────────

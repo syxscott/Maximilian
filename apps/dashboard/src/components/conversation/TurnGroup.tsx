@@ -5,10 +5,10 @@
 
 /**
  * TurnGroup — one conversation turn: header (role badge + status +
- * duration) over its compiled render units. Tool units render through
- * the shared ToolCallBlock registry — the single rendering path for any
- * tool call on this surface. The turn's depth drives the left indent
- * (subagent turns nest under their open parent).
+ * result stats + duration) over its compiled render units. Tool units
+ * render through the shared ToolCallBlock registry — the single
+ * rendering path for any tool call on this surface. The turn's depth
+ * drives the left indent (subagent turns nest under their open parent).
  *
  * Live status: a RUNNING turn's header duration ticks every 5s
  * (LiveTurnDuration) and its running tools carry a spinning Loader2
@@ -16,15 +16,29 @@
  * units flash once on entry (2s fade); a FAILED turn's failing tool
  * calls default to the expanded error view (turnDefaultExpanded per
  * status) so the error detail needs no click.
+ *
+ * ai-elements density: a completed task's result surfaces in the header
+ * — TokenUsageBadge for `result.metadata.usage` and a LatencyMeter
+ * rating bar for the task-complete `durationMs` (both via
+ * turnResultStats; nothing renders when the payload lacks them) — and
+ * task-status / workspace failures render through the shared ErrorBlock
+ * (name + message, embedded stacks folded) instead of raw text rows.
  */
 
 import { useState, type ReactNode } from "react"
 import { Loader2 } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import { Badge } from "@/components/ui/badge"
+import { ErrorBlock, LatencyMeter, TokenUsageBadge } from "@/components/ai-elements"
 import { ToolCallBlock } from "@/components/tool-renderers/registry"
 import type { ConversationUnit, FindHit, TurnModel } from "./model"
-import { elapsedSeconds, formatDuration, turnDefaultExpanded } from "./model"
+import {
+  elapsedSeconds,
+  errorDetailOf,
+  formatDuration,
+  turnDefaultExpanded,
+  turnResultStats,
+} from "./model"
 import { RetryWaveGroup } from "./RetryWaveGroup"
 import { TextUnitBlock } from "./TextUnitBlock"
 import { RUNNING_TOOL_TICK_MS, TURN_ELAPSED_TICK_MS, useNow } from "./useNow"
@@ -269,10 +283,13 @@ function TurnUnitView({
     case "permission":
       return <PermissionLine unit={unit} />
     case "task-status":
+      // Error detail through the shared ErrorBlock (name + message,
+      // embedded stacks folded behind a <details>) — the wrapper keeps
+      // the unit's testid hook for the pipeline tests.
       return unit.error !== undefined ? (
-        <p className="break-all font-mono text-xs text-destructive" data-testid="turn-task-error">
-          {unit.error}
-        </p>
+        <div data-testid="turn-task-error">
+          <ErrorBlock error={errorDetailOf(unit.error)} />
+        </div>
       ) : null
     case "review":
       return (
@@ -284,10 +301,12 @@ function TurnUnitView({
         </p>
       )
     case "failed":
+      // Same ErrorBlock path as task-status failures — the workspace-level
+      // verdict renders with the name/message/stack treatment too.
       return (
-        <p className="break-all font-mono text-xs text-destructive" data-testid="turn-failed">
-          {unit.error}
-        </p>
+        <div data-testid="turn-failed">
+          <ErrorBlock error={errorDetailOf(unit.error)} />
+        </div>
       )
   }
 }
@@ -314,6 +333,9 @@ export function TurnGroup({
   // Failed turns surface their error detail without a click — the tool
   // blocks inside default to the expanded (ErrorBlock) view.
   const defaultExpanded = turnDefaultExpanded(turn.status)
+  // The turn's completed-task result: usage for the token badge and the
+  // latency the meter rates — both absent for running/failed turns.
+  const result = turnResultStats(turn)
   return (
     <section
       className={`rounded-lg border bg-card/60 p-3 ${
@@ -340,6 +362,19 @@ export function TurnGroup({
         {/* Lifecycle badges only exist for task turns — message turns
             (user request, narration, review) have no running state. */}
         {turn.turnId.startsWith("task-") && <StatusBadge status={turn.status} />}
+        {/* Result stats (ai-elements density): token usage + rated
+            latency of the completed task, straight from the task-complete
+            payload; absent payloads render nothing. */}
+        {result.usage !== undefined && (
+          <span data-testid="turn-usage">
+            <TokenUsageBadge usage={result.usage} />
+          </span>
+        )}
+        {result.durationMs !== undefined && (
+          <span data-testid="turn-latency">
+            <LatencyMeter ms={result.durationMs} />
+          </span>
+        )}
         {/* A RUNNING task turn's duration is LIVE (refreshed every 5s);
             a finished one keeps the frozen start→end span. */}
         {turn.turnId.startsWith("task-") && turn.status === "running" ? (

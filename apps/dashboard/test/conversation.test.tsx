@@ -9,12 +9,13 @@
  * the unit-stream compiler, turn depths, the find index, markdown
  * export, the deep-surface models (turn windowing, text-unit
  * extraction, live-tail state, share sections, virtual-height
- * estimation) — plus render smokes for TurnGroup / RetryWaveGroup /
+ * estimation, ai-elements density surfaces: usage/latency/stats/error
+ * detail) — plus render smokes for TurnGroup / RetryWaveGroup /
  * ConversationUnitsPreview / ConversationWindow / TextUnitBlock /
- * ShareView.
+ * ShareView and the timeline's ai-elements mounts.
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { getDictionary, setLocale } from "@max/i18n"
 import { applyDashboardDictionaries } from "../src/locales/index"
@@ -23,6 +24,7 @@ import {
   buildConversationFindIndex,
   buildTurnFlowItems,
   elapsedSeconds,
+  errorDetailOf,
   estimateTurnDepth,
   estimateVirtualHeight,
   formatDuration,
@@ -32,12 +34,15 @@ import {
   liveTailState,
   pairToolCalls,
   perItemHeight,
+  resultUsage,
   shareSections,
+  statsSummary,
   textUnits,
   toConversationMarkdown,
   toShareMarkdown,
   turnDefaultExpanded,
   turnHeight,
+  turnResultStats,
   VIRTUAL_HEIGHT_THRESHOLD,
   windowTurns,
   virtualWindow,
@@ -49,6 +54,7 @@ import {
   type ExtractedTextUnit,
   type RetryUnit,
 } from "../src/components/conversation/model"
+import { tokenUsageModel } from "../src/components/ai-elements/model"
 import { TurnGroup } from "../src/components/conversation/TurnGroup"
 import { RetryWaveGroup } from "../src/components/conversation/RetryWaveGroup"
 import { ConversationUnitsPreview } from "../src/components/conversation/ConversationUnitsPreview"
@@ -2627,5 +2633,284 @@ describe("TurnGroup live status", () => {
     expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-source", "system")
     expect(screen.queryByTestId("text-unit-flash")).not.toBeInTheDocument()
     expect(screen.getByTestId("text-unit-block").getAttribute("data-flash")).toBeNull()
+  })
+})
+
+// ── statsSummary (timeline top stats row model) ─────────────────────────────
+
+describe("statsSummary", () => {
+  it("counts turns, tool calls, retry attempts and failed tasks over a compiled stream", () => {
+    const units = buildTurnFlowItems(
+      [
+        taskStart("t1", "backend"),
+        toolStart("t1", "bash"),
+        toolEnd("t1", "bash", { ok: true, durationMs: 5 }),
+        retryEv("waiting", 1, 500),
+        retryEv("waiting", 2, 500),
+        taskComplete("t1"),
+        taskStart("t2"),
+        taskFailed("t2", "boom"),
+      ],
+      ws(),
+    )
+    // user + task-t1 + task-t2; the two waiting events fold to ONE wave
+    // but still sum their two attempts.
+    expect(statsSummary(units)).toEqual({ turns: 3, tools: 1, retries: 2, failed: 1 })
+  })
+
+  it("counts a workspace-level failure in addition to failed tasks", () => {
+    const units = buildTurnFlowItems(
+      [taskStart("t1"), toolStart("t1", "read"), taskFailed("t1", "boom")],
+      ws({ status: "failed", error: "workspace exploded" }),
+    )
+    const summary = statsSummary(units)
+    expect(summary.failed).toBe(2) // task-t1 + the failed-workspace unit
+    expect(summary.turns).toBe(3) // user + task-t1 + workspace
+    expect(summary.tools).toBe(1)
+  })
+
+  it("is zero for an empty stream", () => {
+    expect(statsSummary([])).toEqual({ turns: 0, tools: 0, retries: 0, failed: 0 })
+  })
+
+  it("degrades gracefully on non-array and malformed entries", () => {
+    expect(statsSummary(undefined as unknown as ConversationUnit[])).toEqual({
+      turns: 0,
+      tools: 0,
+      retries: 0,
+      failed: 0,
+    })
+    expect(statsSummary([null, 42, "junk"] as unknown as ConversationUnit[])).toEqual({
+      turns: 0,
+      tools: 0,
+      retries: 0,
+      failed: 0,
+    })
+  })
+})
+
+// ── resultUsage / turnResultStats (token extraction for the badge) ──────────
+
+describe("resultUsage / turnResultStats (token extraction)", () => {
+  it("extracts prompt/completion tokens from result.metadata.usage", () => {
+    const usage = resultUsage({
+      ok: true,
+      metadata: { usage: { promptTokens: 1200, completionTokens: 340, cacheRead: 60 } },
+    })
+    expect(usage).toEqual({ promptTokens: 1200, completionTokens: 340, cacheRead: 60 })
+    // The badge's own model reads the passthrough: known, and the total
+    // is the prompt+completion+cache sum.
+    expect(tokenUsageModel(usage)).toMatchObject({
+      known: true,
+      input: 1200,
+      output: 340,
+      cacheRead: 60,
+      total: 1600,
+    })
+  })
+
+  it("rejects usage-less and malformed results defensively", () => {
+    expect(resultUsage(undefined)).toBeUndefined()
+    expect(resultUsage(null)).toBeUndefined()
+    expect(resultUsage({})).toBeUndefined()
+    expect(resultUsage({ metadata: {} })).toBeUndefined()
+    expect(resultUsage({ metadata: { usage: { promptTokens: "many" } } })).toBeUndefined()
+    expect(resultUsage([1, 2, 3])).toBeUndefined()
+    expect(resultUsage("ok")).toBeUndefined()
+  })
+
+  it("accepts the result.usage fallback shape and feeds turnResultStats", () => {
+    expect(resultUsage({ usage: { totalTokens: 999 } })).toEqual({ totalTokens: 999 })
+    // The compiled turn carries the completion's usage + latency; a
+    // running turn carries neither.
+    const withResult = ev({
+      type: "task-complete",
+      taskId: "t1",
+      durationMs: 2500,
+      result: { metadata: { usage: { promptTokens: 100, completionTokens: 20 } } },
+    })
+    const [done] = groupUnitsByTurn(buildTurnFlowItems([taskStart("t1"), withResult], null))
+    expect(turnResultStats(done)).toEqual({
+      usage: { promptTokens: 100, completionTokens: 20 },
+      durationMs: 2500,
+    })
+    const [running] = groupUnitsByTurn(buildTurnFlowItems([taskStart("t1")], null))
+    expect(turnResultStats(running)).toEqual({})
+    expect(turnResultStats(null)).toEqual({})
+  })
+})
+
+// ── LatencyMeter rating (task-complete durationMs → turn header) ────────────
+
+describe("LatencyMeter rating (turn header)", () => {
+  const turnWithLatency = (durationMs: number) => {
+    const [turn] = groupUnitsByTurn(
+      buildTurnFlowItems(
+        [taskStart("t1"), ev({ type: "task-complete", taskId: "t1", durationMs })],
+        null,
+      ),
+    )
+    return turn
+  }
+
+  it("rates a sub-second result latency fast (green, near-empty bar)", () => {
+    render(<TurnGroup turn={turnWithLatency(500)} />)
+    const wrapper = screen.getByTestId("turn-latency")
+    const meter = within(wrapper).getByRole("meter")
+    expect(meter).toHaveAttribute("aria-valuenow", "5") // 500ms on the 10s scale
+    // The rating colors the meter's value label.
+    expect(wrapper.querySelector(".text-emerald-600")).not.toBeNull()
+    expect(wrapper.querySelector(".text-red-600")).toBeNull()
+  })
+
+  it("rates a long result latency slow (red, near-full bar)", () => {
+    render(<TurnGroup turn={turnWithLatency(8000)} />)
+    const wrapper = screen.getByTestId("turn-latency")
+    const meter = within(wrapper).getByRole("meter")
+    expect(meter).toHaveAttribute("aria-valuenow", "80")
+    expect(wrapper.querySelector(".text-red-600")).not.toBeNull()
+    expect(wrapper.querySelector(".text-emerald-600")).toBeNull()
+    // The fill carries the slow bar color too.
+    expect(meter.querySelector(".bg-red-500")).not.toBeNull()
+  })
+})
+
+// ── errorDetailOf / ErrorBlock swap (failed task + workspace failures) ──────
+
+describe("errorDetailOf / ErrorBlock swap", () => {
+  it("renders a failed task-status through ErrorBlock — message only without a stack", () => {
+    const [turn] = groupUnitsByTurn(
+      buildTurnFlowItems([taskStart("t1"), taskFailed("t1", "selector not found")], null),
+    )
+    render(<TurnGroup turn={turn} />)
+    const block = within(screen.getByTestId("turn-task-error")).getByRole("alert")
+    expect(block).toHaveTextContent("selector not found")
+    // A plain string has no stack frames → no fold-out, no name prefix.
+    expect(within(screen.getByTestId("turn-task-error")).queryByText(/Show stack/)).toBeNull()
+    expect(block.textContent).not.toContain("Error:")
+  })
+
+  it("splits an embedded stack trace and renders it folded behind the message", () => {
+    const detail = errorDetailOf("TypeError: boom\n    at fn (a.ts:1:1)\n    at run (b.ts:2:2)")
+    expect(detail).toMatchObject({ name: "TypeError", message: "boom" })
+    expect(detail.stack).toContain("at fn (a.ts:1:1)")
+    const [turn] = groupUnitsByTurn(
+      buildTurnFlowItems(
+        [
+          taskStart("t1"),
+          taskFailed("t1", "TypeError: boom\n    at fn (a.ts:1:1)\n    at run (b.ts:2:2)"),
+        ],
+        null,
+      ),
+    )
+    render(<TurnGroup turn={turn} />)
+    expect(screen.getByTestId("turn-task-error")).toHaveTextContent("TypeError: boom")
+    expect(screen.getByText("Show stack trace")).toBeInTheDocument()
+  })
+})
+
+// ── ConversationTimeline ai-elements density (render smokes) ────────────────
+
+describe("ConversationTimeline ai-elements density", () => {
+  /** Local flow: completed t1 (with tool + retry wave) and failed t2. */
+  const densityFlow = (): RuntimeEvent[] => [
+    taskStart("t1", "backend", 1000),
+    toolStart("t1", "bash", { command: "grep Login src/auth.ts" }, 1100),
+    toolEnd("t1", "bash", { ok: true, durationMs: 20 }, 1120),
+    retryEv("waiting", 1, 1000),
+    taskComplete("t1", 2500),
+    taskStart("t2", "frontend"),
+    taskFailed("t2", "selector not found"),
+  ]
+
+  it("mounts the four-tile stats row from real events", () => {
+    render(<ConversationTimeline events={densityFlow()} workspace={ws()} live={false} />)
+    const stats = screen.getByTestId("timeline-stats")
+    expect(stats.children).toHaveLength(4)
+    // turns 3 (user + t1 + t2), tools 1, retries 1, failed 1 (t2).
+    const cardOf = (label: string) => within(stats).getByText(label).closest(".rounded-md")
+    expect(cardOf("Turns")).toHaveTextContent("3")
+    expect(cardOf("Tool calls")).toHaveTextContent("1")
+    expect(cardOf("Retry attempts")).toHaveTextContent("1")
+    expect(cardOf("Failed")).toHaveTextContent("1")
+  })
+
+  it("hides the stats row on an empty stream", () => {
+    render(<ConversationTimeline events={[]} workspace={null} live={false} />)
+    expect(screen.queryByTestId("timeline-stats")).not.toBeInTheDocument()
+  })
+
+  it("renders the workspace id as a CopyField only when the clipboard exists", () => {
+    delete (navigator as unknown as { clipboard?: unknown }).clipboard
+    const { unmount, rerender } = render(
+      <ConversationTimeline events={[]} workspace={ws()} live={false} />,
+    )
+    // CopyField's own contract: no clipboard → hidden entirely.
+    expect(screen.queryByText("w1")).not.toBeInTheDocument()
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    })
+    rerender(<ConversationTimeline events={[]} workspace={ws()} live={false} />)
+    expect(screen.getByText("w1")).toBeInTheDocument()
+    expect(screen.getByText("Workspace")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument()
+    unmount()
+  })
+
+  it("renders the empty state through the EmptyHint pattern (icon + copy)", () => {
+    const { container } = render(<ConversationTimeline events={[]} workspace={null} live={false} />)
+    const empty = screen.getByTestId("timeline-empty")
+    expect(empty.querySelector("svg")).not.toBeNull()
+    expect(empty).toHaveTextContent(
+      "Submit a task — the full multi-agent timeline streams here live",
+    )
+    expect(empty).toHaveTextContent("Render units stream in live once a run starts")
+  })
+
+  it("mounts TokenUsageBadge and LatencyMeter in the header from the completion payload", () => {
+    const events = [
+      taskStart("t1", "backend", 1000),
+      ev({
+        type: "task-complete",
+        taskId: "t1",
+        durationMs: 2500,
+        result: {
+          metadata: { usage: { promptTokens: 1200, completionTokens: 340, cacheRead: 60 } },
+        },
+      }),
+    ]
+    const [turn] = groupUnitsByTurn(buildTurnFlowItems(events, null))
+    render(<TurnGroup turn={turn} />)
+    // Token badge: total 1600 → formatTokens "1.6K" with in/out labels.
+    const usage = screen.getByTestId("turn-usage")
+    expect(usage).toHaveTextContent("1.6K")
+    expect(usage).toHaveTextContent("in")
+    expect(usage).toHaveTextContent("out")
+    // Latency meter rated beside it.
+    expect(within(screen.getByTestId("turn-latency")).getByRole("meter")).toHaveAttribute(
+      "aria-valuenow",
+      "25",
+    )
+    // A turn without a completion payload renders neither.
+    const [plain] = groupUnitsByTurn(
+      buildTurnFlowItems([taskStart("t2"), taskComplete("t2")], null),
+    )
+    cleanup()
+    render(<TurnGroup turn={plain} />)
+    expect(screen.queryByTestId("turn-usage")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("turn-latency")).not.toBeInTheDocument()
+  })
+
+  it("routes the workspace failure through ErrorBlock in the timeline", () => {
+    render(
+      <ConversationTimeline
+        events={[taskStart("t1"), taskComplete("t1")]}
+        workspace={ws({ status: "failed", error: "workspace exploded" })}
+        live={false}
+      />,
+    )
+    const failed = screen.getByTestId("turn-failed")
+    expect(within(failed).getByRole("alert")).toHaveTextContent("workspace exploded")
   })
 })

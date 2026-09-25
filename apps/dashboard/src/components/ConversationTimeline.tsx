@@ -46,6 +46,14 @@
  *     estimates), with turn/find anchors mapping to scroll offsets via
  *     scrollOffsetForUnit; live-tail keeps driving the same container.
  *
+ * ai-elements density surfaces, all real-data driven:
+ *   - stats row: four StatCards (turns/tools/retries/failed) from the
+ *     model's statsSummary over the compiled stream;
+ *   - toolbar CopyField for the workspace id (self-hiding without a
+ *     clipboard, per CopyField's own behavior);
+ *   - the empty state renders through EmptyHint (icon + copy) instead
+ *     of a bare text row.
+ *
  * Timeline discipline: newest at the bottom, auto-tail (sticks to the
  * bottom while the run is live unless the user scrolled up), and a
  * jump-to-latest affordance when detached.
@@ -65,10 +73,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
 import type { RuntimeEvent, Workspace } from "@/api"
+import { CopyField, EmptyHint, StatCard } from "@/components/ai-elements"
 import {
   buildConversationFindIndex,
   buildTurnFlowItems,
   groupUnitsByTurn,
+  statsSummary,
   toConversationMarkdown,
   type ConversationUnit,
   type FindHit,
@@ -134,6 +144,8 @@ export function ConversationTimeline({
   // The pipeline: events → paired/retry-folded units → turn groups.
   const units = useMemo(() => buildTurnFlowItems(events, workspace), [events, workspace])
   const turns = useMemo(() => groupUnitsByTurn(units), [units])
+  // Top stats row (turns/tools/retries/failed) over the compiled stream.
+  const summary = useMemo(() => statsSummary(units), [units])
   // Full-stream depths — pinned through windowing so a find-filtered
   // window regroups without re-deriving nested depths from lost parents.
   const turnDepth = useMemo(() => estimateTurnDepth(units), [units])
@@ -354,12 +366,34 @@ export function ConversationTimeline({
             ↓ {t("timeline.nextTurn")}
           </Button>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {/* Workspace id as a copyable chip — CopyField hides itself when
+              the clipboard API is unavailable (its own contract). */}
+          {workspaceId !== undefined && workspaceId !== "" && (
+            <CopyField
+              field={{ value: workspaceId, label: t("conversation.copy.workspace") }}
+              className="h-7 text-xs"
+            />
+          )}
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={copyShare}>
             {copied ? `✓ ${t("timeline.copied")}` : t("timeline.share")}
           </Button>
         </div>
       </div>
+      {/* Stats row: four tiles over the compiled stream — hidden entirely
+          while the stream is empty (the empty hint speaks then). */}
+      {units.length > 0 && (
+        <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="timeline-stats">
+          <StatCard stat={{ label: t("conversation.stats.turns"), value: String(summary.turns) }} />
+          <StatCard stat={{ label: t("conversation.stats.tools"), value: String(summary.tools) }} />
+          <StatCard
+            stat={{ label: t("conversation.stats.retries"), value: String(summary.retries) }}
+          />
+          <StatCard
+            stat={{ label: t("conversation.stats.failed"), value: String(summary.failed) }}
+          />
+        </div>
+      )}
       {showFind && (
         <div className="mb-2">
           <Input
@@ -414,9 +448,11 @@ export function ConversationTimeline({
           )}
           empty={
             turns.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                {t("timeline.empty")}
-              </p>
+              <div data-testid="timeline-empty">
+                <EmptyHint
+                  hint={{ title: t("timeline.empty"), hint: t("conversation.empty.hint") }}
+                />
+              </div>
             ) : undefined
           }
         />
@@ -449,7 +485,11 @@ export function ConversationTimeline({
             />
           )}
           {turns.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">{t("timeline.empty")}</p>
+            <div data-testid="timeline-empty">
+              <EmptyHint
+                hint={{ title: t("timeline.empty"), hint: t("conversation.empty.hint") }}
+              />
+            </div>
           )}
         </div>
       )}

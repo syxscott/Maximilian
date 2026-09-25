@@ -61,6 +61,18 @@
       "copy": "Copy as markdown",
       "copied": "Copied",
       "empty": "Nothing to share yet"
+    },
+    "stats": {
+      "turns": "Turns",
+      "tools": "Tool calls",
+      "retries": "Retry attempts",
+      "failed": "Failed"
+    },
+    "copy": {
+      "workspace": "Workspace"
+    },
+    "empty": {
+      "hint": "Render units stream in live once a run starts"
     }
   }
 }
