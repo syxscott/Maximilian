@@ -107,3 +107,120 @@ export {
   type ToastProviderProps,
   type ToastActionProps,
 } from "./components/toast.js"
+
+// ---------------------------------------------------------------------------
+// Generic primitives
+// ---------------------------------------------------------------------------
+
+// Data display
+export {
+  DataGrid,
+  nextSort,
+  sortRows,
+  type DataGridProps,
+  type DataGridColumn,
+  type DataGridSort,
+  type DataGridLabels,
+  type SortDirection,
+} from "./components/data-grid.js"
+export {
+  VirtualListEnhanced,
+  computeVisibleRange,
+  type VirtualListEnhancedProps,
+  type ComputeVisibleRangeOptions,
+  type VisibleRange,
+} from "./components/virtual-list-enhanced.js"
+
+// Layout
+export {
+  SplitPane,
+  clampSize,
+  type SplitPaneProps,
+  type SplitPaneDirection,
+} from "./components/split-pane.js"
+export {
+  ResizableGrid,
+  resizeColumns,
+  buildGridTemplate,
+  type ResizableGridProps,
+  type ResizableGridColumn,
+} from "./components/resizable-grid.js"
+
+// Navigation
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  TabsSectionTitle,
+  type TabsProps,
+  type TabsListProps,
+  type TabsTriggerProps,
+  type TabsContentProps,
+} from "./components/tabs.js"
+export {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+  type AccordionProps,
+  type AccordionItemProps,
+  type AccordionTriggerProps,
+  type AccordionContentProps,
+} from "./components/accordion.js"
+export {
+  Stepper,
+  getStepState,
+  type StepperProps,
+  type StepperStep,
+  type StepState,
+} from "./components/stepper.js"
+export {
+  Breadcrumb as Breadcrumbs,
+  Breadcrumb,
+  type BreadcrumbProps,
+  type BreadcrumbItem,
+} from "./components/breadcrumb.js"
+export { Pagination, buildPageList, type PaginationProps } from "./components/pagination.js"
+
+// Forms / input
+export {
+  Slider,
+  RangeSlider,
+  type SliderProps,
+  type RangeSliderProps,
+} from "./components/slider.js"
+export {
+  Switch,
+  Switch as Toggle,
+  type SwitchProps,
+  type SwitchProps as ToggleProps,
+} from "./components/switch.js"
+
+// Overlay
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  TooltipKeybind,
+  type TooltipProps,
+  type TooltipTriggerProps,
+  type TooltipContentProps,
+  type TooltipProviderProps,
+  type TooltipKeybindProps,
+} from "./components/tooltip.js"
+export {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverAnchor,
+  type PopoverProps,
+  type PopoverTriggerProps,
+  type PopoverContentProps,
+  type PopoverAnchorProps,
+} from "./components/popover.js"
+
+// Feedback / status
+export { SpinnerRing, type SpinnerRingProps } from "./components/spinner-ring.js"
+export { EmptyState, type EmptyStateProps } from "./components/empty-state.js"

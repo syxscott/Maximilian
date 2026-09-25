@@ -2,38 +2,40 @@ import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 import { cn } from "../lib/utils.js"
 
-const Tabs = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> & {
-    variant?: "normal" | "alt" | "pill" | "settings"
-  }
->(({ className, variant = "normal", orientation = "horizontal", ...props }, ref) => (
-  <TabsPrimitive.Root
-    ref={ref}
-    orientation={orientation}
-    data-component="tabs"
-    data-variant={variant}
-    data-orientation={orientation}
-    className={cn(className)}
-    {...props}
-  />
-))
+export interface TabsProps extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> {
+  variant?: "normal" | "alt" | "pill" | "settings"
+}
+
+const Tabs = React.forwardRef<React.ElementRef<typeof TabsPrimitive.Root>, TabsProps>(
+  ({ className, variant = "normal", orientation = "horizontal", ...props }, ref) => (
+    <TabsPrimitive.Root
+      ref={ref}
+      orientation={orientation}
+      data-component="tabs"
+      data-variant={variant}
+      data-orientation={orientation}
+      className={cn(className)}
+      {...props}
+    />
+  ),
+)
 Tabs.displayName = TabsPrimitive.Root.displayName
 
-const TabsList = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    data-slot="tabs-list"
-    className={cn(
-      "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
-      className,
-    )}
-    {...props}
-  />
-))
+export interface TabsListProps extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> {}
+
+const TabsList = React.forwardRef<React.ElementRef<typeof TabsPrimitive.List>, TabsListProps>(
+  ({ className, ...props }, ref) => (
+    <TabsPrimitive.List
+      ref={ref}
+      data-slot="tabs-list"
+      className={cn(
+        "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  ),
+)
 TabsList.displayName = TabsPrimitive.List.displayName
 
 export interface TabsTriggerProps extends React.ComponentPropsWithoutRef<
@@ -93,9 +95,13 @@ const TabsTrigger = React.forwardRef<
 )
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
 
+export interface TabsContentProps extends React.ComponentPropsWithoutRef<
+  typeof TabsPrimitive.Content
+> {}
+
 const TabsContent = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+  TabsContentProps
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}

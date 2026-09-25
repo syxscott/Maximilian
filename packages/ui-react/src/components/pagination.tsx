@@ -27,7 +27,7 @@ function range(start: number, end: number): number[] {
   return out
 }
 
-function buildPageList(
+export function buildPageList(
   current: number,
   totalPages: number,
   siblingCount: number,

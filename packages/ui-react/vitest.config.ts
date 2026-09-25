@@ -1,11 +1,12 @@
 import { defineConfig } from "vitest/config"
 
-// This package is a port of OpenCode's React component library. It has no
-// tests of its own yet — the dashboard exercises the components end-to-end via
-// @testing-library/react. Mark `passWithNoTests` so `pnpm -r test` doesn't fail
-// when no test files exist in this workspace.
+// Unit tests for the generic primitives. They drive components through
+// react-dom/client + jsdom directly (no testing-library dependency): the
+// helpers in test/helpers.tsx wrap renders and native events in act().
 export default defineConfig({
   test: {
+    environment: "jsdom",
+    include: ["test/**/*.test.{ts,tsx}"],
     passWithNoTests: true,
   },
 })

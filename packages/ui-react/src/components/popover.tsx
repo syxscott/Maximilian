@@ -7,6 +7,18 @@ const Popover = PopoverPrimitive.Root
 const PopoverTrigger = PopoverPrimitive.Trigger
 const PopoverAnchor = PopoverPrimitive.Anchor
 
+export interface PopoverProps extends React.ComponentPropsWithoutRef<
+  typeof PopoverPrimitive.Root
+> {}
+
+export interface PopoverTriggerProps extends React.ComponentPropsWithoutRef<
+  typeof PopoverPrimitive.Trigger
+> {}
+
+export interface PopoverAnchorProps extends React.ComponentPropsWithoutRef<
+  typeof PopoverPrimitive.Anchor
+> {}
+
 export interface PopoverContentProps extends Omit<
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>,
   "title"

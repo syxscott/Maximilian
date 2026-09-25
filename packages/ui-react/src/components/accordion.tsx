@@ -5,9 +5,17 @@ import { cn } from "../lib/utils.js"
 
 const Accordion = AccordionPrimitive.Root
 
+// Radix's accordion root props are a union (single | multiple modes), so this
+// has to stay a type alias rather than an extending interface.
+export type AccordionProps = React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Root>
+
+export interface AccordionItemProps extends React.ComponentPropsWithoutRef<
+  typeof AccordionPrimitive.Item
+> {}
+
 const AccordionItem = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
+  AccordionItemProps
 >(({ className, ...props }, ref) => (
   <AccordionPrimitive.Item
     ref={ref}
@@ -18,9 +26,13 @@ const AccordionItem = React.forwardRef<
 ))
 AccordionItem.displayName = "AccordionItem"
 
+export interface AccordionTriggerProps extends React.ComponentPropsWithoutRef<
+  typeof AccordionPrimitive.Trigger
+> {}
+
 const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
+  AccordionTriggerProps
 >(({ className, children, ...props }, ref) => (
   <AccordionPrimitive.Header data-slot="accordion-header" className="flex">
     <AccordionPrimitive.Trigger
@@ -39,9 +51,13 @@ const AccordionTrigger = React.forwardRef<
 ))
 AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName
 
+export interface AccordionContentProps extends React.ComponentPropsWithoutRef<
+  typeof AccordionPrimitive.Content
+> {}
+
 const AccordionContent = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
+  AccordionContentProps
 >(({ className, children, ...props }, ref) => (
   <AccordionPrimitive.Content
     ref={ref}
