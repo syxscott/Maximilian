@@ -94,6 +94,21 @@
  * progressTone mapping for the phaseProgress chip dimension, and the
  * group recursion is depth-bounded (MAX_GROUP_DEPTH 3 — GROUP_LIMIT only
  * ever capped the children per level).
+ *
+ * The "payload-variant richness" round re-checks the core six against
+ * packages/tools/src: every bash/read/edit/write/glob/grep fixture is now
+ * built through the typed builders in renderers/test-fixtures.ts (compile
+ * time-checked against the real input schemas), and each tool gains
+ * variant fixtures for the optional-field combinations a real model sends
+ * — bash workdir+description without a timeout and an over-max timeout
+ * clamping to 600000, read offset-only / limit-only / path-only windows,
+ * edit's explicit replaceAll:false vs the alias replace_all, write's
+ * UTF-8 byte counts and trailing-newline line counts (rows and the
+ * DocumentPreviewBlock caption agree), glob's explicit-vs-default limit
+ * and its schema-truth "no include" boundary, grep's full path+include+
+ * limit surface. The collapsed inline error row gains the ✗ marker,
+ * matching the group outcome badges (aria-hidden, no new locale keys —
+ * errors render verbatim).
  */
 
 import { describe, it, expect, afterEach } from "vitest"
@@ -217,6 +232,14 @@ import {
 } from "../src/components/tool-renderers/renderers/group.model"
 import { extractFileChange } from "../src/components/tool-renderers/renderers/edit-inline-diff.model"
 import { FIELDS, usageOf } from "../src/components/tool-renderers/renderers/shared.model"
+import {
+  bashPayload,
+  readPayload,
+  editPayload,
+  writePayload,
+  globPayload,
+  grepPayload,
+} from "../src/components/tool-renderers/renderers/test-fixtures"
 
 // Register the domain dictionaries over the core ones (en-US is the test
 // locale per test/setup.ts; zh-CN registered for the localized smoke).
@@ -515,12 +538,14 @@ describe("i18n dictionaries", () => {
 
 describe("core schema alignment — bash (packages/tools/src/bash.ts)", () => {
   it("extracts every schema field: command, workdir, timeout, description", () => {
-    const vm = extractBash({
-      command: "pnpm vitest run",
-      workdir: "apps/dashboard",
-      timeout: 5000,
-      description: "run the dashboard suite",
-    })
+    const vm = extractBash(
+      bashPayload({
+        command: "pnpm vitest run",
+        workdir: "apps/dashboard",
+        timeout: 5000,
+        description: "run the dashboard suite",
+      }),
+    )
     expect(vm.isEmpty).toBe(false)
     expect(vm.headline).toBe("pnpm vitest run")
     expect(vm.rows.map((r) => r.value)).toEqual([
@@ -534,12 +559,12 @@ describe("core schema alignment — bash (packages/tools/src/bash.ts)", () => {
   it("applies the schema default timeout (120000) and caps at the max (600000)", () => {
     expect(BASH_DEFAULT_TIMEOUT_MS).toBe(120_000)
     expect(BASH_MAX_TIMEOUT_MS).toBe(600_000)
-    const defaulted = extractBash({ command: "ls" })
+    const defaulted = extractBash(bashPayload({ command: "ls" }))
     expect(defaulted.rows.some((r) => r.labelKey === "toolRenderers.fields.timeoutDefault")).toBe(
       true,
     )
     expect(defaulted.rows.some((r) => r.value === "120000")).toBe(true)
-    const clamped = extractBash({ command: "x", timeout: 999_999_999 })
+    const clamped = extractBash(bashPayload({ command: "x", timeout: 999_999_999 }))
     expect(clamped.rows.some((r) => r.value === "600000")).toBe(true)
   })
 
@@ -551,7 +576,7 @@ describe("core schema alignment — bash (packages/tools/src/bash.ts)", () => {
 
 describe("core schema alignment — read (packages/tools/src/read.ts)", () => {
   it("keys on `path` (the schema field) with optional offset/limit", () => {
-    const vm = extractRead({ path: "src/app.ts", offset: 5, limit: 20 })
+    const vm = extractRead(readPayload({ path: "src/app.ts", offset: 5, limit: 20 }))
     expect(vm.headline).toBe("src/app.ts")
     // read.ts slices lines.slice(offset, offset+limit) and reports
     // startLine = offset+1 — the range row shows the effective window.
@@ -568,14 +593,14 @@ describe("core schema alignment — read (packages/tools/src/read.ts)", () => {
 describe("core schema alignment — glob/grep (packages/tools/src)", () => {
   it("glob shows pattern/path/limit with the 100-result default", () => {
     expect(SEARCH_LIMIT_DEFAULT).toBe(100)
-    const explicit = extractGlob({ pattern: "**/*.tsx", path: "src", limit: 25 })
+    const explicit = extractGlob(globPayload({ pattern: "**/*.tsx", path: "src", limit: 25 }))
     expect(explicit.rows.map((r) => r.value)).toEqual(["**/*.tsx", "src", "25"])
-    const defaulted = extractGlob({ pattern: "**/*.ts" })
+    const defaulted = extractGlob(globPayload({ pattern: "**/*.ts" }))
     expect(defaulted.rows.some((r) => r.value === "100")).toBe(true)
   })
 
   it("grep shows pattern/path/include/limit (include is the file filter)", () => {
-    const vm = extractGrep({ pattern: "TODO", path: "src", include: "*.ts" })
+    const vm = extractGrep(grepPayload({ pattern: "TODO", path: "src", include: "*.ts" }))
     expect(vm.headline).toBe("TODO")
     expect(vm.rows.map((r) => r.value)).toEqual(["TODO", "src", "*.ts", "100"])
     // include alone still renders its row (schema field), just no headline
@@ -625,27 +650,29 @@ describe("core schema alignment — permission/lsp (packages/tools/src)", () => 
 
 describe("core schema alignment — registry plumbing", () => {
   it("summarize reads the schema field names (read uses `path`, not file_path)", () => {
-    expect(summarizeToolInput("read", { path: "src/x.ts" })).toBe("src/x.ts")
-    expect(summarizeToolInput("edit", { path: "a.ts" })).toBe("a.ts")
-    expect(summarizeToolInput("write", { path: "a.ts", content: "hi" })).toBe("a.ts")
-    expect(summarizeToolInput("glob", { pattern: "**/*" })).toBe("**/*")
-    expect(summarizeToolInput("grep", { pattern: "x", include: "*.ts" })).toBe("x")
+    expect(summarizeToolInput("read", readPayload({ path: "src/x.ts" }))).toBe("src/x.ts")
+    expect(
+      summarizeToolInput("edit", editPayload({ path: "a.ts", oldString: "a", newString: "b" })),
+    ).toBe("a.ts")
+    expect(summarizeToolInput("write", writePayload({ path: "a.ts", content: "hi" }))).toBe("a.ts")
+    expect(summarizeToolInput("glob", globPayload({ pattern: "**/*" }))).toBe("**/*")
+    expect(summarizeToolInput("grep", grepPayload({ pattern: "x", include: "*.ts" }))).toBe("x")
     expect(summarizeToolInput("permission", { tool: "bash", target: "make" })).toBe("bash make")
     expect(summarizeToolInput("lsp", { method: "documentSymbols" })).toBe("documentSymbols")
   })
 
   it("generic rows carry the shortened schema labels", () => {
-    const { rows } = toolInputRows("read", { path: "p", offset: 5, limit: 20 })
+    const { rows } = toolInputRows("read", readPayload({ path: "p", offset: 5, limit: 20 }))
     expect(rows.map((r) => r.label)).toEqual(["path", "offset", "limit", "range"])
-    const write = toolInputRows("write", { path: "p", content: "one\ntwo" })
+    const write = toolInputRows("write", writePayload({ path: "p", content: "one\ntwo" }))
     expect(write.rows.map((r) => r.label)).toEqual(["file", "bytes"])
     expect(write.rows[1]?.value).toBe("7")
-    const edit = toolInputRows("edit", { path: "p", oldString: "a", newString: "b" })
+    const edit = toolInputRows("edit", editPayload({ path: "p", oldString: "a", newString: "b" }))
     expect(edit.rows.map((r) => r.label)).toEqual(["file", "old", "new"])
   })
 
   it("coreInputRows maps the extractor rows 1:1", () => {
-    expect(coreInputRows("grep", { pattern: "p" }).map((r) => r.label)).toEqual([
+    expect(coreInputRows("grep", grepPayload({ pattern: "p" })).map((r) => r.label)).toEqual([
       "pattern",
       "limitDefault",
     ])
@@ -654,19 +681,22 @@ describe("core schema alignment — registry plumbing", () => {
 
 describe("edit/write schema alignment (edit-inline-diff)", () => {
   it("edit shows the real oldString/newString pair plus replaceAll", () => {
-    const vm = extractFileChange("edit", {
-      path: "src/a.ts",
-      oldString: "const a = 1",
-      newString: "const a = 2",
-      replaceAll: true,
-    })
+    const vm = extractFileChange(
+      "edit",
+      editPayload({
+        path: "src/a.ts",
+        oldString: "const a = 1",
+        newString: "const a = 2",
+        replaceAll: true,
+      }),
+    )
     expect(vm.hasDiff).toBe(true)
     expect(vm.headline).toBe("src/a.ts")
     expect(vm.rows.some((r) => r.labelKey === "toolRenderers.fields.replaceAll")).toBe(true)
   })
 
   it("write reports byte/line counts of the schema `content`", () => {
-    const vm = extractFileChange("write", { path: "b.txt", content: "one\ntwo" })
+    const vm = extractFileChange("write", writePayload({ path: "b.txt", content: "one\ntwo" }))
     expect(vm.hasDiff).toBe(true)
     expect(vm.rows.map((r) => r.value)).toEqual(["b.txt", "7", "2"])
   })
@@ -1088,12 +1118,15 @@ describe("summarize (collapsed line)", () => {
 describe("event fixtures — core tools", () => {
   it("bash: collapsed command, expanded workdir/description/timeout rows, success badge", () => {
     renderPair(
-      toolStart("bash", {
-        command: "pnpm vitest run",
-        workdir: "apps/dashboard",
-        timeout: 5000,
-        description: "dashboard suite",
-      }),
+      toolStart(
+        "bash",
+        bashPayload({
+          command: "pnpm vitest run",
+          workdir: "apps/dashboard",
+          timeout: 5000,
+          description: "dashboard suite",
+        }),
+      ),
       toolEnd("bash", true, 5123),
     )
     const row = screen.getByRole("button")
@@ -1112,18 +1145,24 @@ describe("event fixtures — core tools", () => {
   })
 
   it("bash: schema-default timeout shown when the model omitted it", () => {
-    renderPair(toolStart("bash", { command: "ls" }), toolEnd("bash"))
+    renderPair(toolStart("bash", bashPayload({ command: "ls" })), toolEnd("bash"))
     expect(rowValue("Timeout (default)")).toBe("120000")
   })
 
   it("bash: failed tool-end surfaces the ✗ badge and the error line", () => {
-    renderPair(toolStart("bash", { command: "exit 1" }), toolEnd("bash", false, 12, "boom"))
+    renderPair(
+      toolStart("bash", bashPayload({ command: "exit 1" })),
+      toolEnd("bash", false, 12, "boom"),
+    )
     expect(screen.getByText("✗")).toBeInTheDocument()
     expect(screen.getByTestId("tool-error")).toHaveTextContent("boom")
   })
 
   it("read: offset/limit produce the effective 1-based range row", () => {
-    renderPair(toolStart("read", { path: "src/app.ts", offset: 5, limit: 20 }), toolEnd("read"))
+    renderPair(
+      toolStart("read", readPayload({ path: "src/app.ts", offset: 5, limit: 20 })),
+      toolEnd("read"),
+    )
     expect(screen.getByRole("button").textContent).toContain("src/app.ts")
     expect(rowValue("Offset")).toBe("5")
     expect(rowValue("Limit")).toBe("20")
@@ -1131,14 +1170,20 @@ describe("event fixtures — core tools", () => {
   })
 
   it("glob: pattern collapses the row; default limit shows in the detail", () => {
-    renderPair(toolStart("glob", { pattern: "**/*.tsx", path: "src" }), toolEnd("glob"))
+    renderPair(
+      toolStart("glob", globPayload({ pattern: "**/*.tsx", path: "src" })),
+      toolEnd("glob"),
+    )
     expect(screen.getByRole("button").textContent).toContain("**/*.tsx")
     expect(rowValue("Path")).toBe("src")
     expect(rowValue("Limit (default)")).toBe("100")
   })
 
   it("grep: include filter renders as its own row", () => {
-    renderPair(toolStart("grep", { pattern: "TODO", include: "*.ts" }), toolEnd("grep"))
+    renderPair(
+      toolStart("grep", grepPayload({ pattern: "TODO", include: "*.ts" })),
+      toolEnd("grep"),
+    )
     expect(rowValue("Pattern")).toBe("TODO")
     expect(rowValue("Include")).toBe("*.ts")
   })
@@ -1172,11 +1217,10 @@ describe("event fixtures — core tools", () => {
 
   it("edit: inline diff renders the real oldString/newString via DiffPreview", () => {
     renderPair(
-      toolStart("edit", {
-        path: "src/a.ts",
-        oldString: "const a = 1",
-        newString: "const a = 2",
-      }),
+      toolStart(
+        "edit",
+        editPayload({ path: "src/a.ts", oldString: "const a = 1", newString: "const a = 2" }),
+      ),
       toolEnd("edit"),
     )
     expect(screen.getByTestId("diff-preview")).toBeInTheDocument()
@@ -1187,20 +1231,260 @@ describe("event fixtures — core tools", () => {
 
   it("edit: replaceAll=true is visible in the detail rows", () => {
     renderPair(
-      toolStart("edit", { path: "a.ts", oldString: "x", newString: "y", replaceAll: true }),
+      toolStart(
+        "edit",
+        editPayload({ path: "a.ts", oldString: "x", newString: "y", replaceAll: true }),
+      ),
       toolEnd("edit"),
     )
     expect(rowValue("Replace all")).toBe("true")
   })
 
   it("write: byte/line counts of the schema content plus the document preview", () => {
-    renderPair(toolStart("write", { path: "notes.md", content: "one\ntwo" }), toolEnd("write"))
+    renderPair(
+      toolStart("write", writePayload({ path: "notes.md", content: "one\ntwo" })),
+      toolEnd("write"),
+    )
     expect(rowValue("Bytes")).toBe("7")
     expect(rowValue("Lines")).toBe("2")
     // Write output is plain text → DocumentPreviewBlock, not a diff.
     expect(screen.queryByTestId("diff-preview")).toBeNull()
     expect(screen.getByText("Document · 2 lines")).toBeInTheDocument()
     expect(screen.getByTestId("tool-body")).toHaveTextContent("one")
+  })
+})
+
+// ── real payload variants — the core six (packages/tools/src schemas) ───────
+//
+// The kitchen-sink fixtures above prove every schema field renders; this
+// round pins the OPTIONAL-FIELD COMBINATIONS a real model actually sends.
+// All payloads come from renderers/test-fixtures.ts, so each variant is
+// compile-time-checked against the real input schema. bash-stream.ts ships
+// the identical bash input schema, so the stream implementation is covered
+// by the same shapes.
+
+describe("real payload variants — bash (bash.ts / bash-stream.ts)", () => {
+  it("workdir + description without a timeout keeps the default-timeout row", () => {
+    // The most common real shape: the model explains and scopes the command
+    // but leaves the 120000 ms default timeout alone.
+    renderPair(
+      toolStart(
+        "bash",
+        bashPayload({
+          command: "pnpm lint",
+          workdir: "packages/tools",
+          description: "lint the tools package",
+        }),
+      ),
+      toolEnd("bash", true, 800),
+    )
+    expect(screen.getByRole("button").textContent).toContain("pnpm lint")
+    expect(rowValue("Workdir")).toBe("packages/tools")
+    expect(rowValue("Description")).toBe("lint the tools package")
+    expect(rowValue("Timeout (default)")).toBe("120000")
+    expect(rowValue("Timeout")).toBeUndefined()
+  })
+
+  it("an over-max timeout clamps to the schema max (600000) on the rendered row", () => {
+    // bash.ts execute() clamps via Math.min(raw, MAX_TIMEOUT_MS) — the body
+    // shows the clamped value the tool will really apply, not the raw one.
+    renderPair(
+      toolStart("bash", bashPayload({ command: "make all", timeout: 900_000 })),
+      toolEnd("bash"),
+    )
+    expect(rowValue("Timeout")).toBe("600000")
+    expect(rowValue("Timeout (default)")).toBeUndefined()
+  })
+
+  it("a multi-line script stays whole in the CommandBlock, one-lined on the row", () => {
+    renderPair(
+      toolStart(
+        "bash",
+        bashPayload({
+          command: "pnpm build\npnpm test",
+          description: "build then test",
+        }),
+      ),
+      toolEnd("bash"),
+    )
+    // Collapsed line: whitespace collapsed to one line.
+    expect(screen.getByRole("button").textContent).toContain("pnpm build pnpm test")
+    // Command card: the raw script verbatim (title carries the full text).
+    const command = screen.getByLabelText("Executed command")
+    expect(command).toHaveTextContent("pnpm build")
+    expect(command).toHaveTextContent("pnpm test")
+    expect(command.querySelector("code")?.getAttribute("title")).toBe("pnpm build\npnpm test")
+  })
+})
+
+describe("real payload variants — read (read.ts)", () => {
+  it("offset without limit reads the open-ended tail window", () => {
+    renderPair(
+      toolStart("read", readPayload({ path: "logs/run.log", offset: 99 })),
+      toolEnd("read"),
+    )
+    expect(rowValue("Offset")).toBe("99")
+    expect(rowValue("Limit")).toBeUndefined()
+    // read.ts slices lines.slice(offset, offset+limit) — with no limit the
+    // effective window runs from line 100 to end-of-file.
+    expect(rowValue("Read range")).toBe("100-")
+  })
+
+  it("limit without offset starts the window at line 1", () => {
+    renderPair(toolStart("read", readPayload({ path: "src/big.ts", limit: 40 })), toolEnd("read"))
+    expect(rowValue("Offset")).toBeUndefined()
+    expect(rowValue("Limit")).toBe("40")
+    expect(rowValue("Read range")).toBe("1-40")
+  })
+
+  it("a bare path payload renders the path row only (no invented window)", () => {
+    renderPair(toolStart("read", readPayload({ path: "README.md" })), toolEnd("read"))
+    expect(rowLabels()).toEqual(["Path"])
+    expect(rowValue("Read range")).toBeUndefined()
+  })
+})
+
+describe("real payload variants — edit (edit.ts)", () => {
+  it("an explicit replaceAll:false grows no row — the diff alone tells the story", () => {
+    // Models often pass the default explicitly; the renderer only surfaces
+    // the flag when it changes behavior (true), matching edit.ts.
+    renderPair(
+      toolStart(
+        "edit",
+        editPayload({
+          path: "src/a.ts",
+          oldString: "alpha",
+          newString: "beta",
+          replaceAll: false,
+        }),
+      ),
+      toolEnd("edit"),
+    )
+    expect(rowValue("Replace all")).toBeUndefined()
+    expect(screen.getByTestId("diff-preview")).toHaveTextContent("−alpha")
+    expect(screen.getByTestId("diff-preview")).toHaveTextContent("+beta")
+  })
+
+  it("a multi-line replaceAll:true pair shows the row and the full diff", () => {
+    renderPair(
+      toolStart(
+        "edit",
+        editPayload({
+          path: "pkg/x.ts",
+          oldString: "let x = 1\nlet y = 2",
+          newString: "const x = 1\nconst y = 2",
+          replaceAll: true,
+        }),
+      ),
+      toolEnd("edit"),
+    )
+    expect(rowValue("Replace all")).toBe("true")
+    expect(screen.getByTestId("diff-preview")).toHaveTextContent("−let x = 1")
+    expect(screen.getByTestId("diff-preview")).toHaveTextContent("−let y = 2")
+    expect(screen.getByTestId("diff-preview")).toHaveTextContent("+const x = 1")
+    expect(screen.getByTestId("diff-preview")).toHaveTextContent("+const y = 2")
+  })
+
+  it("the historical replace_all spelling still surfaces the row (defensive tier)", () => {
+    // Raw literal on purpose: replace_all is NOT in edit.ts's schema — the
+    // model layer keeps it as a defensive alias for forwarded payloads.
+    renderPair(
+      toolStart("edit", { path: "a.md", oldString: "todo", newString: "done", replace_all: true }),
+      toolEnd("edit"),
+    )
+    expect(rowValue("Replace all")).toBe("true")
+  })
+})
+
+describe("real payload variants — write (write.ts)", () => {
+  it("multibyte content counts UTF-8 bytes, not code points (bytes/lines rows)", () => {
+    // "标题" = 6 UTF-8 bytes, "\n" = 1, "ok" = 2 → 9 bytes over 2 lines
+    // (the string is 5 chars — the row must not show 5).
+    renderPair(
+      toolStart("write", writePayload({ path: "docs/notes.md", content: "标题\nok" })),
+      toolEnd("write"),
+    )
+    expect(rowValue("Bytes")).toBe("9")
+    expect(rowValue("Lines")).toBe("2")
+    expect(screen.getByText("Document · 2 lines")).toBeInTheDocument()
+  })
+
+  it("a trailing newline counts its empty tail line — rows and the document caption agree", () => {
+    renderPair(
+      toolStart("write", writePayload({ path: "a.txt", content: "hello\n" })),
+      toolEnd("write"),
+    )
+    expect(rowValue("Bytes")).toBe("6")
+    expect(rowValue("Lines")).toBe("2")
+    // The byte/line rows derive from the same split("\n") the
+    // DocumentPreviewBlock caption uses — the two never disagree.
+    expect(screen.getByText("Document · 2 lines")).toBeInTheDocument()
+    expect(screen.getByTestId("tool-body")).toHaveTextContent("hello")
+  })
+})
+
+describe("real payload variants — glob (glob.ts)", () => {
+  it("an explicit limit replaces the default-limit row", () => {
+    renderPair(
+      toolStart("glob", globPayload({ pattern: "src/**/*.ts", path: "apps/dashboard", limit: 25 })),
+      toolEnd("glob"),
+    )
+    expect(rowValue("Pattern")).toBe("src/**/*.ts")
+    expect(rowValue("Path")).toBe("apps/dashboard")
+    expect(rowValue("Limit")).toBe("25")
+    expect(rowValue("Limit (default)")).toBeUndefined()
+  })
+
+  it("a pattern-only payload keeps the default-limit row and no path row", () => {
+    renderPair(toolStart("glob", globPayload({ pattern: "**/*.json" })), toolEnd("glob"))
+    expect(rowLabels()).toEqual(["Pattern", "Limit (default)"])
+    expect(rowValue("Limit (default)")).toBe("100")
+  })
+
+  it("glob has no include field (that filter is grep.ts's) — none is invented", () => {
+    // Schema truth: a payload that carries grep's include beside a glob
+    // call must not grow an Include row. Raw spread on purpose — the typed
+    // builder (correctly) rejects the key.
+    renderPair(
+      toolStart("glob", { ...globPayload({ pattern: "**/*.ts", path: "src" }), include: "*.ts" }),
+      toolEnd("glob"),
+    )
+    expect(rowValue("Pattern")).toBe("**/*.ts")
+    expect(rowValue("Include")).toBeUndefined()
+    expect(rowLabels()).toEqual(["Pattern", "Path", "Limit (default)"])
+  })
+})
+
+describe("real payload variants — grep (grep.ts)", () => {
+  it("the full surface pattern + path + include + limit renders four rows", () => {
+    renderPair(
+      toolStart(
+        "grep",
+        grepPayload({
+          pattern: "exitCode",
+          path: "packages/tools/src",
+          include: "*.ts",
+          limit: 10,
+        }),
+      ),
+      toolEnd("grep"),
+    )
+    expect(rowValue("Pattern")).toBe("exitCode")
+    expect(rowValue("Path")).toBe("packages/tools/src")
+    expect(rowValue("Include")).toBe("*.ts")
+    expect(rowValue("Limit")).toBe("10")
+    expect(rowValue("Limit (default)")).toBeUndefined()
+  })
+
+  it("include + limit without a path keeps the scoped filter rows, no path row", () => {
+    renderPair(
+      toolStart("grep", grepPayload({ pattern: "TODO", include: "*.tsx", limit: 5 })),
+      toolEnd("grep"),
+    )
+    expect(screen.getByRole("button").textContent).toContain("TODO")
+    expect(rowValue("Include")).toBe("*.tsx")
+    expect(rowValue("Limit")).toBe("5")
+    expect(rowValue("Path")).toBeUndefined()
   })
 })
 
@@ -3908,6 +4192,19 @@ describe("polish — ToolCallBlock collapsed inline error", () => {
     expect(line.className).toContain("truncate")
     expect(line.className).toContain("text-destructive")
     expect(line.getAttribute("title")).toBe(longError)
+  })
+
+  it("the inline error leads with the ✗ marker — same semantics as the group badges", () => {
+    render(<ToolCallBlock tool="bash" input={{ command: "deploy" }} ok={false} error="boom" />)
+    const line = screen.getByTestId("tool-error-collapsed")
+    // The marker is the decorative ✗ the group OutcomeBadge renders for
+    // failed children (aria-hidden, destructive tone carries the meaning).
+    const marker = line.querySelector("span[aria-hidden]")
+    expect(marker?.textContent).toBe("✗")
+    expect(line.textContent).toMatch(/^✗/)
+    // No new locale keys: the error text itself stays verbatim.
+    expect(line).toHaveTextContent("boom")
+    expect(line.getAttribute("title")).toBe("boom")
   })
 
   it("the inline row is hidden while expanded (ErrorBlock owns the open state)", () => {

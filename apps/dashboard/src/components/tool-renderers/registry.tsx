@@ -10,7 +10,8 @@
  * to a generic key/value view for tools without a dedicated renderer.
  * The collapsed line is always: icon · tool · one-line summary · outcome —
  * with a failure error it also carries that error as a single-line,
- * truncated red row (full text in the title tooltip); the expanded detail
+ * truncated red row prefixed with the ✗ marker (full text in the title
+ * tooltip); the expanded detail
  * mounts the ai-elements widgets that apply to every tool: LatencyMeter
  * for the measured call duration and ErrorBlock for the failure path.
  */
@@ -113,6 +114,12 @@ export function ToolCallBlock(props: ToolCallProps) {
           title={error}
           data-testid="tool-error-collapsed"
         >
+          {/* Same decorative ✗ marker the group outcome badges use — the
+              destructive tone already says "failed", the glyph only has to
+              match it visually (no locale key: errors are verbatim). */}
+          <span aria-hidden="true" className="mr-1 select-none">
+            ✗
+          </span>
           {error}
         </p>
       )}
