@@ -52,7 +52,10 @@
  *   - toolbar CopyField for the workspace id (self-hiding without a
  *     clipboard, per CopyField's own behavior);
  *   - the empty state renders through EmptyHint (icon + copy) instead
- *     of a bare text row.
+ *     of a bare text row;
+ *   - the streaming tail: while the run is live and the reader attached,
+ *     the StreamingCursor rides after the last displayed turn (retired
+ *     while detached or when no run is in flight).
  *
  * Timeline discipline: newest at the bottom, auto-tail (sticks to the
  * bottom while the run is live unless the user scrolled up), and a
@@ -77,7 +80,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
 import type { RuntimeEvent, Workspace } from "@/api"
-import { CopyField, EmptyHint, StatCard } from "@/components/ai-elements"
+import { CopyField, EmptyHint, StatCard, StreamingCursor } from "@/components/ai-elements"
 import {
   buildConversationFindIndex,
   buildTurnFlowItems,
@@ -380,6 +383,12 @@ export function ConversationTimeline({
     if (showFind) findInputRef.current?.focus()
   }, [showFind])
 
+  // The streaming tail (ai-elements StreamingCursor): while the run is
+  // live and the reader is attached, a blinking caret rides after the
+  // last displayed turn — pure affordance, no data of its own. Detaching
+  // (or a dead run) retires it; it comes back on re-attach.
+  const showStreamCursor = live && !detached && turns.length > 0
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" onKeyDown={onContainerKeyDown}>
       <div className="mb-2 flex items-center gap-2">
@@ -498,13 +507,21 @@ export function ConversationTimeline({
           anchorIndex={virtualAnchorIndex}
           getKey={(turn) => turn.turnId}
           renderUnit={(turn) => (
-            <TurnGroup
-              turn={turn}
-              highlighted={findActiveQuery ? matchedTurnIds.has(turn.turnId) : false}
-              textHighlights={findActiveQuery ? highlights : undefined}
-              currentUnitKey={currentMatch?.key}
-              freshSteeringKeys={freshSteeringKeys}
-            />
+            <>
+              <TurnGroup
+                turn={turn}
+                highlighted={findActiveQuery ? matchedTurnIds.has(turn.turnId) : false}
+                textHighlights={findActiveQuery ? highlights : undefined}
+                currentUnitKey={currentMatch?.key}
+                freshSteeringKeys={freshSteeringKeys}
+              />
+              {showStreamCursor &&
+                turn.turnId === displayedTurns[displayedTurns.length - 1]?.turnId && (
+                  <div className="mt-1" data-testid="timeline-streaming-cursor">
+                    <StreamingCursor />
+                  </div>
+                )}
+            </>
           )}
           empty={
             turns.length === 0 ? (
@@ -551,6 +568,11 @@ export function ConversationTimeline({
               <EmptyHint
                 hint={{ title: t("timeline.empty"), hint: t("conversation.empty.hint") }}
               />
+            </div>
+          )}
+          {showStreamCursor && (
+            <div className="pt-1" data-testid="timeline-streaming-cursor">
+              <StreamingCursor />
             </div>
           )}
         </div>

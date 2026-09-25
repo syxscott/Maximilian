@@ -24,6 +24,7 @@ import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, CheckCircle2, MinusCircle } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import { systemApi } from "@/api"
+import { SkeletonBlock } from "@/components/ai-elements"
 import {
   useMigrationCandidates,
   useSessionStoreStatus,
@@ -32,7 +33,12 @@ import {
 import { VaultSection, OracleLessonsSection } from "../sections"
 import { SessionStoreStatusCard } from "../store-domain/SessionStoreStatusCard"
 import { MigrationCandidatesCard } from "../store-domain/MigrationCandidatesCard"
-import { migrationsMetrics, toSystemHealthView, type SubsystemState } from "./model"
+import {
+  migrationsMetrics,
+  toSystemHealthView,
+  type SubsystemId,
+  type SubsystemState,
+} from "./model"
 
 const STATE_ICONS: Record<SubsystemState, typeof CheckCircle2> = {
   ok: CheckCircle2,
@@ -44,6 +50,21 @@ const STATE_CLASSES: Record<SubsystemState, string> = {
   ok: "text-emerald-600 dark:text-emerald-400",
   degraded: "text-amber-600 dark:text-amber-400",
   unknown: "text-muted-foreground",
+}
+
+/**
+ * Card loading state (ai-elements SkeletonBlock): while a subsystem's
+ * first fetch is in flight its composed card is replaced by a rect
+ * skeleton — the health row above already speaks "unknown" for the same
+ * window, so the body shows a placeholder instead of each card's own
+ * partial empty state.
+ */
+function CardSkeleton({ id }: { id: SubsystemId }) {
+  return (
+    <div data-testid={`system-card-skeleton-${id}`}>
+      <SkeletonBlock shape="rect" />
+    </div>
+  )
 }
 
 export function SystemOverviewSection() {
@@ -122,10 +143,13 @@ export function SystemOverviewSection() {
           )
         })}
       </div>
-      <VaultSection />
-      <SessionStoreStatusCard />
-      <MigrationCandidatesCard />
-      <OracleLessonsSection />
+      {/* Composed cards, each gated on its subsystem's FIRST load: the
+          summary row's queries are the same keys the cards use, so the
+          section knows the loading window without extra requests. */}
+      {vaultQuery.isLoading ? <CardSkeleton id="vault" /> : <VaultSection />}
+      {storeQuery.isLoading ? <CardSkeleton id="store" /> : <SessionStoreStatusCard />}
+      {migrationsQuery.isLoading ? <CardSkeleton id="migrations" /> : <MigrationCandidatesCard />}
+      {oracleQuery.isLoading ? <CardSkeleton id="oracle" /> : <OracleLessonsSection />}
     </div>
   )
 }

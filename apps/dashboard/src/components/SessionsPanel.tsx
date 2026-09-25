@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { useLocale, t, formatRelative } from "@max/i18n"
 import { sessionsApi } from "@/api"
 import { queryKeys } from "@/lib/api/hooks"
+import { SkeletonBlock } from "@/components/ai-elements"
 
 export function SessionsPanel({ workspaceId }: { workspaceId?: string }) {
   useLocale()
@@ -42,7 +43,11 @@ export function SessionsPanel({ workspaceId }: { workspaceId?: string }) {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <p className="text-xs text-muted-foreground">{t("sessions.loading")}</p>
+          // Loading state: three shimmering skeleton lines instead of a
+          // bare text row (SkeletonBlock carries its own role="status").
+          <div data-testid="sessions-skeleton">
+            <SkeletonBlock shape={{ variant: "text", lines: 3 }} />
+          </div>
         ) : sessions.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t("sessions.empty")}</p>
         ) : (
