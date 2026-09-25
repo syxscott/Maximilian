@@ -23,6 +23,9 @@ import { StartupLoading } from "./components/startup-loading"
 import { DialogProvider } from "./components/dialog"
 import { ToastProvider } from "./components/toast"
 import { DialogLanguageList } from "./components/dialog-language-list"
+import { JobsDialog } from "./components/jobs-dialog"
+import { GoalsPanel } from "./components/goals-panel"
+import { UsagePanel } from "./components/usage-panel"
 import { appendCommandPaletteCommands } from "./command-palette"
 import {
   ClipboardProvider,
@@ -281,7 +284,6 @@ function App({ config }: AppProps) {
   // `config` is the resolved TUI config; we keep it as a prop for future
   // keybinding wiring.
   void config
-  void dialog
 
   const [ready, setReady] = React.useState(false)
   const [terminalTitleEnabled, setTerminalTitleEnabled] = React.useState(true)
@@ -368,6 +370,48 @@ function App({ config }: AppProps) {
     )
   }
 
+  // Jobs / Goals / Usage panels — the three data faces the dashboard has,
+  // mounted through the same command-palette registration as /language and
+  // bound to ctrl+J / ctrl+G / ctrl+U next to ctrl+l. Registration re-runs
+  // on locale change so the titles follow the active language.
+  function openJobsDialog() {
+    dialog.replace(<JobsDialog />, { size: "large" })
+  }
+  function openGoalsPanel() {
+    dialog.replace(<GoalsPanel />, { size: "large" })
+  }
+  function openUsagePanel() {
+    dialog.replace(<UsagePanel />, { size: "medium" })
+  }
+
+  React.useEffect(() => {
+    appendCommandPaletteCommands([
+      {
+        name: "jobs",
+        title: t("tui.jobs", "Jobs"),
+        category: "workspace",
+        suggested: true,
+        onSelect: openJobsDialog,
+      },
+      {
+        name: "goals",
+        title: t("tui.goals", "Goals"),
+        category: "workspace",
+        suggested: true,
+        onSelect: openGoalsPanel,
+      },
+      {
+        name: "usage",
+        title: t("tui.usage", "Usage"),
+        category: "workspace",
+        suggested: true,
+        onSelect: openUsagePanel,
+      },
+    ])
+    // We intentionally re-register on every locale change so the titles
+    // follow the active language (same pattern as the /language command).
+  }, [getLocale()])
+
   // Lightweight terminal title effect — only runs when the route changes and
   // terminal title is enabled. The actual `process.stdout` write is gated by
   // the `terminalTitleEnabled` flag, mirroring OpenCode's behaviour.
@@ -405,6 +449,17 @@ function App({ config }: AppProps) {
     // command palette is still a stub and slash commands need a session).
     if (key.ctrl && input === "l") {
       openLanguageDialog()
+    }
+    // ctrl+J / ctrl+G / ctrl+U open the Jobs / Goals / Usage panels (only
+    // from the base view — inside a dialog they would replace it).
+    if (key.ctrl && input === "j" && dialog.stack.length === 0) {
+      openJobsDialog()
+    }
+    if (key.ctrl && input === "g" && dialog.stack.length === 0) {
+      openGoalsPanel()
+    }
+    if (key.ctrl && input === "u" && dialog.stack.length === 0) {
+      openUsagePanel()
     }
   })
 
@@ -534,7 +589,8 @@ function Home() {
         />
       </Box>
       <Text color={theme.theme.textMuted}>
-        Press ctrl+l to change language · ctrl+\ for the command palette (stub).
+        Press ctrl+l to change language · ctrl+j/g/u for jobs/goals/usage · ctrl+\ for the command
+        palette (stub).
       </Text>
     </Box>
   )
