@@ -28,6 +28,7 @@ import { GoalsPanel } from "./components/goals-panel"
 import { UsagePanel } from "./components/usage-panel"
 import { AgentsPanel } from "./components/agents-panel"
 import { CronPanel } from "./components/cron-panel"
+import { MemoryPanel } from "./components/memory-panel"
 import { appendCommandPaletteCommands } from "./command-palette"
 import {
   ClipboardProvider,
@@ -372,9 +373,10 @@ function App({ config }: AppProps) {
     )
   }
 
-  // Jobs / Goals / Usage / Agents / Cron panels — the data faces the dashboard
-  // has, mounted through the same command-palette registration as /language
-  // and bound to ctrl+J / ctrl+G / ctrl+U / ctrl+A / ctrl+O next to ctrl+l.
+  // Jobs / Goals / Usage / Agents / Cron / Memory panels — the data faces the
+  // dashboard has, mounted through the same command-palette registration as
+  // /language and bound to ctrl+J / ctrl+G / ctrl+U / ctrl+A / ctrl+O /
+  // ctrl+E next to ctrl+l.
   // Registration re-runs on locale change so the titles follow the language.
   function openJobsDialog() {
     dialog.replace(<JobsDialog />, { size: "large" })
@@ -390,6 +392,9 @@ function App({ config }: AppProps) {
   }
   function openCronPanel() {
     dialog.replace(<CronPanel />, { size: "large" })
+  }
+  function openMemoryPanel() {
+    dialog.replace(<MemoryPanel />, { size: "large" })
   }
 
   React.useEffect(() => {
@@ -428,6 +433,13 @@ function App({ config }: AppProps) {
         category: "workspace",
         suggested: true,
         onSelect: openCronPanel,
+      },
+      {
+        name: "memory",
+        title: t("tui.memory", "Memory"),
+        category: "workspace",
+        suggested: true,
+        onSelect: openMemoryPanel,
       },
     ])
     // We intentionally re-register on every locale change so the titles
@@ -472,9 +484,11 @@ function App({ config }: AppProps) {
     if (key.ctrl && input === "l") {
       openLanguageDialog()
     }
-    // ctrl+J / ctrl+G / ctrl+U / ctrl+A / ctrl+O open the Jobs / Goals /
-    // Usage / Agents / Cron panels (only from the base view — inside a
-    // dialog they would replace it).
+    // ctrl+J / ctrl+G / ctrl+U / ctrl+A / ctrl+O / ctrl+E open the Jobs /
+    // Goals / Usage / Agents / Cron / Memory panels (only from the base view
+    // — inside a dialog they would replace it). Memory would naturally take
+    // ctrl+m, but terminals deliver Ctrl+M as carriage return (it IS Enter),
+    // so the sequence continues with ctrl+e instead.
     if (key.ctrl && input === "j" && dialog.stack.length === 0) {
       openJobsDialog()
     }
@@ -489,6 +503,9 @@ function App({ config }: AppProps) {
     }
     if (key.ctrl && input === "o" && dialog.stack.length === 0) {
       openCronPanel()
+    }
+    if (key.ctrl && input === "e" && dialog.stack.length === 0) {
+      openMemoryPanel()
     }
   })
 
@@ -618,8 +635,8 @@ function Home() {
         />
       </Box>
       <Text color={theme.theme.textMuted}>
-        Press ctrl+l to change language · ctrl+j/g/u/a/o for jobs/goals/usage/agents/cron · ctrl+\
-        for the command palette (stub).
+        Press ctrl+l to change language · ctrl+j/g/u/a/o/e for jobs/goals/usage/agents/cron/memory ·
+        ctrl+\ for the command palette (stub).
       </Text>
     </Box>
   )
