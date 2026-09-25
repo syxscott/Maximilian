@@ -668,7 +668,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_PASSTHROUGH,
     density: "full",
-    note: "Sub-call envelopes normalize to the ToolCallBlock props; children re-render recursively (GROUP_LIMIT 8) under the countOutcomes ok/failed summary badges.",
+    note: "Sub-call envelopes normalize to the ToolCallBlock props; children re-render recursively (GROUP_LIMIT 8) under the countOutcomes ok/failed summary badges with avgDuration beside them (mean child durationMs, untimed children skipped).",
   },
   "changes-group": {
     fields: {
@@ -679,7 +679,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_PASSTHROUGH,
     density: "full",
-    note: "Children without a tool field guess edit/write from their shape (newString/content); the summary row tallies ok/failed via countOutcomes.",
+    note: "Children without a tool field guess edit/write from their shape (newString/content); the summary row tallies ok/failed via countOutcomes beside the avgDuration mean.",
   },
   "cua-group": {
     fields: {
@@ -690,7 +690,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_PASSTHROUGH,
     density: "full",
-    note: "Children without a tool field fall back to cua-action; the summary row tallies ok/failed via countOutcomes.",
+    note: "Children without a tool field fall back to cua-action; the summary row tallies ok/failed via countOutcomes beside the avgDuration mean.",
   },
 }
 

@@ -163,6 +163,7 @@
   "toolRenderers.group.failed": "{count} 失败",
   "toolRenderers.group.unknown": "{count} 未记录",
   "toolRenderers.group.more": "还有 {count} 个",
+  "toolRenderers.group.avgDuration": "平均 {ms}ms",
   "toolRenderers.code.overflow": "…其余 {count} 行",
   "toolRenderers.json.raw": "原始输入",
   "toolRenderers.json.empty": "（无字段）",

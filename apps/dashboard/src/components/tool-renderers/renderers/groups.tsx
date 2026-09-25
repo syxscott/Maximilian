@@ -9,12 +9,19 @@
  * re-renders them recursively through ToolCallBlock, clamped to
  * GROUP_LIMIT with a "还有 N 个" overflow note. A summary stats row above
  * the children carries the outcome badges tallied by countOutcomes
- * (✓ ok / ✗ failed / unrecorded).
+ * (✓ ok / ✗ failed / unrecorded) and the mean sub-call duration from
+ * avgDuration (hidden when no child is timed).
  */
 
 import { useLocale, t } from "@max/i18n"
 import { ToolCallBlock, type ToolCallProps } from "../registry"
-import { countOutcomes, extractGroupChildren, GROUP_LIMIT, type GroupKind } from "./group.model"
+import {
+  avgDuration,
+  countOutcomes,
+  extractGroupChildren,
+  GROUP_LIMIT,
+  type GroupKind,
+} from "./group.model"
 import { JsonFallback } from "./common"
 
 const GROUP_TITLE_KEYS: Record<GroupKind, string> = {
@@ -56,6 +63,7 @@ function GroupBodyBase({ input, kind }: { input: unknown; kind: GroupKind }) {
   const { children, total, overflow } = extractGroupChildren(input, kind)
   if (children.length === 0) return <JsonFallback input={input} />
   const { ok, failed, unknown } = countOutcomes(children)
+  const avg = avgDuration(children)
   return (
     <div className="mt-1 space-y-1" data-testid="tool-body">
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -84,6 +92,11 @@ function GroupBodyBase({ input, kind }: { input: unknown; kind: GroupKind }) {
             />
           )}
         </span>
+        {avg !== undefined && (
+          <span className="text-[10px] text-muted-foreground" data-testid="tool-group-avg">
+            {t("toolRenderers.group.avgDuration", { ms: Math.round(avg) })}
+          </span>
+        )}
       </div>
       {children.slice(0, GROUP_LIMIT).map((child, i) => (
         <ToolCallBlock

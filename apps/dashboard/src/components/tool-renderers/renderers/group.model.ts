@@ -9,7 +9,7 @@
  * input.calls — defensive candidates) and re-render them recursively via
  * ToolCallBlock, clamped to GROUP_LIMIT with an overflow note. The body
  * opens with a summary stats row tallied by countOutcomes (ok / failed /
- * unrecorded badges).
+ * unrecorded badges) plus the mean child duration from avgDuration.
  */
 
 import { asRecord, jsonPreview, pickArray, pickBool, pickNum, pickStr } from "./shared.model"
@@ -58,6 +58,24 @@ export function countOutcomes(children: GroupChild[]): GroupOutcomeStats {
     else unknown += 1
   }
   return { total: children.length, ok, failed, unknown }
+}
+
+/**
+ * Mean durationMs over the children that carry a timing. Untimed children
+ * are skipped (not counted as zero) and a group without any timed child
+ * yields undefined — the summary row then renders no average. The exact
+ * arithmetic mean is returned; rounding is presentation (the body rounds).
+ */
+export function avgDuration(children: GroupChild[]): number | undefined {
+  let sum = 0
+  let timed = 0
+  for (const child of children) {
+    if (typeof child.durationMs === "number") {
+      sum += child.durationMs
+      timed += 1
+    }
+  }
+  return timed === 0 ? undefined : sum / timed
 }
 
 const EMPTY: GroupViewModel = { children: [], total: 0, shown: 0, overflow: 0 }

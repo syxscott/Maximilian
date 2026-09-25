@@ -77,6 +77,11 @@
  * per-status tallies + done/total line, exit-plan-mode's allow-list
  * preview, eval-workflow-snippet's snippet line count) — leaving only edit
  * and list-apps as deliberate primary-plus-fallback entries.
+ *
+ * The "audit-execution" round adds the groups' average duration: a pure
+ * avgDuration over the children's durationMs (untimed children skipped,
+ * exact arithmetic mean — the body rounds for display) rendered in the
+ * same summary row as the outcome badges for execute/changes/cua groups.
  */
 
 import { describe, it, expect, afterEach } from "vitest"
@@ -184,6 +189,7 @@ import {
   extractBrowserAction,
 } from "../src/components/tool-renderers/renderers/browser.model"
 import {
+  avgDuration,
   countOutcomes,
   extractGroupChildren,
 } from "../src/components/tool-renderers/renderers/group.model"
@@ -4043,5 +4049,154 @@ describe("polish — i18n keys for the new surfaces", () => {
       expect(zhDomain[key as keyof typeof zhDomain], key).toBeDefined()
     }
     expect(zhDomain["toolRenderers.todo.doneCount" as keyof typeof zhDomain]).toContain("{done}")
+  })
+})
+
+// ── audit-execution round — group average duration (avgDuration) ────────────
+
+describe("audit round — group avgDuration (model)", () => {
+  it("returns the exact arithmetic mean over the timed children", () => {
+    expect(
+      avgDuration([
+        { tool: "bash", input: {}, ok: true, durationMs: 100 },
+        { tool: "bash", input: {}, ok: true, durationMs: 300 },
+      ]),
+    ).toBe(200)
+  })
+
+  it("produces fractional means (rounding is presentation)", () => {
+    expect(
+      avgDuration([
+        { tool: "bash", input: {}, durationMs: 1 },
+        { tool: "bash", input: {}, durationMs: 2 },
+      ]),
+    ).toBe(1.5)
+  })
+
+  it("skips untimed children instead of counting them as zero", () => {
+    expect(
+      avgDuration([
+        { tool: "bash", input: {}, durationMs: 100 },
+        { tool: "read", input: {} },
+        { tool: "grep", input: {}, durationMs: 200 },
+      ]),
+    ).toBe(150)
+  })
+
+  it("a single timed child reports its own duration", () => {
+    expect(avgDuration([{ tool: "bash", input: {}, durationMs: 42 }])).toBe(42)
+  })
+
+  it("no timed children → undefined (the body renders no average)", () => {
+    expect(avgDuration([])).toBeUndefined()
+    expect(
+      avgDuration([
+        { tool: "bash", input: {} },
+        { tool: "read", input: {} },
+      ]),
+    ).toBeUndefined()
+  })
+
+  it("normalizes the snake_case/ms duration aliases before averaging", () => {
+    const { children } = extractGroupChildren(
+      {
+        items: [
+          { tool: "bash", duration_ms: 30 },
+          { tool: "bash", ms: 90 },
+        ],
+      },
+      "execute",
+    )
+    expect(children.map((c) => c.durationMs)).toEqual([30, 90])
+    expect(avgDuration(children)).toBe(60)
+  })
+
+  it("averages every child, not just the GROUP_LIMIT shown ones", () => {
+    const items = Array.from({ length: 12 }, (_, i) => ({
+      command: `cmd-${i}`,
+      ok: true,
+      durationMs: i < 8 ? 120 : 240,
+    }))
+    const vm = extractGroupChildren({ items }, "execute")
+    expect(vm.shown).toBe(8)
+    expect(vm.overflow).toBe(4)
+    expect(avgDuration(vm.children)).toBe(160)
+  })
+})
+
+describe("audit round — group avgDuration (render)", () => {
+  it("execute-group: the summary row carries the rounded mean", () => {
+    renderInput("execute-group", {
+      items: [
+        { tool: "bash", command: "a", ok: true, durationMs: 100 },
+        { tool: "bash", command: "b", ok: true, durationMs: 201 },
+      ],
+    })
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("avg 151ms")
+  })
+
+  it("changes-group: the mean rides beside the outcome badges", () => {
+    renderInput("changes-group", {
+      items: [
+        { oldString: "a", newString: "b", ok: true, durationMs: 10 },
+        { content: "x", ok: true, durationMs: 20 },
+        { oldString: "c", newString: "d", ok: false },
+      ],
+    })
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("avg 15ms")
+    expect(screen.getByTestId("tool-group-outcomes").nextElementSibling).toHaveAttribute(
+      "data-testid",
+      "tool-group-avg",
+    )
+  })
+
+  it("cua-group: children without timings render no average", () => {
+    renderInput("cua-group", { items: [{ action: "click" }, { action: "type" }] })
+    expect(screen.queryByTestId("tool-group-avg")).toBeNull()
+  })
+
+  it("the average counts hidden children beyond the GROUP_LIMIT clamp", () => {
+    const items = Array.from({ length: 12 }, (_, i) => ({
+      command: `cmd-${i}`,
+      ok: true,
+      durationMs: i < 8 ? 120 : 240,
+    }))
+    renderInput("execute-group", { items })
+    expect(screen.getAllByTestId("tool-call-bash")).toHaveLength(8)
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("avg 160ms")
+  })
+
+  it("zh-CN localizes the average line", () => {
+    setLocale("zh-CN")
+    renderInput("execute-group", { items: [{ tool: "bash", command: "a", durationMs: 40 }] })
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("平均 40ms")
+  })
+})
+
+describe("audit round — audit table + i18n sync", () => {
+  it("both locales carry the group.avgDuration key with the {ms} slot", () => {
+    expect(enDomain["toolRenderers.group.avgDuration" as keyof typeof enDomain]).toContain("{ms}")
+    expect(zhDomain["toolRenderers.group.avgDuration" as keyof typeof zhDomain]).toContain("{ms}")
+  })
+
+  it("the three group audit entries ground the mean in the child durationMs", () => {
+    for (const tool of ["execute-group", "changes-group", "cua-group"]) {
+      const entry = RENDERER_FIELD_AUDIT[tool]
+      expect(entry?.fields.durationMs, tool).toMatch(/^packages\//)
+      expect(entry?.note, tool).toContain("avgDuration")
+    }
+  })
+
+  it("the audit sources stay grounded — no defensive placeholders anywhere", () => {
+    for (const [tool, entry] of Object.entries(RENDERER_FIELD_AUDIT)) {
+      expect(entry.source.toLowerCase(), tool).not.toContain("defensive")
+      for (const [field, source] of Object.entries(entry.fields)) {
+        expect(source.toLowerCase(), `${tool}.${field}`).not.toContain("defensive")
+      }
+    }
+  })
+
+  it("low-density remains the deliberate edit/list-apps pair (no regression)", () => {
+    expect(LOW_DENSITY_RENDERERS.sort()).toEqual(["edit", "list-apps"].sort())
   })
 })
