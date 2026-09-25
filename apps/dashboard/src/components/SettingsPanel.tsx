@@ -117,7 +117,14 @@ const TIER_DESCRIPTIONS: Record<PerfTierMode, string> = {
   high: "settings.performance.highDesc",
 }
 
-export function SettingsPanel() {
+export function SettingsPanel({
+  onOpenWorkspace,
+  activeWorkspaceId,
+}: {
+  /** Bridge to the App's pickWorkspace (jobs materialized-workspace chips). */
+  onOpenWorkspace?: (workspaceId: string) => void
+  activeWorkspaceId?: string
+} = {}) {
   const { mode: themeMode, setMode: setThemeMode } = useTheme()
   const { mode: tierMode, effective, setMode: setTierMode } = usePerfTier()
   const { locale, setLocale, reset } = useLocale()
@@ -174,7 +181,12 @@ export function SettingsPanel() {
             </>
           )}
           {section === "automations" && <AutomationsDomain />}
-          {section === "jobs" && <JobsDomainSection />}
+          {section === "jobs" && (
+            <JobsDomainSection
+              onOpenWorkspace={onOpenWorkspace}
+              activeWorkspaceId={activeWorkspaceId}
+            />
+          )}
           {section === "memory" && <MemoryDomain />}
           {section === "skills" && <SkillsDomain />}
         </div>

@@ -438,7 +438,14 @@ export function ProvidersHealthSection() {
  * id that appears for the first time (i.e. was just created) fires a
  * notification-store push — the ToastHost surfaces it.
  */
-export function JobsDomainSection() {
+export function JobsDomainSection({
+  onOpenWorkspace,
+  activeWorkspaceId,
+}: {
+  /** Bridge to the App's pickWorkspace (materialized-workspace chips). */
+  onOpenWorkspace?: (workspaceId: string) => void
+  activeWorkspaceId?: string
+}) {
   useLocale()
   const jobsQuery = useJobs()
   const setJobs = useJobsStore((s) => s.setJobs)
@@ -478,7 +485,7 @@ export function JobsDomainSection() {
         {t("stores.jobs.title")}: {jobs.length} · {t("stores.jobs.stateRunning")} {running} ·{" "}
         {t("stores.jobs.stateFailed")} {failed}
       </p>
-      <JobsPanel />
+      <JobsPanel onOpenWorkspace={onOpenWorkspace} activeWorkspaceId={activeWorkspaceId} />
     </div>
   )
 }

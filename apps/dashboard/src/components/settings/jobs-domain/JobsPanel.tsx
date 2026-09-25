@@ -8,6 +8,11 @@
  * delete + manual trigger + per-job pending-slot badge. The create form
  * picks the dispatch kind: "none" stays record-only, "workspace" makes
  * every fire enqueue a real BullMQ workspace job with the given message.
+ *
+ * A dispatch record's materialized workspaceId is clickable when the
+ * shell hands down `onOpenWorkspace` (the App's pickWorkspace bridge) —
+ * without the callback (or for the already-active workspace) the chip
+ * degrades to plain text instead of throwing.
  */
 
 import { useMemo, useState } from "react"
@@ -18,7 +23,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useLocale, t } from "@max/i18n"
-import { useUiShellStore } from "@/stores/uiShellStore"
 import {
   useCreateJob,
   useDeleteJob,
@@ -43,6 +47,50 @@ import {
 
 const MAX_VISIBLE = 20
 
+/** Props the shell (App → SettingsPanel → JobsDomainSection) threads down. */
+export interface JobsPanelProps {
+  /** Open a materialized workspace (the App's pickWorkspace bridge). */
+  onOpenWorkspace?: (workspaceId: string) => void
+  /** Currently active workspace id — the chip stays inert for it. */
+  activeWorkspaceId?: string
+}
+
+/**
+ * The materialized workspaceId of a dispatch record. A real button only
+ * when the shell handed down the opener AND the row is not the active
+ * workspace; otherwise plain text (honest degradation, no throw).
+ */
+function MaterializedChip({
+  jobId,
+  workspaceId,
+  onOpenWorkspace,
+  activeWorkspaceId,
+}: {
+  jobId: string
+  workspaceId: string
+  onOpenWorkspace?: (workspaceId: string) => void
+  activeWorkspaceId?: string
+}) {
+  if (onOpenWorkspace === undefined || workspaceId === activeWorkspaceId) {
+    return (
+      <span className="font-mono text-[10px]" data-testid={`jobs-workspace-${jobId}`}>
+        {workspaceId}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className="font-mono text-[10px] underline underline-offset-2 hover:text-foreground"
+      onClick={() => onOpenWorkspace(workspaceId)}
+      title={t("jobs.detail.openWorkspace")}
+      data-testid={`jobs-workspace-${jobId}`}
+    >
+      {workspaceId}
+    </button>
+  )
+}
+
 function SlotBadge({ jobId }: { jobId: string }) {
   const { data, isLoading } = useJobSlots(jobId)
   const kind = isLoading ? "unknown" : toSlotBadge(data)
@@ -63,7 +111,7 @@ function SlotBadge({ jobId }: { jobId: string }) {
   )
 }
 
-export function JobsPanel() {
+export function JobsPanel({ onOpenWorkspace, activeWorkspaceId }: JobsPanelProps) {
   useLocale()
   const qc = useJobs()
   const createJob = useCreateJob()
@@ -241,14 +289,12 @@ export function JobsPanel() {
                               <span className="text-xs text-muted-foreground">
                                 {t("jobs.detail.materialized")}
                               </span>
-                              <button
-                                type="button"
-                                className="font-mono text-[10px] underline underline-offset-2 hover:text-foreground"
-                                onClick={() => useUiShellStore.getState().setTab("workspace")}
-                                data-testid={`jobs-workspace-${j.id}`}
-                              >
-                                {j.materializedWorkspaceId}
-                              </button>
+                              <MaterializedChip
+                                jobId={j.id}
+                                workspaceId={j.materializedWorkspaceId}
+                                onOpenWorkspace={onOpenWorkspace}
+                                activeWorkspaceId={activeWorkspaceId}
+                              />
                             </div>
                           )}
                         </div>

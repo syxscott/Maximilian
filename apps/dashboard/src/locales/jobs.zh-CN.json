@@ -34,7 +34,8 @@
       "payloadPresent": "已附带",
       "payloadNone": "无",
       "payloadHint": "触发时传给目标的 JSON 负载",
-      "materialized": "物化工作区："
+      "materialized": "物化工作区：",
+      "openWorkspace": "打开该工作区"
     },
     "slot": {
       "pending": "待执行",

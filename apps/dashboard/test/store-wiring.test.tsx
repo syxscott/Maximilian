@@ -18,6 +18,8 @@
  *   5. settingsUiStore        ↔ SettingsPanel active section migration
  *   6. jobsStore + notif.     ↔ JobsDomainSection mount + snapshot
  *                               injection + new-job notification
+ *   6b. App pickWorkspace     ↔ SettingsPanel → JobsDomainSection → JobsPanel
+ *                               materialized-workspace chip opener
  *   7. sessionProjectionStore ↔ TrajectoryPanel / SubagentsPanel reads
  *   8. taskSelectionStore     ↔ TaskPanel click → TrajectoryPanel filter
  *   9. searchStore            ↔ AppCommandPalette recent history
@@ -379,6 +381,43 @@ describe("jobs wiring (jobsStore injection + creation notification)", () => {
       .getState()
       .items.find((n) => n.messageKey === "shell.notify.jobCreated")
     expect(created?.params?.name).toBe("Nightly scrape")
+  })
+
+  it("threads the App workspace opener through SettingsPanel into the jobs chip", async () => {
+    const openWorkspace = vi.fn()
+    const payload: unknown = {
+      jobs: [
+        {
+          id: "job-mat",
+          name: "Materializer",
+          schedule: "* * * * *",
+          scheduleKind: "cron",
+          createdAt: "2026-09-24T00:00:00Z",
+          events: [
+            { at: "2026-09-24T00:01:00Z", kind: "dispatched", queued: true },
+            { at: "2026-09-24T00:01:05Z", kind: "materialized", workspaceId: "ws-mat-9" },
+          ],
+        },
+      ],
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        okJson(String(input).includes("/jobs") ? payload : {}),
+      ),
+    )
+    // The App hands its pickWorkspace bridge down the SettingsPanel chain.
+    renderWithQuery(<SettingsPanel onOpenWorkspace={openWorkspace} activeWorkspaceId="ws-active" />)
+    fireEvent.click(screen.getByRole("button", { name: "Job scheduler" }))
+    await waitFor(() => expect(screen.getByTestId("settings-jobs")).toBeTruthy())
+
+    // Unfold the detail block once the queried row lands.
+    fireEvent.click(await waitFor(() => screen.getByText("Materializer")))
+    const chip = await waitFor(() => screen.getByTestId("jobs-workspace-job-mat"))
+    expect(chip.tagName).toBe("BUTTON")
+    fireEvent.click(chip)
+    expect(openWorkspace).toHaveBeenCalledTimes(1)
+    expect(openWorkspace).toHaveBeenCalledWith("ws-mat-9")
   })
 })
 

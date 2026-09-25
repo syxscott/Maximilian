@@ -16,7 +16,6 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactElement } from "react"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
-import { useUiShellStore } from "../src/stores/uiShellStore"
 
 import jobsEn from "../src/locales/jobs.en-US.json"
 import {
@@ -80,6 +79,23 @@ const jobRow = {
   nextRunAt: "2026-09-25T02:00:00.000Z",
   triggerCount: 3,
   events: [{ at: "2026-09-23T02:00:00.000Z", kind: "scheduled-trigger" }],
+}
+
+/** A row whose trail materialized a real workspace (newest backfill wins). */
+function materializedRow() {
+  return {
+    ...jobRow,
+    events: [
+      ...jobRow.events,
+      { at: "2026-09-23T02:00:01.000Z", kind: "dispatched", queued: true, workspaceJobId: "7" },
+      {
+        at: "2026-09-23T02:00:05.000Z",
+        kind: "materialized",
+        workspaceId: "ws-real-9",
+        status: "planning",
+      },
+    ],
+  }
 }
 
 // ── Model ────────────────────────────────────────────────────────────────────
@@ -476,36 +492,61 @@ describe("JobsPanel render smoke", () => {
     })
   })
 
-  it("renders the materialized workspace and routes its click to the workspace tab", () => {
-    useUiShellStore.setState({ tab: "settings" })
-    const materializedRow = {
-      ...jobRow,
-      events: [
-        ...jobRow.events,
-        { at: "2026-09-23T02:00:01.000Z", kind: "dispatched", queued: true, workspaceJobId: "7" },
-        {
-          at: "2026-09-23T02:00:05.000Z",
-          kind: "materialized",
-          workspaceId: "ws-real-9",
-          status: "planning",
-        },
-      ],
-    }
+  it("renders the materialized workspace chip as inert text without a callback", () => {
     mocked.useJobs.mockReturnValue(
       q({
         isLoading: false,
         isError: false,
         refetch: vi.fn(),
-        data: { jobs: [materializedRow] },
+        data: { jobs: [materializedRow()] },
       }) as never,
     )
+    // No onOpenWorkspace prop → honest degradation: the id stays visible
+    // but as plain text, and clicking it must not throw.
     renderWithQuery(<JobsPanel />)
     fireEvent.click(screen.getByText("nightly")) // unfold the detail block
     const chip = screen.getByTestId("jobs-workspace-job_1")
     expect(chip.textContent).toBe("ws-real-9")
-    // The click hands the user to the workspace surface (the shell's
-    // existing navigation behavior reachable from settings).
+    expect(chip.tagName).toBe("SPAN")
+    expect(() => fireEvent.click(chip)).not.toThrow()
+  })
+
+  it("opens the materialized workspace through the shell callback", () => {
+    const openWorkspace = vi.fn()
+    mocked.useJobs.mockReturnValue(
+      q({
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        data: { jobs: [materializedRow()] },
+      }) as never,
+    )
+    renderWithQuery(<JobsPanel onOpenWorkspace={openWorkspace} activeWorkspaceId="ws-other" />)
+    fireEvent.click(screen.getByText("nightly"))
+    const chip = screen.getByTestId("jobs-workspace-job_1")
+    expect(chip.tagName).toBe("BUTTON")
+    expect(chip.getAttribute("title")).toBe("Open this workspace")
     fireEvent.click(chip)
-    expect(useUiShellStore.getState().tab).toBe("workspace")
+    expect(openWorkspace).toHaveBeenCalledTimes(1)
+    // The callback carries the materialized workspace id, not the job id.
+    expect(openWorkspace).toHaveBeenCalledWith("ws-real-9")
+  })
+
+  it("keeps the chip inert for the already-active workspace", () => {
+    const openWorkspace = vi.fn()
+    mocked.useJobs.mockReturnValue(
+      q({
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        data: { jobs: [materializedRow()] },
+      }) as never,
+    )
+    renderWithQuery(<JobsPanel onOpenWorkspace={openWorkspace} activeWorkspaceId="ws-real-9" />)
+    fireEvent.click(screen.getByText("nightly"))
+    const chip = screen.getByTestId("jobs-workspace-job_1")
+    expect(chip.tagName).toBe("SPAN")
+    fireEvent.click(chip)
+    expect(openWorkspace).not.toHaveBeenCalled()
   })
 })

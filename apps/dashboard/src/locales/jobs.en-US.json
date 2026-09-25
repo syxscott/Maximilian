@@ -34,7 +34,8 @@
       "payloadPresent": "attached",
       "payloadNone": "none",
       "payloadHint": "JSON payload handed to the target on trigger",
-      "materialized": "Materialized workspace:"
+      "materialized": "Materialized workspace:",
+      "openWorkspace": "Open this workspace"
     },
     "slot": {
       "pending": "pending",

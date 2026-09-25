@@ -778,7 +778,7 @@ export function App() {
           </TabsContent>
           <TabsContent value="settings">
             <Suspense fallback={<TabFallback label={t("nav.settings")} />}>
-              <SettingsPanel />
+              <SettingsPanel onOpenWorkspace={pickWorkspace} activeWorkspaceId={workspace?.id} />
             </Suspense>
           </TabsContent>
         </main>
