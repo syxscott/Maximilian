@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { DeltaBadge } from "@/components/ai-elements"
 import { useLocale, t } from "@max/i18n"
 import { deriveGoals, roleColor } from "./model"
 import type { GoalMilestoneView, GoalTaskView } from "./model"
@@ -228,7 +229,21 @@ export function GoalTree({ workspace }: { workspace: unknown }) {
             </ul>
 
             <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">{t("goals.subGoals")}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-medium text-muted-foreground">{t("goals.subGoals")}</p>
+                {/* Failed sub-goals as a signed delta chip: the negative
+                    reading is the honest one (failures are losses). Zero
+                    failures render no badge — nothing to flag. */}
+                {view.summary.failed > 0 && (
+                  <span
+                    className="flex items-center"
+                    title={t("goals.failedCount", { count: view.summary.failed })}
+                    data-testid="goals-failed-delta"
+                  >
+                    <DeltaBadge delta={-view.summary.failed} />
+                  </span>
+                )}
+              </div>
               {view.subGoals.length === 0 ? (
                 <p className="text-xs text-muted-foreground" data-testid="goals-no-plan">
                   {t("goals.noPlan")}

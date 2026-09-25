@@ -60,5 +60,7 @@
   "goals.evolution.decisions": "进化决策数",
   "goals.evolution.totalTasks": "累计任务",
   "goals.evolution.detailLoading": "正在加载角色详情…",
-  "goals.evolution.detailUnavailable": "角色档案不可用（该角色暂无 evolution 记录）"
+  "goals.evolution.detailUnavailable": "角色档案不可用（该角色暂无 evolution 记录）",
+  "goals.failedCount": "失败子目标 {count} 个",
+  "goals.summary.donutAria": "目标总进度环"
 }

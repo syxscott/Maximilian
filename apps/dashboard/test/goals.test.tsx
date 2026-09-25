@@ -12,16 +12,19 @@
  * percentages are plain arithmetic over real workspace objects, the
  * view always discloses its sources, and the evolution section only
  * ever shows metrics the leaderboard actually reported — degrading
- * explicitly when the engine is unavailable.
+ * explicitly when the engine is unavailable. The ai-elements mount
+ * round covers the summary card's DonutStat ring + StatCard strip and
+ * the goal tree's failed-sub-goal DeltaBadge count.
  */
 
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
 
 import goalsEn from "../src/locales/goals.en-US.json"
+import aiEn from "../src/locales/ai-elements.en-US.json"
 import {
   deriveGoals,
   dependencyDepths,
@@ -49,9 +52,27 @@ const mockedLeaderboard = vi.mocked(getEvolutionLeaderboard)
 const mockedAgentsByRole = vi.mocked(getEvolutionAgentsByRole)
 const mockedDecisionsByRole = vi.mocked(getEvolutionVersionsByRoleDecisions)
 
+/** The ai-elements dictionary is a nested tree; flatten to dotted keys. */
+function flattenAi(tree: Record<string, unknown>, prefix = ""): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(tree)) {
+    const dotted = prefix ? `${prefix}.${key}` : key
+    if (value !== null && typeof value === "object") {
+      Object.assign(out, flattenAi(value as Record<string, unknown>, dotted))
+    } else {
+      out[dotted] = String(value)
+    }
+  }
+  return out
+}
+
 beforeAll(() => {
   const existing = getDictionary("en-US") ?? {}
-  registerLocale("en-US", { ...existing, ...(goalsEn as Record<string, string>) })
+  registerLocale("en-US", {
+    ...existing,
+    ...(goalsEn as Record<string, string>),
+    ...flattenAi(aiEn as Record<string, unknown>),
+  })
   setLocale("en-US")
 })
 
@@ -415,7 +436,7 @@ describe("goals render smoke", () => {
     expect(screen.getByTestId("goal-primary").textContent).toContain("Only a request")
   })
 
-  it("GoalSummaryCard shows percent, done/total, failed and remaining — nothing else", () => {
+  it("GoalSummaryCard shows percent, done/total, failed and remaining as StatCards", () => {
     const midway = {
       userRequest: "Ship it",
       status: "running",
@@ -432,10 +453,83 @@ describe("goals render smoke", () => {
     render(<GoalSummaryCard workspace={midway} />)
     expect(screen.getByTestId("goal-summary-card")).toBeTruthy()
     expect(screen.getByTestId("goal-summary-percent").textContent).toBe("25% overall")
-    expect(screen.getByTestId("goal-summary-completed").textContent).toBe("1/4")
-    expect(screen.getByTestId("goal-summary-failed").textContent).toBe("1")
-    expect(screen.getByTestId("goal-summary-remaining").textContent).toBe("3")
+    // Each count renders as an ai-elements StatCard (label + value tile).
+    expect(screen.getByTestId("goal-summary-completed")).toHaveTextContent("1/4")
+    expect(screen.getByTestId("goal-summary-failed")).toHaveTextContent("1")
+    expect(screen.getByTestId("goal-summary-remaining")).toHaveTextContent("3")
     expect(screen.getByTestId("goal-summary-card").textContent).toContain("no ETA is estimated")
+  })
+
+  it("GoalSummaryCard mounts a DonutStat ring whose fill matches the percent", () => {
+    const midway = {
+      userRequest: "Ship it",
+      status: "running",
+      plan: { tasks: [task("t1", { status: "completed" }), task("t2", { status: "pending" })] },
+      results: [],
+    }
+    render(<GoalSummaryCard workspace={midway} />)
+    const ring = screen.getByLabelText("Overall goal progress ring")
+    expect(ring.getAttribute("role")).toBe("meter")
+    expect(ring.getAttribute("aria-valuenow")).toBe("50")
+  })
+
+  it("GoalSummaryCard StatCard trends: failed reads down, clean runs read flat", () => {
+    const failing = {
+      userRequest: "Ship it",
+      status: "running",
+      plan: {
+        tasks: [task("t1", { status: "completed" }), task("t2", { status: "failed" })],
+      },
+      results: [],
+    }
+    const mounted = render(<GoalSummaryCard workspace={failing} />)
+    expect(
+      within(screen.getByTestId("goal-summary-failed")).getByLabelText("Trending down"),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId("goal-summary-completed")).getByLabelText("Flat trend"),
+    ).toBeInTheDocument()
+    mounted.unmount()
+
+    render(
+      <GoalSummaryCard
+        workspace={{
+          userRequest: "Clean",
+          status: "running",
+          plan: { tasks: [task("t1", { status: "completed" })] },
+          results: [],
+        }}
+      />,
+    )
+    expect(
+      within(screen.getByTestId("goal-summary-failed")).getByLabelText("Flat trend"),
+    ).toBeInTheDocument()
+  })
+
+  it("GoalTree flags failed sub-goals with a DeltaBadge carrying the failure count", () => {
+    const failing = {
+      userRequest: "Ship it",
+      status: "failed",
+      plan: {
+        tasks: [
+          task("t1", { status: "completed" }),
+          task("t2", { status: "failed" }),
+          task("t3", { status: "failed" }),
+        ],
+      },
+      results: [],
+    }
+    renderWithClient(<GoalTree workspace={failing} />)
+    const badge = screen.getByTestId("goals-failed-delta")
+    // Signed reading: two failures = "-2" (a loss, not a gain).
+    expect(badge.textContent).toBe("-2")
+    expect(badge.getAttribute("title")).toBe("2 failed sub-goal(s)")
+    expect(within(badge).getByLabelText("decrease")).toBeInTheDocument()
+  })
+
+  it("GoalTree renders no failure badge when nothing failed", () => {
+    renderWithClient(<GoalTree workspace={ALL_SUCCESS} />)
+    expect(screen.queryByTestId("goals-failed-delta")).toBeNull()
   })
 })
 

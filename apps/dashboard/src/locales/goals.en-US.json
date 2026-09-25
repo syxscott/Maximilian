@@ -60,5 +60,7 @@
   "goals.evolution.decisions": "evolution decisions",
   "goals.evolution.totalTasks": "total tasks",
   "goals.evolution.detailLoading": "Loading role detail…",
-  "goals.evolution.detailUnavailable": "Role profile unavailable (no evolution record for this role yet)"
+  "goals.evolution.detailUnavailable": "Role profile unavailable (no evolution record for this role yet)",
+  "goals.failedCount": "{count} failed sub-goal(s)",
+  "goals.summary.donutAria": "Overall goal progress ring"
 }

@@ -10,9 +10,16 @@
  * cards, composed as-is. Pure composition — every card keeps its own
  * react-query data path; the summary row subscribes to the same query
  * keys, so react-query serves both from a single fetch.
+ *
+ * The migrations payload's real numeric anchors (contract routes,
+ * locales, core keys) surface beside its health chip as compact mono
+ * badges in the TokenUsageBadge visual style — the style only: those
+ * counts are not token usage, so the token component itself stays
+ * unmounted and the chips carry the honest settingsDeep.migrations
+ * labels instead.
  */
 
-import { useMemo } from "react"
+import { Fragment, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, CheckCircle2, MinusCircle } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
@@ -25,7 +32,7 @@ import {
 import { VaultSection, OracleLessonsSection } from "../sections"
 import { SessionStoreStatusCard } from "../store-domain/SessionStoreStatusCard"
 import { MigrationCandidatesCard } from "../store-domain/MigrationCandidatesCard"
-import { toSystemHealthView, type SubsystemState } from "./model"
+import { migrationsMetrics, toSystemHealthView, type SubsystemState } from "./model"
 
 const STATE_ICONS: Record<SubsystemState, typeof CheckCircle2> = {
   ok: CheckCircle2,
@@ -77,24 +84,41 @@ export function SystemOverviewSection() {
     ],
   )
 
+  const metrics = useMemo(
+    () => migrationsMetrics(migrationsQuery.isError ? undefined : migrationsQuery.data),
+    [migrationsQuery.data, migrationsQuery.isError],
+  )
+
   return (
     <div className="space-y-3" data-testid="settings-system-overview">
       <div className="flex flex-wrap items-center gap-2" data-testid="system-health-row">
         {health.map(({ id, state }) => {
           const Icon = STATE_ICONS[state]
           return (
-            <span
-              key={id}
-              className="flex items-center gap-1 rounded border px-2 py-1 text-xs"
-              data-testid={`system-health-${id}`}
-              data-state={state}
-            >
-              <Icon className={`h-3.5 w-3.5 ${STATE_CLASSES[state]}`} aria-hidden />
-              <span className="font-mono">{t(`settingsDeep.system.item.${id}`)}</span>
-              <span className={`text-[10px] ${STATE_CLASSES[state]}`}>
-                {t(`settingsDeep.system.state.${state}`)}
+            <Fragment key={id}>
+              <span
+                className="flex items-center gap-1 rounded border px-2 py-1 text-xs"
+                data-testid={`system-health-${id}`}
+                data-state={state}
+              >
+                <Icon className={`h-3.5 w-3.5 ${STATE_CLASSES[state]}`} aria-hidden />
+                <span className="font-mono">{t(`settingsDeep.system.item.${id}`)}</span>
+                <span className={`text-[10px] ${STATE_CLASSES[state]}`}>
+                  {t(`settingsDeep.system.state.${state}`)}
+                </span>
               </span>
-            </span>
+              {id === "migrations" &&
+                metrics.map((metric) => (
+                  <span
+                    key={metric.id}
+                    data-testid={`system-metric-${metric.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    {t(`settingsDeep.migrations.${metric.id}`)}
+                    <span className="font-mono tabular-nums text-foreground">{metric.value}</span>
+                  </span>
+                ))}
+            </Fragment>
           )
         })}
       </div>

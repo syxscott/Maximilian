@@ -88,6 +88,16 @@ export function groupByRole(views: DeliverableView[]): RoleGroup[] {
   return [...groups.entries()].map(([role, items]) => ({ role, items }))
 }
 
+/**
+ * Deliverable count per agent role, in first-seen role order — the
+ * series behind the header Sparkline (per-role output mini trend).
+ * Pure and derived from the same grouped views the list renders, so
+ * the sparkline can never disagree with the visible rows.
+ */
+export function seriesByRole(views: DeliverableView[]): number[] {
+  return groupByRole(views).map((group) => group.items.length)
+}
+
 /** Header summary counts. */
 export function deliverableStats(views: DeliverableView[]): DeliverableStats {
   return {

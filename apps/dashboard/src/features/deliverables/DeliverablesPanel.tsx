@@ -18,8 +18,11 @@
  *
  * The stats strip mounts the ai-elements widgets: one StatCard per count
  * (deliverables / tasks / roles), a DonutStat ring for the review
- * coverage share, a DeltaBadge for the rows a role filter hides, and a
- * CopyField chip beside the export buttons for the workspace id.
+ * coverage share, a DeltaBadge for the rows a role filter hides, a
+ * CopyField chip beside the export buttons for the workspace id, and a
+ * Sparkline tracing the deliverable count per role (seriesByRole — the
+ * same grouped views the list renders). The no-deliverables and
+ * filtered-to-nothing states use the shared EmptyHint placeholder.
  *
  * Data is either passed in via the `workspace` prop or fetched by
  * `workspaceId` through chatApi.getWorkspace (api.ts is the arch-mandated
@@ -32,7 +35,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { CopyField, DeltaBadge, DonutStat, StatCard } from "@/components/ai-elements"
+import {
+  CopyField,
+  DeltaBadge,
+  DonutStat,
+  EmptyHint,
+  Sparkline,
+  StatCard,
+} from "@/components/ai-elements"
 import { useLocale, t } from "@max/i18n"
 import { chatApi } from "@/api"
 import {
@@ -45,6 +55,7 @@ import {
   reviewCoverage,
   reviewPerTask,
   reviewSummary,
+  seriesByRole,
   toDeliverableViews,
   toDeliverablesJson,
   toDeliverablesMarkdown,
@@ -167,9 +178,9 @@ export function DeliverablesPanel({
 
         {views.length === 0 ? (
           workspaceQuery.isLoading || workspaceQuery.isError ? null : (
-            <p className="text-xs text-muted-foreground" data-testid="deliverables-empty">
-              {t("deliverables.empty")}
-            </p>
+            <div data-testid="deliverables-empty">
+              <EmptyHint hint={{ title: t("deliverables.empty") }} />
+            </div>
           )
         ) : (
           <>
@@ -180,6 +191,21 @@ export function DeliverablesPanel({
                   tasks: stats.tasks,
                   roles: stats.roles,
                 })}
+              </span>
+              {/* Per-role output mini trend — derived from the same
+                  grouped views as the list (seriesByRole), so it can
+                  never contradict the rows below. */}
+              <span
+                className="flex items-center"
+                title={t("deliverables.roleSparkline")}
+                data-testid="deliverables-role-sparkline"
+              >
+                <Sparkline
+                  values={seriesByRole(views)}
+                  ariaLabel={t("deliverables.roleSparkline")}
+                  width={72}
+                  height={18}
+                />
               </span>
               {filterDelta !== 0 && (
                 <span title={t("deliverables.filterDelta", { count: -filterDelta })}>
@@ -285,9 +311,9 @@ export function DeliverablesPanel({
             )}
 
             {visibleViews.length === 0 ? (
-              <p className="text-xs text-muted-foreground" data-testid="deliverables-filter-empty">
-                {t("deliverables.filterEmpty", { role: roleFilter })}
-              </p>
+              <div data-testid="deliverables-filter-empty">
+                <EmptyHint hint={{ title: t("deliverables.filterEmpty", { role: roleFilter }) }} />
+              </div>
             ) : (
               <div className="space-y-3" data-testid="deliverables-groups">
                 {groups.map((group) => (

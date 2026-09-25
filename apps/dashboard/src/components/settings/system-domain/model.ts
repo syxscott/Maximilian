@@ -95,3 +95,40 @@ export function worstState(states: ReadonlyArray<SubsystemState>): SubsystemStat
   if (states.includes("ok")) return "ok"
   return "unknown"
 }
+
+// ── Numeric anchors for the overview row ────────────────────────────────────
+//
+// The migrations payload is the only subsystem carrying real numbers
+// (contract routes / locales / core keys). They surface next to the
+// health chip as compact mono badges in the TokenUsageBadge visual
+// style (rounded pill, muted label, tabular numerals) — the style, not
+// the component: TokenUsageBadge's content model is an input/output/
+// cache token breakdown, which these counts are not.
+
+/** Suffix of an existing `settingsDeep.migrations.<id>` i18n label. */
+export type SubsystemMetricId = "openapiRoutes" | "locales" | "coreKeys"
+
+export interface SubsystemMetric {
+  id: SubsystemMetricId
+  value: number
+}
+
+/**
+ * Defensive migrations payload → its finite numeric anchors, in fixed
+ * display order. Loading / errored / malformed payloads yield [] — the
+ * row simply shows no numbers rather than a guessed one.
+ */
+export function migrationsMetrics(raw: unknown): SubsystemMetric[] {
+  const row = obj(raw)
+  if (Object.keys(row).length === 0) return []
+  const api = obj(row.api)
+  const i18n = obj(row.i18n)
+  const out: SubsystemMetric[] = []
+  const push = (id: SubsystemMetricId, value: unknown) => {
+    if (typeof value === "number" && Number.isFinite(value)) out.push({ id, value })
+  }
+  push("openapiRoutes", api.openapiRoutes)
+  push("locales", i18n.locales)
+  push("coreKeys", i18n.coreKeys)
+  return out
+}

@@ -28,5 +28,6 @@
   "deliverables.statRoles": "Roles",
   "deliverables.reviewCoverage": "Review coverage",
   "deliverables.filterDelta": "{count} row(s) hidden by the role filter",
-  "deliverables.copyId": "workspace"
+  "deliverables.copyId": "workspace",
+  "deliverables.roleSparkline": "Deliverables per role"
 }

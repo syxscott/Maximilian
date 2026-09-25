@@ -8,11 +8,14 @@
  * ui-goal borrowing, honest-data edition): total progress %, completed
  * / total tasks, failed count, and remaining tasks. Everything is
  * plain arithmetic over the workspace payload — the card says so and
- * never invents an ETA.
+ * never invents an ETA. The percent headline carries a DonutStat ring
+ * and the three counts render as StatCard tiles (ai-elements), so the
+ * summary reads with the same visual density as the rest of the app.
  */
 
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DonutStat, StatCard } from "@/components/ai-elements"
 import { useLocale, t } from "@max/i18n"
 import { deriveGoals } from "./model"
 
@@ -33,41 +36,48 @@ export function GoalSummaryCard({ workspace }: { workspace: unknown }) {
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-2xl font-semibold tabular-nums" data-testid="goal-summary-percent">
-          {t("goals.summary.percent", { percent: view.summary.percent })}
-        </p>
-        <dl className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded border px-1 py-1.5">
-            <dt className="text-[10px] text-muted-foreground">{t("goals.summary.doneLabel")}</dt>
-            <dd className="text-sm tabular-nums" data-testid="goal-summary-completed">
-              {t("goals.summary.completed", {
-                completed: view.summary.completed,
-                total: view.summary.total,
-              })}
-            </dd>
+        <div className="flex items-center gap-3">
+          <DonutStat
+            value={view.summary.percent}
+            size={40}
+            ariaLabel={t("goals.summary.donutAria")}
+          />
+          <p className="text-2xl font-semibold tabular-nums" data-testid="goal-summary-percent">
+            {t("goals.summary.percent", { percent: view.summary.percent })}
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div data-testid="goal-summary-completed">
+            <StatCard
+              stat={{
+                label: t("goals.summary.doneLabel"),
+                value: t("goals.summary.completed", {
+                  completed: view.summary.completed,
+                  total: view.summary.total,
+                }),
+                trend: "flat",
+              }}
+            />
           </div>
-          <div className="rounded border px-1 py-1.5">
-            <dt className="text-[10px] text-muted-foreground">{t("goals.summary.failedLabel")}</dt>
-            <dd
-              className={
-                view.summary.failed > 0
-                  ? "text-sm tabular-nums text-destructive"
-                  : "text-sm tabular-nums"
-              }
-              data-testid="goal-summary-failed"
-            >
-              {t("goals.summary.failed", { failed: view.summary.failed })}
-            </dd>
+          <div data-testid="goal-summary-failed">
+            <StatCard
+              stat={{
+                label: t("goals.summary.failedLabel"),
+                value: t("goals.summary.failed", { failed: view.summary.failed }),
+                trend: view.summary.failed > 0 ? "down" : "flat",
+              }}
+            />
           </div>
-          <div className="rounded border px-1 py-1.5">
-            <dt className="text-[10px] text-muted-foreground">
-              {t("goals.summary.remainingLabel")}
-            </dt>
-            <dd className="text-sm tabular-nums" data-testid="goal-summary-remaining">
-              {t("goals.summary.remaining", { remaining: view.summary.remaining })}
-            </dd>
+          <div data-testid="goal-summary-remaining">
+            <StatCard
+              stat={{
+                label: t("goals.summary.remainingLabel"),
+                value: t("goals.summary.remaining", { remaining: view.summary.remaining }),
+                trend: "flat",
+              }}
+            />
           </div>
-        </dl>
+        </div>
         <p className="text-[10px] text-muted-foreground">{t("goals.summary.noEta")}</p>
       </CardContent>
     </Card>

@@ -8,9 +8,13 @@
  * the JSON export, and the per-deliverable review-score association
  * (model layer plus DeliverablesPanel render smoke). The ai-elements
  * mounts round covers the stats strip (StatCard counts, DonutStat review
- * coverage, DeltaBadge filter delta) and the workspace-id CopyField chip.
- * Complements — and must not break — the existing deliverables.test.tsx
- * suite.
+ * coverage, DeltaBadge filter delta) and the workspace-id CopyField chip,
+ * plus the second round: the per-role Sparkline (seriesByRole), the
+ * EmptyHint empty states, and — appended here because system-domain is in
+ * the same task's ownership while only these two test files are — the
+ * system-domain overview's migrationsMetrics model and metric-chip
+ * render. Complements — and must not break — the existing
+ * deliverables.test.tsx suite.
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest"
@@ -21,17 +25,24 @@ import { getDictionary, registerLocale, setLocale } from "@max/i18n"
 
 import deliverablesEn from "../src/locales/deliverables.en-US.json"
 import aiEn from "../src/locales/ai-elements.en-US.json"
+import settingsDeepEn from "../src/locales/settings-deep.en-US.json"
 import {
   filterByRole,
+  groupByRole,
   reviewCoverage,
   reviewPerTask,
   reviewSummary,
+  seriesByRole,
   toDeliverableViews,
   toDeliverablesJson,
   workspaceIdOf,
 } from "../src/features/deliverables/model"
 import type { TaskReviewLink } from "../src/features/deliverables/model"
 import { DeliverablesPanel } from "../src/features/deliverables/DeliverablesPanel"
+import { migrationsMetrics } from "../src/components/settings/system-domain/model"
+import { SystemOverviewSection } from "../src/components/settings/system-domain/SystemOverviewSection"
+import { useMigrationCandidates, useSessionStoreStatus } from "@/hooks/useSettingsQueries"
+import { systemApi } from "@/api"
 
 /** The ai-elements dictionaries are nested trees; flatten to dotted keys. */
 function flattenAi(tree: Record<string, unknown>, prefix = ""): Record<string, string> {
@@ -52,6 +63,7 @@ beforeAll(() => {
   registerLocale("en-US", {
     ...existing,
     ...(deliverablesEn as Record<string, string>),
+    ...(settingsDeepEn as Record<string, string>),
     ...flattenAi(aiEn as Record<string, unknown>),
   })
   setLocale("en-US")
@@ -61,6 +73,29 @@ vi.mock("@/api", () => ({
   chatApi: {
     getWorkspace: vi.fn(),
   },
+  systemApi: {
+    vaultStatus: vi.fn(),
+    oracleLessons: vi.fn(),
+  },
+}))
+
+vi.mock("@/hooks/useSettingsQueries", () => ({
+  useSessionStoreStatus: vi.fn(),
+  useMigrationCandidates: vi.fn(),
+  ORACLE_LESSONS_QUERY_KEY: ["settings-deep", "oracle-lessons"] as const,
+}))
+
+// The overview composes the four subsystem cards as-is; this suite only
+// exercises the health row above them, so the cards render as stubs.
+vi.mock("../src/components/settings/sections", () => ({
+  VaultSection: () => null,
+  OracleLessonsSection: () => null,
+}))
+vi.mock("../src/components/settings/store-domain/SessionStoreStatusCard", () => ({
+  SessionStoreStatusCard: () => null,
+}))
+vi.mock("../src/components/settings/store-domain/MigrationCandidatesCard", () => ({
+  MigrationCandidatesCard: () => null,
 }))
 
 function renderWithQuery(ui: ReactElement) {
@@ -327,5 +362,189 @@ describe("deliverables deepening — render smoke", () => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
     renderWithQuery(<DeliverablesPanel workspace={{ results: PANEL_WORKSPACE.results }} />)
     expect(screen.queryByLabelText("Copyable field")).toBeNull()
+  })
+})
+
+// ── Round 2: per-role Sparkline + EmptyHint empty states ────────────────────
+
+describe("seriesByRole — per-role deliverable counts (Sparkline series)", () => {
+  it("counts deliverables per role in first-seen role order", () => {
+    expect(seriesByRole(VIEWS)).toEqual([1, 2]) // planner, executor
+    expect(
+      seriesByRole(
+        toDeliverableViews({
+          results: [
+            { taskId: "t1", agentRole: "reviewer", output: "r" },
+            { taskId: "t2", agentRole: "planner", output: "p" },
+            { taskId: "t3", agentRole: "reviewer", output: "r2" },
+            { taskId: "t4", agentRole: "executor", output: "e" },
+          ],
+        }),
+      ),
+    ).toEqual([2, 1, 1])
+  })
+
+  it("degenerates honestly: empty views → [], one role → [n]", () => {
+    expect(seriesByRole([])).toEqual([])
+    expect(
+      seriesByRole(
+        toDeliverableViews({
+          results: [
+            { taskId: "t1", agentRole: "solo", output: "a" },
+            { taskId: "t2", agentRole: "solo", output: "b" },
+          ],
+        }),
+      ),
+    ).toEqual([2])
+  })
+
+  it("derives from the same grouped views as the list (blank outputs never count)", () => {
+    const views = toDeliverableViews({
+      results: [
+        { taskId: "t1", agentRole: "ghost", output: "   " }, // not a deliverable
+        { taskId: "t2", agentRole: "planner", output: "real" },
+      ],
+    })
+    expect(seriesByRole(views)).toEqual([1])
+    expect(seriesByRole(views)).toEqual(groupByRole(views).map((g) => g.items.length))
+  })
+})
+
+describe("DeliverablesPanel round-2 mounts — Sparkline and EmptyHint", () => {
+  it("mounts a per-role Sparkline in the stats row matching the role count", () => {
+    renderWithQuery(<DeliverablesPanel workspace={PANEL_WORKSPACE} />)
+    const spark = screen.getByTestId("deliverables-role-sparkline")
+    expect(spark.getAttribute("title")).toBe("Deliverables per role")
+    const svg = spark.querySelector("svg") as SVGSVGElement
+    expect(svg.getAttribute("aria-label")).toBe("Deliverables per role")
+    // Two roles → two samples → one polyline segment between them.
+    const polyline = svg.querySelector("polyline") as SVGPolylineElement
+    expect(polyline.getAttribute("points").trim().split(/\s+/)).toHaveLength(2)
+  })
+
+  it("renders the no-deliverables state as a shared EmptyHint placeholder", () => {
+    renderWithQuery(<DeliverablesPanel workspace={{ results: [] }} />)
+    const empty = screen.getByTestId("deliverables-empty")
+    expect(empty.getAttribute("role")).toBeNull()
+    const status = within(empty).getByRole("status")
+    expect(status.textContent).toContain("No deliverables yet")
+  })
+
+  it("renders the filtered-to-nothing state as an EmptyHint naming the role", () => {
+    // The dropdown only offers roles that exist, so the empty branch is
+    // reached through the real stale-filter path: the active filter
+    // survives a workspace swap whose roles no longer include it.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const mounted = render(
+      <QueryClientProvider client={client}>
+        <DeliverablesPanel workspace={PANEL_WORKSPACE} />
+      </QueryClientProvider>,
+    )
+    fireEvent.change(screen.getByLabelText("Filter by role"), { target: { value: "planner" } })
+    mounted.rerender(
+      <QueryClientProvider client={client}>
+        <DeliverablesPanel
+          workspace={{
+            id: "ws-2",
+            results: [{ taskId: "t9", agentRole: "executor", output: "the new code" }],
+          }}
+        />
+      </QueryClientProvider>,
+    )
+    const empty = screen.getByTestId("deliverables-filter-empty")
+    expect(within(empty).getByRole("status").textContent).toContain(
+      'No deliverables for role "planner"',
+    )
+  })
+})
+
+// ── Appended: system-domain overview (shared task ownership) ────────────────
+//
+// The system-domain sources are in this task's ownership, but only these
+// two test files are, so the system-overview model + render tests live
+// here, clearly separated. The composed subsystem cards are mocked out —
+// the suite exercises the health row and its numeric chips only.
+
+type SessionStoreHook = ReturnType<typeof useSessionStoreStatus>
+
+const mockedStoreStatus = vi.mocked(useSessionStoreStatus)
+const mockedMigrationCandidates = vi.mocked(useMigrationCandidates)
+const mockedVaultStatus = systemApi.vaultStatus as unknown as ReturnType<typeof vi.fn>
+const mockedOracleLessons = systemApi.oracleLessons as unknown as ReturnType<typeof vi.fn>
+
+function hookResult(data: unknown, isError = false): SessionStoreHook {
+  return { data, isError } as unknown as SessionStoreHook
+}
+
+describe("migrationsMetrics — numeric anchors for the overview row", () => {
+  it("extracts routes / locales / core keys in fixed order", () => {
+    expect(
+      migrationsMetrics({ api: { openapiRoutes: 42 }, i18n: { locales: 2, coreKeys: 1200 } }),
+    ).toEqual([
+      { id: "openapiRoutes", value: 42 },
+      { id: "locales", value: 2 },
+      { id: "coreKeys", value: 1200 },
+    ])
+  })
+
+  it("keeps only finite numbers and admits missing payloads honestly", () => {
+    expect(
+      migrationsMetrics({
+        api: { openapiRoutes: "many" },
+        i18n: { locales: Number.NaN, coreKeys: 7 },
+      }),
+    ).toEqual([{ id: "coreKeys", value: 7 }])
+    for (const garbage of [undefined, null, 42, "x", {}, { api: null, i18n: [] }]) {
+      expect(migrationsMetrics(garbage)).toEqual([])
+    }
+  })
+})
+
+describe("SystemOverviewSection render — health row + metric chips", () => {
+  function primeQueries({
+    migrations,
+    migrationsError = false,
+  }: { migrations?: unknown; migrationsError?: boolean } = {}) {
+    mockedVaultStatus.mockResolvedValue({
+      configured: true,
+      path: "/vault",
+      open: true,
+      entries: [],
+    })
+    mockedOracleLessons.mockResolvedValue({ configured: true, dir: "/lessons", lessons: [] })
+    mockedStoreStatus.mockReturnValue(hookResult({ available: true }))
+    mockedMigrationCandidates.mockReturnValue(hookResult(migrations, migrationsError))
+  }
+
+  it("renders the four health chips and mounts migrations' numbers as pill badges", async () => {
+    primeQueries({
+      migrations: { api: { openapiRoutes: 42 }, i18n: { locales: 2, coreKeys: 1200 } },
+    })
+    renderWithQuery(<SystemOverviewSection />)
+    await waitFor(() => {
+      expect(screen.getByTestId("system-health-vault").getAttribute("data-state")).toBe("ok")
+    })
+    expect(screen.getByTestId("system-health-store").getAttribute("data-state")).toBe("ok")
+    expect(screen.getByTestId("system-health-migrations").getAttribute("data-state")).toBe("ok")
+    expect(screen.getByTestId("system-health-oracle").getAttribute("data-state")).toBe("ok")
+    // TokenUsageBadge visual language (pill + muted label + mono number),
+    // honest settingsDeep.migrations labels — not token semantics.
+    expect(screen.getByTestId("system-metric-openapiRoutes").textContent).toBe("Contract routes42")
+    expect(screen.getByTestId("system-metric-locales").textContent).toBe("Locales2")
+    const coreKeys = screen.getByTestId("system-metric-coreKeys")
+    expect(coreKeys.textContent).toBe("Core keys1200")
+    expect(coreKeys.className).toContain("rounded-full")
+    expect(coreKeys.querySelector(".font-mono.tabular-nums")).toBeTruthy()
+  })
+
+  it("shows no numbers while migrations data is missing and flags the subsystem unknown", () => {
+    primeQueries({})
+    renderWithQuery(<SystemOverviewSection />)
+    expect(screen.getByTestId("system-health-migrations").getAttribute("data-state")).toBe(
+      "unknown",
+    )
+    expect(screen.queryByTestId("system-metric-openapiRoutes")).toBeNull()
+    expect(screen.queryByTestId("system-metric-locales")).toBeNull()
+    expect(screen.queryByTestId("system-metric-coreKeys")).toBeNull()
   })
 })
