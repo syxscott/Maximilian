@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { PanelRightClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useMention, type MentionGroupId, type MentionSuggestion } from "@/hooks/useMention"
@@ -42,6 +43,7 @@ export function ChatPanel({
   workspace,
   sidebar,
   sidebarHidden,
+  onToggleSidebar,
   mentionSuggestions = [],
   onOpenProviders,
   onOpenPalette,
@@ -57,13 +59,25 @@ export function ChatPanel({
   submitting: boolean
   workspace: Workspace | null
   /**
-   * Optional sidebar content (workspace sidebar). When provided the
-   * ChatPanel uses a CSS Grid layout with two columns: the conversation
-   * on the left, the sidebar on the right. Mirrors OpenHands' layout.
+   * Optional sidebar content (the dock panel registry's workspace stack).
+   * When provided AND visible it renders as a collapsible drawer inside
+   * the panel: an absolutely-positioned 320px overlay above the right
+   * edge of the conversation (z above the timeline and its popups). The
+   * conversation column itself stays full-width underneath — the drawer
+   * covers it instead of squeezing it, so the composer / timeline
+   * geometry never depends on the drawer state.
    */
   sidebar?: React.ReactNode
-  /** Hide the sidebar even when `sidebar` is passed (e.g. on small screens). */
+  /** Hide the sidebar drawer even when `sidebar` is passed (workspace pref
+   *  / keyboard toggle). The panel renders no drawer at all while set. */
   sidebarHidden?: boolean
+  /**
+   * Toggle callback for the drawer's close button — wired to the same
+   * workspace-prefs write the App keyboard layer (Ctrl+Shift+B) performs,
+   * so button and keybind flip one shared source of truth. Unset = the
+   * close affordance is omitted (drawer is then toggled externally only).
+   */
+  onToggleSidebar?: () => void
   /** @mention suggestions (agent roles) for the prompt editor. */
   mentionSuggestions?: MentionSuggestion[]
   onOpenProviders?: () => void
@@ -172,6 +186,8 @@ export function ChatPanel({
     }
   }
 
+  // Dock panel registry content + not toggled off (workspace pref, shared
+  // with the App keyboard layer) → the drawer mounts over the conversation.
   const showSidebar = !!sidebar && !sidebarHidden
 
   // The pipeline input for the timeline: the extracted steering/system
@@ -191,11 +207,14 @@ export function ChatPanel({
   })
 
   return (
+    // `relative` anchors the sidebar drawer; the grid stays single-column
+    // in every state — the drawer overlays the conversation instead of
+    // resizing it, so the timeline/composer geometry is drawer-invariant.
     <div
-      className="h-full p-4 gap-4"
+      className="relative h-full p-4"
       style={{
         display: "grid",
-        gridTemplateColumns: showSidebar ? "minmax(0, 1fr) minmax(280px, 360px)" : "minmax(0, 1fr)",
+        gridTemplateColumns: "minmax(0, 1fr)",
         gridTemplateRows: "1fr",
       }}
     >
@@ -359,12 +378,41 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* Workspace sidebar column (OpenHands-style layout). Same 1fr row
-          as the conversation column and an explicit h-full, so both
-          columns share one height baseline; overflow stays inside. */}
+      {/* Workspace sidebar DRAWER (dock-panel-registry content). Opens as
+          an absolute 320px overlay above the conversation's right edge —
+          same visual chrome as the old trailing column (rounded border,
+          card background, p-3 stack) but nothing reflows underneath. The
+          close button routes through onToggleSidebar: the SAME prefs write
+          the App keyboard layer's Ctrl+Shift+B performs, so button and
+          keybind stay one source of truth. inset-y-4/right-4 mirror the
+          panel's own p-4 so the drawer aligns with the content box. */}
       {showSidebar && (
-        <aside className="h-full min-h-0 overflow-y-auto rounded-md border border-border bg-card/40 p-3 min-w-0">
-          {sidebar}
+        <aside
+          data-testid="workspace-sidebar-aside"
+          aria-label={t("layout.drawer.title")}
+          className="absolute inset-y-4 right-4 z-30 flex w-80 min-h-0 flex-col overflow-hidden rounded-md border border-border bg-card shadow-lg"
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+            <span className="truncate text-xs font-medium text-muted-foreground">
+              {t("layout.drawer.title")}
+            </span>
+            {onToggleSidebar && (
+              <button
+                type="button"
+                data-testid="workspace-sidebar-close"
+                aria-label={t("layout.drawer.close")}
+                title={t("layout.drawer.close")}
+                className="flex items-center rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={onToggleSidebar}
+              >
+                <PanelRightClose className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {/* Scroll region: the stacked panels own the overflow exactly as
+              in the old trailing column; h-full chain keeps the dock
+              content filling the drawer body. */}
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">{sidebar}</div>
         </aside>
       )}
     </div>

@@ -155,9 +155,12 @@ describe("ChatPanel", () => {
     expect(screen.getByTestId("conversation-timeline").className).toContain("overflow-y-auto")
   })
 
-  // 高度基线: the conversation column and the sidebar column are grid
-  // siblings on the same 1fr row, both full-height — one baseline.
-  it("aligns the conversation column and the sidebar column on the same height baseline", () => {
+  // 抽屉合一: the sidebar is no longer a grid-sibling column — it opens
+  // as an absolutely-positioned 320px drawer overlaying the conversation's
+  // right edge (z-30 above the timeline and its popups). The conversation
+  // column keeps full width underneath; the drawer chrome matches the old
+  // trailing column (rounded border, card background, scrolling stack).
+  it("renders the sidebar as an overlay drawer above the conversation's right edge", () => {
     render(
       <ChatPanel
         onSubmit={() => {}}
@@ -166,14 +169,91 @@ describe("ChatPanel", () => {
         sidebar={<div data-testid="ws-sidebar">sidebar</div>}
       />,
     )
+    const drawer = document.querySelector("aside")
+    expect(drawer).not.toBeNull()
+    expect(drawer?.getAttribute("data-testid")).toBe("workspace-sidebar-aside")
+    // Overlay semantics: absolute + 320px (w-80) + stacked above the chat.
+    expect(drawer?.className).toContain("absolute")
+    expect(drawer?.className).toContain("w-80")
+    expect(drawer?.className).toContain("z-30")
+    // The registry content lands inside the drawer's scroll region.
+    expect(
+      drawer?.querySelector(".overflow-y-auto")?.contains(screen.getByTestId("ws-sidebar")),
+    ).toBe(true)
+    // The conversation column is a full-height, min-h-0 child of the same
+    // grid — never squeezed by the drawer (single-column grid always).
     const column = screen.getByTestId("chat-timeline-shell").parentElement
     expect(column?.className).toContain("h-full")
     expect(column?.className).toContain("min-h-0")
-    const aside = document.querySelector("aside")
-    expect(aside?.className).toContain("h-full")
-    expect(aside?.className).toContain("overflow-y-auto")
-    // Grid siblings: same row container, same baseline.
-    expect(aside?.parentElement).toBe(column?.parentElement)
+    expect(drawer?.parentElement).toBe(column?.parentElement)
+    // Without a toggle callback the close affordance is omitted.
+    expect(screen.queryByTestId("workspace-sidebar-close")).toBeNull()
+  })
+
+  // 抽屉开合 1/3 — OFF state: sidebarHidden (workspace pref / keyboard
+  // layer) mounts NO drawer at all; the conversation stays untouched.
+  it("mounts no drawer while sidebarHidden is set", () => {
+    render(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={null}
+        sidebar={<div data-testid="ws-sidebar">sidebar</div>}
+        sidebarHidden
+      />,
+    )
+    expect(document.querySelector("aside")).toBeNull()
+    expect(screen.queryByTestId("ws-sidebar")).toBeNull()
+    // The conversation keeps its composer + timeline.
+    expect(screen.getByPlaceholderText(/enter your request/i)).toBeInTheDocument()
+    expect(screen.getByTestId("chat-timeline-shell")).toBeInTheDocument()
+  })
+
+  // 抽屉开合 2/3 — two-state round trip: clearing sidebarHidden brings
+  // the drawer back with its content (pref flip semantics).
+  it("shows the drawer again once sidebarHidden clears", () => {
+    const view = render(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={null}
+        sidebar={<div data-testid="ws-sidebar">sidebar</div>}
+        sidebarHidden
+      />,
+    )
+    expect(document.querySelector("aside")).toBeNull()
+    view.rerender(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={null}
+        sidebar={<div data-testid="ws-sidebar">sidebar</div>}
+      />,
+    )
+    expect(document.querySelector("aside")).not.toBeNull()
+    expect(screen.getByTestId("ws-sidebar")).toBeInTheDocument()
+  })
+
+  // 抽屉开合 3/3 — the drawer's close button routes through the SAME
+  // toggle the App keyboard layer (Ctrl+Shift+B) performs: one shared
+  // workspace-prefs write, no parallel open/close state.
+  it("routes the drawer close button through the shared sidebar toggle", async () => {
+    const user = userEvent.setup()
+    const onToggleSidebar = vi.fn()
+    render(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={null}
+        sidebar={<div data-testid="ws-sidebar">sidebar</div>}
+        onToggleSidebar={onToggleSidebar}
+      />,
+    )
+    await user.click(screen.getByTestId("workspace-sidebar-close"))
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1)
+    // The drawer stays mounted — visibility follows the sidebarHidden
+    // prop (the prefs write re-renders the tree from App downward).
+    expect(document.querySelector("aside")).not.toBeNull()
   })
 
   // 键盘: Cmd/Ctrl+F opens find ONLY when the focus already lives inside

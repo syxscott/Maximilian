@@ -13,12 +13,19 @@
  *   - useDockLayout — store actions + "maximilian.dock-layout" persistence;
  *   - DockPanel / DockContainer — render smoke, tri-state display wiring,
  *     splitter drag tooltip / double-click reset driven through pointer
- *     events at the model layer.
+ *     events at the model layer;
+ *   - WorkspaceDockArea — the sidebar drawer unification: the workspace
+ *     panel stack (registry-driven dock leaves) rides into the chat leaf
+ *     as ChatPanel's collapsible drawer, toggled through the shared
+ *     sidebarHidden pref the App keyboard layer (Ctrl+Shift+B) writes.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { act, fireEvent, render, screen } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { getDictionary, setLocale } from "@max/i18n"
 import { applyDashboardDictionaries } from "../src/locales/index"
+import { COMMANDS } from "../src/lib/commands"
+import { eventToKeybind, matchKeybind } from "../src/lib/keybinds"
 import {
   DOCK_MAX_DEPTH,
   DOCK_MAX_PANELS,
@@ -57,6 +64,12 @@ import {
 } from "../src/components/layout/useDockLayout"
 import { DockContainer } from "../src/components/layout/DockContainer"
 import { DockPanel } from "../src/components/layout/DockPanel"
+import { WorkspaceDockArea } from "../src/components/layout/WorkspaceDockArea"
+import { WORKSPACE_PANELS } from "../src/features"
+import {
+  WORKSPACE_PREFS_STORAGE_KEY,
+  useWorkspacePrefsStore,
+} from "../src/stores/workspacePrefsStore"
 
 // Register the aggregated dashboard dictionaries exactly like main.tsx so
 // t() resolves the layout.* keys (setup.ts pins the locale to en-US).
@@ -75,19 +88,24 @@ const resetStore = () =>
   useDockLayoutStore.setState({ model: createDefaultDockModel(), maximizedId: null, hiddenIds: [] })
 
 beforeEach(() => {
-  try {
-    localStorage.removeItem(DOCK_LAYOUT_STORAGE_KEY)
-  } catch {
-    /* ignore */
+  for (const key of [DOCK_LAYOUT_STORAGE_KEY, WORKSPACE_PREFS_STORAGE_KEY]) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      /* ignore */
+    }
   }
   resetStore()
+  useWorkspacePrefsStore.setState({ prefs: {} })
 })
 
 afterEach(() => {
-  try {
-    localStorage.removeItem(DOCK_LAYOUT_STORAGE_KEY)
-  } catch {
-    /* ignore */
+  for (const key of [DOCK_LAYOUT_STORAGE_KEY, WORKSPACE_PREFS_STORAGE_KEY]) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      /* ignore */
+    }
   }
 })
 
@@ -766,5 +784,143 @@ describe("layout dictionaries", () => {
     const zhLayoutKeys = keys(layoutZh).filter((k) => k.startsWith("layout."))
     expect(enLayoutKeys.length).toBeGreaterThan(0)
     expect(enLayoutKeys.sort()).toEqual(zhLayoutKeys.sort())
+  })
+})
+
+// ── WorkspaceDockArea — the sidebar drawer unified with the chat leaf ───────
+
+const renderDockArea = (props?: Partial<Parameters<typeof WorkspaceDockArea>[0]>) => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <WorkspaceDockArea
+        workspace={null}
+        events={[]}
+        live={false}
+        submitting={false}
+        onSubmit={() => {}}
+        {...props}
+      />
+    </QueryClientProvider>,
+  )
+}
+
+/** The prefs write the App keyboard layer's Ctrl+Shift+B handler performs. */
+const keyboardSidebarWrite = () => {
+  const current = useWorkspacePrefsStore.getState().prefs["__app__"]?.sidebarHidden ?? false
+  useWorkspacePrefsStore.getState().updatePrefs("__app__", { sidebarHidden: !current })
+  return useWorkspacePrefsStore.getState().prefs["__app__"]?.sidebarHidden ?? false
+}
+
+const rerenderArea = (
+  view: ReturnType<typeof renderDockArea>,
+  props?: Partial<Parameters<typeof WorkspaceDockArea>[0]>,
+) =>
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <WorkspaceDockArea
+        workspace={null}
+        events={[]}
+        live={false}
+        submitting={false}
+        onSubmit={() => {}}
+        {...props}
+      />
+    </QueryClientProvider>,
+  )
+
+describe("WorkspaceDockArea — sidebar drawer hosts the registry panel stack", () => {
+  it("renders every registered dock panel leaf inside the chat leaf's drawer", () => {
+    renderDockArea()
+    // The drawer replaces the old trailing column: one aside, mounted over
+    // the conversation, carrying the workspace panel stack.
+    const drawer = document.querySelector("aside")
+    expect(drawer).not.toBeNull()
+    expect(drawer?.getAttribute("data-testid")).toBe("workspace-sidebar-aside")
+    // Registry-driven content: the set of dock leaves inside the drawer is
+    // exactly WORKSPACE_PANELS — no hardcoded panel list on either side.
+    const drawerPanelIds = Array.from(drawer!.querySelectorAll("[data-testid^='dock-panel-']")).map(
+      (el) => el.getAttribute("data-testid")!.slice("dock-panel-".length),
+    )
+    expect([...drawerPanelIds].sort()).toEqual([...WORKSPACE_PANELS.map((p) => p.id)].sort())
+    // The shell dock's own leaves stay OUTSIDE the drawer (chat/timeline).
+    expect(drawerPanelIds).not.toContain("chat")
+    expect(drawerPanelIds).not.toContain("timeline")
+    expect(screen.getByTestId("dock-panel-chat")).toBeTruthy()
+    expect(screen.getByTestId("dock-panel-timeline")).toBeTruthy()
+  })
+
+  it("keeps the registry add-panel menu and reset affordance in the drawer", () => {
+    renderDockArea()
+    const drawer = document.querySelector("aside")
+    expect(drawer).not.toBeNull()
+    // The registry-driven add-panel menu moved WITH the stack into the
+    // drawer — same testids, same behavior, new container.
+    expect(drawer!.contains(screen.getByTestId("workspace-dock-add-toggle"))).toBe(true)
+    expect(drawer!.contains(screen.getByTestId("workspace-dock-reset-layout"))).toBe(true)
+    fireEvent.click(screen.getByTestId("workspace-dock-add-toggle"))
+    expect(drawer!.contains(screen.getByTestId("workspace-dock-add-menu"))).toBe(true)
+    // Every registered-but-docked panel is absent from the menu (all open).
+    expect(screen.getByTestId("workspace-dock-add-menu").textContent).toContain(
+      "All panels are open",
+    )
+  })
+
+  it("hides and restores the drawer through sidebarHidden without touching either dock tree", () => {
+    const view = renderDockArea()
+    // State 1 (default): drawer open with the registry stack.
+    expect(screen.getByTestId("workspace-sidebar-aside")).toBeTruthy()
+    // State 2: sidebarHidden (workspace pref / keyboard toggle) unmounts
+    // the drawer; the shell dock keeps chat + timeline untouched.
+    rerenderArea(view, { sidebarHidden: true })
+    expect(screen.queryByTestId("workspace-sidebar-aside")).toBeNull()
+    expect(screen.getByTestId("dock-panel-chat")).toBeTruthy()
+    expect(screen.getByTestId("dock-panel-timeline")).toBeTruthy()
+    // The workspace dock's persisted tree is untouched by the toggle too.
+    expect(flattenPanels(useDockLayoutStore.getState().model.root).map((l) => l.id)).toEqual([
+      "chat",
+      "timeline",
+    ])
+    // Back to state 1: the drawer (and its registry stack) returns.
+    rerenderArea(view)
+    expect(screen.getByTestId("workspace-sidebar-aside")).toBeTruthy()
+    expect(screen.getByTestId("dock-panel-agent")).toBeTruthy()
+  })
+
+  it("the drawer close button and the Ctrl+Shift+B keybind flip one shared prefs bit", () => {
+    const view = renderDockArea()
+    // The existing keyboard layer resolves Ctrl+Shift+B to the registry's
+    // toggle-sidebar command (same match the App keydown handler runs).
+    const command = COMMANDS.find((c) => c.action === "toggle-sidebar")
+    expect(command?.keybind).toBeTruthy()
+    const keyEvent = {
+      key: "b",
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    }
+    expect(matchKeybind(keyEvent, command!.keybind!)).toBe(true)
+    // The recorder's conversion captures the exact bound combo, too.
+    expect(eventToKeybind(keyEvent)).toEqual({ mod: true, shift: true, key: "b" })
+
+    // The drawer's close button performs the SAME write that keybind
+    // handler performs (one source of truth — no parallel open state).
+    fireEvent.click(screen.getByTestId("workspace-sidebar-close"))
+    expect(useWorkspacePrefsStore.getState().prefs["__app__"]?.sidebarHidden).toBe(true)
+    // Visibility stays prop-driven: the drawer only leaves once App
+    // re-renders with the flipped pref (exactly what the real shell does).
+    expect(screen.getByTestId("workspace-sidebar-aside")).toBeTruthy()
+    rerenderArea(view, { sidebarHidden: true })
+    expect(screen.queryByTestId("workspace-sidebar-aside")).toBeNull()
+
+    // Pressing Ctrl+Shift+B again toggles the shared bit back and the
+    // following App render reopens the drawer with its registry stack.
+    expect(keyboardSidebarWrite()).toBe(false)
+    rerenderArea(view)
+    expect(screen.getByTestId("workspace-sidebar-aside")).toBeTruthy()
+    expect(screen.getByTestId("dock-panel-agent")).toBeTruthy()
   })
 })

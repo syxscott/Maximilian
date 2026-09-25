@@ -15,6 +15,10 @@
     "empty": "没有打开的面板——先添加一个吧",
     "addPanel": "添加面板",
     "resetLayout": "重置布局",
+    "drawer": {
+      "title": "工作区面板",
+      "close": "关闭侧栏"
+    },
     "addPanelMenu": {
       "allDocked": "所有面板均已打开",
       "hint": "选择要停靠到侧栏的面板",

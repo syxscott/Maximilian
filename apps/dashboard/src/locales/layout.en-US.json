@@ -15,6 +15,10 @@
     "empty": "No panels open — add one to get started",
     "addPanel": "Add panel",
     "resetLayout": "Reset layout",
+    "drawer": {
+      "title": "Workspace panels",
+      "close": "Close sidebar"
+    },
     "addPanelMenu": {
       "allDocked": "All panels are open",
       "hint": "Pick a panel to dock in the sidebar",
