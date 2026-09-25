@@ -285,3 +285,66 @@ export function useMigrationCandidates() {
     staleTime: 60_000,
   })
 }
+
+// ── Oracle lessons editor (PUT /evolution/oracle-lessons/{role}) ─────────────
+
+/**
+ * The oracle corpus browser's query key — exported so the editor and the
+ * save mutation invalidate exactly the list the settings center reads.
+ */
+export const ORACLE_LESSONS_QUERY_KEY = ["settings", "oracle-lessons"] as const
+
+export interface OracleLessonSaveInput {
+  role: string
+  content: string
+}
+
+const OracleLessonSaveResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    role: z.string(),
+    bytes: z.number(),
+  })
+  .passthrough()
+
+export type OracleLessonSaveResponse = z.infer<typeof OracleLessonSaveResponseSchema>
+
+/**
+ * Client-side mirror of the server's role whitelist (see the oracle-domain
+ * model for the canonical, tested rule): fail fast on an unsafe name before
+ * a single byte hits the wire — the route enforces the same pattern
+ * authoritatively and answers 400.
+ */
+const ORACLE_ROLE_SAFE = /^[a-z0-9-]{1,64}$/
+
+export function useSaveOracleLesson() {
+  const queryClient = useQueryClient()
+  return useMutation<OracleLessonSaveResponse, Error, OracleLessonSaveInput>({
+    mutationFn: async (input) => {
+      if (!ORACLE_ROLE_SAFE.test(input.role)) {
+        throw new Error(`Invalid role name: ${input.role}`)
+      }
+      const res = await fetch(
+        `${BASE}/evolution/oracle-lessons/${encodeURIComponent(input.role)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ content: input.content }),
+        },
+      )
+      const body = (await res.json().catch(() => null)) as
+        (Record<string, unknown> & { error?: string }) | null
+      if (!res.ok) {
+        throw new Error(
+          body?.error ?? `oracle lesson save failed (${res.status} ${res.statusText})`,
+        )
+      }
+      return OracleLessonSaveResponseSchema.parse(body)
+    },
+    onSuccess: () => {
+      // The corpus browser reads GET /evolution/oracle-lessons — refresh it
+      // so the saved content and byte count show up without a remount.
+      void queryClient.invalidateQueries({ queryKey: [...ORACLE_LESSONS_QUERY_KEY] })
+    },
+  })
+}

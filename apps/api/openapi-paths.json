@@ -106,6 +106,7 @@
   "POST /system/providers/{id}/test-chat",
   "POST /tenants",
   "POST /workflows/run",
+  "PUT /evolution/oracle-lessons/{role}",
   "PUT /meta/governance/config",
   "PUT /permissions",
   "PUT /system/failover/auto",

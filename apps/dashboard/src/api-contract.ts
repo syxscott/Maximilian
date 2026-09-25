@@ -116,6 +116,7 @@ export const API_PATHS = [
   "POST /system/providers/{id}/test-chat",
   "POST /tenants",
   "POST /workflows/run",
+  "PUT /evolution/oracle-lessons/{role}",
   "PUT /meta/governance/config",
   "PUT /permissions",
   "PUT /system/failover/auto",
@@ -126,5 +127,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 113. */
-export const API_PATH_COUNT = 113
+/** Number of routes in the backend contract: 114. */
+export const API_PATH_COUNT = 114

@@ -351,40 +351,12 @@ export function VaultSection() {
 
 // ── Oracle lessons ──────────────────────────────────────────────────────────
 
-export function OracleLessonsSection() {
-  useLocale()
-  const { data } = useQuery({
-    queryKey: ["settings", "oracle-lessons"],
-    queryFn: ({ signal }) => systemApi.oracleLessons(signal),
-    staleTime: 60_000,
-  })
-  if (!data) return null
-  return (
-    <Card data-testid="settings-oracle">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">{t("settings.oracle.title")}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {!data.configured && (
-          <p className="text-xs text-muted-foreground">{t("settings.oracle.notConfigured")}</p>
-        )}
-        {data.lessons.length === 0 && data.configured && (
-          <p className="text-xs text-muted-foreground">{t("settings.oracle.empty")}</p>
-        )}
-        {data.lessons.map((lesson) => (
-          <details key={lesson.role} className="rounded border px-2 py-1.5">
-            <summary className="cursor-pointer font-mono text-xs">
-              {lesson.role} <span className="text-muted-foreground">· {lesson.bytes} B</span>
-            </summary>
-            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
-              {lesson.content}
-            </pre>
-          </details>
-        ))}
-      </CardContent>
-    </Card>
-  )
-}
+/**
+ * The oracle section lives in its own domain folder (read-only browser +
+ * curation editor over PUT /evolution/oracle-lessons/{role}); the stable
+ * `OracleLessonsSection` export is what the settings shell renders.
+ */
+export { OracleLessonsEditor as OracleLessonsSection } from "./oracle-domain/OracleLessonsEditor"
 
 /** Providers health section reads the same API the ProviderPanel uses. */
 export function ProvidersHealthSection() {

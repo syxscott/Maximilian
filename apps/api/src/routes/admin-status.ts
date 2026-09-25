@@ -4,9 +4,10 @@
 // Licensed under the MIT License. See LICENSE in the project root.
 
 /**
- * Admin system routes — read-only status surfaces for the settings
- * center: credential-vault state and the curated oracle-lessons corpus.
- * Neither endpoint ever returns secret material.
+ * Admin system routes — status surfaces for the settings center:
+ * credential-vault state, the curated oracle-lessons corpus (browse +
+ * curator write-back) and migration-candidate sizing. No endpoint ever
+ * returns secret material.
  */
 
 import { createRoute } from "@hono/zod-openapi"
@@ -124,7 +125,110 @@ export function oracleLessonsHandler() {
   }
 }
 
-export { vaultStatusRoute, oracleLessonsRoute }
+// ── Oracle lessons editor (real write-back of the curated corpus) ───────────
+//
+// The read-only browser above lets the settings center *see* the corpus;
+// this route lets a curator *maintain* it: one markdown file per role,
+// written through the same `<dir>/<role>.md` layout the oracle-triad
+// harness reads. Because the payload becomes prompt-injection material,
+// validation is strict on purpose: the role name is whitelisted to
+// [a-z0-9-] (no dots, separators or traversal) and the directory must be
+// explicitly configured — an unset EVOLUTION_ORACLE_LESSONS_DIR is a 400,
+// never a best-guess write location.
+
+/**
+ * Safe role → filename whitelist, mirrored by the dashboard editor:
+ * lowercase digits and dashes only, 1–64 chars. This rules out `.`, `..`,
+ * path separators, whitespace and unicode lookalikes in one stroke.
+ */
+export const ORACLE_ROLE_NAME_PATTERN = /^[a-z0-9-]{1,64}$/
+
+/** Hard content ceiling — curation edits, not bulk corpus uploads. */
+const ORACLE_LESSON_MAX_BYTES = 262_144
+
+const OracleLessonSaveBodySchema = z.object({
+  content: z.string().min(1).max(ORACLE_LESSON_MAX_BYTES),
+})
+
+const oracleLessonSaveRoute = createRoute({
+  method: "put",
+  path: "/evolution/oracle-lessons/{role}",
+  tags: ["evolution"],
+  request: {
+    params: z.object({ role: z.string().min(1) }),
+    body: { content: { "application/json": { schema: OracleLessonSaveBodySchema } } },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            ok: z.literal(true),
+            role: z.string(),
+            bytes: z.number().int().nonnegative(),
+          }),
+        },
+      },
+      description: "Lesson written to <dir>/<role>.md",
+    },
+    400: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Invalid role name, unconfigured lessons dir, or invalid content",
+    },
+  },
+})
+
+/**
+ * Handler factory for PUT /evolution/oracle-lessons/{role}. Writes
+ * `<dir>/<role>.md` (creating the configured directory when missing) and
+ * reports the written byte size. Overwrite semantics are plain — the file
+ * is replaced wholesale, matching the editor's full-content textarea.
+ */
+export function oracleLessonSaveHandler() {
+  return async (c: Context) => {
+    const role = c.req.param("role")
+    if (!role) return c.json({ error: "Missing role" }, 400)
+
+    const dir = getConfig().EVOLUTION_ORACLE_LESSONS_DIR
+    if (!dir) {
+      return c.json({ error: "Oracle lessons directory not configured" }, 400)
+    }
+    if (!ORACLE_ROLE_NAME_PATTERN.test(role)) {
+      return c.json({ error: `Invalid role name: ${role}` }, 400)
+    }
+
+    let rawBody: unknown
+    try {
+      rawBody = await c.req.json()
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400)
+    }
+    const parsed = OracleLessonSaveBodySchema.safeParse(rawBody)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      return c.json({ error: `Invalid lesson content: ${issue?.message ?? "unknown"}` }, 400)
+    }
+
+    // Belt-and-suspenders on top of the whitelist: the final path must sit
+    // directly inside the configured directory (a symlinked `dir` itself is
+    // fine — the guard is about the *filename* component).
+    const target = path.resolve(dir, `${role}.md`)
+    if (path.dirname(target) !== path.resolve(dir)) {
+      return c.json({ error: `Invalid role name: ${role}` }, 400)
+    }
+
+    await fs.mkdir(path.resolve(dir), { recursive: true })
+    await fs.writeFile(target, parsed.data.content, "utf8")
+
+    return c.json({
+      ok: true as const,
+      role,
+      bytes: Buffer.byteLength(parsed.data.content, "utf8"),
+    })
+  }
+}
+
+export { vaultStatusRoute, oracleLessonsRoute, oracleLessonSaveRoute }
 
 // ── Migration candidates status ─────────────────────────────────────────────
 
