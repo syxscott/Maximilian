@@ -255,3 +255,74 @@ export function elapsedSeconds(fromMs: unknown, toMs: unknown): number | null {
   if (typeof toMs !== "number" || !Number.isFinite(toMs)) return null
   return Math.max(0, Math.round((toMs - fromMs) / 1000))
 }
+
+// ── Materialization chain ────────────────────────────────────────────────────
+
+/**
+ * The workspace a fire of this job materialized into, defensively derived:
+ *   1. a non-empty top-level `materializedWorkspaceId` wins (a future API
+ *      may promote the backfill onto the row — the field is typed optional
+ *      in ../api for exactly that reason)
+ *   2. otherwise the newest trail entry carrying a non-empty `workspaceId`
+ *      (the `materialized` backfill the worker publishes through the API;
+ *      same newest-first semantics as the dashboard's jobs model)
+ * A rejected/failed materialization appends a trail entry WITHOUT a
+ * workspaceId (only an error), so it naturally yields null — no chip for a
+ * failure. Garbage rows (null/undefined/non-object) yield null too.
+ */
+export function materializedWorkspaceIdOf(job: Job | null | undefined): string | null {
+  if (job == null || typeof job !== "object") return null
+  const top = (job as { materializedWorkspaceId?: unknown }).materializedWorkspaceId
+  if (typeof top === "string" && top.trim().length > 0) return top
+  const events = Array.isArray(job.events) ? job.events : []
+  for (let i = events.length - 1; i >= 0; i--) {
+    const entry = events[i]
+    if (entry == null || typeof entry !== "object") continue
+    const id = (entry as { workspaceId?: unknown }).workspaceId
+    if (typeof id === "string" && id.trim().length > 0) return id
+  }
+  return null
+}
+
+/**
+ * Delays (ms) at which the dialog re-pulls GET /api/jobs after a manual
+ * trigger. Materialization is asynchronous (worker → Redis → API trail
+ * backfill), so the immediate refresh usually shows only the `dispatched`
+ * entry; +2s and +5s catch the `materialized` backfill without busy-
+ * polling. Pure so the cadence is pinned by tests and tunable in one place.
+ */
+export function pendingRefreshDelays(): [number, number] {
+  return [2000, 5000]
+}
+
+/**
+ * Defensive read of a `job-materialized` SSE payload (the worker's
+ * jobId→workspaceId announcement) into what the dialog's inline hint needs:
+ * { jobId, workspaceId }. workspaceId is null when the event announces a
+ * FAILED materialization. Returns null for anything without a usable jobId
+ * — garbage degrades to "no hint", never to an invented one.
+ */
+export function materializationEventTarget(
+  event: unknown,
+): { jobId: string; workspaceId: string | null } | null {
+  if (event == null || typeof event !== "object") return null
+  const jobId = (event as { jobId?: unknown }).jobId
+  if (typeof jobId !== "string" || jobId.trim().length === 0) return null
+  const workspaceId = (event as { workspaceId?: unknown }).workspaceId
+  return {
+    jobId,
+    workspaceId:
+      typeof workspaceId === "string" && workspaceId.trim().length > 0 ? workspaceId : null,
+  }
+}
+
+/**
+ * Row chip label for a materialized workspace id: short ids pass through,
+ * long ones truncate with an ellipsis so the list row survives an
+ * 80-column terminal. Garbage degrades to "?" (the schedule "?" convention).
+ */
+export function workspaceChipLabel(id: unknown): string {
+  const clean = typeof id === "string" ? id.trim() : ""
+  if (clean.length === 0) return "?"
+  return clean.length > 24 ? `${clean.slice(0, 21)}…` : clean
+}

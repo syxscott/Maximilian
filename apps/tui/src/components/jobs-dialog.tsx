@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { t } from "@max/i18n"
 import { Box, Text, useInput } from "ink"
 import Spinner from "ink-spinner"
 
 import type { Job } from "../api"
 import { useSDK } from "../context/sdk"
+import { useClipboard } from "../context/clipboard"
+import { useEvent } from "../context/event"
 import { useToast } from "./toast"
 import { useJobs, deleteJobViaSdk, triggerJobViaSdk } from "../hooks/useJobs"
 import {
@@ -15,10 +17,14 @@ import {
   jobDetailEvents,
   jobEventKindLabel,
   jobStatusView,
+  materializationEventTarget,
+  materializedWorkspaceIdOf,
   payloadKind,
   payloadLabelKey,
+  pendingRefreshDelays,
   relativeTime,
   scheduleEstimate,
+  workspaceChipLabel,
   type RelativeTime,
 } from "./jobs-model"
 import "../locales/tui-panels"
@@ -31,24 +37,63 @@ import "../locales/tui-panels"
  * times), d deletes (two-press confirm, the dialog-workspace-list pattern),
  * t fires a manual trigger, r refreshes (a live "updated Ns ago" hint keeps
  * the cadence visible). Success/failure surfaces through the existing toast.
+ *
+ * Materialization chain (the dispatch tail end): a kind:"workspace" job
+ * whose fire made it through the worker shows a ⧉ workspace chip — the
+ * materialized workspace id from the trail (or a live `job-materialized`
+ * SSE hint). c copies that id to the clipboard + toast (the TUI has no
+ * cross-panel jump to wire up, so copy IS the chip's whole interaction,
+ * matching the memory panel's export flow). A trigger schedules two more
+ * refreshes (+2s, +5s) so the `materialized` trail entry lands without a
+ * keypress, and a live `job-materialized` event paints an inline
+ * "materialized → ws-x" hint on its row immediately.
  */
 export function JobsDialog() {
   const sdk = useSDK()
   const toast = useToast()
+  const clipboard = useClipboard()
+  const event = useEvent()
   const { jobs, total, isError, isLoading, error, refresh } = useJobs()
   const [cursor, setCursor] = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Live `job-materialized` arrivals this session: jobId → announced
+  // workspaceId (null = the worker announced a FAILED materialization).
+  const [materializedHints, setMaterializedHints] = useState<Record<string, string | null>>({})
   // 1s heartbeat so the refresh hint ages without waiting for a keypress.
   const [, setTick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [])
+  // Post-trigger refresh timers (the +2s/+5s materialization catches).
+  const refreshTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const clearPendingRefreshes = useCallback(() => {
+    for (const timer of refreshTimersRef.current) clearTimeout(timer)
+    refreshTimersRef.current = []
+  }, [])
+  useEffect(() => clearPendingRefreshes, [clearPendingRefreshes])
   // Freeze "now" per data load so all relative timestamps age consistently
   // within one render pass (and tests / screenshots stay deterministic).
   const nowRef = useRef(Date.now())
+  // Materialization chain, live side: the worker announces each materialized
+  // fire as a `job-materialized` event on the global event stream
+  // (jobId → workspaceId). Remember it per job for the inline "materialized
+  // → ws-x" hint and pull the list so the durable trail entry (and the chip)
+  // show up without a keypress. Best-effort by design: a deployment without
+  // the stream simply never delivers hints — the trail plus the post-trigger
+  // refreshes remain the source of truth.
+  useEffect(() => {
+    const off = event.on("job-materialized", (evt) => {
+      const target = materializationEventTarget(evt.properties)
+      if (target === null) return
+      setMaterializedHints((prev) => ({ ...prev, [target.jobId]: target.workspaceId }))
+      nowRef.current = Date.now()
+      refresh()
+    })
+    return off
+  }, [event, refresh])
   const loadedOnceRef = useRef(false)
   if (!isLoading) loadedOnceRef.current = true
 
@@ -84,6 +129,47 @@ export function JobsDialog() {
     }
   }
 
+  // The workspace chip's "click" — c copies the materialized workspace id
+  // to the clipboard + toast (the TUI has no cross-panel jump to hand off
+  // to, so copy is the chip's whole interaction surface). Live hint wins
+  // when present: it is strictly newer than the last-pulled trail.
+  async function copyMaterializedWorkspace(job: Job) {
+    if (busy) return
+    const liveHint = materializedHints[job.id]
+    const wsId = (typeof liveHint === "string" ? liveHint : null) ?? materializedWorkspaceIdOf(job)
+    if (wsId === null) {
+      toast.show({
+        variant: "error",
+        message: t(
+          "tui.jobs.nothingMaterialized",
+          "No materialized workspace yet — trigger the job first",
+        ),
+        duration: 2500,
+      })
+      return
+    }
+    try {
+      const write = clipboard.write
+      if (!write) throw new Error(t("tui.jobs.copyUnavailable", "clipboard unavailable"))
+      await write(wsId)
+      toast.show({
+        variant: "success",
+        message: t("tui.jobs.copied", { id: wsId }, `Workspace ${wsId} copied to clipboard`),
+        duration: 2000,
+      })
+    } catch (err) {
+      toast.show({
+        variant: "error",
+        message: t(
+          "tui.jobs.copyFailed",
+          { error: err instanceof Error ? err.message : String(err) },
+          `Copy failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+        duration: 4000,
+      })
+    }
+  }
+
   async function performTrigger(job: Job) {
     if (busy) return
     setBusy(true)
@@ -96,6 +182,13 @@ export function JobsDialog() {
       })
       nowRef.current = Date.now()
       refresh()
+      // Materialization is asynchronous (worker → Redis → API trail
+      // backfill): the immediate refresh usually shows only `dispatched`,
+      // so re-pull at the pinned +2s/+5s to catch the `materialized` entry.
+      clearPendingRefreshes()
+      for (const delay of pendingRefreshDelays()) {
+        refreshTimersRef.current.push(setTimeout(() => refresh(), delay))
+      }
     } catch (err) {
       toast.show({
         variant: "error",
@@ -145,6 +238,11 @@ export function JobsDialog() {
       void performTrigger(selected)
       return
     }
+    if (input === "c" && selected) {
+      setConfirmDeleteId(null)
+      void copyMaterializedWorkspace(selected)
+      return
+    }
     // Any other key disarms the delete confirm (matches dialog-workspace-list).
     if (confirmDeleteId !== null) setConfirmDeleteId(null)
   })
@@ -172,23 +270,32 @@ export function JobsDialog() {
         ) : jobs.length === 0 ? (
           <Text color="gray">{t("tui.jobs.empty", "No scheduled jobs.")}</Text>
         ) : (
-          jobs.map((job, index) => (
-            <JobRow
-              key={job.id}
-              job={job}
-              selected={index === safeCursor}
-              expanded={expandedId === job.id}
-              confirmingDelete={confirmDeleteId === job.id}
-              now={now}
-            />
-          ))
+          jobs.map((job, index) => {
+            const liveHint = materializedHints[job.id]
+            return (
+              <JobRow
+                key={job.id}
+                job={job}
+                selected={index === safeCursor}
+                expanded={expandedId === job.id}
+                confirmingDelete={confirmDeleteId === job.id}
+                now={now}
+                // Chip id: the live SSE hint is strictly newer than the
+                // last-pulled trail, so it wins while both exist.
+                materializedWorkspaceId={
+                  typeof liveHint === "string" ? liveHint : materializedWorkspaceIdOf(job)
+                }
+                liveMaterialization={job.id in materializedHints ? (liveHint ?? null) : undefined}
+              />
+            )
+          })
         )}
       </Box>
       <Box marginTop={1} flexDirection="column">
         <Text dimColor>
           {t(
             "tui.jobs.hints",
-            "j/k move · Enter details · d delete · t trigger · r refresh · esc close",
+            "j/k move · Enter details · d delete · t trigger · c copy ws · r refresh · esc close",
           )}
         </Text>
         {(() => {
@@ -210,8 +317,17 @@ function JobRow(props: {
   expanded: boolean
   confirmingDelete: boolean
   now: number
+  /** Materialized workspace id for the chip (trail entry or live SSE hint). */
+  materializedWorkspaceId: string | null
+  /**
+   * Live `job-materialized` arrival for this row this session: the
+   * announced workspaceId, or null for a failed materialization;
+   * undefined = no event arrived (no hint line).
+   */
+  liveMaterialization?: string | null
 }) {
-  const { job, selected, expanded, confirmingDelete, now } = props
+  const { job, selected, expanded, confirmingDelete, now, materializedWorkspaceId } = props
+  const liveMaterialization = props.liveMaterialization
   const status = jobStatusView(job)
   const last = formatRelativeTime(
     relativeTime(job.lastTriggeredAt, now),
@@ -232,7 +348,34 @@ function JobRow(props: {
           {" "}
           · {formatSchedule(job)} · {t("tui.jobs.lastTriggered", "last trigger")} {last}
         </Text>
+        {/*
+          Workspace chip — the tail of the dispatch chain: only a
+          kind:"workspace" job that actually materialized gets one. There is
+          no cross-panel jump to wire (the TUI has no workspace navigation);
+          pressing c on the selected row copies the id (see
+          copyMaterializedWorkspace).
+        */}
+        {payloadKind(job) === "workspace" && materializedWorkspaceId !== null ? (
+          <Text color="cyan"> ⧉ {workspaceChipLabel(materializedWorkspaceId)}</Text>
+        ) : null}
       </Box>
+      {liveMaterialization !== undefined ? (
+        <Text color="cyan">
+          {"   "}
+          {t(
+            "tui.jobs.materializedHint",
+            {
+              id:
+                liveMaterialization === null
+                  ? t("tui.jobs.materializedFailed", "no workspace (failed)")
+                  : liveMaterialization,
+            },
+            liveMaterialization === null
+              ? "materialized → no workspace (failed)"
+              : `materialized → ${liveMaterialization}`,
+          )}
+        </Text>
+      ) : null}
       {expanded ? <JobDetail job={job} now={now} /> : null}
     </Box>
   )

@@ -148,6 +148,16 @@ export interface Job {
   nextRunAt: string | null
   triggerCount: number
   events: JobEvent[]
+  /**
+   * Defensive optional: today the API keeps materialization state in the
+   * event trail (kind "materialized" → workspaceId) and on the
+   * `job-materialized` SSE event, not on the row — a future API version may
+   * promote it onto the row. jobs-model's materializedWorkspaceIdOf reads
+   * it first and falls back to the trail. List (GET /api/jobs) and detail
+   * (POST trigger/create) parsing is typed passthrough, so the field
+   * survives either channel untouched.
+   */
+  materializedWorkspaceId?: string | null
 }
 
 export interface JobListResponse {

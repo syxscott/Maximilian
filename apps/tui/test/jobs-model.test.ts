@@ -16,10 +16,14 @@ import {
   jobDetailEvents,
   jobEventKindLabel,
   jobStatusView,
+  materializationEventTarget,
+  materializedWorkspaceIdOf,
   payloadKind,
   payloadLabelKey,
+  pendingRefreshDelays,
   relativeTime,
   scheduleEstimate,
+  workspaceChipLabel,
 } from "../src/components/jobs-model"
 
 const NOW = Date.parse("2026-09-25T12:00:00.000Z")
@@ -298,5 +302,147 @@ describe("elapsedSeconds (refresh hint)", () => {
     expect(elapsedSeconds(1_000, "junk" as unknown as number)).toBeNull()
     expect(elapsedSeconds(Number.NaN, 1_000)).toBeNull()
     expect(elapsedSeconds(1_000, Number.POSITIVE_INFINITY)).toBeNull()
+  })
+})
+
+// ── Materialization chain ────────────────────────────────────────────────────
+
+describe("materializedWorkspaceIdOf", () => {
+  it("prefers a non-empty top-level materializedWorkspaceId when a future API promotes the field onto the row", () => {
+    const job = makeJob({
+      materializedWorkspaceId: "ws-row-level",
+      events: [{ at: "2026-09-25T10:00:00.000Z", kind: "materialized", workspaceId: "ws-trail" }],
+    })
+    expect(materializedWorkspaceIdOf(job)).toBe("ws-row-level")
+  })
+
+  it("falls back to the newest trail entry carrying a workspaceId (newest-first scan)", () => {
+    const job = makeJob({
+      events: [
+        { at: "2026-09-24T10:00:00.000Z", kind: "materialized", workspaceId: "ws-old" },
+        { at: "2026-09-25T10:00:00.000Z", kind: "dispatched", queued: true },
+        { at: "2026-09-25T11:00:00.000Z", kind: "materialized", workspaceId: "ws-new" },
+      ],
+    })
+    expect(materializedWorkspaceIdOf(job)).toBe("ws-new")
+  })
+
+  it("yields null for a FAILED materialization (trail entry without a workspaceId) — no chip for a failure", () => {
+    const job = makeJob({
+      events: [
+        { at: "2026-09-25T10:00:00.000Z", kind: "dispatched", queued: true },
+        {
+          at: "2026-09-25T10:01:00.000Z",
+          kind: "materialized",
+          error: "generation rejected",
+        },
+      ],
+    })
+    expect(materializedWorkspaceIdOf(job)).toBeNull()
+  })
+
+  it("is defensive: garbage rows, garbage events and empty/whitespace ids degrade to null", () => {
+    expect(materializedWorkspaceIdOf(null)).toBeNull()
+    expect(materializedWorkspaceIdOf(undefined)).toBeNull()
+    expect(materializedWorkspaceIdOf("junk" as unknown as Job)).toBeNull()
+    expect(
+      materializedWorkspaceIdOf(
+        makeJob({ events: [{ at: "2026-09-25T10:00:00.000Z", kind: "materialized" }] }),
+      ),
+    ).toBeNull()
+    expect(
+      materializedWorkspaceIdOf(
+        makeJob({
+          events: [
+            null,
+            "garbage",
+            { at: "2026-09-25T10:00:00.000Z", kind: "materialized", workspaceId: "   " },
+            { at: "2026-09-25T10:01:00.000Z", kind: "materialized", workspaceId: 42 },
+            { at: "2026-09-25T10:02:00.000Z", kind: "materialized", workspaceId: "ws-real" },
+          ] as unknown as Job["events"],
+        }),
+      ),
+    ).toBe("ws-real")
+  })
+
+  it("falls through an explicit null top-level field to the trail (the field is `string | null` optional)", () => {
+    const job = makeJob({
+      materializedWorkspaceId: null,
+      events: [{ at: "2026-09-25T10:00:00.000Z", kind: "materialized", workspaceId: "ws-trail" }],
+    })
+    expect(materializedWorkspaceIdOf(job)).toBe("ws-trail")
+    // A whitespace-only top-level value is not an id either.
+    expect(
+      materializedWorkspaceIdOf(makeJob({ materializedWorkspaceId: "  ", events: [] })),
+    ).toBeNull()
+  })
+})
+
+describe("pendingRefreshDelays (post-trigger materialization catches)", () => {
+  it("pins the +2s/+5s cadence", () => {
+    expect(pendingRefreshDelays()).toEqual([2000, 5000])
+  })
+
+  it("returns a fresh array per call so callers cannot mutate shared state", () => {
+    const first = pendingRefreshDelays()
+    const second = pendingRefreshDelays()
+    expect(first).not.toBe(second)
+    first[0] = 99
+    expect(pendingRefreshDelays()[0]).toBe(2000)
+  })
+})
+
+describe("materializationEventTarget (job-materialized SSE parse)", () => {
+  it("parses a materialized announcement into its jobId→workspaceId pair", () => {
+    expect(
+      materializationEventTarget({
+        type: "job-materialized",
+        jobId: "job_1",
+        workspaceId: "ws-real-9",
+        scheduledWorkspaceId: "ws-scheduled",
+        outcome: "materialized",
+        at: "2026-09-25T12:00:00.000Z",
+      }),
+    ).toEqual({ jobId: "job_1", workspaceId: "ws-real-9" })
+    // Extra/unknown fields are ignored, not rejected.
+    expect(materializationEventTarget({ jobId: "job_2", workspaceId: "ws-1", junk: true })).toEqual(
+      { jobId: "job_2", workspaceId: "ws-1" },
+    )
+  })
+
+  it("keeps a failed announcement with workspaceId null (the inline hint degrades honestly)", () => {
+    expect(materializationEventTarget({ jobId: "job_1", outcome: "failed" })).toEqual({
+      jobId: "job_1",
+      workspaceId: null,
+    })
+    expect(materializationEventTarget({ jobId: "job_1", workspaceId: "   " })).toEqual({
+      jobId: "job_1",
+      workspaceId: null,
+    })
+  })
+
+  it("returns null for anything without a usable jobId — garbage never becomes a hint", () => {
+    expect(materializationEventTarget(null)).toBeNull()
+    expect(materializationEventTarget("job-materialized")).toBeNull()
+    expect(materializationEventTarget({ workspaceId: "ws-1" })).toBeNull()
+    expect(materializationEventTarget({ jobId: "" })).toBeNull()
+    expect(materializationEventTarget({ jobId: "   " })).toBeNull()
+    expect(materializationEventTarget({ jobId: 42, workspaceId: "ws-1" })).toBeNull()
+  })
+})
+
+describe("workspaceChipLabel (row chip)", () => {
+  it("passes short ids through and truncates long ones for an 80-column terminal", () => {
+    expect(workspaceChipLabel("ws-abc123")).toBe("ws-abc123")
+    const long = "ws-" + "a".repeat(40)
+    expect(workspaceChipLabel(long)).toBe(`${"ws-" + "a".repeat(18)}…`)
+    expect(workspaceChipLabel(long)).toHaveLength(22)
+    expect(workspaceChipLabel("  ws-padded  ")).toBe("ws-padded")
+  })
+
+  it("degrades garbage to '?' instead of rendering 'undefined'", () => {
+    expect(workspaceChipLabel(undefined)).toBe("?")
+    expect(workspaceChipLabel(42 as unknown as string)).toBe("?")
+    expect(workspaceChipLabel("   ")).toBe("?")
   })
 })
