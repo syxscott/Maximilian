@@ -153,6 +153,7 @@ import {
   isRenderableImageSrc,
 } from "../src/components/tool-renderers/renderers/repl.model"
 import {
+  distinctPhases,
   extractCreateWorkflow,
   extractSaveWorkflow,
   extractGetWorkflowRun,
@@ -165,12 +166,17 @@ import {
   extractEvalWorkflowSnippet,
   extractWorkflowDiagnostics,
   extractAmendWorkflow,
+  progressField,
+  progressText,
+  scriptHashField,
+  skippedFromJournalField,
 } from "../src/components/tool-renderers/renderers/workflow.model"
 import {
   extractGetWorkflowRunCard,
   extractListWorkflowRunsCard,
   extractResumeWorkflowRunCard,
   extractGetWorkflowRunRosterCard,
+  phaseTone,
 } from "../src/components/tool-renderers/renderers/workflow-cards.model"
 import {
   extractAgentPrompt,
@@ -4198,5 +4204,359 @@ describe("audit round — audit table + i18n sync", () => {
 
   it("low-density remains the deliberate edit/list-apps pair (no regression)", () => {
     expect(LOW_DENSITY_RENDERERS.sort()).toEqual(["edit", "list-apps"].sort())
+  })
+})
+
+// ── engine alignment — workflow family vs the real engine shapes ────────────
+// Truth sources: packages/workflow-engine/src/index.ts (WorkflowRunReport:
+// runId · scriptHash · completed · skippedFromJournal · phaseProgress;
+// WorkflowStep: siteId · phase) + packages/evolution/src/variant-runner.ts.
+// Every fix below is exercised with a fixture built from the real shape.
+
+describe("engine alignment — get-workflow-run reads the WorkflowRunReport", () => {
+  it("surfaces scriptHash · progress · skippedFromJournal beside the run id", () => {
+    const vm = extractGetWorkflowRun({
+      runId: "run-101",
+      scriptHash: "9d1f",
+      completed: [
+        { siteId: "a", output: 1 },
+        { siteId: "b", output: 2 },
+        { siteId: "c", output: 3 },
+      ],
+      skippedFromJournal: 2,
+      phaseProgress: [
+        { phase: "build", completedSteps: 2 },
+        { phase: "gate", completedSteps: 1 },
+      ],
+    })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.scriptHash",
+      "toolRenderers.fields.progress",
+      "toolRenderers.fields.skipped",
+    ])
+    expect(vm.rows[1]?.value).toBe("9d1f")
+    // completed[] length with no total in the report → the bare count.
+    expect(vm.rows[2]?.value).toBe("3")
+    expect(vm.rows[3]?.value).toBe("2")
+  })
+
+  it("composes completed/total when the payload states the total", () => {
+    const vm = extractGetWorkflowRun({ runId: "run-102", completedSteps: 3, totalSteps: 8 })
+    const progress = vm.rows.find((r) => r.labelKey === "toolRenderers.fields.progress")
+    expect(progress?.value).toBe("3/8")
+  })
+
+  it("event fixture: the run report renders hash/progress/replay rows", () => {
+    renderPair(
+      toolStart("get-workflow-run", {
+        runId: "run-103",
+        workflowId: "pr-review",
+        scriptHash: "b7c2",
+        completed: [{ siteId: "a" }, { siteId: "b" }],
+        totalSteps: 5,
+        skippedFromJournal: 2,
+      }),
+      toolEnd("get-workflow-run"),
+    )
+    expect(rowValue("Script hash")).toBe("b7c2")
+    expect(rowValue("Progress")).toBe("2/5")
+    expect(rowValue("Journal replay")).toBe("2")
+  })
+})
+
+describe("engine alignment — resume replays journaled steps", () => {
+  it("the resume report carries the scriptHash gate and the replay count", () => {
+    const vm = extractResumeWorkflowRun({
+      runId: "run-111",
+      workflowId: "bench",
+      scriptHash: "aa55",
+      skippedFromJournal: 4,
+      phaseProgress: [{ phase: "default", completedSteps: 4 }],
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.workflow",
+      "toolRenderers.fields.scriptHash",
+      "toolRenderers.fields.progress",
+      "toolRenderers.fields.skipped",
+    ])
+    expect(vm.rows[2]?.value).toBe("aa55")
+    expect(vm.rows[3]?.value).toBe("4")
+    expect(vm.rows[4]?.value).toBe("4")
+  })
+})
+
+describe("engine alignment — diagnostics and situation read phaseProgress", () => {
+  it("workflow-diagnostics adds the hash + progress rows to run/status", () => {
+    const vm = extractWorkflowDiagnostics({
+      runId: "run-121",
+      status: "errored",
+      scriptHash: "e11",
+      phaseProgress: [
+        { phase: "build", completedSteps: 1 },
+        { phase: "gate", completedSteps: 2 },
+      ],
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.status",
+      "toolRenderers.fields.scriptHash",
+      "toolRenderers.fields.progress",
+    ])
+    expect(vm.rows[3]?.value).toBe("3")
+  })
+
+  it("get-workflow-run-situation composes progress from phaseProgress + steps", () => {
+    const vm = extractGetWorkflowRunSituation({
+      runId: "run-122",
+      status: "running",
+      steps: [{ siteId: "a" }, { siteId: "b" }, { siteId: "c" }],
+      phaseProgress: [{ phase: "default", completedSteps: 2 }],
+    })
+    const progress = vm.rows.find((r) => r.labelKey === "toolRenderers.fields.progress")
+    expect(progress?.value).toBe("2/3")
+  })
+})
+
+describe("engine alignment — progress model pure functions", () => {
+  it("progressField prefers the explicit count, then completed[], then the phaseProgress sum", () => {
+    expect(progressField({ completedSteps: 4, totalSteps: 9 })).toEqual({ completed: 4, total: 9 })
+    expect(progressField({ completed: [{ siteId: "a" }, { siteId: "b" }] })).toEqual({
+      completed: 2,
+    })
+    expect(
+      progressField({
+        phaseProgress: [
+          { phase: "a", completedSteps: 2 },
+          { phase: "b", completedSteps: 1 },
+          { phase: "c" },
+        ],
+      }),
+    ).toEqual({ completed: 3 })
+    expect(progressField({})).toBeUndefined()
+    expect(progressField({ completed: -3 })).toBeUndefined()
+  })
+
+  it("a total below the completed count clamps (never reports over 100%)", () => {
+    expect(progressField({ completedSteps: 7, totalSteps: 5 })).toEqual({ completed: 5, total: 5 })
+  })
+
+  it("progressText formats 5/8 vs a bare count", () => {
+    expect(progressText({ completed: 5, total: 8 })).toBe("5/8")
+    expect(progressText({ completed: 3 })).toBe("3")
+  })
+
+  it("scriptHash/skipped aliases key on the engine spellings only", () => {
+    expect(scriptHashField({ scriptHash: "h1" })).toBe("h1")
+    expect(scriptHashField({ script_hash: "h2" })).toBe("h2")
+    expect(scriptHashField({ hash: "h3" })).toBeUndefined()
+    expect(skippedFromJournalField({ skippedFromJournal: 2 })).toBe(2)
+    expect(skippedFromJournalField({ skipped_from_journal: 3 })).toBe(3)
+    expect(skippedFromJournalField({ skipped: 4 })).toBeUndefined()
+  })
+})
+
+describe("engine alignment — create-workflow WorkflowStep phases", () => {
+  it("a phased definition reports its distinct phase count", () => {
+    const vm = extractCreateWorkflow({
+      name: "pr-review",
+      steps: [
+        { siteId: "s1", phase: "review" },
+        { siteId: "s2", phase: "review" },
+        { siteId: "s3", phase: "gate" },
+        { siteId: "s4" },
+      ],
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.name",
+      "toolRenderers.fields.steps",
+      "toolRenderers.fields.phases",
+    ])
+    expect(vm.rows[2]?.value).toBe("2")
+  })
+
+  it("phase-less steps keep the row set unchanged (no invented dimension)", () => {
+    expect(
+      extractCreateWorkflow({ steps: [{ ask: "a" }, { ask: "b" }] }).rows.map((r) => r.labelKey),
+    ).toEqual(["toolRenderers.fields.steps"])
+  })
+
+  it("distinctPhases tolerates malformed entries", () => {
+    expect(distinctPhases([{ phase: "a" }, "junk", 42, { phase: "b" }, { phase: null }])).toBe(2)
+    expect(distinctPhases([])).toBe(0)
+  })
+})
+
+describe("engine alignment — amend-workflow flat facade settings", () => {
+  it("maxConcurrency/subagentModel ride as first-class rows beside the settings record", () => {
+    const vm = extractAmendWorkflow({
+      runId: "run-131",
+      maxConcurrency: 4,
+      subagentModel: "glm-5.3",
+      settings: { name: "pr-review v2" },
+    })
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.limit",
+      "toolRenderers.fields.model",
+      "toolRenderers.fields.settings",
+    ])
+    expect(vm.rows[1]?.value).toBe("4")
+    expect(vm.rows[2]?.value).toBe("glm-5.3")
+  })
+
+  it("a flat settings-only amendment no longer degrades to the JSON fallback", () => {
+    const vm = extractAmendWorkflow({ runId: "run-132", max_concurrency: 2 })
+    expect(vm.isEmpty).toBe(false)
+    expect(vm.rows.map((r) => r.labelKey)).toEqual([
+      "toolRenderers.fields.run",
+      "toolRenderers.fields.limit",
+    ])
+  })
+
+  it("event fixture: the flat subagent_model renders the model row", () => {
+    renderInput("amend-workflow", { runId: "run-133", subagent_model: "glm-5.3" })
+    expect(rowValue("Model")).toBe("glm-5.3")
+    expect(rowValue("Limit")).toBeUndefined()
+  })
+})
+
+describe("engine alignment — phaseTone chip mapping (model)", () => {
+  it("maps the lifecycle vocabulary to done/error/running/pending", () => {
+    expect(phaseTone("completed")).toBe("done")
+    expect(phaseTone("OK")).toBe("done")
+    expect(phaseTone("failed")).toBe("error")
+    expect(phaseTone("Errored")).toBe("error")
+    expect(phaseTone("running")).toBe("running")
+    expect(phaseTone("in-progress")).toBe("running")
+    expect(phaseTone("paused")).toBe("pending")
+    expect(phaseTone("QUEUED")).toBe("pending")
+  })
+
+  it("bare phase names and missing values stay neutral", () => {
+    expect(phaseTone("gate")).toBe("neutral")
+    expect(phaseTone("phase-2")).toBe("neutral")
+    expect(phaseTone(undefined)).toBe("neutral")
+    expect(phaseTone("  ")).toBe("neutral")
+  })
+})
+
+describe("engine alignment — CompactWorkflowCard progress + tones (render)", () => {
+  it("the run card chips carry tone attributes and the completed/total progress", () => {
+    renderPair(
+      toolStart("get-workflow-run-card", {
+        runId: "run-141",
+        status: "running",
+        phase: "gate",
+        completed: [{ siteId: "a" }, { siteId: "b" }],
+        totalSteps: 5,
+      }),
+      toolEnd("get-workflow-run-card"),
+    )
+    const chips = screen.getByTestId("card-chips")
+    expect(within(chips).getByTestId("card-chip-progress")).toHaveTextContent("2/5")
+    expect(within(chips).getByTestId("card-chip-status")).toHaveAttribute("data-tone", "running")
+    expect(within(chips).getByTestId("card-chip-phase")).toHaveAttribute("data-tone", "neutral")
+    expect(within(chips).getByTestId("card-chip-run")).toHaveAttribute("data-tone", "neutral")
+    // The chip dimensions stay off the row list.
+    expect(rowLabels()).toEqual([])
+  })
+
+  it("the resume card maps lifecycle words to done/error tones", () => {
+    const first = renderPair(
+      toolStart("resume-workflow-run-card", { runId: "run-142", status: "completed" }),
+      toolEnd("resume-workflow-run-card"),
+    )
+    expect(
+      within(screen.getByTestId("card-chips")).getByTestId("card-chip-status"),
+    ).toHaveAttribute("data-tone", "done")
+    first.unmount()
+    renderInput("resume-workflow-run-card", { runId: "run-143", status: "failed" })
+    expect(
+      within(screen.getByTestId("card-chips")).getByTestId("card-chip-status"),
+    ).toHaveAttribute("data-tone", "error")
+  })
+
+  it("all four compact cards mount the shared shell with the JSON fallback", () => {
+    // Each card keys on its own chip dimensions (same events as the full renderer).
+    const payloads: Record<string, unknown> = {
+      "get-workflow-run-card": { runId: "run-144", status: "running" },
+      "list-workflow-runs-card": { status: "running", total: 2 },
+      "resume-workflow-run-card": { runId: "run-145", status: "paused" },
+      "get-workflow-run-roster-card": { runId: "run-146", phase: "review", actors: ["a"] },
+    }
+    for (const tool of [
+      "get-workflow-run-card",
+      "list-workflow-runs-card",
+      "resume-workflow-run-card",
+      "get-workflow-run-roster-card",
+    ]) {
+      const withBody = renderInput(tool, payloads[tool])
+      expect(screen.getByTestId("card-chips")).toBeInTheDocument()
+      withBody.unmount()
+      const fallback = renderInput(tool, 42)
+      expect(screen.getByTestId("tool-json-preview")).toBeInTheDocument()
+      fallback.unmount()
+    }
+  })
+})
+
+describe("engine alignment — audit table cites the WorkflowRunReport fields", () => {
+  it("the run-shaped entries ground scriptHash/skippedFromJournal/phaseProgress in the engine", () => {
+    for (const tool of ["get-workflow-run", "resume-workflow-run", "workflow-diagnostics"]) {
+      const entry = RENDERER_FIELD_AUDIT[tool]
+      expect(entry?.fields.scriptHash, tool).toMatch(/^packages\/[a-z-]+\/src/)
+      expect(entry?.fields.skippedFromJournal ?? entry?.fields.phaseProgress, tool).toMatch(
+        /^packages\/[a-z-]+\/src/,
+      )
+    }
+    expect(RENDERER_FIELD_AUDIT["get-workflow-run"]?.fields).toHaveProperty("skippedFromJournal")
+    expect(RENDERER_FIELD_AUDIT["resume-workflow-run"]?.note).toContain("skippedFromJournal")
+    expect(RENDERER_FIELD_AUDIT["workflow-diagnostics"]?.note).toContain(
+      "WorkflowScriptChangedError",
+    )
+    // create-workflow's phase dimension cites the engine's WorkflowStep.
+    expect(RENDERER_FIELD_AUDIT["create-workflow"]?.fields.phases).toContain("workflow-engine")
+  })
+
+  it("the eval-workflow-snippet note documents the facade timeout default", () => {
+    const note = RENDERER_FIELD_AUDIT["eval-workflow-snippet"]?.note ?? ""
+    expect(note).toContain("60000")
+    expect(note).toContain("600000")
+  })
+
+  it("the new field labels exist in both locales", () => {
+    const keys = [
+      "toolRenderers.fields.model",
+      "toolRenderers.fields.phases",
+      "toolRenderers.fields.progress",
+      "toolRenderers.fields.scriptHash",
+      "toolRenderers.fields.skipped",
+    ]
+    for (const key of keys) {
+      expect(enDomain[key as keyof typeof enDomain], key).toBeDefined()
+      expect(zhDomain[key as keyof typeof zhDomain], key).toBeDefined()
+    }
+  })
+})
+
+describe("engine alignment — zh-CN labels for the new rows", () => {
+  it("the run report rows render localized", () => {
+    setLocale("zh-CN")
+    renderPair(
+      toolStart("get-workflow-run", {
+        runId: "run-151",
+        scriptHash: "cc12",
+        completed: [{ siteId: "a" }],
+        totalSteps: 4,
+        skippedFromJournal: 1,
+      }),
+      toolEnd("get-workflow-run"),
+    )
+    expect(rowValue("脚本哈希")).toBe("cc12")
+    expect(rowValue("进度")).toBe("1/4")
+    expect(rowValue("日志重放")).toBe("1")
   })
 })

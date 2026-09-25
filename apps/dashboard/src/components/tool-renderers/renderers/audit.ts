@@ -501,12 +501,13 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
       name: S_WORKFLOW_FACADE,
       description: S_WORKFLOW_FACADE,
       script: S_WORKFLOW_FACADE,
-      steps: S_WORKFLOW_FACADE,
+      steps: S_WORKFLOW,
+      phases: S_WORKFLOW,
       args: S_WORKFLOW_FACADE,
     },
     source: S_WORKFLOW,
     density: "full",
-    note: "script (the byte-identical source the engine journals its scriptHash over) renders as the primary block; declared args report their key count; whenToUse aliases description.",
+    note: "script (the byte-identical source the engine journals its scriptHash over) renders as the primary block; declared args report their key count; whenToUse aliases description; distinct WorkflowStep.phase markers report the phase count.",
   },
   "save-workflow": {
     fields: {
@@ -519,7 +520,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_WORKFLOW,
     density: "full",
-    note: "force aliases overwrite; whenToUse aliases description; the saved script renders as the block with its line count.",
+    note: "force aliases overwrite; whenToUse aliases description; the saved script renders as the block with its line count. No steps field: the facade saves {name, description, whenToUse, script, args, scope} — steps come from the script.",
   },
   "amend-workflow": {
     fields: {
@@ -527,17 +528,28 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
       workflowId: S_WORKFLOW,
       script: S_WORKFLOW,
       preserve: S_WORKFLOW,
+      maxConcurrency: S_WORKFLOW_FACADE,
+      subagentModel: S_WORKFLOW_FACADE,
       settings: S_WORKFLOW_FACADE,
     },
     source: S_WORKFLOW,
     density: "full",
-    note: "script candidates include path/scriptPath (resume requires a byte-identical script — engine WorkflowScriptChangedError).",
+    note: "script candidates include path/scriptPath (resume requires a byte-identical script — engine WorkflowScriptChangedError); the facade's maxConcurrency/subagentModel are read flat beside the nested settings record.",
   },
   "get-workflow-run": {
-    fields: { runId: S_WORKFLOW, workflowId: S_WORKFLOW, status: S_WORKFLOW, phase: S_WORKFLOW },
+    fields: {
+      runId: S_WORKFLOW,
+      workflowId: S_WORKFLOW,
+      status: S_WORKFLOW,
+      phase: S_WORKFLOW,
+      scriptHash: S_WORKFLOW,
+      completed: S_WORKFLOW,
+      phaseProgress: S_WORKFLOW,
+      skippedFromJournal: S_WORKFLOW,
+    },
     source: S_WORKFLOW,
     density: "full",
-    note: "runId keys on the engine's WorkflowRunReport.runId; `id` is the defensive alias.",
+    note: "Reads the full WorkflowRunReport: runId/scriptHash identify the run, completed[]/phaseProgress compose the progress row (completed/total when the payload states a total), skippedFromJournal the journal short-circuit count; status/phase are the runtime's live labels.",
   },
   "list-saved-workflows": {
     fields: {
@@ -561,10 +573,18 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     note: "count belongs to the limit family here; bare `total` lands in the count row.",
   },
   "resume-workflow-run": {
-    fields: { runId: S_WORKFLOW, workflowId: S_WORKFLOW, status: S_WORKFLOW, phase: S_WORKFLOW },
+    fields: {
+      runId: S_WORKFLOW,
+      workflowId: S_WORKFLOW,
+      status: S_WORKFLOW,
+      phase: S_WORKFLOW,
+      scriptHash: S_WORKFLOW,
+      phaseProgress: S_WORKFLOW,
+      skippedFromJournal: S_WORKFLOW,
+    },
     source: S_WORKFLOW,
     density: "full",
-    note: "Resume replays journaled steps; the journal (runId + attempt) is the engine's record.",
+    note: "Resume replays journaled steps: the report carries the same WorkflowRunReport shapes — skippedFromJournal is the resume-specific count, scriptHash the byte-identity gate (WorkflowScriptChangedError).",
   },
   "resolve-workflow-question": {
     fields: {
@@ -588,9 +608,16 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     note: "phase falls back to status; actors normalize to a count.",
   },
   "get-workflow-run-situation": {
-    fields: { runId: S_WORKFLOW, workflowId: S_WORKFLOW, status: S_WORKFLOW, phase: S_WORKFLOW },
+    fields: {
+      runId: S_WORKFLOW,
+      workflowId: S_WORKFLOW,
+      status: S_WORKFLOW,
+      phase: S_WORKFLOW,
+      phaseProgress: S_WORKFLOW,
+    },
     source: S_WORKFLOW,
     density: "full",
+    note: "phaseProgress sums into the progress row — a situation report without it would not say how far the run got.",
   },
   "eval-workflow-snippet": {
     fields: {
@@ -601,12 +628,20 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_WORKFLOW,
     density: "full",
-    note: "code|path are exclusive; the snippet itself is the primary block, timeout/assertion/path rows and the derived snippet line count ride beside it.",
+    note: "code|path are exclusive; the snippet itself is the primary block, timeout/assertion/path rows and the derived snippet line count ride beside it. timeoutMs defaults to 60000 ms and is capped at 600000 (facade clamp).",
   },
   "workflow-diagnostics": {
-    fields: { runId: S_WORKFLOW, workflowId: S_WORKFLOW, phase: S_WORKFLOW, status: S_WORKFLOW },
+    fields: {
+      runId: S_WORKFLOW,
+      workflowId: S_WORKFLOW,
+      phase: S_WORKFLOW,
+      status: S_WORKFLOW,
+      scriptHash: S_WORKFLOW,
+      phaseProgress: S_WORKFLOW,
+    },
     source: S_WORKFLOW,
     density: "full",
+    note: "Diagnostics ground on the run report: scriptHash (a mismatch is the engine's WorkflowScriptChangedError) and the phaseProgress sum say where the run stands.",
   },
 
   // ── workflow compact cards (same events, chips carry the dimensions) ───────
@@ -617,10 +652,11 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
       status: S_WORKFLOW,
       phase: S_WORKFLOW,
       durationMs: S_WORKFLOW,
+      phaseProgress: S_WORKFLOW,
     },
     source: S_WORKFLOW,
     density: "full",
-    note: "Chips carry status·phase·run; rows keep workflow + duration.",
+    note: "Chips carry status·phase·run + the completed/total progress chip, tone-mapped via phaseTone; rows keep workflow + duration.",
   },
   "list-workflow-runs-card": {
     fields: {
@@ -632,7 +668,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_WORKFLOW,
     density: "full",
-    note: "Chips carry status·count; rows keep workflow/limit/duration.",
+    note: "Chips carry status·count (tone-mapped); rows keep workflow/limit/duration.",
   },
   "resume-workflow-run-card": {
     fields: {
@@ -641,10 +677,11 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
       status: S_WORKFLOW,
       phase: S_WORKFLOW,
       reason: S_WORKFLOW,
+      phaseProgress: S_WORKFLOW,
     },
     source: S_WORKFLOW,
     density: "full",
-    note: "Chips carry run·status·phase; rows keep workflow + reason.",
+    note: "Chips carry run·status·phase + the progress chip; rows keep workflow + reason.",
   },
   "get-workflow-run-roster-card": {
     fields: {

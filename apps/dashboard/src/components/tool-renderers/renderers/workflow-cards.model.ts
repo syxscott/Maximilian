@@ -10,10 +10,11 @@
  * card mode mounts the same payload as its full renderer but on a
  * constrained surface, so the collapsed line is composed INFO-DENSE:
  * status · phase · run · ×count in one headline, and the card body gets
- * a typed view model (chips + counts) instead of plain rows. The chip
- * dimensions (status/phase/count/run) stay OFF the row list — the body
- * renders them as chips, so nothing appears twice. Key groups are the
- * workflow.model.ts ones: same events, tighter presentation.
+ * a typed view model (tone-mapped chips + progress + counts) instead of
+ * plain rows. The chip dimensions (status/phase/count/run/progress) stay
+ * OFF the row list — the body renders them as chips, so nothing appears
+ * twice. Key groups are the workflow.model.ts ones: same events, tighter
+ * presentation.
  */
 
 import {
@@ -31,7 +32,15 @@ import {
   type RendererRow,
   type ToolViewModel,
 } from "./shared.model"
-import { durationField, phaseField, runField, statusField, workflowField } from "./workflow.model"
+import {
+  durationField,
+  phaseField,
+  progressField,
+  runField,
+  statusField,
+  workflowField,
+  type WorkflowProgress,
+} from "./workflow.model"
 
 export interface WorkflowCardViewModel extends ToolViewModel {
   run?: string
@@ -40,6 +49,37 @@ export interface WorkflowCardViewModel extends ToolViewModel {
   phase?: string
   count?: number
   durationMs?: number
+  /** Completed steps over the run's total (workflow.model progressField). */
+  progress?: WorkflowProgress
+}
+
+/**
+ * Semantic tone of a status/phase chip — the model half of the badge
+ * color mapping (the body maps the tone to classes). The vocabulary is
+ * the engine/runtime lifecycle spelling: completed|done|succeeded are
+ * done, error|failed are error, running|in_progress|active are running,
+ * pending|paused|queued|waiting are pending; anything else (e.g. a bare
+ * phase name like "gate") stays neutral.
+ */
+export type PhaseTone = "done" | "error" | "running" | "pending" | "neutral"
+
+const TONE_WORDS: Array<[PhaseTone, string[]]> = [
+  ["done", ["completed", "complete", "done", "succeeded", "success", "ok"]],
+  ["error", ["error", "errored", "failed", "failure"]],
+  ["running", ["running", "in_progress", "inprogress", "active", "executing"]],
+  ["pending", ["pending", "paused", "queued", "waiting", "skipped"]],
+]
+
+export function phaseTone(value: string | undefined): PhaseTone {
+  if (value === undefined) return "neutral"
+  const word = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+  for (const [tone, words] of TONE_WORDS) {
+    if (words.includes(word)) return tone
+  }
+  return "neutral"
 }
 
 /** Info-dense collapsed line: every present dimension, joined by " · ". */
@@ -69,10 +109,17 @@ export function extractGetWorkflowRunCard(input: unknown): WorkflowCardViewModel
   const status = statusField(obj)
   const phase = phaseField(obj)
   const duration = durationField(obj)
-  if (run === undefined && workflow === undefined && status === undefined && phase === undefined) {
+  const progress = progressField(obj)
+  if (
+    run === undefined &&
+    workflow === undefined &&
+    status === undefined &&
+    phase === undefined &&
+    progress === undefined
+  ) {
     return { ...emptyVm() }
   }
-  // Chips carry status · phase · run; rows keep the rest.
+  // Chips carry status · phase · run · progress; rows keep the rest.
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.workflow, workflow, true),
     duration === undefined ? undefined : row(FIELDS.duration, duration),
@@ -88,6 +135,7 @@ export function extractGetWorkflowRunCard(input: unknown): WorkflowCardViewModel
     ...(status === undefined ? {} : { status }),
     ...(phase === undefined ? {} : { phase }),
     ...(duration === undefined ? {} : { durationMs: duration }),
+    ...(progress === undefined ? {} : { progress }),
   }
 }
 
@@ -133,10 +181,17 @@ export function extractResumeWorkflowRunCard(input: unknown): WorkflowCardViewMo
   const status = statusField(obj)
   const phase = phaseField(obj)
   const reason = pickStr(obj, ["reason", "cause", "note"])
-  if (run === undefined && workflow === undefined && status === undefined && phase === undefined) {
+  const progress = progressField(obj)
+  if (
+    run === undefined &&
+    workflow === undefined &&
+    status === undefined &&
+    phase === undefined &&
+    progress === undefined
+  ) {
     return { ...emptyVm() }
   }
-  // Chips carry status · phase · run; rows keep the rest.
+  // Chips carry status · phase · run · progress; rows keep the rest.
   const rows: Array<RendererRow | undefined> = [
     row(FIELDS.workflow, workflow, true),
     row(FIELDS.reason, reason),
@@ -151,6 +206,7 @@ export function extractResumeWorkflowRunCard(input: unknown): WorkflowCardViewMo
     ...(workflow === undefined ? {} : { workflow }),
     ...(status === undefined ? {} : { status }),
     ...(phase === undefined ? {} : { phase }),
+    ...(progress === undefined ? {} : { progress }),
   }
 }
 
