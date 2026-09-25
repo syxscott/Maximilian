@@ -81,7 +81,6 @@ export function VirtualTurnWindow<T>({
   useEffect(() => {
     const el = elRef.current
     if (el && el.clientHeight > 0) setMeasured(el.clientHeight)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleScroll = (event: UIEvent<HTMLDivElement>) => {
