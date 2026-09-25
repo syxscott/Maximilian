@@ -86,3 +86,55 @@ describe("useMention", () => {
     expect(result.current.activeToken).toBeNull()
   })
 })
+
+describe("useMention groups (Agent roles / Skills sections)", () => {
+  const SKILLS: MentionSuggestion[] = [
+    { token: "commit", description: "skill", group: "skills" },
+    { token: "codegen", description: "skill", group: "skills" },
+  ]
+
+  it("splits the filtered pool into roles and skills sections", () => {
+    const { result } = renderHook(() => useMention(SUGGESTIONS, { skills: SKILLS }))
+    act(() => result.current.onChange("@c", 2))
+    // No role starts with "c"; both skills do — both sections stay
+    // present so the popup can head (and explain) each.
+    expect(result.current.groups.map((g) => g.id)).toEqual(["roles", "skills"])
+    expect(result.current.groups[0]?.items).toEqual([])
+    expect(result.current.groups[1]?.items.map((s) => s.token)).toEqual(["commit", "codegen"])
+    // The flat list (what apply() indexes into) follows the group order.
+    expect(result.current.suggestions.map((s) => s.token)).toEqual(["commit", "codegen"])
+  })
+
+  it("defaults untagged suggestions to the roles group, roles first in the flat list", () => {
+    const { result } = renderHook(() => useMention(SUGGESTIONS, { skills: SKILLS }))
+    act(() => result.current.onChange("@", 1))
+    expect(result.current.suggestions.map((s) => s.token)).toEqual([
+      "backend",
+      "frontend",
+      "review",
+      "commit",
+      "codegen",
+    ])
+    expect(result.current.groups[0]?.items.map((s) => s.token)).toEqual([
+      "backend",
+      "frontend",
+      "review",
+    ])
+    expect(result.current.groups[1]?.items.map((s) => s.token)).toEqual(["commit", "codegen"])
+  })
+
+  it("defaults the skills source to an empty pool with both sections intact", () => {
+    const { result } = renderHook(() => useMention(SUGGESTIONS))
+    act(() => result.current.onChange("@", 1))
+    expect(result.current.groups.map((g) => g.id)).toEqual(["roles", "skills"])
+    expect(result.current.groups[1]?.items).toEqual([])
+  })
+
+  it("applies the highlighted token across groups", () => {
+    const { result } = renderHook(() => useMention(SUGGESTIONS, { skills: SKILLS }))
+    act(() => result.current.onChange("@co", 3))
+    act(() => result.current.onKeyDown({ key: "ArrowDown", preventDefault: () => {} }))
+    const applied = result.current.apply({ value: "x @co", selectionStart: 5 })
+    expect(applied?.text).toBe("x @codegen ")
+  })
+})

@@ -18,6 +18,7 @@ import { ToolCallBlock } from "@/components/tool-renderers/registry"
 import type { ConversationUnit, FindHit, TurnModel } from "./model"
 import { formatDuration } from "./model"
 import { RetryWaveGroup } from "./RetryWaveGroup"
+import { TextUnitBlock } from "./TextUnitBlock"
 
 const ROLE_COLOR: Record<string, string> = {
   user: "bg-blue-500",
@@ -150,6 +151,21 @@ function TurnUnitView({
       // Turn-opening marker — the TurnGroup header above IS its render.
       return null
     case "text":
+      // Steering / system segments (textUnits provenance stamped by
+      // withTextUnitEvents) render through TextUnitBlock — per-source
+      // styling (purple for steering) with the find highlights kept
+      // working inside the block.
+      if (unit.source !== undefined) {
+        return (
+          <TextUnitBlock unit={{ source: unit.source, text: unit.text, taskId: unit.taskId }}>
+            <HighlightedText
+              text={unit.text}
+              hits={textHighlights?.get(unit.key)}
+              current={unit.key === currentUnitKey}
+            />
+          </TextUnitBlock>
+        )
+      }
       return (
         <p
           className={`whitespace-pre-wrap text-sm ${unit.role === "user" ? "text-foreground" : "text-foreground/90"}`}

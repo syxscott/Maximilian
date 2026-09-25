@@ -1,13 +1,17 @@
-import { useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useMention, type MentionSuggestion } from "@/hooks/useMention"
+import { useMention, type MentionGroupId, type MentionSuggestion } from "@/hooks/useMention"
+import { COMMANDS, type DashboardTab } from "@/lib/commands"
 import type { RuntimeEvent } from "@/api"
 import { EmptyState } from "./EmptyState"
 import { ConversationTimeline } from "./ConversationTimeline"
+import { withTextUnitEvents } from "./conversation/model"
+import { QuickPick } from "./quickpick/QuickPick"
+import { commandQuickPickItems, type QuickPickItem } from "./quickpick/model"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { useLocale, t } from "@max/i18n"
@@ -15,6 +19,21 @@ import { useComposerDraftStore } from "@/stores/composerDraftStore"
 import type { Workspace } from "../api"
 
 const PRESET_KEYS = ["preset.todo", "preset.scraper", "preset.blog"] as const
+
+/**
+ * Skills offered in the mention popup's "Skills" section — HONESTLY
+ * EMPTY today: the chat composer receives no skill-discovery source
+ * (the mentions model's skills provider wants a feature-flag getter
+ * that is not wired into this panel), so the section renders its header
+ * with an explicit empty explanation instead of invented entries.
+ */
+const MENTION_SKILLS: MentionSuggestion[] = []
+
+/** Popup header + empty-note i18n keys per mention group. */
+const MENTION_GROUP_LABEL: Record<MentionGroupId, string> = {
+  roles: "mentions.roles.title",
+  skills: "mentions.skills.title",
+}
 
 export function ChatPanel({
   onSubmit,
@@ -26,6 +45,7 @@ export function ChatPanel({
   mentionSuggestions = [],
   onOpenProviders,
   onOpenPalette,
+  onNavigate,
   events = [],
   live = false,
   showHeading = true,
@@ -48,6 +68,10 @@ export function ChatPanel({
   mentionSuggestions?: MentionSuggestion[]
   onOpenProviders?: () => void
   onOpenPalette?: () => void
+  /** Navigate to a dashboard tab — the "/" slash menu's navigation
+   *  commands call this directly on selection (no text is inserted into
+   *  the composer). Unset = those commands list as disabled. */
+  onNavigate?: (tab: DashboardTab) => void
   /** Live runtime events for the conversation timeline. */
   events?: RuntimeEvent[]
   /** true while a run is in flight (enables timeline auto-tail). */
@@ -58,7 +82,7 @@ export function ChatPanel({
    */
   showHeading?: boolean
 }) {
-  useLocale()
+  const { locale } = useLocale()
   const chatSchema = z.object({
     message: z
       .string()
@@ -81,7 +105,36 @@ export function ChatPanel({
 
   const messageValue = watch("message")
   const messageRegister = register("message")
-  const mention = useMention(mentionSuggestions)
+  const mention = useMention(mentionSuggestions, { skills: MENTION_SKILLS })
+
+  // ── "/" slash menu (QuickPick over the command registry) ──────────────
+  // Typing a lone "/" at the composer's start opens the picker; a
+  // navigation command calls onNavigate directly, custom actions fire
+  // their panel-reachable executor, and NOTHING is ever inserted into
+  // the composer text (the lone trigger slash is dropped on selection).
+  const [slashOpen, setSlashOpen] = useState(false)
+  const slashItems = useMemo(
+    () =>
+      commandQuickPickItems(COMMANDS, t, {
+        openPalette: onOpenPalette !== undefined,
+        stopStream: onAbort !== undefined,
+      }),
+    [onOpenPalette, onAbort, locale],
+  )
+
+  const handleSlashSelect = (item: QuickPickItem) => {
+    const command = COMMANDS.find((c) => c.id === item.id)
+    if (!command || item.disabled) return
+    if (command.navigateTo !== undefined) onNavigate?.(command.navigateTo)
+    else if (command.action === "open-palette") onOpenPalette?.()
+    else if (command.action === "stop-stream") onAbort?.()
+    // The "/" was a trigger, not content — drop it so the composer is
+    // clean for the next message. Never insert anything on selection.
+    if (messageValue === "/") {
+      reset({ message: "" })
+      if (workspaceId) clearDraft(workspaceId)
+    }
+  }
 
   // Per-workspace unsent draft (composerDraftStore, persisted): every
   // keystroke saves it under the workspace id, submitting clears it, and
@@ -121,6 +174,22 @@ export function ChatPanel({
 
   const showSidebar = !!sidebar && !sidebarHidden
 
+  // The pipeline input for the timeline: the extracted steering/system
+  // text segments (textUnits) spliced back into the stream as tagged
+  // synthetic text events, so they compile into the SAME turns they
+  // were steered to and surface with TextUnitBlock styling. Same
+  // reference when there is nothing to extract (no re-render churn).
+  const surfaceEvents = useMemo(() => withTextUnitEvents(events, workspace), [events, workspace])
+
+  // Popup sections with their flat-list start offset, so the grouped
+  // render maps the hook's flat highlight index correctly.
+  let groupOffset = 0
+  const popupGroups = mention.groups.map((group) => {
+    const start = groupOffset
+    groupOffset += group.items.length
+    return { ...group, start }
+  })
+
   return (
     <div
       className="h-full p-4 gap-4"
@@ -149,7 +218,7 @@ export function ChatPanel({
             same column baseline in both modes. */}
         <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-timeline-shell">
           <ConversationTimeline
-            events={events}
+            events={surfaceEvents}
             workspace={workspace}
             live={live}
             toolbarLead={
@@ -176,6 +245,9 @@ export function ChatPanel({
               onChange={(e) => {
                 messageRegister.onChange(e)
                 mention.onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
+                // A lone "/" at the composer's start is the slash-menu
+                // trigger — open the QuickPick, mutate nothing.
+                setSlashOpen(e.target.value === "/")
                 // Save the unsent draft for this workspace (persisted).
                 if (workspaceId) setDraft(workspaceId, e.target.value)
               }}
@@ -185,22 +257,60 @@ export function ChatPanel({
               }}
               className="resize-none bg-muted/50"
             />
+            {/* "/" slash menu — the command registry as a QuickPick.
+                Navigation goes through onNavigate; selection never
+                inserts text into the composer. */}
+            {slashOpen && (
+              <div className="absolute bottom-full left-0 z-20 mb-1" data-testid="slash-quickpick">
+                <QuickPick
+                  open={slashOpen}
+                  onOpenChange={setSlashOpen}
+                  items={slashItems}
+                  onSelect={handleSlashSelect}
+                  placeholder={t("quickpick.slash.placeholder")}
+                />
+              </div>
+            )}
             {mention.suggestions.length > 0 && (
               <ul
                 className="absolute bottom-full left-0 mb-1 z-10 w-64 rounded-md border border-border bg-popover p-1 shadow-md"
                 data-testid="mention-popup"
               >
-                {mention.suggestions.map((s, i) => (
+                {popupGroups.map((group) => (
                   <li
-                    key={s.token}
-                    className={`flex items-baseline gap-2 rounded px-2 py-1 text-xs ${
-                      i === mention.highlighted ? "bg-accent" : ""
-                    }`}
+                    key={group.id}
+                    className="list-none"
+                    data-testid={`mention-group-${group.id}`}
                   >
-                    <span className="font-mono font-medium">@{s.token}</span>
-                    {s.description && (
-                      <span className="truncate text-muted-foreground">{s.description}</span>
-                    )}
+                    <ul className="list-none p-0">
+                      <li
+                        className="mt-1 px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                        data-testid={`mention-group-header-${group.id}`}
+                      >
+                        {t(MENTION_GROUP_LABEL[group.id])}
+                      </li>
+                      {group.id === "skills" && group.items.length === 0 && (
+                        <li
+                          className="px-2 py-1 text-[11px] text-muted-foreground"
+                          data-testid="mention-skills-empty"
+                        >
+                          {t("mentions.skills.empty")}
+                        </li>
+                      )}
+                      {group.items.map((s, i) => (
+                        <li
+                          key={s.token}
+                          className={`flex items-baseline gap-2 rounded px-2 py-1 text-xs ${
+                            group.start + i === mention.highlighted ? "bg-accent" : ""
+                          }`}
+                        >
+                          <span className="font-mono font-medium">@{s.token}</span>
+                          {s.description && (
+                            <span className="truncate text-muted-foreground">{s.description}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>

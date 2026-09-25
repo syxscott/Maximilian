@@ -40,6 +40,8 @@ import {
   windowTurns,
   virtualWindow,
   scrollOffsetForUnit,
+  withTextUnitEvents,
+  TEXT_SOURCE_FIELD,
   DEFAULT_VIRTUAL_OVERSCAN,
   type ConversationUnit,
   type ExtractedTextUnit,
@@ -2322,5 +2324,101 @@ describe("ConversationTimeline virtualized mode", () => {
     expect(screen.getByTestId("jump-to-latest")).toHaveTextContent("+2")
     fireEvent.click(screen.getByTestId("jump-to-latest"))
     expect(screen.queryByTestId("jump-to-latest")).not.toBeInTheDocument()
+  })
+})
+
+// ── withTextUnitEvents (text units into the render chain) ───────────────────
+
+describe("withTextUnitEvents", () => {
+  it("splices steering segments as tagged synthetic text events at their source position", () => {
+    const events = [
+      taskStart("t1"),
+      toolStart("t1", "bash"),
+      toolEnd("t1", "bash"),
+      ev({ type: "steering-applied", taskIds: ["t1"], messages: ["focus auth", "skip bench"] }),
+    ]
+    const out = withTextUnitEvents(events, null)
+    expect(out).toHaveLength(events.length + 2)
+    // Synthetic events precede the steering-applied event, in ordinal order.
+    expect(out[3]).toMatchObject({
+      type: "text",
+      text: "focus auth",
+      taskId: "t1",
+      [TEXT_SOURCE_FIELD]: "steering",
+    })
+    expect(out[4]).toMatchObject({ type: "text", text: "skip bench" })
+    // The original stream events pass through untouched, in order.
+    expect(out[0]).toBe(events[0])
+    expect(out[5]).toBe(events[3])
+  })
+
+  it("drops the user request (already led with) and returns the same reference with nothing to merge", () => {
+    const plain = [taskStart("t1")]
+    // Only the user-sourced unit would be extracted → same array reference.
+    expect(withTextUnitEvents(plain, ws())).toBe(plain)
+    const empty: RuntimeEvent[] = []
+    expect(withTextUnitEvents(empty, null)).toBe(empty)
+  })
+
+  it("compiles into source-stamped text units joined to the steered turn ahead of later units", () => {
+    const events = [
+      taskStart("t1"),
+      ev({ type: "steering-applied", taskIds: ["t1"], messages: ["steer mid-run"] }),
+      textEv("narration after steering", "t1"),
+    ]
+    const compiled = buildTurnFlowItems(withTextUnitEvents(events, null), null)
+    const texts = compiled.filter(
+      (u): u is Extract<ConversationUnit, { kind: "text" }> => u.kind === "text",
+    )
+    expect(texts).toHaveLength(2)
+    expect(texts[0]).toMatchObject({
+      turnId: "task-t1",
+      source: "steering",
+      text: "steer mid-run",
+    })
+    // Ordinary narration stays unstyled (no provenance stamp).
+    expect(texts[1]).toMatchObject({ turnId: "task-t1", text: "narration after steering" })
+    expect(texts[1].source).toBeUndefined()
+    // Stream order: the steering segment precedes the later narration.
+    expect(texts[0].index).toBeLessThan(texts[1].index)
+  })
+})
+
+describe("TurnGroup text-unit rendering (steering segments surface via TextUnitBlock)", () => {
+  const steeringTurnEvents = [
+    taskStart("t1"),
+    ev({ type: "steering-applied", taskIds: ["t1"], messages: ["steer mid-run"] }),
+    textEv("narration after steering", "t1"),
+  ]
+
+  it("renders steering text units as purple TextUnitBlocks inside the turn", () => {
+    const units = buildTurnFlowItems(withTextUnitEvents(steeringTurnEvents, null), null)
+    const turns = groupUnitsByTurn(units)
+    expect(turns).toHaveLength(1)
+    render(<TurnGroup turn={turns[0]!} />)
+    const block = screen.getByTestId("text-unit-block")
+    expect(block).toHaveAttribute("data-source", "steering")
+    // The purple steering styling comes from TextUnitBlock's source map.
+    expect(block.className).toContain("border-purple-500/40")
+    expect(screen.getByTestId("text-unit-body")).toHaveTextContent("steer mid-run")
+    // Ordinary narration keeps the plain text render.
+    expect(screen.getByTestId("turn-text")).toHaveTextContent("narration after steering")
+    // And it sits INSIDE the steered task's turn.
+    expect(screen.getByTestId("turn-group")).toHaveAttribute("data-turn-id", "task-t1")
+  })
+
+  it("keeps find highlights and the amber current-match mark working inside the block", () => {
+    const units = buildTurnFlowItems(withTextUnitEvents(steeringTurnEvents, null), null)
+    const turns = groupUnitsByTurn(units)
+    // "mid" occurs at offset 6..9 of "steer mid-run" (the steering unit).
+    render(
+      <TurnGroup
+        turn={turns[0]!}
+        textHighlights={new Map([["text-1", [{ field: "text", start: 6, end: 9 }]]])}
+        currentUnitKey="text-1"
+      />,
+    )
+    expect(screen.getByTestId("mark-current")).toHaveTextContent("mid")
+    expect(screen.getByTestId("text-unit-body")).toHaveTextContent("steer mid-run")
   })
 })

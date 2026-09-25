@@ -10,8 +10,21 @@
  * deep-dive view can tell who wrote a segment at a glance.
  */
 
+import type { ReactNode } from "react"
 import { useLocale, t } from "@max/i18n"
 import type { ExtractedTextUnit } from "./model"
+
+/**
+ * Structural view of one text segment — what the block styles on.
+ * ExtractedTextUnit satisfies it; so do the source-stamped text units
+ * of the compiled render stream (TurnGroup routes steering/system
+ * segments here).
+ */
+export interface TextUnitBlockModel {
+  source: ExtractedTextUnit["source"]
+  text: string
+  taskId?: string
+}
 
 const SOURCE_STYLE: Record<ExtractedTextUnit["source"], string> = {
   user: "border-blue-500/40 bg-blue-500/5",
@@ -25,7 +38,15 @@ function sourceLabel(source: ExtractedTextUnit["source"]): string {
   return t("conversation.textUnit.system")
 }
 
-export function TextUnitBlock({ unit }: { unit: ExtractedTextUnit }) {
+export function TextUnitBlock({
+  unit,
+  children,
+}: {
+  unit: TextUnitBlockModel
+  /** Body override — lets the caller keep find highlights working
+   *  inside the block. Defaults to the segment's plain text. */
+  children?: ReactNode
+}) {
   useLocale()
   return (
     <div
@@ -40,7 +61,7 @@ export function TextUnitBlock({ unit }: { unit: ExtractedTextUnit }) {
         )}
       </div>
       <p className="whitespace-pre-wrap text-sm text-foreground" data-testid="text-unit-body">
-        {unit.text}
+        {children ?? unit.text}
       </p>
     </div>
   )

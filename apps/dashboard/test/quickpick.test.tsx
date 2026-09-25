@@ -19,9 +19,11 @@ import {
   rankQuickPick,
   groupBySection,
   flattenSections,
+  commandQuickPickItems,
   type QuickPickItem,
 } from "../src/components/quickpick/model"
 import { QuickPick } from "../src/components/quickpick/QuickPick"
+import { COMMANDS } from "../src/lib/commands"
 
 // Register the domain dictionary over the core one (en-US is the test
 // locale per test/setup.ts).
@@ -182,5 +184,61 @@ describe("QuickPick rendering", () => {
   it("does not render while closed", () => {
     render(<QuickPick open={false} onOpenChange={() => {}} items={items} />)
     expect(screen.queryByTestId("quickpick")).not.toBeInTheDocument()
+  })
+})
+
+describe('commandQuickPickItems (ChatPanel "/" slash menu)', () => {
+  it("represents every registry command in order with i18n section labels", () => {
+    const items = commandQuickPickItems(COMMANDS, (key) => key, {
+      openPalette: true,
+      stopStream: true,
+    })
+    expect(items.map((i) => i.id)).toEqual(COMMANDS.map((c) => c.id))
+    const nav = items.find((i) => i.id === "nav.workspace")
+    expect(nav).toMatchObject({
+      label: "nav.workspace",
+      section: "quickpick.slash.navigation",
+      disabled: false,
+    })
+    const action = items.find((i) => i.id === "action.openPalette")
+    expect(action).toMatchObject({
+      label: "command.openPalette",
+      section: "quickpick.slash.actions",
+      disabled: false,
+    })
+  })
+
+  it("describes commands with their i18n description, falling back to the keybind", () => {
+    const items = commandQuickPickItems(COMMANDS, (key) => key, {
+      openPalette: true,
+      stopStream: true,
+    })
+    // descriptionKey wins when present...
+    expect(items.find((i) => i.id === "action.stopStream")?.description).toBe(
+      "command.stopStream.desc",
+    )
+    // ...otherwise the formatted keybind describes the command.
+    expect(items.find((i) => i.id === "nav.workspace")?.description).toBe("Ctrl+1")
+    expect(items.find((i) => i.id === "view.toggleSidebar")?.description).toBe("Ctrl+Shift+B")
+  })
+
+  it("gates actions on their executor, always offers navigation, never offers view toggles", () => {
+    const wired = commandQuickPickItems(COMMANDS, (k) => k, {
+      openPalette: true,
+      stopStream: true,
+    })
+    // Navigation routes through the caller's onNavigate — always offered.
+    expect(wired.find((i) => i.id === "nav.usage")?.disabled).toBe(false)
+    expect(wired.find((i) => i.id === "action.stopStream")?.disabled).toBe(false)
+    // View toggles have no panel-reachable executor, wired or not.
+    expect(wired.find((i) => i.id === "view.toggleSidebar")?.disabled).toBe(true)
+
+    const unwired = commandQuickPickItems(COMMANDS, (k) => k, {
+      openPalette: false,
+      stopStream: false,
+    })
+    expect(unwired.find((i) => i.id === "nav.usage")?.disabled).toBe(false)
+    expect(unwired.find((i) => i.id === "action.openPalette")?.disabled).toBe(true)
+    expect(unwired.find((i) => i.id === "action.stopStream")?.disabled).toBe(true)
   })
 })

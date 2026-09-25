@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { getDictionary, setLocale } from "@max/i18n"
 import { ChatPanel } from "../src/components/ChatPanel"
 import { applyDashboardDictionaries } from "../src/locales/index"
-import type { Workspace } from "../src/api"
+import type { RuntimeEvent, Workspace } from "../src/api"
 
 // The timeline renders conversation.* strings from the dashboard domain
 // dictionaries — register them exactly like main.tsx does (setup.ts pins
@@ -22,6 +22,10 @@ const baseWorkspace: Workspace = {
   error: null,
   createdAt: "2026-06-25T10:00:00Z",
 }
+
+/** Event fixture in the conversation tests' style (passthrough cast). */
+const evx = (over: Record<string, unknown>): RuntimeEvent =>
+  ({ type: "unknown", ...over }) as RuntimeEvent
 
 describe("ChatPanel", () => {
   it("renders textarea, presets, and disabled Send button", () => {
@@ -195,5 +199,219 @@ describe("ChatPanel", () => {
     // Esc closes the box again.
     await user.keyboard("{Escape}")
     expect(screen.queryByTestId("timeline-find")).toBeNull()
+  })
+})
+
+// ── Text units on screen (textUnits → TextUnitBlock in the render chain) ────
+
+describe("ChatPanel text units", () => {
+  it("surfaces steering messages as purple TextUnitBlocks inside the steered task turn", () => {
+    const events = [
+      evx({ type: "task-start", taskId: "t1", agentRole: "backend" }),
+      evx({ type: "steering-applied", taskIds: ["t1"], messages: ["prefer sqlite", "skip bench"] }),
+    ]
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} events={events} />)
+    const blocks = screen.getAllByTestId("text-unit-block")
+    expect(blocks).toHaveLength(2)
+    for (const block of blocks) {
+      expect(block).toHaveAttribute("data-source", "steering")
+      // The purple steering styling (TextUnitBlock's source map).
+      expect(block.className).toContain("border-purple-500/40")
+    }
+    expect(screen.getAllByTestId("text-unit-body")[0]).toHaveTextContent("prefer sqlite")
+    // The blocks join the task's turn — not a separate section above it.
+    const turn = screen.getByTestId("turn-group")
+    expect(turn).toHaveAttribute("data-turn-id", "task-t1")
+    expect(turn.contains(blocks[0]!)).toBe(true)
+    expect(turn.contains(blocks[1]!)).toBe(true)
+  })
+
+  it("inserts steering segments at their stream position, before the turn's later units", () => {
+    const events = [
+      evx({ type: "task-start", taskId: "t1" }),
+      evx({ type: "steering-applied", taskIds: ["t1"], messages: ["steer mid-run"] }),
+      evx({ type: "assistant-text", text: "narration after steering", taskId: "t1" }),
+    ]
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} events={events} />)
+    const block = screen.getByTestId("text-unit-block")
+    const narration = screen.getByTestId("turn-text")
+    // The steering block precedes the narration that follows it in the
+    // stream — "same turn, inserted before later units".
+    expect(block.compareDocumentPosition(narration) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("surfaces task description prose as system blocks without duplicating the user request", () => {
+    const events = [evx({ type: "task-start", taskId: "t1", description: "Ship login flow first" })]
+    render(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={baseWorkspace}
+        events={events}
+      />,
+    )
+    const block = screen.getByTestId("text-unit-block")
+    expect(block).toHaveAttribute("data-source", "system")
+    expect(screen.getByText("Ship login flow first")).toBeInTheDocument()
+    // The user request renders once (the leading turn text) — the user-
+    // sourced text unit is deliberately NOT re-injected as a block.
+    expect(screen.getAllByText(/Build a todo app/)).toHaveLength(1)
+    expect(
+      screen
+        .getAllByTestId("text-unit-block")
+        .filter((b) => b.getAttribute("data-source") === "user"),
+    ).toHaveLength(0)
+  })
+})
+
+// ── "/" slash menu (QuickPick over the command registry) ────────────────────
+
+describe("ChatPanel slash quickpick", () => {
+  it("opens the QuickPick on a lone / with the navigation commands listed", async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatPanel onSubmit={() => {}} submitting={false} workspace={null} onNavigate={() => {}} />,
+    )
+    expect(screen.queryByTestId("quickpick")).toBeNull()
+    await user.type(screen.getByPlaceholderText(/enter your request/i), "/")
+    expect(screen.getByTestId("quickpick")).toBeInTheDocument()
+    // Registry sections, localized through the quickpick domain keys.
+    expect(screen.getByText("Navigation")).toBeInTheDocument()
+    // QuickPick items carry role="option" with the i18n title as name.
+    expect(screen.getByRole("option", { name: /Workspace/ })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: /Usage/ })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: /Governance/ })).toBeInTheDocument()
+  })
+
+  it("selecting a navigation command calls onNavigate with the tab and inserts nothing into the composer", async () => {
+    const onNavigate = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ChatPanel onSubmit={() => {}} submitting={false} workspace={null} onNavigate={onNavigate} />,
+    )
+    const textarea = screen.getByPlaceholderText(/enter your request/i)
+    await user.type(textarea, "/")
+    await user.click(screen.getByRole("option", { name: /Usage/ }))
+    expect(onNavigate).toHaveBeenCalledTimes(1)
+    expect(onNavigate).toHaveBeenCalledWith("usage")
+    // The lone trigger slash is dropped; no command text was inserted.
+    expect(textarea).toHaveValue("")
+    // The picker closed after selection.
+    expect(screen.queryByTestId("quickpick")).toBeNull()
+  })
+
+  it("wired custom actions fire their panel executors (palette, stop-stream)", async () => {
+    const onOpenPalette = vi.fn()
+    const onAbort = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={baseWorkspace}
+        onOpenPalette={onOpenPalette}
+        onAbort={onAbort}
+      />,
+    )
+    const textarea = screen.getByPlaceholderText(/enter your request/i)
+    await user.type(textarea, "/")
+    expect(screen.getByText("Actions")).toBeInTheDocument()
+    await user.click(screen.getByRole("option", { name: /Open command palette/ }))
+    expect(onOpenPalette).toHaveBeenCalledTimes(1)
+    expect(onAbort).not.toHaveBeenCalled()
+
+    // The trigger slash was dropped on selection — a fresh "/" reopens.
+    expect(textarea).toHaveValue("")
+    await user.type(textarea, "/")
+    await user.click(screen.getByRole("option", { name: /Stop current run/ }))
+    expect(onAbort).toHaveBeenCalledTimes(1)
+    expect(onOpenPalette).toHaveBeenCalledTimes(1)
+  })
+
+  it("offers navigation even without an onNavigate callback; selection inserts no command text", async () => {
+    const user = userEvent.setup()
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} />)
+    const textarea = screen.getByPlaceholderText(/enter your request/i)
+    await user.type(textarea, "/")
+    // Navigation commands always list (they route through onNavigate);
+    // without executors the action items simply are not offered.
+    expect(screen.getByRole("option", { name: /Usage/ })).toBeInTheDocument()
+    expect(screen.queryByText("Actions")).toBeNull()
+    expect(screen.queryByRole("option", { name: /Toggle sidebar/ })).toBeNull()
+    await user.click(screen.getByRole("option", { name: /Usage/ }))
+    // No handler was passed — nothing navigates — and the composer only
+    // lost the lone trigger slash; no command text was ever inserted.
+    expect(textarea).toHaveValue("")
+    expect(screen.queryByTestId("quickpick")).toBeNull()
+  })
+
+  it("Escape closes the slash menu without touching the composer", async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatPanel onSubmit={() => {}} submitting={false} workspace={null} onNavigate={() => {}} />,
+    )
+    const textarea = screen.getByPlaceholderText(/enter your request/i)
+    await user.type(textarea, "/")
+    expect(screen.getByTestId("quickpick")).toBeInTheDocument()
+    // Focus moved into the quickpick's query box — Escape closes it.
+    await user.keyboard("{Escape}")
+    expect(screen.queryByTestId("quickpick")).toBeNull()
+  })
+})
+
+// ── Mention popup grouping (Agent roles / Skills) ───────────────────────────
+
+describe("ChatPanel mention groups", () => {
+  const ROLES = [
+    { token: "backend", description: "agent role" },
+    { token: "frontend", description: "agent role" },
+  ]
+
+  it("heads the popup with Agent roles and Skills sections and explains the empty skills list", async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={null}
+        mentionSuggestions={ROLES}
+      />,
+    )
+    await user.type(screen.getByPlaceholderText(/enter your request/i), "@")
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument()
+    expect(screen.getByTestId("mention-group-header-roles")).toHaveTextContent("Agent roles")
+    expect(screen.getByTestId("mention-group-header-skills")).toHaveTextContent("Skills")
+    // Roles land in their section...
+    expect(screen.getByTestId("mention-group-roles")).toHaveTextContent("@backend")
+    expect(screen.getByTestId("mention-group-roles")).toHaveTextContent("@frontend")
+    // ...and the honestly-empty skills section explains itself instead
+    // of inventing entries.
+    expect(screen.getByTestId("mention-skills-empty")).toHaveTextContent(/static placeholder/i)
+  })
+
+  it("keeps keyboard highlight working across the grouped popup", async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={null}
+        mentionSuggestions={ROLES}
+      />,
+    )
+    const textarea = screen.getByPlaceholderText(/enter your request/i)
+    await user.type(textarea, "@")
+    const backendRow = screen.getByText("@backend").closest("li")
+    const frontendRow = screen.getByText("@frontend").closest("li")
+    expect(backendRow?.className).toContain("bg-accent")
+    await user.keyboard("{ArrowDown}")
+    // Flat highlight index (roles first, then skills) maps onto the
+    // grouped render: the second role row takes the accent.
+    expect(frontendRow?.className).toContain("bg-accent")
+    expect(backendRow?.className).not.toContain("bg-accent")
+    await user.keyboard("{ArrowDown}")
+    // Highlight wraps the flat list (roles first, then the empty skills
+    // section) back onto the first role row.
+    expect(screen.getByText("@backend").closest("li")?.className).toContain("bg-accent")
   })
 })

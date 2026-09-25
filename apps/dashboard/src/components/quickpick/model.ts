@@ -10,6 +10,8 @@
  * sectioned view model the component renders verbatim.
  */
 
+import { formatKeybind, type CommandDef } from "@/lib/commands"
+
 export interface QuickPickItem {
   id: string
   label: string
@@ -147,4 +149,65 @@ export function groupBySection(ranked: RankedQuickPickItem[]): QuickPickSection[
 /** Flatten sections back into one highlight-ordered list. */
 export function flattenSections(sections: QuickPickSection[]): RankedQuickPickItem[] {
   return sections.flatMap((s) => s.items)
+}
+
+// ── slash-command menu (ChatPanel "/" quickpick) ────────────────────────────
+
+/**
+ * Which custom-action executors the caller can actually reach. Navigation
+ * commands are NOT gated here: they always route through the caller's
+ * onNavigate callback (a no-op until the shell wires it), so the menu
+ * keeps listing them.
+ */
+export interface SlashCommandHandlers {
+  /** A palette-opener callback exists (onOpenPalette). */
+  openPalette: boolean
+  /** A stream-abort callback exists (onAbort). */
+  stopStream: boolean
+}
+
+/** i18n section labels for the slash menu, keyed by registry section. */
+export function slashSectionKey(section: CommandDef["section"]): string {
+  return `quickpick.slash.${section}`
+}
+
+/**
+ * Map the command registry into QuickPick items for the chat composer's
+ * "/" menu. Titles/descriptions flow through i18n; the description
+ * prefers the command's i18n description, falling back to its keybind.
+ *
+ * Offer policy (QuickPick ranking HIDES disabled items, so "listed but
+ * disabled" is not a state it can render): navigation commands are
+ * always offered — selecting one calls the panel's onNavigate with the
+ * target tab; open-palette / stop-stream are offered only when their
+ * executor callback exists; view toggles have no panel-reachable
+ * executor at all and are never offered from here.
+ */
+export function commandQuickPickItems(
+  commands: readonly CommandDef[],
+  translate: (key: string) => string,
+  handlers: SlashCommandHandlers,
+): QuickPickItem[] {
+  return commands.map((command) => {
+    const wired =
+      command.navigateTo !== undefined
+        ? true
+        : command.action === "open-palette"
+          ? handlers.openPalette
+          : command.action === "stop-stream"
+            ? handlers.stopStream
+            : false // view toggles have no panel-reachable executor
+    return {
+      id: command.id,
+      label: translate(command.titleKey),
+      description:
+        command.descriptionKey !== undefined
+          ? translate(command.descriptionKey)
+          : command.keybind !== undefined
+            ? formatKeybind(command.keybind)
+            : undefined,
+      section: translate(slashSectionKey(command.section)),
+      disabled: command.enabled === false || !wired,
+    }
+  })
 }

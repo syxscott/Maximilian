@@ -243,6 +243,12 @@ interface UnitBase {
 export interface TextUnit extends UnitBase {
   kind: "text"
   text: string
+  /**
+   * Provenance for text segments extracted from textUnits (steering
+   * injections, system-side task prose) — TextUnitBlock styles per
+   * source. undefined = ordinary stream narration.
+   */
+  source?: TextUnitSource
 }
 
 /**
@@ -338,6 +344,19 @@ function eventText(e: RuntimeEvent): string | undefined {
 }
 
 const SYSTEM_TURN_ID = "system"
+
+/**
+ * Event field carrying a TextUnitSource provenance — set by the
+ * synthetic text events withTextUnitEvents splices into the render
+ * stream (plain stream events never carry it, so ordinary narration
+ * stays unstyled).
+ */
+export const TEXT_SOURCE_FIELD = "textSource"
+
+/** Narrow a passthrough value to a known TextUnitSource, or drop it. */
+function asTextSource(v: unknown): TextUnitSource | undefined {
+  return v === "user" || v === "system" || v === "steering" ? v : undefined
+}
 
 /**
  * Compile the event stream + workspace into the render-unit stream —
@@ -543,6 +562,7 @@ export function buildTurnFlowItems(
         // join their task's turn, or form a standalone message turn.
         const text = eventText(e)
         if (text === undefined) return
+        const source = asTextSource(rec[TEXT_SOURCE_FIELD])
         if (taskId) {
           const turnId = turnFor(taskId)
           if (!openTaskTurns.includes(turnId)) openTaskTurns.push(turnId)
@@ -555,6 +575,7 @@ export function buildTurnFlowItems(
             index,
             at,
             text,
+            ...(source !== undefined ? { source } : {}),
           })
         } else {
           units.push({
@@ -565,6 +586,7 @@ export function buildTurnFlowItems(
             index,
             at,
             text,
+            ...(source !== undefined ? { source } : {}),
           })
         }
       }
@@ -1081,6 +1103,58 @@ export function textUnits(
   // Stream order (stable: same-index steering messages keep their order).
   units.sort((a, b) => a.index - b.index)
   return units
+}
+
+// ── withTextUnitEvents (text units into the render chain) ───────────────────
+
+/**
+ * Surface the textUnits output in a render chain that only accepts a
+ * RuntimeEvent[] (ChatPanel → ConversationTimeline): every extracted
+ * steering/system segment is spliced back into the stream AT ITS SOURCE
+ * POSITION as a synthetic text event tagged with TEXT_SOURCE_FIELD, so
+ * buildTurnFlowItems compiles it into a `source`-stamped text unit that
+ * joins the SAME turn it was steered to — ahead of that turn's later
+ * units (the tool calls, statuses and narration that follow it in
+ * stream order).
+ *
+ * The user-source unit is dropped: buildTurnFlowItems already leads
+ * with the workspace request, and passing it through would render the
+ * request twice. Same-index segments keep textUnits' ordinal order.
+ * Pure + defensive: without extractable segments the input array is
+ * returned as-is (same reference), and malformed extracted entries
+ * cannot occur (textUnits already coerces).
+ */
+export function withTextUnitEvents(
+  events: RuntimeEvent[],
+  workspace: Workspace | null = null,
+): RuntimeEvent[] {
+  const stream = Array.isArray(events) ? events : []
+  const extracted = textUnits(stream, workspace).filter((unit) => unit.source !== "user")
+  if (extracted.length === 0) return events
+
+  /** Source index → its extracted segments, in ordinal order. */
+  const byIndex = new Map<number, ExtractedTextUnit[]>()
+  for (const unit of extracted) {
+    const batch = byIndex.get(unit.index)
+    if (batch) batch.push(unit)
+    else byIndex.set(unit.index, [unit])
+  }
+
+  const out: RuntimeEvent[] = []
+  stream.forEach((event, index) => {
+    for (const unit of byIndex.get(index) ?? []) {
+      out.push({
+        type: "text",
+        text: unit.text,
+        role: unit.role,
+        [TEXT_SOURCE_FIELD]: unit.source,
+        ...(unit.taskId !== undefined ? { taskId: unit.taskId } : {}),
+        ...(unit.at !== undefined ? { ts: unit.at } : {}),
+      })
+    }
+    out.push(event)
+  })
+  return out
 }
 
 // ── liveTailState (live-tail state machine) ─────────────────────────────────

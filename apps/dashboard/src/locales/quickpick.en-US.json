@@ -2,5 +2,9 @@
   "quickpick.placeholder": "Type to filter…",
   "quickpick.empty": "No results",
   "quickpick.hint": "↑↓ navigate · Enter select · Esc close",
-  "quickpick.ungrouped": "Other"
+  "quickpick.ungrouped": "Other",
+  "quickpick.slash.placeholder": "Run a command…",
+  "quickpick.slash.navigation": "Navigation",
+  "quickpick.slash.actions": "Actions",
+  "quickpick.slash.view": "View"
 }
