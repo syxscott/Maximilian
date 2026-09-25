@@ -31,6 +31,7 @@ export const SETTINGS_SECTIONS = [
   "subagents",
   "usageCharts",
   "store",
+  "system",
   "automations",
   "jobs",
   "memory",

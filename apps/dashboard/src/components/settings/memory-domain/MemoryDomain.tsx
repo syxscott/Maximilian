@@ -9,10 +9,12 @@
  * top, then one expandable card per memory bucket: full entry list with
  * per-entry full content, the efficacy ledger (injectedCount / deltaSum /
  * mean) and the gating inference badge ("would be skipped under enforce",
- * same thresholds as @max/evolution gatingDecisions). A search box filters
- * entries across buckets. The active role's memory can be exported as JSON
- * (Blob download, clipboard fallback) and a validated JSON file can be
- * imported back through POST /evolution/agents/{role}/memory-import after
+ * same thresholds as @max/evolution gatingDecisions) — clicking the badge
+ * opens an inline tooltip with the decision's mean and sample count, read
+ * straight off the ledger. Each bucket carries its own glyph. A search box
+ * filters entries across buckets. The active role's memory can be exported
+ * as JSON (Blob download, clipboard fallback) and a validated JSON file can
+ * be imported back through POST /evolution/agents/{role}/memory-import after
  * an explicit confirm dialog.
  */
 
@@ -29,7 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Download, FileUp } from "lucide-react"
+import { Download, FileUp, MessageSquare, ClipboardCheck, AlertTriangle, Star } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import {
   SUBAGENTS_QUERY_KEY,
@@ -46,6 +48,8 @@ import {
   pickRole,
   searchRoleEntries,
   toMemoryRoleViews,
+  type EfficacyLedgerView,
+  type MemoryBucketName,
   type MemoryBucketView,
   type MemoryExportEntry,
   type MemoryImportParseError,
@@ -443,33 +447,55 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
+/** One lucide glyph per memory bucket (decorative — names stay textual). */
+const BUCKET_ICONS: Record<MemoryBucketName, typeof MessageSquare> = {
+  userFeedback: MessageSquare,
+  reviewSuggestions: ClipboardCheck,
+  commonErrors: AlertTriangle,
+  goodExamples: Star,
+}
+
 function MemoryBucketCard(props: {
   bucket: MemoryBucketView
-  efficacy: { injectedCount: number; deltaSum: number; mean: number | null } | null
+  efficacy: EfficacyLedgerView | null
   open: boolean
   onToggle: () => void
   openEntry: string | null
   onToggleEntry: (key: string) => void
 }) {
   const { bucket, efficacy, open, onToggle, openEntry, onToggleEntry } = props
-  const skip = efficacy?.mean != null && efficacy.injectedCount >= 3 && efficacy.mean < -0.25
+  // Same rule the badge shows, read straight off the ledger the model
+  // already derived (no second threshold copy here).
+  const skip = efficacy?.wouldSkipUnderEnforce === true
+  const [gateOpen, setGateOpen] = useState(false)
+  const Icon = BUCKET_ICONS[bucket.name]
   return (
     <div className="rounded border px-2 py-1.5" data-testid={`memory-bucket-${bucket.name}`}>
       <div className="flex flex-wrap items-center justify-between gap-1">
         <div className="flex flex-wrap items-center gap-1">
+          <Icon
+            className="h-3.5 w-3.5 text-muted-foreground"
+            aria-hidden
+            data-testid={`memory-bucket-icon-${bucket.name}`}
+          />
           <p className="text-xs font-medium">{t(`memory.bucket.${bucket.name}`)}</p>
           <Badge variant="secondary" className="h-4 px-1 text-[10px]">
             {bucket.count}
           </Badge>
           {skip && (
-            <Badge
-              variant="destructive"
-              className="h-4 px-1 text-[10px]"
+            <button
+              type="button"
+              className="inline-flex items-center"
+              onClick={() => setGateOpen((v) => !v)}
+              aria-expanded={gateOpen}
+              aria-label={t("memory.gating.showBasis")}
               title={t("memory.gating.basis")}
               data-testid={`memory-gating-${bucket.name}`}
             >
-              {t("memory.gating.wouldSkip")}
-            </Badge>
+              <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+                {t("memory.gating.wouldSkip")}
+              </Badge>
+            </button>
           )}
         </div>
         <Button
@@ -483,6 +509,20 @@ function MemoryBucketCard(props: {
           {open ? t("memory.bucket.collapse") : t("memory.bucket.expand")}
         </Button>
       </div>
+
+      {/* Click-to-open tooltip over the gating decision: mean and sample
+          count come straight from the efficacy ledger — nothing invented. */}
+      {skip && gateOpen && efficacy !== null && (
+        <p
+          className="mt-1 rounded bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+          data-testid={`memory-gating-detail-${bucket.name}`}
+        >
+          {t("memory.gating.detail", {
+            mean: efficacy.mean === null ? "—" : round2(efficacy.mean),
+            samples: String(efficacy.injectedCount),
+          })}
+        </p>
+      )}
 
       {efficacy !== null ? (
         <p

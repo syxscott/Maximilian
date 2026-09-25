@@ -29,6 +29,7 @@ import { SubagentsDomain } from "./settings/subagents-domain/SubagentsDomain"
 import { UsageDomain } from "./settings/usage-domain/UsageDomain"
 import { SessionStoreStatusCard } from "./settings/store-domain/SessionStoreStatusCard"
 import { MigrationCandidatesCard } from "./settings/store-domain/MigrationCandidatesCard"
+import { SystemOverviewSection } from "./settings/system-domain/SystemOverviewSection"
 import { JobsDomainSection } from "./settings/sections"
 import { AutomationsDomain } from "./settings/automations-domain/AutomationsDomain"
 import { MemoryDomain } from "./settings/memory-domain/MemoryDomain"
@@ -180,6 +181,7 @@ export function SettingsPanel({
               <MigrationCandidatesCard />
             </>
           )}
+          {section === "system" && <SystemOverviewSection />}
           {section === "automations" && <AutomationsDomain />}
           {section === "jobs" && (
             <JobsDomainSection

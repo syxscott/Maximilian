@@ -41,6 +41,8 @@
   "memory.efficacy.noData": "暂无注入记录",
   "memory.gating.wouldSkip": "enforce 下会被跳过",
   "memory.gating.basis": "门控阈值：均值 < -0.25 且样本 ≥ 3",
+  "memory.gating.showBasis": "展开/收起门控判定依据",
+  "memory.gating.detail": "门控判定：{samples} 个样本的均值 {mean} —— enforce 下跳过（均值 < -0.25 且样本 ≥ 3）",
   "memory.io.export": "导出 JSON",
   "memory.io.import": "导入 JSON",
   "memory.io.exportSuccessDownload": "已下载记忆 JSON（{file}）",

@@ -41,6 +41,8 @@
   "memory.efficacy.noData": "No injections recorded",
   "memory.gating.wouldSkip": "would be skipped under enforce",
   "memory.gating.basis": "Gate: mean < -0.25 with ≥ 3 samples",
+  "memory.gating.showBasis": "Toggle the gating decision basis",
+  "memory.gating.detail": "Gating decision: mean {mean} over {samples} samples — skipped under enforce (mean < -0.25 with ≥ 3 samples)",
   "memory.io.export": "Export JSON",
   "memory.io.import": "Import JSON",
   "memory.io.exportSuccessDownload": "Memory JSON downloaded ({file})",

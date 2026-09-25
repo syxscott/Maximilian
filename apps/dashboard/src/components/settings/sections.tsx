@@ -128,6 +128,18 @@ export const SETTINGS_SECTION_DOMAINS: ReadonlyArray<{
     titleKey: "settingsDeep.store.title",
     descriptionKey: "settingsDeep.store.description",
   },
+  // The aggregate over the status subsystems: one health row over vault /
+  // session store / migrations sizing / oracle lessons, then the four
+  // existing cards composed as-is (SystemOverviewSection). Bridging the
+  // same registry domains the part sections surface is fine — coverage
+  // is a union, and the registry-unification test only demands that the
+  // ids resolve.
+  {
+    id: "system",
+    domains: ["vault", "sessions", "oracle-triad"],
+    titleKey: "settingsDeep.system.title",
+    descriptionKey: "settingsDeep.system.description",
+  },
   // Same-id domains: the label derives straight from the registry.
   { id: "automations", domains: ["automations"], descriptionKey: "automations.description" },
   { id: "jobs", domains: ["jobs"], descriptionKey: "jobs.description" },
