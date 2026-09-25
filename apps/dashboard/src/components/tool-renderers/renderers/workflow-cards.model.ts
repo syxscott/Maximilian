@@ -58,8 +58,10 @@ export interface WorkflowCardViewModel extends ToolViewModel {
  * color mapping (the body maps the tone to classes). The vocabulary is
  * the engine/runtime lifecycle spelling: completed|done|succeeded are
  * done, error|failed are error, running|in_progress|active are running,
- * pending|paused|queued|waiting are pending; anything else (e.g. a bare
- * phase name like "gate") stays neutral.
+ * pending|paused|queued|waiting are pending; the terminal-but-not-failure
+ * cancelled|canceled (core TodoItem status enum, runtime outcome word)
+ * ride the muted pending tone too; anything else (e.g. a bare phase name
+ * like "gate") stays neutral.
  */
 export type PhaseTone = "done" | "error" | "running" | "pending" | "neutral"
 
@@ -67,7 +69,7 @@ const TONE_WORDS: Array<[PhaseTone, string[]]> = [
   ["done", ["completed", "complete", "done", "succeeded", "success", "ok"]],
   ["error", ["error", "errored", "failed", "failure"]],
   ["running", ["running", "in_progress", "inprogress", "active", "executing"]],
-  ["pending", ["pending", "paused", "queued", "waiting", "skipped"]],
+  ["pending", ["pending", "paused", "queued", "waiting", "skipped", "cancelled", "canceled"]],
 ]
 
 export function phaseTone(value: string | undefined): PhaseTone {
@@ -80,6 +82,33 @@ export function phaseTone(value: string | undefined): PhaseTone {
     if (words.includes(word)) return tone
   }
   return "neutral"
+}
+
+/**
+ * Tone for the phaseProgress chip — the completed/total dimension of the
+ * compact cards (engine WorkflowRunReport.phaseProgress summed by
+ * progressField). Complete mapping, so the chip never leans on the bare
+ * phase fallback:
+ *   every step completed        → done
+ *   lifecycle error             → error (the run died partway)
+ *   lifecycle pending-family    → pending (queued/paused/cancelled runs
+ *                                 stay muted even with partial progress)
+ *   lifecycle running OR any
+ *   completed step              → running (in flight)
+ *   nothing completed, no
+ *   lifecycle signal            → pending (the run is still waiting)
+ * Without a progress payload at all the status tone is kept (previous
+ * behavior of the chip row).
+ */
+export function progressTone(progress: WorkflowProgress | undefined, status?: string): PhaseTone {
+  if (progress === undefined) return phaseTone(status)
+  if (progress.total !== undefined && progress.total > 0 && progress.completed >= progress.total) {
+    return "done"
+  }
+  const lifecycle = phaseTone(status)
+  if (lifecycle === "error" || lifecycle === "pending") return lifecycle
+  if (lifecycle === "running" || progress.completed > 0) return "running"
+  return "pending"
 }
 
 /** Info-dense collapsed line: every present dimension, joined by " · ". */

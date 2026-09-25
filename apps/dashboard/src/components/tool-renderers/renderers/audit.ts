@@ -6,8 +6,13 @@
 /**
  * RENDERER_FIELD_AUDIT — the full verification matrix for the RENDERERS
  * table (round-3 "real event field" completion pass + the polish round
- * that closed the remaining low-density bodies). One entry per
- * registry key (kept 1:1 with RENDERERS — a test fails if the two drift):
+ * that closed the remaining low-density bodies, finalized by the audit
+ * closing round: the last short-field entries without a deliberate-surface
+ * note were either field-completed — todo-read/todo-write now cite the
+ * item-level TodoItem fields their checklist body reads — or carry the
+ * explicit "the real surface is exactly …" marker, like write). One entry
+ * per registry key (kept 1:1 with RENDERERS — a test fails if the two
+ * drift):
  *
  *   fields  → the canonical payload fields the extractor reads, each
  *             mapped to the real source its spelling was verified against;
@@ -153,7 +158,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     fields: { path: S_TOOLS.write, content: S_TOOLS.write },
     source: S_TOOLS.write,
     density: "full",
-    note: "Byte/line counts derive from the schema content; body mounts DocumentPreviewBlock.",
+    note: "The real schema surface is exactly { path, content } (write.ts WriteInput) — nothing to invent. Primary field = content: byte (utf8Length) and line counts derive from it as the typed fallback rows and the body mounts DocumentPreviewBlock.",
   },
 
   // ── web surface (② passthrough) ─────────────────────────────────────────────
@@ -274,7 +279,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     fields: { plan: S_PASSTHROUGH, allowedPrompts: S_PASSTHROUGH },
     source: S_PASSTHROUGH,
     density: "full",
-    note: "Real payload = { plan, allowedPrompts }; the plan document renders as the clamped block, the prompts row carries the count plus the first allow-list labels.",
+    note: "The real payload is exactly { plan, allowedPrompts }; the plan document renders as the clamped block, the prompts row carries the count plus the first allow-list labels.",
   },
 
   // ── coordination (② passthrough, todo enum from core types) ────────────────
@@ -317,16 +322,26 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     note: "Runtime TodoItem status enum is pending|in_progress|completed|cancelled — all four normalize; the done/total stats line is tallied from the normalized statuses above the checklist body.",
   },
   "todo-read": {
-    fields: { todos: S_TODO },
+    fields: {
+      todos: S_TODO,
+      content: S_TODO,
+      status: S_TODO,
+      priority: S_TODO,
+    },
     source: S_TODO,
     density: "full",
-    note: "Same payload, status tallies and checklist body as todo.",
+    note: "Same payload as todo — the array items are runtime TodoItems, and the checklist body reads each item's content/status/priority (status tallies + done/total line above the body).",
   },
   "todo-write": {
-    fields: { todos: S_TODO },
+    fields: {
+      todos: S_TODO,
+      content: S_TODO,
+      status: S_TODO,
+      priority: S_TODO,
+    },
     source: S_TODO,
     density: "full",
-    note: "Same payload, status tallies and checklist body as todo.",
+    note: "Same payload as todo — the written array items are runtime TodoItems, and the checklist body reads each item's content/status/priority (status tallies + done/total line above the body).",
   },
   skill: {
     fields: { skill: S_PASSTHROUGH, args: S_PASSTHROUGH },
@@ -656,7 +671,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_WORKFLOW,
     density: "full",
-    note: "Chips carry status·phase·run + the completed/total progress chip, tone-mapped via phaseTone; rows keep workflow + duration.",
+    note: "Chips carry status·phase·run + the completed/total progress chip, tone-mapped via phaseTone (progressTone for the phaseProgress dimension); rows keep workflow + duration.",
   },
   "list-workflow-runs-card": {
     fields: {
@@ -705,7 +720,7 @@ export const RENDERER_FIELD_AUDIT: Record<string, RendererFieldAuditEntry> = {
     },
     source: S_PASSTHROUGH,
     density: "full",
-    note: "Sub-call envelopes normalize to the ToolCallBlock props; children re-render recursively (GROUP_LIMIT 8) under the countOutcomes ok/failed summary badges with avgDuration beside them (mean child durationMs, untimed children skipped).",
+    note: "Sub-call envelopes normalize to the ToolCallBlock props; children re-render recursively (GROUP_LIMIT 8 caps the children per level, MAX_GROUP_DEPTH 3 / withinGroupDepth caps the nesting depth of group-in-group envelopes) under the countOutcomes ok/failed summary badges with avgDuration beside them (mean child durationMs, untimed children skipped).",
   },
   "changes-group": {
     fields: {

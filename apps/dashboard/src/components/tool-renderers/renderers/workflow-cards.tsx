@@ -12,7 +12,9 @@
  * run id) so the expanded surface stays info-dense on constrained
  * timelines, then the remaining field rows and — for rosters — the
  * numbered actor block. Chip tones come from the phaseTone model mapping
- * (workflow-cards.model.ts); progress renders as completed/total. The
+ * (workflow-cards.model.ts) — the progress chip from the progressTone
+ * mapping over the phaseProgress dimension; progress renders as
+ * completed/total. The
  * extractors keep the chip dimensions OFF the row list, so nothing renders
  * twice. Falls back to the generic JSON preview when the payload is opaque.
  */
@@ -27,6 +29,7 @@ import {
   extractListWorkflowRunsCard,
   extractResumeWorkflowRunCard,
   phaseTone,
+  progressTone,
   type PhaseTone,
   type WorkflowCardViewModel,
 } from "./workflow-cards.model"
@@ -105,7 +108,7 @@ export function CompactWorkflowCard({
           <Chip
             value={progressText(vm.progress)}
             testId="card-chip-progress"
-            tone={phaseTone(vm.status ?? vm.phase)}
+            tone={progressTone(vm.progress, vm.status ?? vm.phase)}
           />
         )}
         {vm.count !== undefined && <Chip value={`×${vm.count}`} testId="card-chip-count" />}

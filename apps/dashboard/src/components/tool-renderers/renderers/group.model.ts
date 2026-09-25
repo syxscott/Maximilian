@@ -10,6 +10,9 @@
  * ToolCallBlock, clamped to GROUP_LIMIT with an overflow note. The body
  * opens with a summary stats row tallied by countOutcomes (ok / failed /
  * unrecorded badges) plus the mean child duration from avgDuration.
+ * Recursion itself is bounded by MAX_GROUP_DEPTH / withinGroupDepth —
+ * GROUP_LIMIT caps the children per level, the depth guard caps the
+ * nesting levels.
  */
 
 import { asRecord, jsonPreview, pickArray, pickBool, pickNum, pickStr } from "./shared.model"
@@ -18,6 +21,31 @@ export type GroupKind = "execute" | "changes" | "cua"
 
 /** Sub-calls shown before the "还有 N 个" clamp. */
 export const GROUP_LIMIT = 8
+
+/**
+ * Nesting budget for recursive group bodies. GROUP_LIMIT only caps the
+ * number of children shown per level — a group envelope whose children
+ * are group envelopes again (execute-group inside execute-group) would
+ * recurse through ToolCallBlock unbounded and overflow the React stack on
+ * deep payloads. MAX_GROUP_DEPTH caps HOW DEEP the expansion goes: bodies
+ * at depth 0..MAX_GROUP_DEPTH-1 still expand their children, deeper ones
+ * render the depth note instead (see withinGroupDepth).
+ */
+export const MAX_GROUP_DEPTH = 3
+
+/**
+ * Pure depth guard: true while a group body at nesting level `depth`
+ * (top level = 0) may still expand its children. Defensive against
+ * negative and non-finite levels — anything unexpected is capped.
+ */
+export function withinGroupDepth(depth: number): boolean {
+  return Number.isFinite(depth) && depth >= 0 && depth < MAX_GROUP_DEPTH
+}
+
+/** True for the group tools whose bodies recurse through ToolCallBlock. */
+export function isGroupTool(tool: string): boolean {
+  return tool === "execute-group" || tool === "changes-group" || tool === "cua-group"
+}
 
 export interface GroupChild {
   tool: string

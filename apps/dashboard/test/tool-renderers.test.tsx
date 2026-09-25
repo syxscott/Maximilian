@@ -82,6 +82,18 @@
  * avgDuration over the children's durationMs (untimed children skipped,
  * exact arithmetic mean — the body rounds for display) rendered in the
  * same summary row as the outcome badges for execute/changes/cua groups.
+ *
+ * The "finalization" round closes the audit's remainder: the last
+ * short-field entries without a deliberate-surface note are completed
+ * (todo-read/todo-write cite the item-level TodoItem fields their
+ * checklist body reads; write carries the explicit "the real surface is
+ * exactly { path, content }" marker), every FIELDS label key must resolve
+ * in BOTH locale dictionaries and every audit entry's kitchen-sink
+ * payload must render without leaking a raw toolRenderers.* key, the
+ * phaseTone vocabulary gains the cancelled/canceled spellings plus a
+ * progressTone mapping for the phaseProgress chip dimension, and the
+ * group recursion is depth-bounded (MAX_GROUP_DEPTH 3 — GROUP_LIMIT only
+ * ever capped the children per level).
  */
 
 import { describe, it, expect, afterEach } from "vitest"
@@ -177,6 +189,7 @@ import {
   extractResumeWorkflowRunCard,
   extractGetWorkflowRunRosterCard,
   phaseTone,
+  progressTone,
 } from "../src/components/tool-renderers/renderers/workflow-cards.model"
 import {
   extractAgentPrompt,
@@ -198,9 +211,12 @@ import {
   avgDuration,
   countOutcomes,
   extractGroupChildren,
+  isGroupTool,
+  MAX_GROUP_DEPTH,
+  withinGroupDepth,
 } from "../src/components/tool-renderers/renderers/group.model"
 import { extractFileChange } from "../src/components/tool-renderers/renderers/edit-inline-diff.model"
-import { usageOf } from "../src/components/tool-renderers/renderers/shared.model"
+import { FIELDS, usageOf } from "../src/components/tool-renderers/renderers/shared.model"
 
 // Register the domain dictionaries over the core ones (en-US is the test
 // locale per test/setup.ts; zh-CN registered for the localized smoke).
@@ -4558,5 +4574,309 @@ describe("engine alignment — zh-CN labels for the new rows", () => {
     expect(rowValue("脚本哈希")).toBe("cc12")
     expect(rowValue("进度")).toBe("1/4")
     expect(rowValue("日志重放")).toBe("1")
+  })
+})
+
+// ── finalization round — audit remainder, labels, tones, depth guard ────────
+
+describe("audit finalization — deliberate markers on the short-field entries", () => {
+  it("no ≤2-field entry lacks a deliberate-surface note anymore", () => {
+    const short = Object.entries(RENDERER_FIELD_AUDIT).filter(
+      ([, entry]) => Object.keys(entry.fields).length <= 2,
+    )
+    expect(short.map(([tool]) => tool).sort()).toEqual([
+      "exit-plan-mode", // plan block + allow-list row; payload is exactly 2 fields
+      "list-apps", // no input fields exist; the roster payload is the body
+      "skill", // skill · args key count · args preview
+      "write", // path + content with the derived byte/line fallback
+    ])
+    for (const [tool, entry] of short) {
+      expect(entry.note, `${tool} carries a deliberate marker`).toMatch(/exactly|no input fields/)
+    }
+  })
+
+  it("todo-read/todo-write now cite the item-level TodoItem fields the checklist reads", () => {
+    for (const tool of ["todo-read", "todo-write"]) {
+      const entry = RENDERER_FIELD_AUDIT[tool]
+      expect(Object.keys(entry?.fields ?? {}).length, tool).toBeGreaterThanOrEqual(3)
+      expect(Object.keys(entry?.fields ?? {}).sort(), tool).toEqual(
+        ["content", "priority", "status", "todos"].sort(),
+      )
+      for (const source of Object.values(entry?.fields ?? {})) {
+        expect(source, `${tool} field source`).toContain("packages/core/src/types.ts")
+      }
+      expect(entry?.density, tool).toBe("full")
+    }
+    // The extractor really normalizes those item-level fields (same body as todo).
+    const vm = extractTodo({
+      todos: [{ content: "step", status: "in_progress", priority: "high" }],
+    })
+    expect(vm.items[0]).toMatchObject({ content: "step", status: "in_progress" })
+  })
+
+  it("write keeps the two-field schema surface, marked deliberate with its derived fallback", () => {
+    const entry = RENDERER_FIELD_AUDIT.write
+    expect(Object.keys(entry?.fields ?? {})).toEqual(["path", "content"])
+    expect(entry?.note).toContain("exactly { path, content }")
+    expect(entry?.density).toBe("full")
+    // The typed fallback beside the primary field is real: bytes derive from content.
+    const generic = toolInputRows("write", { path: "a.ts", content: "hi" })
+    expect(generic.rows.map((r) => r.label)).toEqual(["file", "bytes"])
+    expect(extractFileChange("write", { path: "a.ts", content: "hi" }).headline).toBe("a.ts")
+  })
+})
+
+// Kitchen-sink payloads built from each audit entry's field names, so the
+// label-resolution checks stay tied to the verification matrix itself.
+const ARRAY_FIELD_VALUES: Record<string, unknown> = {
+  allowedDomains: ["a.dev"],
+  allowedPrompts: ["git push"],
+  apps: [{ name: "Settings" }],
+  actors: ["alice"],
+  blockedDomains: ["b.dev"],
+  calls: [{ tool: "bash", command: "ls", ok: true }],
+  children: [{ tool: "bash", command: "ls", ok: true }],
+  completed: [{ siteId: "s1" }],
+  elements: [{ index: 0, text: "Save" }],
+  images: ["shots/a.png"],
+  items: [{ tool: "bash", command: "ls", ok: true }],
+  models: [{ id: "glm-5.3" }],
+  options: [{ label: "Option A" }],
+  ownedFiles: ["src/a.ts"],
+  paths: ["src"],
+  phaseProgress: [{ phase: "build", completedSteps: 2 }],
+  prompts: ["npm test"],
+  questions: [{ question: "Proceed?", header: "Confirm", options: [{ label: "Yes" }] }],
+  results: [{ title: "Result", url: "https://example.com/a" }],
+  runs: [{ runId: "run-1" }],
+  steps: [{ ask: "step one" }],
+  stops: [{ taskId: "task-1" }],
+  subcalls: [{ tool: "bash", command: "ls", ok: true }],
+  todos: [{ content: "ship it", status: "pending", priority: "high" }],
+}
+const NUMBER_FIELDS = new Set([
+  "timeout",
+  "offset",
+  "limit",
+  "timeoutMs",
+  "resultCount",
+  "depth",
+  "breadth",
+  "progress",
+  "ms",
+  "width",
+  "height",
+  "durationMs",
+  "maxConcurrency",
+  "skippedFromJournal",
+  "total",
+  "intervalMinutes",
+  "durationMinutes",
+  "maxTokens",
+  "revision",
+])
+const BOOLEAN_FIELDS = new Set([
+  "replaceAll",
+  "run_in_background",
+  "multiSelect",
+  "force",
+  "ok",
+  "block",
+])
+const OBJECT_FIELDS = new Set(["args", "metadata", "settings", "usage"])
+
+function auditFieldValue(field: string): unknown {
+  if (field in ARRAY_FIELD_VALUES) return ARRAY_FIELD_VALUES[field]
+  if (NUMBER_FIELDS.has(field)) return 3
+  if (BOOLEAN_FIELDS.has(field)) return true
+  if (OBJECT_FIELDS.has(field)) return { key: "value" }
+  return `${field}-value`
+}
+
+function auditKitchenSink(tool: string): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.keys(RENDERER_FIELD_AUDIT[tool]?.fields ?? {}).map((field) => [
+      field,
+      auditFieldValue(field),
+    ]),
+  )
+}
+
+describe("audit finalization — every label key resolves in both locales", () => {
+  it("all FIELDS labels exist in en-US and zh-CN (catches the missing fields.image)", () => {
+    const keys = Object.values(FIELDS)
+    expect(keys.length).toBeGreaterThan(80)
+    for (const key of keys) {
+      expect(enDomain[key as keyof typeof enDomain], key).toBeTruthy()
+      expect(zhDomain[key as keyof typeof zhDomain], key).toBeTruthy()
+    }
+  })
+
+  it("en-US: no audit entry's kitchen-sink payload leaks a raw toolRenderers.* key", () => {
+    for (const tool of Object.keys(RENDERER_FIELD_AUDIT)) {
+      const { container, unmount } = renderInput(tool, auditKitchenSink(tool))
+      expect(container.textContent, tool).not.toContain("toolRenderers.")
+      unmount()
+    }
+  })
+
+  it("zh-CN: same guarantee under the other locale", () => {
+    setLocale("zh-CN")
+    for (const tool of Object.keys(RENDERER_FIELD_AUDIT)) {
+      const { container, unmount } = renderInput(tool, auditKitchenSink(tool))
+      expect(container.textContent, tool).not.toContain("toolRenderers.")
+      unmount()
+    }
+  })
+})
+
+describe("engine alignment — phaseTone cancelled + progressTone (model)", () => {
+  it("cancelled/canceled ride the muted pending tone beside queued/paused", () => {
+    expect(phaseTone("cancelled")).toBe("pending")
+    expect(phaseTone("canceled")).toBe("pending")
+    expect(phaseTone("Cancelled")).toBe("pending")
+    expect(phaseTone("queued")).toBe("pending")
+    expect(phaseTone("running")).toBe("running")
+    expect(phaseTone("in_progress")).toBe("running")
+  })
+
+  it("progressTone: every step completed → done", () => {
+    expect(progressTone({ completed: 3, total: 3 })).toBe("done")
+    expect(progressTone({ completed: 5, total: 3 })).toBe("done")
+  })
+
+  it("progressTone: partial progress follows the lifecycle or reads in-flight", () => {
+    expect(progressTone({ completed: 2, total: 5 })).toBe("running")
+    expect(progressTone({ completed: 2 }, "failed")).toBe("error")
+    expect(progressTone({ completed: 2 }, "cancelled")).toBe("pending")
+    expect(progressTone({ completed: 2, total: 5 }, "running")).toBe("running")
+  })
+
+  it("progressTone: zero progress and the no-progress fallback", () => {
+    expect(progressTone({ completed: 0, total: 5 })).toBe("pending")
+    expect(progressTone({ completed: 0, total: 5 }, "queued")).toBe("pending")
+    expect(progressTone({ completed: 0, total: 5 }, "running")).toBe("running")
+    // Without a phaseProgress payload the chip keeps the status tone.
+    expect(progressTone(undefined, "paused")).toBe("pending")
+    expect(progressTone(undefined, "gate")).toBe("neutral")
+  })
+})
+
+describe("engine alignment — progress chip tone (render)", () => {
+  it("the progress chip maps the phaseProgress dimension, not just the status", () => {
+    const first = renderPair(
+      toolStart("get-workflow-run-card", {
+        runId: "run-161",
+        completed: [{ siteId: "a" }, { siteId: "b" }],
+        totalSteps: 3,
+      }),
+      toolEnd("get-workflow-run-card"),
+    )
+    // No status at all — partial progress still reads as running now.
+    expect(
+      within(screen.getByTestId("card-chips")).getByTestId("card-chip-progress"),
+    ).toHaveAttribute("data-tone", "running")
+    first.unmount()
+    renderInput("get-workflow-run-card", {
+      runId: "run-162",
+      status: "cancelled",
+      completed: [{ siteId: "a" }],
+      totalSteps: 4,
+    })
+    expect(
+      within(screen.getByTestId("card-chips")).getByTestId("card-chip-progress"),
+    ).toHaveAttribute("data-tone", "pending")
+  })
+
+  it("a fully completed phaseProgress rides the done tone", () => {
+    renderInput("get-workflow-run-card", {
+      runId: "run-163",
+      status: "cancelled",
+      completed: [{ siteId: "a" }, { siteId: "b" }],
+      totalSteps: 2,
+    })
+    expect(
+      within(screen.getByTestId("card-chips")).getByTestId("card-chip-progress"),
+    ).toHaveAttribute("data-tone", "done")
+  })
+})
+
+describe("finalization — group nesting depth guard", () => {
+  it("MAX_GROUP_DEPTH is 3 and withinGroupDepth is a pure verdict table", () => {
+    expect(MAX_GROUP_DEPTH).toBe(3)
+    expect(withinGroupDepth(0)).toBe(true)
+    expect(withinGroupDepth(1)).toBe(true)
+    expect(withinGroupDepth(2)).toBe(true)
+    expect(withinGroupDepth(3)).toBe(false)
+    expect(withinGroupDepth(4)).toBe(false)
+    expect(withinGroupDepth(-1)).toBe(false)
+    expect(withinGroupDepth(Number.NaN)).toBe(false)
+    expect(withinGroupDepth(Number.POSITIVE_INFINITY)).toBe(false)
+    expect(isGroupTool("execute-group")).toBe(true)
+    expect(isGroupTool("changes-group")).toBe(true)
+    expect(isGroupTool("cua-group")).toBe(true)
+    expect(isGroupTool("bash")).toBe(false)
+  })
+
+  it("GROUP_LIMIT only ever capped the children per level — depth is the new guard", () => {
+    // A payload nested deeper than GROUP_LIMIT: every level still reports
+    // its own count/overflow normally (count-only semantics, unchanged).
+    let deep: unknown = { tool: "bash", command: "echo leaf" }
+    for (let i = 0; i < 10; i++) {
+      deep = { tool: "execute-group", items: [deep] }
+    }
+    const vm = extractGroupChildren(deep, "execute")
+    expect(vm.total).toBe(1)
+    expect(vm.shown).toBe(1)
+    expect(vm.overflow).toBe(0)
+    // So the recursion bound must come from the depth guard alone.
+    expect(withinGroupDepth(MAX_GROUP_DEPTH)).toBe(false)
+  })
+
+  /** Open every rendered group block until a fixpoint (the cap stops growth). */
+  function openAllGroupBodies(): void {
+    for (let round = 0; round < 12; round++) {
+      const closed = [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[data-testid="tool-call-execute-group"] > button[aria-expanded="false"]',
+        ),
+      ]
+      if (closed.length === 0) return
+      closed.forEach((button) => fireEvent.click(button))
+    }
+  }
+
+  function nestedGroups(levels: number): unknown {
+    let payload: unknown = { tool: "bash", command: "echo leaf" }
+    for (let i = 0; i < levels; i++) {
+      payload = { tool: "execute-group", items: [payload] }
+    }
+    return payload
+  }
+
+  it("group-in-group expansion stops after MAX_GROUP_DEPTH levels", () => {
+    renderInput("execute-group", nestedGroups(6))
+    openAllGroupBodies()
+    // Levels 0..2 expand; the level-3 body shows the depth note instead.
+    expect(screen.getAllByTestId("tool-call-execute-group")).toHaveLength(MAX_GROUP_DEPTH + 1)
+    expect(screen.getAllByTestId("tool-group-depth")).toHaveLength(1)
+    // The leaf never renders — expansion stopped above it.
+    expect(screen.queryAllByTestId("tool-call-bash")).toHaveLength(0)
+  })
+
+  it("an uncapped single-level group still renders its real children", () => {
+    renderInput("execute-group", {
+      items: [{ tool: "bash", command: "echo direct", ok: true }],
+    })
+    openAllGroupBodies()
+    expect(screen.getAllByTestId("tool-call-bash")).toHaveLength(1)
+    expect(screen.queryByTestId("tool-group-depth")).toBeNull()
+  })
+
+  it("zh-CN localizes the depth note with the {depth} slot", () => {
+    setLocale("zh-CN")
+    renderInput("execute-group", nestedGroups(5))
+    openAllGroupBodies()
+    expect(screen.getByTestId("tool-group-depth")).toHaveTextContent("子分组嵌套已达上限（3 层）")
   })
 })

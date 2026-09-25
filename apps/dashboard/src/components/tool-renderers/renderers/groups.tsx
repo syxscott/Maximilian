@@ -10,7 +10,10 @@
  * GROUP_LIMIT with a "还有 N 个" overflow note. A summary stats row above
  * the children carries the outcome badges tallied by countOutcomes
  * (✓ ok / ✗ failed / unrecorded) and the mean sub-call duration from
- * avgDuration (hidden when no child is timed).
+ * avgDuration (hidden when no child is timed). Nested group envelopes are
+ * bounded by the model's MAX_GROUP_DEPTH: each level passes depth+1 to
+ * its children and a body beyond the budget renders the depth note
+ * instead of recursing.
  */
 
 import { useLocale, t } from "@max/i18n"
@@ -20,6 +23,8 @@ import {
   countOutcomes,
   extractGroupChildren,
   GROUP_LIMIT,
+  MAX_GROUP_DEPTH,
+  withinGroupDepth,
   type GroupKind,
 } from "./group.model"
 import { JsonFallback } from "./common"
@@ -58,8 +63,28 @@ function OutcomeBadge({
   )
 }
 
-function GroupBodyBase({ input, kind }: { input: unknown; kind: GroupKind }) {
+function GroupBodyBase({
+  input,
+  kind,
+  depth = 0,
+}: {
+  input: unknown
+  kind: GroupKind
+  /** Nesting level of THIS body (top level = 0); parent groups pass depth+1. */
+  depth?: number
+}) {
   useLocale()
+  if (!withinGroupDepth(depth)) {
+    // Depth guard: a group envelope nested deeper than MAX_GROUP_DEPTH
+    // renders the note instead of recursing through ToolCallBlock again.
+    return (
+      <div className="mt-1 space-y-1" data-testid="tool-body">
+        <p className="text-[10px] text-muted-foreground" data-testid="tool-group-depth">
+          {t("toolRenderers.group.depth", { depth: MAX_GROUP_DEPTH })}
+        </p>
+      </div>
+    )
+  }
   const { children, total, overflow } = extractGroupChildren(input, kind)
   if (children.length === 0) return <JsonFallback input={input} />
   const { ok, failed, unknown } = countOutcomes(children)
@@ -106,6 +131,7 @@ function GroupBodyBase({ input, kind }: { input: unknown; kind: GroupKind }) {
           ok={child.ok}
           durationMs={child.durationMs}
           error={child.error}
+          depth={depth + 1}
         />
       ))}
       {overflow > 0 && (
@@ -120,17 +146,17 @@ function GroupBodyBase({ input, kind }: { input: unknown; kind: GroupKind }) {
 export const EXECUTE_GROUP_GLYPH = "⚙"
 
 export function ExecuteGroupBody(props: ToolCallProps) {
-  return <GroupBodyBase input={props.input} kind="execute" />
+  return <GroupBodyBase input={props.input} kind="execute" depth={props.depth} />
 }
 
 export const CHANGES_GROUP_GLYPH = "∆"
 
 export function ChangesGroupBody(props: ToolCallProps) {
-  return <GroupBodyBase input={props.input} kind="changes" />
+  return <GroupBodyBase input={props.input} kind="changes" depth={props.depth} />
 }
 
 export const CUA_GROUP_GLYPH = "▣"
 
 export function CuaGroupBody(props: ToolCallProps) {
-  return <GroupBodyBase input={props.input} kind="cua" />
+  return <GroupBodyBase input={props.input} kind="cua" depth={props.depth} />
 }

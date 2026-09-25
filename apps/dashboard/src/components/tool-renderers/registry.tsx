@@ -29,6 +29,13 @@ export interface ToolCallProps {
   error?: string
   /** Default collapsed state (timeline uses collapsed, review uses open). */
   defaultOpen?: boolean
+  /**
+   * Nesting level for the recursive group bodies (execute-group inside
+   * execute-group …): parent groups pass depth+1, and a body beyond the
+   * model's MAX_GROUP_DEPTH renders the depth note instead of recursing.
+   * Non-group renderers ignore it.
+   */
+  depth?: number
 }
 
 export interface ToolRendererDef {
