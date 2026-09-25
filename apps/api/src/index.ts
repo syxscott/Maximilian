@@ -132,6 +132,8 @@ import {
   oracleLessonsHandler,
   migrationsStatusRoute,
   migrationsStatusHandler,
+  memoryImportRoute,
+  memoryImportHandler,
 } from "./routes/admin-status.js"
 import { truthReportRoute } from "./routes/meta.js"
 import {
@@ -869,6 +871,29 @@ if (config.TASK_QUEUE_ENABLED && config.REDIS_URL) {
   subscribeWorkspaceEvents(config.REDIS_URL, ({ workspaceId, tenantId, event }) => {
     const runtimeEvent = event as RuntimeEvent
     if (!runtimeEvent || typeof runtimeEvent.type !== "string") return
+    // Jobs dispatch loop-back: the worker emits job-materialized when a
+    // scheduled run materialized into a real workspace — record it in the
+    // job's dispatch log so the dashboard shows the linked workspace.
+    if (runtimeEvent.type === "job-materialized") {
+      const m = runtimeEvent as unknown as {
+        jobId?: string
+        workspaceId?: string
+        scheduledWorkspaceId?: string
+        status?: string
+        error?: string
+        at?: string
+      }
+      if (m.jobId) {
+        jobsRegistry.recordDispatchResult({
+          jobId: m.jobId,
+          workspaceId: m.workspaceId,
+          scheduledWorkspaceId: m.scheduledWorkspaceId,
+          status: m.status,
+          error: m.error,
+          at: m.at,
+        })
+      }
+    }
     recordRuntimeEvent({ ...runtimeEvent, workspaceId })
     void publishEvent(runtimeEvent.type, runtimeEvent, tenantId)
   })
@@ -2372,6 +2397,7 @@ if (evolution) {
   api.openapi(recordFeedbackRoute, requireAuthMiddleware(), evo.recordFeedback)
   api.openapi(oracleTriadRoute, requireAuthMiddleware(), oracleTriadHandler(evoDeps))
   api.openapi(triggerEvolveRoute, requireAuthMiddleware(), evo.triggerEvolve)
+  api.openapi(memoryImportRoute, requireAuthMiddleware(), memoryImportHandler({ facade: evolution }))
 }
 
 // Settings-center deep domains (providers catalog / model tester / store status).

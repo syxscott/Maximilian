@@ -733,6 +733,7 @@ export function App() {
                 mentionSuggestions={mentionSuggestions}
                 onOpenProviders={() => setTab("providers")}
                 onOpenPalette={() => setCommandOpen(true)}
+                onNavigate={setTab}
                 sidebarHidden={sidebarHidden}
                 parkedTaskIds={
                   pendingPermissions.size > 0
