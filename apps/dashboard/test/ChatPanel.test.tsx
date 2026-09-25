@@ -344,6 +344,43 @@ describe("ChatPanel text units", () => {
   })
 })
 
+// ── Live status through the panel (running feedback, failed-expand) ─────────
+
+describe("ChatPanel live status", () => {
+  it("surfaces a failed turn's failing tool error expanded — no click needed", () => {
+    const events = [
+      evx({ type: "task-start", taskId: "t1", agentRole: "backend" }),
+      evx({ type: "tool-start", taskId: "t1", toolName: "bash", input: { command: "exit 1" } }),
+      evx({
+        type: "tool-end",
+        taskId: "t1",
+        toolName: "bash",
+        ok: false,
+        durationMs: 8,
+        error: "command failed with code 1",
+      }),
+      evx({ type: "task-failed", taskId: "t1", error: "boom" }),
+    ]
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} events={events} />)
+    expect(screen.getByTestId("turn-status")).toHaveTextContent("Failed")
+    // defaultExpanded per status: the ErrorBlock detail is already open.
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("command failed with code 1")
+    expect(screen.queryByTestId("tool-error-collapsed")).not.toBeInTheDocument()
+  })
+
+  it("steering blocks carry the one-shot entry flash with the 2s fade class", () => {
+    const events = [
+      evx({ type: "task-start", taskId: "t1" }),
+      evx({ type: "steering-applied", taskIds: ["t1"], messages: ["focus the flaky tests"] }),
+    ]
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} events={events} />)
+    const flash = screen.getByTestId("text-unit-flash")
+    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-flash", "true")
+    expect(flash.className).toContain("transition-opacity")
+    expect(flash.className).toContain("duration-[2000ms]")
+  })
+})
+
 // ── "/" slash menu (QuickPick over the command registry) ────────────────────
 
 describe("ChatPanel slash quickpick", () => {

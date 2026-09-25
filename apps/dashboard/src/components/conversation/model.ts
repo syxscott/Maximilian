@@ -1567,3 +1567,24 @@ export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`
   return `${(ms / 1000).toFixed(1)} s`
 }
+
+/**
+ * Whole seconds elapsed since `from` (the tool-start event's ts, or the
+ * unit's first-seen time when the stream carries no ts) — the live
+ * value a running-tool badge renders. Defensive: a missing / non-finite
+ * start or now counts 0, and a clock behind the start clamps at 0.
+ */
+export function elapsedSeconds(from: number | undefined, now: number): number {
+  if (from === undefined || !Number.isFinite(from) || !Number.isFinite(now)) return 0
+  return Math.max(0, Math.floor((now - from) / 1000))
+}
+
+/**
+ * defaultExpanded per status: a FAILED turn surfaces its error detail
+ * WITHOUT a click — the tool blocks inside it default to the registry's
+ * expanded view (the ErrorBlock path) instead of the truncated one-line
+ * error row. Every other status keeps the collapsed default.
+ */
+export function turnDefaultExpanded(status: TurnStatus): boolean {
+  return status === "failed"
+}

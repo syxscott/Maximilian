@@ -9,16 +9,25 @@
  * the shared ToolCallBlock registry — the single rendering path for any
  * tool call on this surface. The turn's depth drives the left indent
  * (subagent turns nest under their open parent).
+ *
+ * Live status: a RUNNING turn's header duration ticks every 5s
+ * (LiveTurnDuration) and its running tools carry a spinning Loader2
+ * with per-second elapsed counters (RunningToolBadge); steering text
+ * units flash once on entry (2s fade); a FAILED turn's failing tool
+ * calls default to the expanded error view (turnDefaultExpanded per
+ * status) so the error detail needs no click.
  */
 
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
+import { Loader2 } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import { Badge } from "@/components/ui/badge"
 import { ToolCallBlock } from "@/components/tool-renderers/registry"
 import type { ConversationUnit, FindHit, TurnModel } from "./model"
-import { formatDuration } from "./model"
+import { elapsedSeconds, formatDuration, turnDefaultExpanded } from "./model"
 import { RetryWaveGroup } from "./RetryWaveGroup"
 import { TextUnitBlock } from "./TextUnitBlock"
+import { RUNNING_TOOL_TICK_MS, TURN_ELAPSED_TICK_MS, useNow } from "./useNow"
 
 const ROLE_COLOR: Record<string, string> = {
   user: "bg-blue-500",
@@ -63,6 +72,52 @@ function StatusBadge({ status }: { status: TurnModel["status"] }) {
     <Badge variant="default" className="h-4 px-1 text-[10px]" data-testid="turn-status">
       {t("conversation.status.running")}
     </Badge>
+  )
+}
+
+/**
+ * RunningToolBadge — the live feedback for a tool-start without its
+ * paired end: a spinning Loader2 plus the elapsed seconds, re-rendered
+ * once a second by useNow's interval (cleared on unmount). The clock
+ * starts at the tool-start event's ts; a stream without ts falls back
+ * to the badge's own mount time (the unit's first-seen moment).
+ */
+function RunningToolBadge({ startedAt }: { startedAt?: number }) {
+  useLocale()
+  const [firstSeen] = useState(() => Date.now())
+  const now = useNow(RUNNING_TOOL_TICK_MS)
+  const seconds = elapsedSeconds(startedAt ?? firstSeen, now)
+  return (
+    <Badge
+      variant="default"
+      className="h-4 shrink-0 gap-1 px-1 text-[10px]"
+      data-testid="tool-running"
+    >
+      <Loader2 className="h-3 w-3 animate-spin" aria-hidden data-testid="tool-running-spinner" />
+      {t("conversation.tool.running")}
+      <span data-testid="tool-running-elapsed" data-seconds={seconds}>
+        {t("conversation.tool.elapsed", { seconds })}
+      </span>
+    </Badge>
+  )
+}
+
+/**
+ * LiveTurnDuration — a RUNNING task turn's header duration: elapsed
+ * since the turn's first timestamp (or its first-seen moment), refreshed
+ * every 5s while the turn keeps running. It supersedes the frozen
+ * start→last-event span, which says nothing about how long an
+ * in-flight turn has actually been going.
+ */
+function LiveTurnDuration({ startedAt }: { startedAt?: number }) {
+  useLocale()
+  const [firstSeen] = useState(() => Date.now())
+  const now = useNow(TURN_ELAPSED_TICK_MS)
+  const elapsed = Math.max(0, now - (startedAt ?? firstSeen))
+  return (
+    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground" data-testid="turn-elapsed">
+      {t("conversation.turn.elapsed", { duration: formatDuration(elapsed) })}
+    </span>
   )
 }
 
@@ -141,10 +196,17 @@ function TurnUnitView({
   unit,
   textHighlights,
   currentUnitKey,
+  defaultExpanded = false,
 }: {
   unit: ConversationUnit
   textHighlights?: Map<string, FindHit[]>
   currentUnitKey?: string
+  /**
+   * The turn's defaultExpanded (turnDefaultExpanded per status): inside
+   * a FAILED turn the tool blocks default to the registry's expanded
+   * view so the error detail surfaces without a click.
+   */
+  defaultExpanded?: boolean
 }) {
   switch (unit.kind) {
     case "task":
@@ -154,10 +216,14 @@ function TurnUnitView({
       // Steering / system segments (textUnits provenance stamped by
       // withTextUnitEvents) render through TextUnitBlock — per-source
       // styling (purple for steering) with the find highlights kept
-      // working inside the block.
+      // working inside the block. Steering additionally flashes once on
+      // entry (highlight that fades out over 2s).
       if (unit.source !== undefined) {
         return (
-          <TextUnitBlock unit={{ source: unit.source, text: unit.text, taskId: unit.taskId }}>
+          <TextUnitBlock
+            unit={{ source: unit.source, text: unit.text, taskId: unit.taskId }}
+            flash={unit.source === "steering"}
+          >
             <HighlightedText
               text={unit.text}
               hits={textHighlights?.get(unit.key)}
@@ -179,8 +245,10 @@ function TurnUnitView({
         </p>
       )
     case "tool":
-      // Single rendering path: the per-tool registry owns the call UI;
-      // a running call just adds the live badge beside it.
+      // Single rendering path: the per-tool registry owns the call UI.
+      // A running call adds the live spinner + elapsed badge beside it;
+      // a failing call inside a FAILED turn defaults to the expanded
+      // (ErrorBlock) view instead of the truncated one-line error row.
       return (
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
@@ -190,17 +258,10 @@ function TurnUnitView({
               ok={unit.ok}
               durationMs={unit.durationMs}
               error={unit.error}
+              defaultOpen={defaultExpanded && unit.ok === false}
             />
           </div>
-          {unit.state === "running" && (
-            <Badge
-              variant="default"
-              className="h-4 shrink-0 px-1 text-[10px]"
-              data-testid="tool-running"
-            >
-              {t("conversation.tool.running")}
-            </Badge>
-          )}
+          {unit.state === "running" && <RunningToolBadge startedAt={unit.at} />}
         </div>
       )
     case "retry":
@@ -250,6 +311,9 @@ export function TurnGroup({
   useLocale()
   const hostsCurrentMatch =
     currentUnitKey !== undefined && turn.units.some((unit) => unit.key === currentUnitKey)
+  // Failed turns surface their error detail without a click — the tool
+  // blocks inside default to the expanded (ErrorBlock) view.
+  const defaultExpanded = turnDefaultExpanded(turn.status)
   return (
     <section
       className={`rounded-lg border bg-card/60 p-3 ${
@@ -276,13 +340,19 @@ export function TurnGroup({
         {/* Lifecycle badges only exist for task turns — message turns
             (user request, narration, review) have no running state. */}
         {turn.turnId.startsWith("task-") && <StatusBadge status={turn.status} />}
-        {turn.durationMs !== undefined && (
-          <span
-            className="ml-auto shrink-0 text-[10px] text-muted-foreground"
-            data-testid="turn-duration"
-          >
-            {t("conversation.turn.duration", { duration: formatDuration(turn.durationMs) })}
-          </span>
+        {/* A RUNNING task turn's duration is LIVE (refreshed every 5s);
+            a finished one keeps the frozen start→end span. */}
+        {turn.turnId.startsWith("task-") && turn.status === "running" ? (
+          <LiveTurnDuration startedAt={turn.startedAt} />
+        ) : (
+          turn.durationMs !== undefined && (
+            <span
+              className="ml-auto shrink-0 text-[10px] text-muted-foreground"
+              data-testid="turn-duration"
+            >
+              {t("conversation.turn.duration", { duration: formatDuration(turn.durationMs) })}
+            </span>
+          )
         )}
       </header>
       {turn.units.length > 0 && (
@@ -293,6 +363,7 @@ export function TurnGroup({
               unit={unit}
               textHighlights={textHighlights}
               currentUnitKey={currentUnitKey}
+              defaultExpanded={defaultExpanded}
             />
           ))}
         </div>

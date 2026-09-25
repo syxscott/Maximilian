@@ -14,7 +14,7 @@
  * ShareView.
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { getDictionary, setLocale } from "@max/i18n"
 import { applyDashboardDictionaries } from "../src/locales/index"
@@ -22,6 +22,7 @@ import { applyDashboardDictionaries } from "../src/locales/index"
 import {
   buildConversationFindIndex,
   buildTurnFlowItems,
+  elapsedSeconds,
   estimateTurnDepth,
   estimateVirtualHeight,
   formatDuration,
@@ -35,6 +36,7 @@ import {
   textUnits,
   toConversationMarkdown,
   toShareMarkdown,
+  turnDefaultExpanded,
   turnHeight,
   VIRTUAL_HEIGHT_THRESHOLD,
   windowTurns,
@@ -52,7 +54,11 @@ import { RetryWaveGroup } from "../src/components/conversation/RetryWaveGroup"
 import { ConversationUnitsPreview } from "../src/components/conversation/ConversationUnitsPreview"
 import { ConversationWindow } from "../src/components/conversation/ConversationWindow"
 import { VirtualTurnWindow } from "../src/components/conversation/VirtualTurnWindow"
-import { TextUnitBlock } from "../src/components/conversation/TextUnitBlock"
+import {
+  TextUnitBlock,
+  STEERING_FLASH_FADE_MS,
+  STEERING_FLASH_HOLD_MS,
+} from "../src/components/conversation/TextUnitBlock"
 import { ShareView } from "../src/components/conversation/ShareView"
 import { ConversationTimeline } from "../src/components/ConversationTimeline"
 import type { RuntimeEvent, Workspace } from "../src/api"
@@ -670,6 +676,23 @@ describe("formatDuration", () => {
     expect(formatDuration(2500)).toBe("2.5 s")
     expect(formatDuration(-5)).toBe("—")
     expect(formatDuration(Number.NaN)).toBe("—")
+  })
+})
+
+describe("elapsedSeconds / turnDefaultExpanded (live-status model)", () => {
+  it("counts whole seconds since the start, clamping garbage and clock skew", () => {
+    expect(elapsedSeconds(1000, 1000)).toBe(0)
+    expect(elapsedSeconds(1000, 8000)).toBe(7)
+    expect(elapsedSeconds(undefined, 8000)).toBe(0) // no event ts → no count
+    expect(elapsedSeconds(Number.NaN, 8000)).toBe(0)
+    expect(elapsedSeconds(8000, 1000)).toBe(0) // clock behind the start
+  })
+
+  it("defaults the expanded error view on FAILED turns only", () => {
+    expect(turnDefaultExpanded("failed")).toBe(true)
+    expect(turnDefaultExpanded("running")).toBe(false)
+    expect(turnDefaultExpanded("completed")).toBe(false)
+    expect(turnDefaultExpanded("skipped")).toBe(false)
   })
 })
 
@@ -2420,5 +2443,189 @@ describe("TurnGroup text-unit rendering (steering segments surface via TextUnitB
     )
     expect(screen.getByTestId("mark-current")).toHaveTextContent("mid")
     expect(screen.getByTestId("text-unit-body")).toHaveTextContent("steer mid-run")
+  })
+})
+
+// ── Live status (running feedback, timers, steering flash, failed-expand) ───
+
+describe("TurnGroup live status", () => {
+  /** Deterministic wall clock: every fake-timer test pins the epoch. */
+  const EPOCH = 1_700_000_000_000
+
+  const turnOf = (events: RuntimeEvent[]) => {
+    const [turn] = groupUnitsByTurn(buildTurnFlowItems(events, null))
+    if (!turn) throw new Error("expected a turn")
+    return turn
+  }
+
+  it("renders the running tool with a spinning Loader2 and per-second elapsed", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(EPOCH)
+    try {
+      render(
+        <TurnGroup
+          turn={turnOf([taskStart("t1"), toolStart("t1", "bash", { command: "sleep 30" })])}
+        />,
+      )
+      // The spinner: lucide Loader2 with the tailwind spin animation.
+      expect(screen.getByTestId("tool-running-spinner")).toHaveClass("animate-spin")
+      expect(screen.getByTestId("tool-running")).toHaveTextContent("running")
+      // Elapsed counts from the unit's first-seen time (no event ts here).
+      expect(screen.getByTestId("tool-running-elapsed")).toHaveTextContent("0s")
+      // One interval tick per second — the badge re-renders with it.
+      act(() => vi.advanceTimersByTime(1000))
+      expect(screen.getByTestId("tool-running-elapsed")).toHaveTextContent("1s")
+      act(() => vi.advanceTimersByTime(2000))
+      expect(screen.getByTestId("tool-running-elapsed")).toHaveTextContent("3s")
+      expect(screen.getByTestId("tool-running-elapsed")).toHaveAttribute("data-seconds", "3")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("counts the running tool's elapsed from the event ts when the stream carries one", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(EPOCH)
+    try {
+      const start = EPOCH - 12_000
+      render(
+        <TurnGroup
+          turn={turnOf([
+            taskStart("t1", "backend", start),
+            toolStart("t1", "bash", { command: "grep -r x ." }, start),
+          ])}
+        />,
+      )
+      // 12s already elapsed at mount — no advancing needed.
+      expect(screen.getByTestId("tool-running-elapsed")).toHaveTextContent("12s")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("retires the spinner once the tool call pairs (no timers left running)", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(EPOCH)
+    const clearSpy = vi.spyOn(window, "clearInterval")
+    try {
+      const { unmount } = render(
+        <TurnGroup
+          turn={turnOf([
+            taskStart("t1"),
+            toolStart("t1", "bash", { command: "ls" }),
+            toolEnd("t1", "bash", { ok: true, durationMs: 8 }),
+          ])}
+        />,
+      )
+      expect(screen.queryByTestId("tool-running")).not.toBeInTheDocument()
+      expect(screen.queryByTestId("tool-running-spinner")).not.toBeInTheDocument()
+      // The per-second interval never outlives the badge that spawned it.
+      unmount()
+      expect(clearSpy).toHaveBeenCalled()
+    } finally {
+      clearSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it("ticks the running turn's header duration every 5s from the turn's start", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(EPOCH)
+    try {
+      render(<TurnGroup turn={turnOf([taskStart("t1", "backend", EPOCH - 3000)])} />)
+      // Elapsed counts from the task-start ts: 3s at mount...
+      expect(screen.getByTestId("turn-elapsed")).toHaveTextContent("3.0 s")
+      // ...frozen between the 5s refreshes (no tick at 4s)...
+      act(() => vi.advanceTimersByTime(4000))
+      expect(screen.getByTestId("turn-elapsed")).toHaveTextContent("3.0 s")
+      // ...and live again at the 5s boundary.
+      act(() => vi.advanceTimersByTime(1000))
+      expect(screen.getByTestId("turn-elapsed")).toHaveTextContent("8.0 s")
+      // A finished turn keeps the frozen start→end span instead.
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps the frozen duration for a finished turn and only shows the live one while running", () => {
+    const events = [
+      taskStart("t1", "backend", EPOCH),
+      toolStart("t1", "bash", { command: "ls" }, EPOCH + 100),
+      toolEnd("t1", "bash", { ok: true, durationMs: 20 }, EPOCH + 1500),
+      taskComplete("t1", EPOCH + 2500),
+    ]
+    render(<TurnGroup turn={turnOf(events)} />)
+    expect(screen.getByTestId("turn-duration")).toHaveTextContent("2.5 s")
+    expect(screen.queryByTestId("turn-elapsed")).not.toBeInTheDocument()
+  })
+
+  it("expands a FAILED turn's failing tool error by default — no click needed", () => {
+    const events = [
+      taskStart("t1"),
+      toolStart("t1", "bash", { command: "exit 1" }),
+      toolEnd("t1", "bash", { ok: false, durationMs: 12, error: "command failed with code 1" }),
+      taskFailed("t1", "step blew up"),
+    ]
+    render(<TurnGroup turn={turnOf(events)} />)
+    expect(screen.getByTestId("turn-status")).toHaveTextContent("Failed")
+    // The full ErrorBlock detail renders without any interaction.
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("command failed with code 1")
+    expect(screen.queryByTestId("tool-error-collapsed")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /bash/ })).toHaveAttribute("aria-expanded", "true")
+  })
+
+  it("keeps a COMPLETED turn's error detail collapsed until clicked", () => {
+    const events = [
+      taskStart("t1"),
+      toolStart("t1", "bash", { command: "exit 1" }),
+      toolEnd("t1", "bash", { ok: false, durationMs: 12, error: "command failed with code 1" }),
+      taskComplete("t1"),
+    ]
+    render(<TurnGroup turn={turnOf(events)} />)
+    expect(screen.getByTestId("turn-status")).toHaveTextContent("Done")
+    expect(screen.queryByTestId("tool-error")).not.toBeInTheDocument()
+    expect(screen.getByTestId("tool-error-collapsed")).toHaveTextContent(
+      "command failed with code 1",
+    )
+    // Clicking still expands — defaultExpanded only changes the default.
+    fireEvent.click(screen.getByRole("button", { name: /bash/ }))
+    expect(screen.getByTestId("tool-error")).toHaveTextContent("command failed with code 1")
+    expect(screen.getByRole("button", { name: /bash/ })).toHaveAttribute("aria-expanded", "true")
+  })
+
+  it("flashes a steering block once on entry and fades it out over 2s", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(EPOCH)
+    try {
+      const steeringEvents = [
+        taskStart("t1"),
+        ev({ type: "steering-applied", taskIds: ["t1"], messages: ["nudge: cover the retries"] }),
+      ]
+      const turns = groupUnitsByTurn(
+        buildTurnFlowItems(withTextUnitEvents(steeringEvents, null), null),
+      )
+      render(<TurnGroup turn={turns[0]!} />)
+      const block = screen.getByTestId("text-unit-block")
+      // Lit at mount, driven by a 2s tailwind opacity transition.
+      expect(block).toHaveAttribute("data-flash", "true")
+      const flash = screen.getByTestId("text-unit-flash")
+      expect(flash.className).toContain("transition-opacity")
+      expect(flash.className).toContain(`duration-[${STEERING_FLASH_FADE_MS}ms]`)
+      // After the hold the highlight retires exactly once; the overlay
+      // stays mounted through the fade with opacity-0 as its target.
+      act(() => vi.advanceTimersByTime(STEERING_FLASH_HOLD_MS + 50))
+      expect(block).toHaveAttribute("data-flash", "false")
+      expect(screen.getByTestId("text-unit-flash").className).toContain("opacity-0")
+      expect(flash.className).toContain(`duration-[${STEERING_FLASH_FADE_MS}ms]`)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("never flashes non-steering text units", () => {
+    render(<TextUnitBlock unit={{ source: "system", text: "task description prose" }} />)
+    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-source", "system")
+    expect(screen.queryByTestId("text-unit-flash")).not.toBeInTheDocument()
+    expect(screen.getByTestId("text-unit-block").getAttribute("data-flash")).toBeNull()
   })
 })

@@ -12,10 +12,12 @@
       "skipped": "Skipped"
     },
     "turn": {
-      "duration": "took {duration}"
+      "duration": "took {duration}",
+      "elapsed": "elapsed {duration}"
     },
     "tool": {
       "running": "running",
+      "elapsed": "{seconds}s",
       "hint": "Expand a tool call to inspect its input and output"
     },
     "permission": {

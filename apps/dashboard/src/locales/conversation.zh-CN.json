@@ -12,10 +12,12 @@
       "skipped": "已跳过"
     },
     "turn": {
-      "duration": "耗时 {duration}"
+      "duration": "耗时 {duration}",
+      "elapsed": "已运行 {duration}"
     },
     "tool": {
       "running": "执行中",
+      "elapsed": "{seconds} 秒",
       "hint": "展开工具调用可查看输入与输出"
     },
     "permission": {
