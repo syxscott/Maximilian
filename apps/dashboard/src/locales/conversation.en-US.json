@@ -42,6 +42,7 @@
       "empty": "No turns to window yet",
       "loadEarlier": "Load {count} earlier turns",
       "jumpLatest": "Back to latest",
+      "tailHint": "While a run is live and you are at the bottom, the view stays pinned to the newest turns",
       "estimatedHeight": "≈ {height} est.",
       "estimatedHeightTitle": "Estimated total height of the conversation stream — windowed rendering keeps it bounded",
       "totalHeight": "≈ {height}"
@@ -53,6 +54,9 @@
       "user": "Request",
       "steering": "Steering",
       "system": "System"
+    },
+    "flash": {
+      "applied": "Steering applied"
     },
     "share": {
       "untitled": "Conversation",

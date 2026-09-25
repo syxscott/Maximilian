@@ -13,7 +13,10 @@
  * flares at full strength when the block first renders, then fades back
  * out over a 2s tailwind transition — exactly once (a mount-time timer
  * retires it; cleanup on unmount), so a mid-run steering nifflet draws
- * the eye without permanently repainting the turn.
+ * the eye without permanently repainting the turn. The once-semantics
+ * are the CALLER's registry verdict (`fresh`, markFirstSeen): a unit
+ * seen before — workspace-switch replay, find-filter or virtual-window
+ * remount — mounts with the overlay retired instead of re-flashing.
  */
 
 import { useEffect, useState, type ReactNode } from "react"
@@ -53,6 +56,7 @@ export function TextUnitBlock({
   unit,
   children,
   flash = false,
+  fresh = true,
 }: {
   unit: TextUnitBlockModel
   /** Body override — lets the caller keep find highlights working
@@ -61,11 +65,25 @@ export function TextUnitBlock({
   /** One-shot entry highlight (steering injections): the overlay flares
    *  on mount, holds briefly, then fades out over 2s via transition. */
   flash?: boolean
+  /**
+   * The flash-once registry's verdict for this unit (markFirstSeen):
+   * has this steering segment never been rendered before? A unit seen
+   * before — a workspace-switch replay or a find-filter / virtual-window
+   * remount — mounts with the overlay already retired; only the FIRST
+   * sighting flares. The decision is read once at mount (the same unit
+   * never re-lights even when the prop later flips), and the default
+   * `true` keeps direct usages flashing.
+   */
+  fresh?: boolean
 }) {
   useLocale()
-  // The flash is mount-scoped: it starts lit exactly once and only ever
-  // turns OFF (the unmount cleanup retires the timer).
-  const [flashing, setFlashing] = useState(flash)
+  // The flash is mount-scoped: it starts lit exactly once (fresh units
+  // only) and only ever turns OFF (the unmount cleanup retires the timer).
+  const [flashing, setFlashing] = useState(flash && fresh)
+  // The mount-time flash opportunity, frozen once: the one-time status
+  // announcement must not flip when the fresh verdict changes under a
+  // still-mounted block (the registry retires keys after the commit).
+  const [announced] = useState(flash && fresh)
   useEffect(() => {
     if (!flash) return
     const timer = setTimeout(() => setFlashing(false), STEERING_FLASH_HOLD_MS)
@@ -78,6 +96,11 @@ export function TextUnitBlock({
       data-source={unit.source}
       data-flash={flash ? (flashing ? "true" : "false") : undefined}
     >
+      {flash && announced && (
+        <span className="sr-only" role="status" data-testid="text-unit-flash-status">
+          {t("conversation.flash.applied")}
+        </span>
+      )}
       {flash && (
         <div
           aria-hidden

@@ -379,6 +379,45 @@ describe("ChatPanel live status", () => {
     expect(flash.className).toContain("transition-opacity")
     expect(flash.className).toContain("duration-[2000ms]")
   })
+
+  // Flash-once across the workspace switch: tab A → tab B → tab A makes
+  // the panel replay A's FULL event list, and the historical steering
+  // block remounts — with the flash retired (the flash-once registry
+  // scopes its keys per workspace, so B's own steering still flashes).
+  it("does not re-flash historical steering blocks when switching workspaces away and back", () => {
+    const wsA: Workspace = { ...baseWorkspace, id: "ws-A" }
+    const wsB: Workspace = { ...baseWorkspace, id: "ws-B" }
+    const steeringEvents = [
+      evx({ type: "task-start", taskId: "t1" }),
+      evx({ type: "steering-applied", taskIds: ["t1"], messages: ["focus the flaky tests"] }),
+    ]
+    const { rerender } = render(
+      <ChatPanel onSubmit={() => {}} submitting={false} workspace={wsA} events={steeringEvents} />,
+    )
+    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-flash", "true")
+    // The one-time announcement rides the fresh flash (screen-reader only).
+    expect(screen.getByTestId("text-unit-flash-status")).toHaveTextContent("Steering applied")
+
+    // Switch away — another stream entirely, no steering units at all.
+    rerender(
+      <ChatPanel
+        onSubmit={() => {}}
+        submitting={false}
+        workspace={wsB}
+        events={[evx({ type: "task-start", taskId: "other" })]}
+      />,
+    )
+    expect(screen.queryByTestId("text-unit-block")).toBeNull()
+
+    // Back to ws-A: the full event list replays, the block remounts —
+    // without re-flashing (same stream scope, registry remembers it).
+    rerender(
+      <ChatPanel onSubmit={() => {}} submitting={false} workspace={wsA} events={steeringEvents} />,
+    )
+    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-flash", "false")
+    expect(screen.getByTestId("text-unit-flash")).toHaveClass("opacity-0")
+    expect(screen.queryByTestId("text-unit-flash-status")).toBeNull()
+  })
 })
 
 // ── "/" slash menu (QuickPick over the command registry) ────────────────────

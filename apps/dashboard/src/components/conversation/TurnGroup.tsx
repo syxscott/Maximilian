@@ -211,6 +211,7 @@ function TurnUnitView({
   textHighlights,
   currentUnitKey,
   defaultExpanded = false,
+  freshSteeringKeys,
 }: {
   unit: ConversationUnit
   textHighlights?: Map<string, FindHit[]>
@@ -221,6 +222,8 @@ function TurnUnitView({
    * view so the error detail surfaces without a click.
    */
   defaultExpanded?: boolean
+  /** Steering flash-once verdict (see TurnGroup's prop of the same name). */
+  freshSteeringKeys?: Set<string>
 }) {
   switch (unit.kind) {
     case "task":
@@ -230,13 +233,15 @@ function TurnUnitView({
       // Steering / system segments (textUnits provenance stamped by
       // withTextUnitEvents) render through TextUnitBlock — per-source
       // styling (purple for steering) with the find highlights kept
-      // working inside the block. Steering additionally flashes once on
-      // entry (highlight that fades out over 2s).
+      // working inside the block. Steering additionally flashes once —
+      // on its FIRST render only (the flash-once registry's fresh set;
+      // replays and remounts mount with the overlay retired).
       if (unit.source !== undefined) {
         return (
           <TextUnitBlock
             unit={{ source: unit.source, text: unit.text, taskId: unit.taskId }}
             flash={unit.source === "steering"}
+            fresh={freshSteeringKeys?.has(unit.key) ?? true}
           >
             <HighlightedText
               text={unit.text}
@@ -316,6 +321,7 @@ export function TurnGroup({
   highlighted = false,
   textHighlights,
   currentUnitKey,
+  freshSteeringKeys,
 }: {
   turn: TurnModel
   /** Find-active marker — amber border on turns that contain a match. */
@@ -326,6 +332,15 @@ export function TurnGroup({
    *  plain amber "contains a match" border, and the unit's marks render
    *  amber instead of the default mark backdrop. */
   currentUnitKey?: string
+  /**
+   * Steering flash-once verdict: unit keys of steering segments on their
+   * FIRST-ever render (the conversation model's markFirstSeen fresh set,
+   * kept by the timeline). Units absent from the set mount with the
+   * flash overlay retired — a replayed stream or a remounted block never
+   * re-flashes. undefined = every steering unit counts as fresh (direct
+   * usages and tests keep the mount flash).
+   */
+  freshSteeringKeys?: Set<string>
 }) {
   useLocale()
   const hostsCurrentMatch =
@@ -399,6 +414,7 @@ export function TurnGroup({
               textHighlights={textHighlights}
               currentUnitKey={currentUnitKey}
               defaultExpanded={defaultExpanded}
+              freshSteeringKeys={freshSteeringKeys}
             />
           ))}
         </div>

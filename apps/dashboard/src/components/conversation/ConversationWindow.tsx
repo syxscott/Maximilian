@@ -34,6 +34,8 @@ export function ConversationWindow({
   currentUnitKey,
   turnHeights,
   loadEarlierHint,
+  onExpand,
+  freshSteeringKeys,
 }: {
   units: ConversationUnit[]
   /** Initial window size in turns (default 30). */
@@ -44,6 +46,14 @@ export function ConversationWindow({
   loadStep?: number
   /** Called when the user releases the anchor back to tail-following. */
   onClearAnchor?: () => void
+  /**
+   * Called after each "load earlier" expansion. Content prepended ABOVE
+   * the window keeps scrollTop unchanged, which would push a live-tail
+   * attached view off the bottom while its state still claims to follow
+   * the tail — the host re-pins when the coexistence model says so
+   * (expansionKeepsTail: live + attached + un-anchored).
+   */
+  onExpand?: () => void
   /** Full-stream turn depths (see WindowTurnsOpts.depth). */
   turnDepth?: Map<string, number>
   /** Turn ids carrying a find match — amber border on their cards. */
@@ -59,6 +69,9 @@ export function ConversationWindow({
   turnHeights?: Map<string, number>
   /** Appended to the load-earlier label (the estimated-height hint). */
   loadEarlierHint?: string
+  /** Steering flash-once verdict — unit keys on their FIRST render (see
+   *  TurnGroup's prop of the same name). */
+  freshSteeringKeys?: Set<string>
 }) {
   useLocale()
   const [extra, setExtra] = useState(0)
@@ -101,7 +114,11 @@ export function ConversationWindow({
           variant="ghost"
           size="sm"
           className="h-7 w-full text-xs"
-          onClick={() => setExtra((v) => v + loadStep)}
+          title={t("conversation.window.tailHint")}
+          onClick={() => {
+            setExtra((v) => v + loadStep)
+            onExpand?.()
+          }}
           data-testid="window-load-earlier"
         >
           ↑{" "}
@@ -129,6 +146,7 @@ export function ConversationWindow({
               highlighted={highlightTurnIds?.has(turn.turnId) ?? false}
               textHighlights={textHighlights}
               currentUnitKey={currentUnitKey}
+              freshSteeringKeys={freshSteeringKeys}
             />
             {spacer !== undefined && (
               <div

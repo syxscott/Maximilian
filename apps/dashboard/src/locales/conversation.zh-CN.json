@@ -42,6 +42,7 @@
       "empty": "暂无可开窗的回合",
       "loadEarlier": "加载更早的 {count} 个回合",
       "jumpLatest": "回到最新",
+      "tailHint": "运行进行中且位于底部时，视图会持续贴合最新回合",
       "estimatedHeight": "≈ {height} 估算",
       "estimatedHeightTitle": "会话流预估总高度——开窗渲染将其保持在有界范围",
       "totalHeight": "≈ {height}"
@@ -53,6 +54,9 @@
       "user": "请求",
       "steering": "引导",
       "system": "系统"
+    },
+    "flash": {
+      "applied": "已注入引导"
     },
     "share": {
       "untitled": "会话",

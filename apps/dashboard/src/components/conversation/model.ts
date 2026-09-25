@@ -1174,6 +1174,66 @@ export function withTextUnitEvents(
   return out
 }
 
+// ── markFirstSeen (steering flash-once registry) ────────────────────────────
+
+export interface SteeringFlashMark {
+  /** The unit key exactly as given. */
+  key: string
+  /** Epoch ms of the FIRST sighting — stable across replays. */
+  firstSeenAt: number
+  /** true only on the first sighting — the only flash-eligible render. */
+  fresh: boolean
+}
+
+export interface MarkFirstSeenResult {
+  /** One mark per string input key, in input order. */
+  marks: SteeringFlashMark[]
+  /** The UPDATED registry (a fresh copy — the input map is untouched). */
+  seen: Map<string, number>
+}
+
+/**
+ * Flash-once marking for steering text units: the entry flash must play
+ * on a unit's FIRST render only — never again when the same stream
+ * replays (workspace switch away and back re-delivers the full event
+ * list) or a block remounts (find filtering hides and re-shows turns,
+ * the virtual window unmounts and re-mounts rows).
+ *
+ * Given the rendered unit keys, the registry of keys already seen (key →
+ * first-seen epoch ms) and the current time, return which keys are
+ * `fresh` (never seen → the flash-eligible render) plus the updated
+ * registry for the caller to persist. `scope` namespaces the registry
+ * per stream (the workspace id) — unit keys are stream-position derived
+ * (`steering-<index>-<ordinal>`), so two workspaces' keys collide unless
+ * scoped, and one workspace's replay suppression must not silence the
+ * other's first flash. Pure: the input registry is never mutated and a
+ * discarded result marks nothing. Defensive: non-string / empty keys
+ * drop (marks stay aligned by key, not position), a non-map registry
+ * counts as empty, a non-finite `now` records 0.
+ */
+export function markFirstSeen(
+  keys: readonly unknown[],
+  seen: Map<string, number> | undefined,
+  now: number,
+  scope = "",
+): MarkFirstSeenResult {
+  const registry = seen instanceof Map ? new Map(seen) : new Map<string, number>()
+  const at = Number.isFinite(now) ? now : 0
+  const marks: SteeringFlashMark[] = []
+  for (const raw of keys) {
+    if (typeof raw !== "string" || raw === "") continue
+    const scoped = scope === "" ? raw : `${scope}\u0000${raw}`
+    const known = registry.get(scoped)
+    if (known !== undefined) {
+      marks.push({ key: raw, firstSeenAt: known, fresh: false })
+      continue
+    }
+    registry.set(scoped, at)
+    marks.push({ key: raw, firstSeenAt: at, fresh: true })
+  }
+  return { marks, seen: registry }
+}
+
 // ── liveTailState (live-tail state machine) ─────────────────────────────────
 
 export interface LiveTailState {
@@ -1207,6 +1267,58 @@ export function liveTailState(
   const frozen = asNum(opts.frozenAt)
   const at = frozen === undefined ? total : Math.max(0, Math.min(Math.floor(frozen), total))
   return { followsTail: false, frozenCount: total - at }
+}
+
+/**
+ * Coexistence of windowing and the live tail: does a window expansion
+ * ("load earlier") have to RE-PIN the viewport to the tail afterwards?
+ * Prepending turns ABOVE the window keeps scrollTop unchanged, so an
+ * expanded window pushes an attached view off the bottom while the tail
+ * state still claims following — the exact states the auto-tail snap
+ * honors (live, attached, un-anchored) must re-snap; a detached reader
+ * (scrolling history) and an anchored dive keep the viewport untouched.
+ * Defensive: undefined flags count as their "inactive" value.
+ */
+export function expansionKeepsTail(
+  live: boolean | undefined,
+  detached: boolean | undefined,
+  anchored: boolean | undefined,
+): boolean {
+  return live === true && detached !== true && anchored !== true
+}
+
+// ── navigation cursors (turn navigator vs find stepper) ─────────────────────
+
+/**
+ * The two navigation positions over the displayed turn list: the
+ * prev/next turn navigator's cursor (a turn-list index) and the find
+ * stepper's cursor (a findMatches index). Both drive the ONE window
+ * anchor, so they are kept mutually EXCLUSIVE — see stepNavigationCursor.
+ */
+export interface NavigationCursors {
+  cursor: number
+  findCursor: number
+}
+
+/** Which navigation stepped: the turn navigator or the find stepper. */
+export type NavigationMove = "turn" | "find"
+
+/**
+ * Cursors after one navigation step — the exclusivity rule the timeline
+ * renders by: stepping EITHER navigation RETIRES the other's cursor.
+ * Both point into the same anchor-driven window; a stale turn cursor
+ * would make the next prev/next jump from an abandoned spot, and a stale
+ * find cursor would keep an amber "current match" far from the anchored
+ * turn. The input cursors are deliberately NOT consulted — the next
+ * position is absolute, the other cursor always resets to -1.
+ * Defensive: a non-finite / non-number index degrades to -1 (no
+ * position), fractions floor.
+ */
+export function stepNavigationCursor(move: NavigationMove, nextIndex: number): NavigationCursors {
+  const safe =
+    typeof nextIndex === "number" && Number.isFinite(nextIndex) ? Math.floor(nextIndex) : -1
+  if (move === "find") return { cursor: -1, findCursor: safe }
+  return { cursor: safe, findCursor: -1 }
 }
 
 // ── ai-elements density surfaces (usage / latency / stats / error detail) ───

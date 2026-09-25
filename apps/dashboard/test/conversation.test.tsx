@@ -27,16 +27,19 @@ import {
   errorDetailOf,
   estimateTurnDepth,
   estimateVirtualHeight,
+  expansionKeepsTail,
   formatDuration,
   formatEstimatedHeight,
   groupRetryWaves,
   groupUnitsByTurn,
   liveTailState,
+  markFirstSeen,
   pairToolCalls,
   perItemHeight,
   resultUsage,
   shareSections,
   statsSummary,
+  stepNavigationCursor,
   textUnits,
   toConversationMarkdown,
   toShareMarkdown,
@@ -1253,6 +1256,123 @@ describe("ConversationTimeline find tiers and hotkeys", () => {
   })
 })
 
+// ── finishing: tail coexistence, cursor exclusivity, flash-once ─────────────
+
+describe("ConversationTimeline finishing", () => {
+  /** user turn + two task turns — the navigator's anchors are [1, 2]. */
+  const navEvents = (): RuntimeEvent[] => [
+    taskStart("t1", "backend", 1000),
+    taskComplete("t1", 2000),
+    taskStart("t2", "frontend", 3000),
+    taskFailed("t2", "boom"),
+  ]
+
+  it("stepping the turn navigator retires the find cursor", () => {
+    const { container } = render(
+      <ConversationTimeline events={navEvents()} workspace={ws()} live={false} />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    // "t" matches every turn (the request's "the" + the task ids), so the
+    // task turns stay displayed and navigable under the filter.
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "t" } })
+    fireEvent.keyDown(screen.getByTestId("timeline-find"), { key: "Enter" })
+    expect(screen.getByTestId("find-current-position")).toHaveTextContent("1/5")
+    expect(container.querySelector('[data-testid="mark-current"]')).not.toBeNull()
+
+    // The navigator steps — the find cursor retires: no current-position
+    // readout, no amber current mark. Find itself stays active (the count
+    // and the matched-turn filter survive); the user turn's text mark is
+    // hidden above the re-pinned window head (anchor = task-t1).
+    fireEvent.click(screen.getByRole("button", { name: "next task" }))
+    expect(screen.queryByTestId("find-current-position")).toBeNull()
+    expect(container.querySelector('[data-testid="mark-current"]')).toBeNull()
+    expect(screen.getByText("5 matches")).toBeInTheDocument()
+    // And the anchor belongs to the NAVIGATION (task-t1), not find.
+    expect(screen.getByTestId("conversation-window")).toHaveAttribute("data-anchor-offset", "1")
+  })
+
+  it("stepping find retires the turn navigator's cursor", () => {
+    render(<ConversationTimeline events={navEvents()} workspace={ws()} live={false} />)
+    // Navigator: first next lands on the first task anchor (offset 1).
+    fireEvent.click(screen.getByRole("button", { name: "next task" }))
+    expect(screen.getByTestId("conversation-window")).toHaveAttribute("data-anchor-offset", "1")
+    // Find steps to its first match — the user turn — taking the anchor.
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "t" } })
+    fireEvent.keyDown(screen.getByTestId("timeline-find"), { key: "Enter" })
+    expect(screen.getByTestId("conversation-window")).toHaveAttribute("data-anchor-offset", "0")
+    // The next navigator step starts FRESH: cursor −1 → the FIRST task
+    // anchor (task-t1, offset 1) — not a continuation from the abandoned
+    // position, which would have jumped on to task-t2 (offset 2).
+    fireEvent.click(screen.getByRole("button", { name: "next task" }))
+    expect(screen.getByTestId("conversation-window")).toHaveAttribute("data-anchor-offset", "1")
+  })
+
+  it("load-earlier while live and attached re-pins the viewport to the tail", () => {
+    const many: RuntimeEvent[] = Array.from({ length: 60 }, (_, i) =>
+      ev({ type: "task-complete", taskId: `task-${i}` }),
+    )
+    render(<ConversationTimeline events={many} workspace={null} live={true} />)
+    const el = screen.getByTestId("conversation-timeline")
+    // Spy on scrollTop assignments (jsdom has no layout): the mount snap
+    // already ran; expanding the window ABOVE the viewport must run the
+    // tail snap exactly once more — otherwise the attached view is pushed
+    // off the bottom while its state still claims to follow the tail.
+    const snaps: number[] = []
+    let current = el.scrollTop
+    Object.defineProperty(el, "scrollTop", {
+      configurable: true,
+      get: () => current,
+      set: (v: number) => {
+        snaps.push(v)
+        current = v
+      },
+    })
+    Object.defineProperty(el, "scrollHeight", { configurable: true, value: 2000 })
+    fireEvent.click(screen.getByTestId("window-load-earlier"))
+    expect(snaps).toEqual([2000])
+  })
+
+  it("load-earlier while not live leaves the viewport alone (history reading)", () => {
+    const many: RuntimeEvent[] = Array.from({ length: 60 }, (_, i) =>
+      ev({ type: "task-complete", taskId: `task-${i}` }),
+    )
+    render(<ConversationTimeline events={many} workspace={null} live={false} />)
+    const el = screen.getByTestId("conversation-timeline")
+    const snaps: number[] = []
+    Object.defineProperty(el, "scrollTop", {
+      configurable: true,
+      get: () => 0,
+      set: (v: number) => snaps.push(v),
+    })
+    Object.defineProperty(el, "scrollHeight", { configurable: true, value: 2000 })
+    fireEvent.click(screen.getByTestId("window-load-earlier"))
+    expect(screen.getAllByTestId("turn-group")).toHaveLength(60) // expanded
+    expect(snaps).toEqual([]) // …without any tail snap
+  })
+
+  it("does not re-flash a steering block when find hides and re-shows its turn", () => {
+    const events = withTextUnitEvents(
+      [
+        taskStart("t1"),
+        ev({ type: "steering-applied", taskIds: ["t1"], messages: ["nudge: cover retries"] }),
+      ],
+      null,
+    )
+    render(<ConversationTimeline events={events} workspace={null} live={false} />)
+    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-flash", "true")
+    // Hide the steering turn behind a hopeless query, then release the
+    // filter — the block REMOUNTS with the overlay retired: same unit,
+    // one flash ever.
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "zzz-none" } })
+    expect(screen.queryByTestId("text-unit-block")).toBeNull()
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "" } })
+    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-flash", "false")
+    expect(screen.getByTestId("text-unit-flash")).toHaveClass("opacity-0")
+  })
+})
+
 // ── windowTurns (deep-surface windowing) ────────────────────────────────────
 
 /** Standalone narration events — each becomes its own `msg-N` turn. */
@@ -1505,6 +1625,47 @@ describe("liveTailState", () => {
     expect(liveTailState([], true, { frozenAt: 0 })).toEqual({
       followsTail: false,
       frozenCount: 0,
+    })
+  })
+})
+
+// ── expansionKeepsTail (windowing x live-tail coexistence) ──────────────────
+
+describe("expansionKeepsTail", () => {
+  it("re-pins the tail only for the auto-tail states: live, attached, un-anchored", () => {
+    expect(expansionKeepsTail(true, false, false)).toBe(true)
+    expect(expansionKeepsTail(true, undefined, undefined)).toBe(true) // attached by default
+    // Not live (history reading), detached (scrolled up), or anchored
+    // (a turn dive) each keeps the viewport exactly where it is.
+    expect(expansionKeepsTail(false, false, false)).toBe(false)
+    expect(expansionKeepsTail(undefined, false, false)).toBe(false)
+    expect(expansionKeepsTail(true, true, false)).toBe(false)
+    expect(expansionKeepsTail(true, false, true)).toBe(false)
+  })
+})
+
+// ── stepNavigationCursor (turn navigator vs find stepper exclusivity) ───────
+
+describe("stepNavigationCursor", () => {
+  it("stepping either navigation retires the other's cursor", () => {
+    expect(stepNavigationCursor("turn", 3)).toEqual({ cursor: 3, findCursor: -1 })
+    expect(stepNavigationCursor("find", 2)).toEqual({ cursor: -1, findCursor: 2 })
+    // The previous cursors are deliberately not consulted: each step is
+    // absolute, the OTHER cursor always resets — neither navigation can
+    // jump from or highlight a position the other abandoned.
+    expect(stepNavigationCursor("turn", 0)).toEqual({ cursor: 0, findCursor: -1 })
+  })
+
+  it("floors fractional indexes and degrades garbage to -1 (no position)", () => {
+    expect(stepNavigationCursor("turn", 2.9)).toEqual({ cursor: 2, findCursor: -1 })
+    expect(stepNavigationCursor("find", Number.NaN)).toEqual({ cursor: -1, findCursor: -1 })
+    expect(stepNavigationCursor("find", Number.POSITIVE_INFINITY)).toEqual({
+      cursor: -1,
+      findCursor: -1,
+    })
+    expect(stepNavigationCursor("turn", "1" as unknown as number)).toEqual({
+      cursor: -1,
+      findCursor: -1,
     })
   })
 })
@@ -2410,6 +2571,50 @@ describe("withTextUnitEvents", () => {
     expect(texts[1].source).toBeUndefined()
     // Stream order: the steering segment precedes the later narration.
     expect(texts[0].index).toBeLessThan(texts[1].index)
+  })
+})
+
+// ── markFirstSeen (steering flash-once registry) ────────────────────────────
+
+describe("markFirstSeen", () => {
+  it("marks the first sighting fresh and later sightings stale with the original timestamp", () => {
+    const first = markFirstSeen(["steering-1-0", "steering-1-1"], undefined, 1000, "w1")
+    expect(first.marks).toEqual([
+      { key: "steering-1-0", firstSeenAt: 1000, fresh: true },
+      { key: "steering-1-1", firstSeenAt: 1000, fresh: true },
+    ])
+    // The replay (workspace switch re-delivering the stream) keeps the
+    // FIRST-seen timestamp and retires the flash.
+    const second = markFirstSeen(["steering-1-0"], first.seen, 5000, "w1")
+    expect(second.marks).toEqual([{ key: "steering-1-0", firstSeenAt: 1000, fresh: false }])
+    // The returned registry is the accumulated one.
+    expect(second.seen.get("w1\u0000steering-1-0")).toBe(1000)
+    expect(second.seen.get("w1\u0000steering-1-1")).toBe(1000)
+  })
+
+  it("scopes the registry per stream so two workspaces never silence each other", () => {
+    const w1 = markFirstSeen(["steering-0-0"], undefined, 10, "w1")
+    // Same stream again → suppressed (the replay case).
+    expect(markFirstSeen(["steering-0-0"], w1.seen, 20, "w1").marks[0]?.fresh).toBe(false)
+    // The position-derived key collides across workspaces, but the other
+    // stream has never seen it → fresh.
+    expect(markFirstSeen(["steering-0-0"], w1.seen, 30, "w2").marks[0]?.fresh).toBe(true)
+  })
+
+  it("is pure and defensive: input registry untouched, garbage keys drop, bad now records 0", () => {
+    const seen = new Map([["k", 7]])
+    const snapshot = new Map(seen)
+    const { marks, seen: updated } = markFirstSeen(["k", "new", 42, null, ""], seen, Number.NaN)
+    expect(seen).toEqual(snapshot) // pure — the caller's map is never mutated
+    expect(marks).toEqual([
+      { key: "k", firstSeenAt: 7, fresh: false },
+      { key: "new", firstSeenAt: 0, fresh: true },
+    ])
+    expect(updated.get("new")).toBe(0)
+    // A non-map registry counts as empty; marks stay keyed, not positional.
+    expect(markFirstSeen([42, "k"], undefined as unknown as Map<string, number>, 5).marks).toEqual([
+      { key: "k", firstSeenAt: 5, fresh: true },
+    ])
   })
 })
 

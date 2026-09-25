@@ -65,10 +65,14 @@ import { adjacentAnchor, turnAnchors } from "@/lib/timeline-view"
 import {
   estimateTurnDepth,
   estimateVirtualHeight,
+  expansionKeepsTail,
   formatEstimatedHeight,
   liveTailState,
+  markFirstSeen,
+  stepNavigationCursor,
   turnHeight,
   VIRTUAL_HEIGHT_THRESHOLD,
+  type NavigationCursors,
 } from "@/components/conversation/model"
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
@@ -154,11 +158,18 @@ export function ConversationTimeline({
   const [detached, setDetached] = useState(false)
   const [query, setQuery] = useState("")
   const [anchorTurnId, setAnchorTurnId] = useState<string | null>(null)
-  const [cursor, setCursor] = useState(-1)
-  /** Find cursor — index into findMatches (the CURRENT match a Enter
-   *  step points at). Separate from the turn-navigator `cursor` so the
-   *  two navigations never corrupt each other's position. */
-  const [findCursor, setFindCursor] = useState(-1)
+  // Workspace id (stream identity) — the live-tail reset, the steering
+  // flash-once scope and the workspace id CopyField all key off it.
+  const workspaceId = workspace?.id
+  /**
+   * The two navigations' cursors under the model's EXCLUSIVITY rule
+   * (stepNavigationCursor): they share the one window anchor, so turning
+   * retires the find cursor and find-stepping retires the turn cursor —
+   * neither navigation can jump from, or highlight, a position the other
+   * abandoned.
+   */
+  const [cursors, setCursors] = useState<NavigationCursors>({ cursor: -1, findCursor: -1 })
+  const { cursor, findCursor } = cursors
   const [showFind, setShowFind] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -187,6 +198,40 @@ export function ConversationTimeline({
     [displayedUnits, turnDepth],
   )
   const anchors = useMemo(() => turnAnchors(displayedTurns), [displayedTurns])
+
+  // Steering flash-once (markFirstSeen): a steering unit flares on its
+  // FIRST render only. The registry — scoped by stream (workspace id) so
+  // the position-derived unit keys of two workspaces never collide — is
+  // READ during render (fresh = not yet recorded) and folded in a
+  // post-commit effect. That split makes every replay path replay-proof
+  // without re-render churn: a workspace switch-away-and-back re-delivers
+  // the full event list, and find filtering / the virtual window unmount
+  // and remount blocks — all of them find their keys already recorded and
+  // mount with the overlay retired. StrictMode's double render is safe
+  // too (the registry only grows inside effects), and a prop flip on a
+  // still-mounted block cannot re-light it (TextUnitBlock reads `fresh`
+  // once at mount).
+  const seenSteeringRef = useRef<Map<string, number>>(new Map())
+  const steeringKeys = displayedUnits
+    .filter(
+      (u): u is Extract<ConversationUnit, { kind: "text" }> =>
+        u.kind === "text" && u.source === "steering",
+    )
+    .map((u) => u.key)
+  const steeringScope = workspaceId ?? "\u0000stream"
+  const freshSteeringKeys = new Set<string>(
+    markFirstSeen(steeringKeys, seenSteeringRef.current, 0, steeringScope)
+      .marks.filter((mark) => mark.fresh)
+      .map((mark) => mark.key),
+  )
+  useEffect(() => {
+    seenSteeringRef.current = markFirstSeen(
+      steeringKeys,
+      seenSteeringRef.current,
+      Date.now(),
+      steeringScope,
+    ).seen
+  }, [steeringKeys, steeringScope])
 
   // Virtualization inputs (virtualized mode): per-turn estimated heights
   // and the anchored turn's index in the displayed stream. The anchor
@@ -222,22 +267,26 @@ export function ConversationTimeline({
   // Turn navigation IS anchor setting: the adjacent task anchor becomes
   // the window anchor, so ConversationWindow pins its head there and
   // scrolls it into view — reaching turns hidden above the window too.
+  // Stepping RETIRES the find cursor (stepNavigationCursor): the amber
+  // "current match" belonged to a turn the user just navigated away from.
   const navigateTurn = (direction: 1 | -1) => {
     const next = adjacentAnchor(anchors, cursor, direction)
-    setCursor(next)
+    setCursors(stepNavigationCursor("turn", next))
     setAnchorTurnId(displayedTurns[next]?.turnId ?? null)
   }
 
   // Find navigation: Enter steps the cursor through findMatches (with
   // wrap-around) and anchors the window at the match's turn, mirroring
-  // the turn navigator's anchor semantics.
+  // the turn navigator's anchor semantics. Stepping RETIRES the turn
+  // cursor the same way — the next prev/next starts fresh instead of
+  // jumping from a spot find has already left behind.
   const advanceFindCursor = () => {
     if (!findActiveQuery || findMatches.length === 0) {
-      setFindCursor(-1)
+      setCursors(stepNavigationCursor("find", -1))
       return
     }
     const next = findCursor < 0 ? 0 : (findCursor + 1) % findMatches.length
-    setFindCursor(next)
+    setCursors(stepNavigationCursor("find", next))
     const turnId = findMatches[next]?.turnId
     if (turnId) setAnchorTurnId(turnId)
   }
@@ -265,9 +314,16 @@ export function ConversationTimeline({
     [units, detached, live, frozenAt],
   )
 
+  // Windowing x live-tail coexistence: a "load earlier" expansion
+  // prepends turns ABOVE the window, which keeps scrollTop unchanged and
+  // silently pushes an attached view off the bottom. While the tail
+  // states say following (expansionKeepsTail: live + attached +
+  // un-anchored) the expansion re-pins the viewport; a detached reader
+  // or an anchored dive keeps the viewport exactly where it is.
+  const [windowExpansions, setWindowExpansions] = useState(0)
+
   // A workspace switch drops the tail state: a freeze point recorded as
   // a unit COUNT is meaningless against another stream.
-  const workspaceId = workspace?.id
   useEffect(() => {
     setDetached(false)
     setFrozenAt(null)
@@ -277,9 +333,9 @@ export function ConversationTimeline({
     const el = scrollRef.current
     // An anchored window scrolls to ITS anchor — never fight it with the
     // tail snap.
-    if (!el || !live || detached || anchorTurnId !== null) return
+    if (!el || !expansionKeepsTail(live, detached, anchorTurnId !== null)) return
     el.scrollTop = el.scrollHeight
-  }, [units.length, live, detached, anchorTurnId])
+  }, [units.length, live, detached, anchorTurnId, windowExpansions])
 
   const onScroll = () => {
     const el = scrollRef.current
@@ -312,7 +368,9 @@ export function ConversationTimeline({
       e.preventDefault()
       setShowFind(false)
       setQuery("")
-      setFindCursor(-1)
+      // Leaving find retires the find cursor only — a turn-navigation
+      // position (if the navigator stepped last) stays put.
+      setCursors((c) => ({ ...c, findCursor: -1 }))
     }
   }
 
@@ -401,8 +459,9 @@ export function ConversationTimeline({
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
-              setCursor(-1)
-              setFindCursor(-1)
+              // A new query invalidates both positions (old match indexes
+              // no longer exist) — the model's mutual -1 reset.
+              setCursors({ cursor: -1, findCursor: -1 })
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -444,6 +503,7 @@ export function ConversationTimeline({
               highlighted={findActiveQuery ? matchedTurnIds.has(turn.turnId) : false}
               textHighlights={findActiveQuery ? highlights : undefined}
               currentUnitKey={currentMatch?.key}
+              freshSteeringKeys={freshSteeringKeys}
             />
           )}
           empty={
@@ -470,10 +530,12 @@ export function ConversationTimeline({
               loadStep={50}
               anchorTurnId={anchorTurnId}
               onClearAnchor={() => setAnchorTurnId(null)}
+              onExpand={() => setWindowExpansions((v) => v + 1)}
               turnDepth={turnDepth}
               highlightTurnIds={findActiveQuery ? matchedTurnIds : undefined}
               textHighlights={findActiveQuery ? highlights : undefined}
               currentUnitKey={currentMatch?.key}
+              freshSteeringKeys={freshSteeringKeys}
               turnHeights={turnHeights}
               loadEarlierHint={
                 overHeightBudget
