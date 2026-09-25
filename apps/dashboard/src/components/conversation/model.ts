@@ -1348,6 +1348,143 @@ export function formatEstimatedHeight(px: number): string {
   return `${value}k px`
 }
 
+// ── virtualWindow / scrollOffsetForUnit (true virtual scrolling) ────────────
+
+/**
+ * Units rendered beyond each viewport edge when the caller does not pin
+ * one — cheap insurance against blank flashes at the window's seams.
+ */
+export const DEFAULT_VIRTUAL_OVERSCAN = 4
+
+export interface VirtualWindow {
+  /** First rendered unit — the window is the half-open range [start, end). */
+  start: number
+  /** One past the last rendered unit. */
+  end: number
+  /** Estimated pixel height ABOVE the window (the top fill). */
+  padTop: number
+  /** Estimated pixel height BELOW the window (the bottom fill). */
+  padBottom: number
+  /** Estimated pixel height of the whole stream (the spacer's height). */
+  total: number
+}
+
+/**
+ * One coerced entry of a per-unit height estimate: finite positive
+ * values pass through; missing / malformed entries fall back to the
+ * default row height (perItemHeight never emits those for well-formed
+ * units, so this only guards hand-built arrays).
+ */
+function virtualHeightAt(heights: readonly number[] | undefined, index: number): number {
+  const h = heights?.[index]
+  return typeof h === "number" && Number.isFinite(h) && h > 0 ? h : VIRTUAL_ROW_HEIGHT
+}
+
+/**
+ * True virtual scrolling arithmetic (the upgrade of the windowed +
+ * placeholder-height rendering): from the per-unit estimated heights
+ * and the current scroll position, compute WHICH units are on screen —
+ * the half-open [start, end) range — plus the estimated fill heights
+ * above and below, so a container can render a total-height spacer
+ * with only the visible band absolutely positioned inside it.
+ *
+ * `units` contributes only its length (any item stream virtualizes);
+ * `scrollTop` clamps into [0, total − viewport] so an overshoot hugs
+ * the tail and a negative value hugs the head; `overscan` extends the
+ * window past each edge, clamped at the stream bounds. Defensive:
+ * non-array units count 0; missing / malformed heights fall back to
+ * VIRTUAL_ROW_HEIGHT — the same coercion scrollOffsetForUnit applies,
+ * so the two functions never disagree about an offset.
+ */
+export function virtualWindow(
+  units: readonly unknown[],
+  heights: readonly number[] | undefined,
+  scrollTop: number,
+  viewportHeight: number,
+  overscan: number = DEFAULT_VIRTUAL_OVERSCAN,
+): VirtualWindow {
+  const count = Array.isArray(units) ? units.length : 0
+  const empty: VirtualWindow = { start: 0, end: 0, padTop: 0, padBottom: 0, total: 0 }
+  if (count === 0) return empty
+
+  const hs: number[] = []
+  let total = 0
+  for (let i = 0; i < count; i++) {
+    const h = virtualHeightAt(heights, i)
+    hs.push(h)
+    total += h
+  }
+  if (total <= 0) return empty
+
+  const over =
+    typeof overscan === "number" && Number.isFinite(overscan) && overscan >= 0
+      ? Math.floor(overscan)
+      : DEFAULT_VIRTUAL_OVERSCAN
+  const viewport =
+    typeof viewportHeight === "number" && Number.isFinite(viewportHeight) && viewportHeight > 0
+      ? viewportHeight
+      : 0
+  const rawTop = typeof scrollTop === "number" && Number.isFinite(scrollTop) ? scrollTop : 0
+  const scroll = Math.max(0, Math.min(rawTop, total - viewport))
+
+  // Prefix sums: cum[i] is unit i's top edge; binary-searched twice.
+  const cum = new Array<number>(count + 1)
+  cum[0] = 0
+  for (let i = 0; i < count; i++) cum[i + 1] = cum[i]! + hs[i]!
+
+  // First unit whose BOTTOM edge lies below the scroll top.
+  let start = count
+  for (let lo = 0, hi = count - 1; lo <= hi;) {
+    const mid = (lo + hi) >> 1
+    if (cum[mid + 1]! > scroll) {
+      start = mid
+      hi = mid - 1
+    } else {
+      lo = mid + 1
+    }
+  }
+  // First unit whose TOP edge is at/below the viewport bottom.
+  let end = count
+  for (let lo = start, hi = count - 1; lo <= hi;) {
+    const mid = (lo + hi) >> 1
+    if (cum[mid]! >= scroll + viewport) {
+      end = mid
+      hi = mid - 1
+    } else {
+      lo = mid + 1
+    }
+  }
+
+  const from = Math.max(0, start - over)
+  const to = Math.min(count, end + over)
+  return { start: from, end: to, padTop: cum[from]!, padBottom: total - cum[to]!, total }
+}
+
+/**
+ * The scrollTop that brings unit `unitIndex` to the TOP of the virtual
+ * viewport — the sum of the estimated heights above it. The anchor
+ * jumps' scroll arithmetic: turn/find navigation maps a target to an
+ * index, this maps the index to an offset. Clamps: indexes at/below 0
+ * yield 0; indexes at/past the end yield the full height (jump to the
+ * tail). Defensive: non-array streams count 0 and malformed / missing
+ * heights coerce exactly as virtualWindow coerces them.
+ */
+export function scrollOffsetForUnit(
+  units: readonly unknown[],
+  heights: readonly number[] | undefined,
+  unitIndex: number,
+): number {
+  const count = Array.isArray(units) ? units.length : 0
+  if (count === 0) return 0
+  const index =
+    typeof unitIndex === "number" && Number.isFinite(unitIndex) ? Math.floor(unitIndex) : 0
+  if (index <= 0) return 0
+  const limit = Math.min(index, count)
+  let offset = 0
+  for (let i = 0; i < limit; i++) offset += virtualHeightAt(heights, i)
+  return offset
+}
+
 // ── Presentation helpers (pure, shared by the components) ───────────────────
 
 /** Deterministic duration label: "120 ms" under a second, "2.5 s" above. */

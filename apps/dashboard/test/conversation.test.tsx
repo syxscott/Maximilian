@@ -15,6 +15,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { ReactNode } from "react"
 import { getDictionary, setLocale } from "@max/i18n"
 import { applyDashboardDictionaries } from "../src/locales/index"
 
@@ -37,6 +38,9 @@ import {
   turnHeight,
   VIRTUAL_HEIGHT_THRESHOLD,
   windowTurns,
+  virtualWindow,
+  scrollOffsetForUnit,
+  DEFAULT_VIRTUAL_OVERSCAN,
   type ConversationUnit,
   type ExtractedTextUnit,
   type RetryUnit,
@@ -45,6 +49,7 @@ import { TurnGroup } from "../src/components/conversation/TurnGroup"
 import { RetryWaveGroup } from "../src/components/conversation/RetryWaveGroup"
 import { ConversationUnitsPreview } from "../src/components/conversation/ConversationUnitsPreview"
 import { ConversationWindow } from "../src/components/conversation/ConversationWindow"
+import { VirtualTurnWindow } from "../src/components/conversation/VirtualTurnWindow"
 import { TextUnitBlock } from "../src/components/conversation/TextUnitBlock"
 import { ShareView } from "../src/components/conversation/ShareView"
 import { ConversationTimeline } from "../src/components/ConversationTimeline"
@@ -1923,5 +1928,399 @@ describe("ShareView rendering", () => {
     render(<ShareView units={[]} />)
     expect(screen.getByTestId("share-empty")).toBeInTheDocument()
     expect(screen.queryByTestId("share-section")).not.toBeInTheDocument()
+  })
+})
+
+// ── virtualWindow (true virtual scrolling arithmetic) ───────────────────────
+
+describe("virtualWindow", () => {
+  /** 10 units × 28px — cum tops: 0,28,56,…,252; total 280. */
+  const units10 = buildTurnFlowItems(msgTurnEvents(10), null)
+  const hs28 = (n: number): number[] => Array.from({ length: n }, () => 28)
+
+  it("zeroes out for an empty (or non-array) stream", () => {
+    expect(virtualWindow([], hs28(0), 0, 500)).toEqual({
+      start: 0,
+      end: 0,
+      padTop: 0,
+      padBottom: 0,
+      total: 0,
+    })
+    expect(
+      virtualWindow(undefined as unknown as ConversationUnit[], undefined, 100, 500),
+    ).toMatchObject({ start: 0, end: 0, total: 0 })
+  })
+
+  it("shows everything when the viewport is at least the total height", () => {
+    expect(virtualWindow(units10, hs28(10), 0, 300)).toEqual({
+      start: 0,
+      end: 10,
+      padTop: 0,
+      padBottom: 0,
+      total: 280,
+    })
+    // Viewport larger than the stream: same full window, scroll clamped.
+    expect(virtualWindow(units10, hs28(10), 9999, 5000).end).toBe(10)
+  })
+
+  it("windows the middle of the stream at the scroll position", () => {
+    // scroll 140: units 0-4 (cum 140) fully above → start 5; viewport
+    // bottom 252 lands on unit 9's top → end 9; overscan 2 → [3, 10).
+    expect(virtualWindow(units10, hs28(10), 140, 112, 2)).toEqual({
+      start: 3,
+      end: 10,
+      padTop: 84,
+      padBottom: 0,
+      total: 280,
+    })
+    // At the head the same math yields the top window.
+    expect(virtualWindow(units10, hs28(10), 0, 112, 2)).toEqual({
+      start: 0,
+      end: 6,
+      padTop: 0,
+      padBottom: 112,
+      total: 280,
+    })
+  })
+
+  it("clamps a scrollTop beyond the total height to the tail window", () => {
+    // scroll clamps to 280−112=168: units 0-5 above → start 6, end 10 —
+    // the last viewport worth, never blank.
+    const win = virtualWindow(units10, hs28(10), 99999, 112, 2)
+    expect(win.start).toBe(4)
+    expect(win.end).toBe(10)
+    expect(win.padTop).toBe(112)
+    expect(win.padBottom).toBe(0)
+    // Negative scroll clamps to the head the same way.
+    expect(virtualWindow(units10, hs28(10), -50, 112, 0).start).toBe(0)
+  })
+
+  it("extends the window by the overscan and clamps at the stream bounds", () => {
+    // viewport 28 → 1 visible unit at the head; overscan 99 tries to
+    // reach past both ends but clamps to the whole stream.
+    expect(virtualWindow(units10, hs28(10), 0, 28, 99)).toMatchObject({ start: 0, end: 10 })
+  })
+
+  it("falls back to the default overscan for invalid values and floors fractions", () => {
+    // viewport 28, overscan 4 → [0, 5), padBottom 280 − 140.
+    for (const overscan of [-3, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(virtualWindow(units10, hs28(10), 0, 28, overscan)).toMatchObject({
+        start: 0,
+        end: 5,
+        padBottom: 140,
+      })
+    }
+    expect(virtualWindow(units10, hs28(10), 0, 28, 2.9)).toMatchObject({ end: 3 }) // floor(2.9)
+    expect(DEFAULT_VIRTUAL_OVERSCAN).toBe(4)
+  })
+
+  it("coerces malformed heights to the default row height, keeping alignment", () => {
+    const junk = [28, Number.NaN, -5] as unknown as number[]
+    const win = virtualWindow(units10.slice(0, 3), junk, 0, 28, 0)
+    expect(win.total).toBe(84) // every entry coerced to VIRTUAL_ROW_HEIGHT
+    expect(win).toMatchObject({ start: 0, end: 1, padTop: 0, padBottom: 56 })
+    // Missing entries fall back the same way: 10 units, 1 given height.
+    expect(virtualWindow(units10, [28], 0, 280, 0).total).toBe(280)
+  })
+
+  it("degenerates sanely for a zero viewport", () => {
+    // Nothing is strictly visible, but the overscan band still renders —
+    // never a blank container.
+    const win = virtualWindow(units10, hs28(10), 0, 0, 1)
+    expect(win.start).toBe(0)
+    expect(win.end).toBe(1)
+  })
+
+  it("keeps pads + window consistent with the total (spacer math)", () => {
+    const win = virtualWindow(units10, hs28(10), 70, 112, 0)
+    expect(win.end - win.start).toBeGreaterThan(0)
+    expect(win.padTop + win.padBottom).toBeLessThanOrEqual(win.total)
+    // The rendered band spans exactly total − padTop − padBottom.
+    let rendered = 0
+    for (let i = win.start; i < win.end; i++) rendered += 28
+    expect(rendered).toBe(win.total - win.padTop - win.padBottom)
+  })
+})
+
+// ── scrollOffsetForUnit (anchor jumps) ──────────────────────────────────────
+
+describe("scrollOffsetForUnit", () => {
+  const units10 = buildTurnFlowItems(msgTurnEvents(10), null)
+  const hs28 = (n: number): number[] => Array.from({ length: n }, () => 28)
+
+  it("is 0 for the first unit, empty streams and non-array input", () => {
+    expect(scrollOffsetForUnit(units10, hs28(10), 0)).toBe(0)
+    expect(scrollOffsetForUnit([], hs28(0), 3)).toBe(0)
+    expect(scrollOffsetForUnit(undefined as unknown as ConversationUnit[], undefined, 3)).toBe(0)
+  })
+
+  it("sums the heights above the target unit", () => {
+    expect(scrollOffsetForUnit(units10, hs28(10), 3)).toBe(84)
+    expect(scrollOffsetForUnit(units10, hs28(10), 3.9)).toBe(84) // floored
+    // Mixed estimates: 28 + 56 above unit 2.
+    expect(scrollOffsetForUnit(units10.slice(0, 3), [28, 56, 112], 2)).toBe(84)
+  })
+
+  it("clamps to the tail for indexes at or past the end, and guards garbage", () => {
+    expect(scrollOffsetForUnit(units10, hs28(10), 10)).toBe(280)
+    expect(scrollOffsetForUnit(units10, hs28(10), 999)).toBe(280)
+    expect(scrollOffsetForUnit(units10, hs28(10), -5)).toBe(0)
+    expect(scrollOffsetForUnit(units10, hs28(10), Number.NaN)).toBe(0)
+  })
+
+  it("agrees with virtualWindow: the offset lands the unit at the window head", () => {
+    const hs = hs28(10)
+    for (const index of [1, 4, 7]) {
+      const offset = scrollOffsetForUnit(units10, hs, index)
+      const win = virtualWindow(units10, hs, offset, 56, 0)
+      expect(win.start).toBe(index)
+    }
+  })
+})
+
+// ── VirtualTurnWindow (true virtual scrolling container) ────────────────────
+
+describe("VirtualTurnWindow rendering", () => {
+  const turnsOf = (n: number) => groupUnitsByTurn(buildTurnFlowItems(msgTurnEvents(n), null))
+  const hs28 = (n: number): number[] => Array.from({ length: n }, () => 28)
+  const rowRender = (unit: { turnId: string }, index: number): ReactNode => (
+    <div data-testid="virtual-row">{`${unit.turnId}:${index}`}</div>
+  )
+
+  it("renders only the visible band inside a full-height spacer", () => {
+    const { container } = render(
+      <VirtualTurnWindow
+        units={turnsOf(10)}
+        heights={hs28(10)}
+        viewportHeight={112}
+        overscan={0}
+        renderUnit={rowRender}
+      />,
+    )
+    const spacer = screen.getByTestId("virtual-turn-window-spacer")
+    expect(spacer).toHaveAttribute("data-total-height", "280")
+    expect(spacer).toHaveStyle({ height: "280px" })
+    const rows = container.querySelectorAll("[data-virtual-index]")
+    expect(rows).toHaveLength(4) // 112px viewport / 28px rows
+    expect(rows[0]).toHaveAttribute("data-virtual-index", "0")
+    expect(rows[0]).toHaveStyle({ transform: "translateY(0px)" })
+    expect(rows[1]).toHaveStyle({ transform: "translateY(28px)" })
+    expect(rows[3]).toHaveStyle({ transform: "translateY(84px)" })
+    expect(screen.getAllByTestId("virtual-row")[0]).toHaveTextContent("msg-0:0")
+  })
+
+  it("moves the window on scroll (pads and rendered range follow)", () => {
+    const { container } = render(
+      <VirtualTurnWindow
+        units={turnsOf(10)}
+        heights={hs28(10)}
+        viewportHeight={112}
+        overscan={0}
+        renderUnit={rowRender}
+      />,
+    )
+    const el = screen.getByTestId("virtual-turn-window")
+    el.scrollTop = 140
+    fireEvent.scroll(el)
+    // scroll 140 → [5, 9): padTop 84 above, 0 below.
+    const spacer = screen.getByTestId("virtual-turn-window-spacer")
+    expect(spacer).toHaveAttribute("data-window-start", "5")
+    expect(spacer).toHaveAttribute("data-window-end", "9")
+    const rows = container.querySelectorAll("[data-virtual-index]")
+    expect(rows).toHaveLength(4)
+    expect(rows[0]).toHaveAttribute("data-virtual-index", "5")
+    expect(rows[0]).toHaveStyle({ transform: "translateY(140px)" })
+    expect(screen.getByText("msg-8:8")).toBeInTheDocument()
+    expect(screen.queryByText("msg-0:0")).not.toBeInTheDocument()
+  })
+
+  it("jumps to the anchored index via scrollOffsetForUnit", () => {
+    const turns = turnsOf(10)
+    const hs = hs28(10)
+    const { rerender, container } = render(
+      <VirtualTurnWindow
+        units={turns}
+        heights={hs}
+        viewportHeight={112}
+        overscan={0}
+        renderUnit={rowRender}
+      />,
+    )
+    expect(container.querySelectorAll("[data-virtual-index]")[0]).toHaveAttribute(
+      "data-virtual-index",
+      "0",
+    )
+    // Anchor at unit 4 → scrollTop 4 × 28 = 112 → the window re-anchors.
+    rerender(
+      <VirtualTurnWindow
+        units={turns}
+        heights={hs}
+        viewportHeight={112}
+        overscan={0}
+        anchorIndex={4}
+        renderUnit={rowRender}
+      />,
+    )
+    expect(screen.getByTestId("virtual-turn-window").scrollTop).toBe(112)
+    expect(screen.getByTestId("virtual-turn-window-spacer")).toHaveAttribute(
+      "data-window-start",
+      "4",
+    )
+  })
+
+  it("renders the empty node for an empty stream", () => {
+    render(
+      <VirtualTurnWindow
+        units={[]}
+        heights={[]}
+        viewportHeight={112}
+        renderUnit={rowRender}
+        empty={<p data-testid="virtual-empty">nothing here</p>}
+      />,
+    )
+    expect(screen.getByTestId("virtual-turn-window-empty")).toBeInTheDocument()
+    expect(screen.queryByTestId("virtual-turn-window-spacer")).not.toBeInTheDocument()
+  })
+
+  it("keeps the overscan band beyond the viewport edges", () => {
+    render(
+      <VirtualTurnWindow
+        units={turnsOf(10)}
+        heights={hs28(10)}
+        viewportHeight={28} // 1 strictly visible unit
+        overscan={2}
+        renderUnit={rowRender}
+      />,
+    )
+    // 1 + 2 overscan above/below, clamped at the head → [0, 3).
+    expect(screen.getByTestId("virtual-turn-window-spacer")).toHaveAttribute("data-window-end", "3")
+  })
+})
+
+// ── ConversationTimeline virtualized mode (true virtual scrolling) ──────────
+
+describe("ConversationTimeline virtualized mode", () => {
+  /** user turn (28px) + two completed task turns (56px each). */
+  const twoTasks = (): RuntimeEvent[] => [
+    taskStart("t1", "backend", 1000),
+    taskComplete("t1", 2000),
+    taskStart("t2", "frontend", 3000),
+    taskComplete("t2", 4000),
+  ]
+
+  it("switches containers: virtualized renders the spacer, default the window", () => {
+    const { rerender } = render(
+      <ConversationTimeline
+        events={twoTasks()}
+        workspace={ws()}
+        live={false}
+        virtualized
+        viewportHeight={500}
+      />,
+    )
+    expect(screen.getByTestId("conversation-timeline-spacer")).toHaveAttribute(
+      "data-total-height",
+      "140", // 28 + 56 + 56
+    )
+    expect(screen.getAllByTestId("turn-group")).toHaveLength(3) // user + t1 + t2
+    expect(screen.queryByTestId("conversation-window")).not.toBeInTheDocument()
+
+    // Default (virtualized omitted) keeps the windowed DOM — no regression.
+    rerender(<ConversationTimeline events={twoTasks()} workspace={ws()} live={false} />)
+    expect(screen.getByTestId("conversation-window")).toBeInTheDocument()
+    expect(screen.queryByTestId("conversation-timeline-spacer")).not.toBeInTheDocument()
+  })
+
+  it("turn navigation anchors by scrollOffsetForUnit offsets", () => {
+    render(
+      <ConversationTimeline
+        events={twoTasks()}
+        workspace={ws()}
+        live={false}
+        virtualized
+        viewportHeight={100}
+      />,
+    )
+    const el = screen.getByTestId("conversation-timeline")
+    expect(el.scrollTop).toBe(0)
+    // task-t1 is turn index 1 → its offset is the user turn's 28px.
+    fireEvent.click(screen.getByRole("button", { name: "next task" }))
+    expect(el.scrollTop).toBe(28)
+    // task-t2 is turn index 2 → 28 + 56.
+    fireEvent.click(screen.getByRole("button", { name: "next task" }))
+    expect(el.scrollTop).toBe(84)
+  })
+
+  it("scrolling renders the tail band and drops the head rows", () => {
+    const many = msgTurnEvents(60) // 60 turns × 28px = 1680
+    render(
+      <ConversationTimeline
+        events={many}
+        workspace={null}
+        live={false}
+        virtualized
+        viewportHeight={200}
+      />,
+    )
+    expect(screen.getByText("note 0")).toBeInTheDocument()
+    const el = screen.getByTestId("conversation-timeline")
+    el.scrollTop = 1680 // clamp → scroll 1480 → band [48, 60) w/ overscan 4
+    fireEvent.scroll(el)
+    expect(screen.getByTestId("conversation-timeline-spacer")).toHaveAttribute(
+      "data-window-start",
+      "48",
+    )
+    expect(screen.getByText("note 59")).toBeInTheDocument()
+    expect(screen.queryByText("note 0")).not.toBeInTheDocument()
+  })
+
+  it("find filtering still narrows the virtualized stream", () => {
+    render(
+      <ConversationTimeline
+        events={[
+          taskStart("t1", "backend", 1000),
+          toolStart("t1", "bash", { command: "grep Login src/auth.ts" }, 1100),
+          toolEnd("t1", "bash", { ok: true, durationMs: 20 }, 1120),
+          taskComplete("t1", 2500),
+        ]}
+        workspace={ws()}
+        live={false}
+        virtualized
+        viewportHeight={500}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    fireEvent.change(screen.getByTestId("timeline-find"), { target: { value: "login" } })
+    expect(screen.getByText("2 matches")).toBeInTheDocument()
+    const groups = screen.getAllByTestId("turn-group")
+    expect(groups.map((g) => g.getAttribute("data-turn-id"))).toEqual(["user", "task-t1"])
+  })
+
+  it("live-tail detachment and the jump affordance survive virtualization", () => {
+    const { rerender } = render(
+      <ConversationTimeline
+        events={msgTurnEvents(2)}
+        workspace={null}
+        live={true}
+        virtualized
+        viewportHeight={500}
+      />,
+    )
+    const el = screen.getByTestId("conversation-timeline")
+    pinScrollMetrics(el, 10000, 500)
+    el.scrollTop = 1000 // 10000 − 1000 − 500 ≥ 48 → detached
+    fireEvent.scroll(el)
+    rerender(
+      <ConversationTimeline
+        events={msgTurnEvents(4)}
+        workspace={null}
+        live={true}
+        virtualized
+        viewportHeight={500}
+      />,
+    )
+    expect(screen.getByTestId("jump-to-latest")).toHaveTextContent("+2")
+    fireEvent.click(screen.getByTestId("jump-to-latest"))
+    expect(screen.queryByTestId("jump-to-latest")).not.toBeInTheDocument()
   })
 })

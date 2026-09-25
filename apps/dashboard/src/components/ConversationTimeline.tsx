@@ -39,7 +39,12 @@
  *     load-earlier label carries the estimated pixel height, and each
  *     card reserves its turn's estimate as a minHeight (plus a
  *     placeholder bar, perItemHeight) so the scrollbar ratio stays real
- *     and layout doesn't jump.
+ *     and layout doesn't jump;
+ *   - true virtual scrolling: `virtualized` swaps the windowed window
+ *     for VirtualTurnWindow — the whole displayed stream virtualizes
+ *     (visible band only, translate offsets from the per-turn height
+ *     estimates), with turn/find anchors mapping to scroll offsets via
+ *     scrollOffsetForUnit; live-tail keeps driving the same container.
  *
  * Timeline discipline: newest at the bottom, auto-tail (sticks to the
  * bottom while the run is live unless the user scrolled up), and a
@@ -69,6 +74,8 @@ import {
   type FindHit,
 } from "@/components/conversation/model"
 import { ConversationWindow } from "@/components/conversation/ConversationWindow"
+import { VirtualTurnWindow } from "@/components/conversation/VirtualTurnWindow"
+import { TurnGroup } from "@/components/conversation/TurnGroup"
 
 /** Unit-key → matched ranges inside the unit's text (find highlight). */
 function textHighlightMap(matches: ReturnType<typeof buildConversationFindIndex>) {
@@ -99,6 +106,8 @@ export function ConversationTimeline({
   workspace,
   live,
   toolbarLead,
+  virtualized = false,
+  viewportHeight,
 }: {
   events: RuntimeEvent[]
   workspace: Workspace | null
@@ -111,6 +120,15 @@ export function ConversationTimeline({
    * identical: no heading row spent, native flex alignment.
    */
   toolbarLead?: ReactNode
+  /**
+   * Render through VirtualTurnWindow's TRUE virtual scrolling container
+   * (total-height spacer + absolutely positioned visible band) instead
+   * of the windowed ConversationWindow. Default false keeps the
+   * windowed behavior — existing usages and tests do not regress.
+   */
+  virtualized?: boolean
+  /** Fixed viewport px for the virtual container (measured otherwise). */
+  viewportHeight?: number
 }) {
   useLocale()
   // The pipeline: events → paired/retry-folded units → turn groups.
@@ -157,6 +175,21 @@ export function ConversationTimeline({
     [displayedUnits, turnDepth],
   )
   const anchors = useMemo(() => turnAnchors(displayedTurns), [displayedTurns])
+
+  // Virtualization inputs (virtualized mode): per-turn estimated heights
+  // and the anchored turn's index in the displayed stream. The anchor
+  // jump's OFFSET itself is computed by the model (scrollOffsetForUnit)
+  // inside VirtualTurnWindow, so navigation, find and live-tail share
+  // one scroll container with the same arithmetic.
+  const turnHeightList = useMemo(
+    () => (virtualized ? displayedTurns.map((turn) => turnHeight(turn)) : []),
+    [virtualized, displayedTurns],
+  )
+  const virtualAnchorIndex = useMemo(() => {
+    if (!virtualized || anchorTurnId === null) return undefined
+    const at = displayedTurns.findIndex((turn) => turn.turnId === anchorTurnId)
+    return at >= 0 ? at : undefined
+  }, [virtualized, anchorTurnId, displayedTurns])
 
   // Virtual-height budget: the estimated pixel height of the render
   // area, surfaced once it crosses the threshold — a hint on the
@@ -361,37 +394,65 @@ export function ConversationTimeline({
           )}
         </div>
       )}
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
-        data-testid="conversation-timeline"
-      >
-        {turns.length > 0 && displayedUnits.length > 0 && (
-          <ConversationWindow
-            units={displayedUnits}
-            visibleTurns={50}
-            loadStep={50}
-            anchorTurnId={anchorTurnId}
-            onClearAnchor={() => setAnchorTurnId(null)}
-            turnDepth={turnDepth}
-            highlightTurnIds={findActiveQuery ? matchedTurnIds : undefined}
-            textHighlights={findActiveQuery ? highlights : undefined}
-            currentUnitKey={currentMatch?.key}
-            turnHeights={turnHeights}
-            loadEarlierHint={
-              overHeightBudget
-                ? t("conversation.window.estimatedHeight", {
-                    height: formatEstimatedHeight(estimatedHeight),
-                  })
-                : undefined
-            }
-          />
-        )}
-        {turns.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground">{t("timeline.empty")}</p>
-        )}
-      </div>
+      {virtualized ? (
+        <VirtualTurnWindow
+          testId="conversation-timeline"
+          containerRef={scrollRef}
+          onScroll={onScroll}
+          units={displayedTurns}
+          heights={turnHeightList}
+          viewportHeight={viewportHeight}
+          anchorIndex={virtualAnchorIndex}
+          getKey={(turn) => turn.turnId}
+          renderUnit={(turn) => (
+            <TurnGroup
+              turn={turn}
+              highlighted={findActiveQuery ? matchedTurnIds.has(turn.turnId) : false}
+              textHighlights={findActiveQuery ? highlights : undefined}
+              currentUnitKey={currentMatch?.key}
+            />
+          )}
+          empty={
+            turns.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                {t("timeline.empty")}
+              </p>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+          data-testid="conversation-timeline"
+        >
+          {turns.length > 0 && displayedUnits.length > 0 && (
+            <ConversationWindow
+              units={displayedUnits}
+              visibleTurns={50}
+              loadStep={50}
+              anchorTurnId={anchorTurnId}
+              onClearAnchor={() => setAnchorTurnId(null)}
+              turnDepth={turnDepth}
+              highlightTurnIds={findActiveQuery ? matchedTurnIds : undefined}
+              textHighlights={findActiveQuery ? highlights : undefined}
+              currentUnitKey={currentMatch?.key}
+              turnHeights={turnHeights}
+              loadEarlierHint={
+                overHeightBudget
+                  ? t("conversation.window.estimatedHeight", {
+                      height: formatEstimatedHeight(estimatedHeight),
+                    })
+                  : undefined
+              }
+            />
+          )}
+          {turns.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted-foreground">{t("timeline.empty")}</p>
+          )}
+        </div>
+      )}
 
       {/* Jump affordance only when detached AND something is actually
           pending — at frozenCount 0 scrolling down is all it takes, so

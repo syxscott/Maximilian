@@ -44,6 +44,9 @@
       "estimatedHeightTitle": "会话流预估总高度——开窗渲染将其保持在有界范围",
       "totalHeight": "≈ {height}"
     },
+    "virtual": {
+      "label": "虚拟化会话——仅渲染可见窗口"
+    },
     "textUnit": {
       "user": "请求",
       "steering": "引导",
