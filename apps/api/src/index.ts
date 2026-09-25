@@ -2397,7 +2397,11 @@ if (evolution) {
   api.openapi(recordFeedbackRoute, requireAuthMiddleware(), evo.recordFeedback)
   api.openapi(oracleTriadRoute, requireAuthMiddleware(), oracleTriadHandler(evoDeps))
   api.openapi(triggerEvolveRoute, requireAuthMiddleware(), evo.triggerEvolve)
-  api.openapi(memoryImportRoute, requireAuthMiddleware(), memoryImportHandler({ facade: evolution }))
+  api.openapi(
+    memoryImportRoute,
+    requireAuthMiddleware(),
+    memoryImportHandler({ facade: evolution }),
+  )
 }
 
 // Settings-center deep domains (providers catalog / model tester / store status).
