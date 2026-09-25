@@ -12,8 +12,12 @@
  * so arrangements and closures survive reloads. A small "add panel"
  * menu at the top lists every registered panel that is not currently
  * docked and reopens its leaf on pick — the menu is driven purely by
- * this registry, so registering a leaf here is the whole mount. The
- * panels themselves are untouched — this module only wraps them.
+ * the registry, so registering a leaf in WORKSPACE_PANELS is the whole
+ * mount. The panel list itself and its FEATURE_DOMAINS projection live
+ * in src/features (the single registry — see workspacePanelDomains
+ * there); this module owns only the panel→component wiring and the
+ * dock store. The panels themselves are untouched — this module only
+ * wraps them.
  */
 import { useMemo, useState } from "react"
 import { ListPlus, RotateCcw } from "lucide-react"
@@ -37,68 +41,22 @@ import { ReviewPanel } from "@/components/ReviewPanel"
 import { OutputPanel } from "@/components/OutputPanel"
 import { GoalSummaryCard, GoalTree } from "@/features/goals"
 import { DeliverablesPanel } from "@/features/deliverables"
-import { FEATURE_DOMAINS } from "@/features"
+import { WORKSPACE_PANELS } from "@/features"
 
-export interface WorkspacePanelSpec {
-  /** Stable dock leaf id (persisted in the layout document). */
-  id: string
-  /** Existing i18n title key — reused verbatim in the leaf header. */
-  titleKey: string
-}
-
-/** A panel's description key is its title key with the `.title` suffix swapped. */
-function descriptionKeyFor(titleKey: string): string {
-  return `${titleKey.replace(/\.title$/, "")}.description`
-}
-
-/** The resident panel registry — one dock leaf per entry, ids stable. */
-export const WORKSPACE_PANELS: readonly WorkspacePanelSpec[] = [
-  { id: "agent", titleKey: "agent.title" },
-  { id: "tasks", titleKey: "task.title" },
-  { id: "subagents", titleKey: "subagents.title" },
-  { id: "trajectory", titleKey: "trajectory.title" },
-  { id: "files", titleKey: "files.title" },
-  { id: "sessions", titleKey: "sessions.title" },
-  { id: "artifacts", titleKey: "artifacts.title" },
-  { id: "goals", titleKey: "goals.title" },
-  { id: "deliverables", titleKey: "deliverables.title" },
-]
+/**
+ * The panel registry and its FEATURE_DOMAINS projection moved to
+ * src/features/index.ts (registry unification) — re-exported here so
+ * consumers of the sidebar module keep their import paths.
+ */
+export { WORKSPACE_PANELS, WORKSPACE_PANEL_DOMAIN_ALIASES, workspacePanelDomains } from "@/features"
+export type { WorkspacePanelSpec, WorkspacePanelDomain } from "@/features"
 
 /** Storage key for the workspace sidebar's dock layout. */
 export const WORKSPACE_DOCK_STORAGE_KEY = "maximilian.workspace-dock-layout"
 
-/**
- * Panel ids whose FEATURE_DOMAINS entry answers to a different id
- * (src/features/index.ts). Everything else maps by shared id.
- */
-export const WORKSPACE_PANEL_DOMAIN_ALIASES: Readonly<Record<string, string>> = {
-  agent: "chat", // the agent leaf hosts the chat domain's conversation surface
-}
-
-/** One row of the WORKSPACE_PANELS ↔ FEATURE_DOMAINS correspondence. */
-export interface WorkspacePanelDomain {
-  /** WORKSPACE_PANELS leaf id. */
-  panelId: string
-  /** The panel's FEATURE_DOMAINS id, null while the domain is pending. */
-  domainId: string | null
-  /** The leaf's i18n title key (same-id overlaps share the domain's key). */
-  titleKey: string
-}
-
-/**
- * WORKSPACE_PANELS ↔ FEATURE_DOMAINS correspondence — a pure projection
- * of the two registries, no third hardcoded list. A panel maps to the
- * FEATURE_DOMAINS entry with its id (or its alias's id); registry-only
- * ids that FEATURE_DOMAINS has not grown yet surface as null so the gap
- * stays visible and tested until the full unification lands.
- */
-export function workspacePanelDomains(): WorkspacePanelDomain[] {
-  return WORKSPACE_PANELS.map((panel) => {
-    const alias = WORKSPACE_PANEL_DOMAIN_ALIASES[panel.id]
-    const domainId =
-      alias ?? (FEATURE_DOMAINS.some((domain) => domain.id === panel.id) ? panel.id : null)
-    return { panelId: panel.id, domainId, titleKey: panel.titleKey }
-  })
+/** A panel's description key is its title key with the `.title` suffix swapped. */
+function descriptionKeyFor(titleKey: string): string {
+  return `${titleKey.replace(/\.title$/, "")}.description`
 }
 
 /** Sidebar default: every registered panel, stacked top → bottom. */

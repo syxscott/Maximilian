@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useLocale, t } from "@max/i18n"
 import { systemApi, ProviderListResponseSchema } from "@/api"
+import { featureDomain } from "@/features"
 import { useJobs } from "@/hooks/useJobsQueries"
 import { useJobsStore } from "@/stores/jobsStore"
 import { useNotificationStore } from "@/stores/notificationStore"
@@ -40,64 +41,113 @@ import { SkillsDomain } from "./skills-domain/SkillsDomain"
  */
 export type SettingsSectionId = SettingsSection
 
-export const SETTINGS_SECTIONS: Array<{
+/**
+ * The settings nav is derived from FEATURE_DOMAINS (src/features — the
+ * single registry, the section field marks the admin/observe/workspace
+ * attribution). Each row of this bridge names the store-pinned shell
+ * section id and the FEATURE_DOMAINS entries it surfaces, by id or
+ * alias; the nav label derives from the primary domain's titleKey
+ * unless the settings surface has its own label. Nothing here may
+ * introduce a domain the registry does not know — the linkage is
+ * locked by test/registry-unification.test.ts (every section resolves,
+ * every admin domain is surfaced).
+ */
+export const SETTINGS_SECTION_DOMAINS: ReadonlyArray<{
   id: SettingsSectionId
-  titleKey: string
+  /** FEATURE_DOMAINS ids this section surfaces (first = label donor). */
+  domains: readonly string[]
   /** Nav tooltip describing the section (deep i18n key). */
   descriptionKey: string
+  /** Settings-surface label when it differs from the domain's title. */
+  titleKey?: string
 }> = [
+  // Client preferences — the settings domain's client page, which also
+  // hosts the permissions matrix below the theme card.
   {
     id: "appearance",
+    domains: ["settings", "permissions"],
     titleKey: "settings.appearance.title",
     descriptionKey: "settings.appearance.description",
   },
   {
     id: "language",
+    domains: ["settings"],
     titleKey: "settings.language.title",
     descriptionKey: "settings.language.description",
   },
   {
     id: "performance",
+    domains: ["settings"],
     titleKey: "settings.performance.title",
     descriptionKey: "settings.performance.description",
   },
-  { id: "flags", titleKey: "settings.flags.title", descriptionKey: "settings.flags.description" },
+  // Admin API surfaces — governance domain, section-local labels.
+  {
+    id: "flags",
+    domains: ["governance"],
+    titleKey: "settings.flags.title",
+    descriptionKey: "settings.flags.description",
+  },
   {
     id: "tenants",
+    domains: ["governance"],
     titleKey: "settings.tenants.title",
     descriptionKey: "settings.tenants.description",
   },
+  // Providers health plus the model-picker catalog (preset grid and
+  // connectivity probe) — the model-picker domain's admin home.
   {
     id: "providers",
+    domains: ["providers", "model-picker"],
     titleKey: "settings.providersHealth.title",
     descriptionKey: "settings.providersHealth.description",
   },
-  { id: "vault", titleKey: "settings.vault.title", descriptionKey: "settings.vault.description" },
+  { id: "vault", domains: ["vault"], descriptionKey: "settings.vault.description" },
   {
     id: "oracle",
+    domains: ["oracle-triad"],
     titleKey: "settings.oracle.title",
     descriptionKey: "settings.oracle.description",
   },
   {
     id: "subagents",
+    domains: ["subagents"],
     titleKey: "settingsDeep.subagents.title",
     descriptionKey: "settingsDeep.subagents.description",
   },
   {
     id: "usageCharts",
+    domains: ["usage"],
     titleKey: "settingsDeep.usage.title",
     descriptionKey: "settingsDeep.usage.description",
   },
+  // Session store status + migrations — the sessions domain's admin view.
   {
     id: "store",
+    domains: ["sessions"],
     titleKey: "settingsDeep.store.title",
     descriptionKey: "settingsDeep.store.description",
   },
-  { id: "automations", titleKey: "automations.title", descriptionKey: "automations.description" },
-  { id: "jobs", titleKey: "jobs.title", descriptionKey: "jobs.description" },
-  { id: "memory", titleKey: "memory.title", descriptionKey: "memory.description" },
-  { id: "skills", titleKey: "skills.title", descriptionKey: "skills.description" },
+  // Same-id domains: the label derives straight from the registry.
+  { id: "automations", domains: ["automations"], descriptionKey: "automations.description" },
+  { id: "jobs", domains: ["jobs"], descriptionKey: "jobs.description" },
+  { id: "memory", domains: ["memory"], descriptionKey: "memory.description" },
+  { id: "skills", domains: ["skills"], descriptionKey: "skills.description" },
 ]
+
+export const SETTINGS_SECTIONS: Array<{
+  id: SettingsSectionId
+  titleKey: string
+  /** Nav tooltip describing the section (deep i18n key). */
+  descriptionKey: string
+  /** FEATURE_DOMAINS ids this section surfaces (registry linkage). */
+  domains: readonly string[]
+}> = SETTINGS_SECTION_DOMAINS.map(({ id, domains, descriptionKey, titleKey }) => ({
+  id,
+  domains,
+  descriptionKey,
+  titleKey: titleKey ?? featureDomain(domains[0])?.titleKey ?? domains[0],
+}))
 
 export function SettingsSectionNav({
   active,

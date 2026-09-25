@@ -299,13 +299,15 @@ describe("workspacePanelDomains — panel registry ↔ feature-domain registry",
     }
   })
 
-  it("registry-only ids stay visibly unmapped until FEATURE_DOMAINS grows them", () => {
+  it("every registry panel maps onto FEATURE_DOMAINS — the gap is closed", () => {
     const unmapped = workspacePanelDomains()
       .filter((m) => m.domainId === null)
       .map((m) => m.panelId)
-    // "tasks" and "goals" predate / outrun the domain registry; the gap
-    // is pinned here so the future unification flips this assertion.
-    expect(unmapped).toEqual(["tasks", "goals"])
+    // "tasks" and "goals" predated the domain registry; the gap was
+    // pinned here until the unification grew FEATURE_DOMAINS — this
+    // assertion flipped (registry-unification.test.ts now asserts the
+    // panel↔domain mapping is complete).
+    expect(unmapped).toEqual([])
   })
 })
 
