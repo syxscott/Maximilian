@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useSDK } from "../context/sdk"
-import type { Job } from "../api"
+import type { Job, JobCreateInput } from "../api"
 
 export interface UseJobsResult {
   jobs: Job[]
@@ -87,4 +87,20 @@ export async function triggerJobViaSdk(
   ) {
     throw new Error(`trigger of /api/jobs/${id} returned ok:false`)
   }
+}
+
+/**
+ * POST /api/jobs through the SDK client (201 → the created Job). Defensive:
+ * the response must at least carry a string id, otherwise the create
+ * silently no-op'ing upstream would look like success.
+ */
+export async function createJobViaSdk(
+  sdkClient: ReturnType<typeof useSDK>["client"],
+  input: JobCreateInput,
+): Promise<Job> {
+  const res = await sdkClient.post<Job>("/api/jobs", input)
+  if (res == null || typeof res !== "object" || typeof (res as { id?: unknown }).id !== "string") {
+    throw new Error("create of /api/jobs returned no job id")
+  }
+  return res
 }

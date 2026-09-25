@@ -15,6 +15,10 @@
  *   POST   /api/jobs/{id}/trigger
  *   GET    /api/workspaces
  *   GET    /api/workspaces/{id}
+ * and the evolution / cron-panel endpoints:
+ *   GET  /api/evolution/agents       (agents panel — role profiles)
+ *   GET  /api/evolution/leaderboard  (agents panel — per-role metrics)
+ *   POST /api/jobs                   (cron panel — create a cron job)
  *
  * Auth: optional bearer token (ADMIN_TOKEN / JWT) injected into every request.
  */
@@ -172,6 +176,102 @@ export interface WorkspaceListResponse {
  */
 export type WorkspacePayload = unknown
 
+// ── Evolution agents (GET /api/evolution/agents, GET /api/evolution/leaderboard) ──
+
+/** One memory-bucket entry; legacy profiles store each bucket as string[]. */
+export interface AgentMemoryEntry {
+  mime?: string
+  content?: string
+  metadata?: Record<string, unknown>
+}
+
+/** Memory bucket keys — mirrors packages/evolution AgentMemorySchema. */
+export interface AgentMemoryPayload {
+  userFeedback?: unknown[]
+  reviewSuggestions?: unknown[]
+  commonErrors?: unknown[]
+  goodExamples?: unknown[]
+  archived?: Record<string, unknown[]>
+  efficacy?: Record<string, { injectedCount?: number; deltaSum?: number }>
+  totalEntries?: number
+  compressedAt?: string
+}
+
+/** Mirrors packages/evolution AgentProfileSchema (the API's passthrough JSON). */
+export interface AgentProfilePayload {
+  id?: string
+  role: string
+  createdAt?: string
+  totalTasks?: number
+  avgScore?: number
+  successRate?: number
+  avgExecutionTime?: number
+  preferredModel?: string
+  strengths?: string[]
+  weaknesses?: string[]
+  memory?: AgentMemoryPayload
+  curatorState?: {
+    lastRunAt?: string
+    totalPinned?: number
+    totalArchived?: number
+    totalConsolidated?: number
+  }
+  currentVersion?: string
+  versions?: string[]
+}
+
+export interface AgentProfilesResponse {
+  count: number
+  profiles: AgentProfilePayload[]
+  nextCursor?: string | null
+  total: number
+}
+
+/** One from→to version decision attached to a leaderboard entry. */
+export interface LeaderboardVersionDecision {
+  fromVersion: string
+  toVersion: string
+  outcome: "promoted" | "discarded"
+  oldAvgScore: number
+  newAvgScore: number
+  triggeredAt: string
+  reason: string
+}
+
+/** Mirrors packages/evolution LeaderboardEntrySchema. */
+export interface LeaderboardEntryPayload {
+  agentRole?: string
+  provider?: string
+  model?: string
+  avgScore?: number
+  avgExecutionTime?: number
+  avgCostUSD?: number
+  userSatisfaction?: number
+  sampleSize?: number
+  lastUpdated?: string
+  baselineScore?: number
+  deltaScore?: number
+  pgr?: number
+  costDeltaUSD?: number
+  versionHistory?: LeaderboardVersionDecision[]
+}
+
+export interface LeaderboardResponse {
+  entries?: LeaderboardEntryPayload[]
+  lastRebuilt?: string
+}
+
+// ── Job creation (POST /api/jobs — the cron panel's create form) ────────────
+
+/** Body for POST /api/jobs — mirrors the API's JobCreateSchema. */
+export interface JobCreateInput {
+  name: string
+  /** Cron expression (5 fields) or intervalMs as a digit string. */
+  schedule: string
+  description?: string
+  payload?: { kind: "workspace"; message: string } | { kind: "none" }
+}
+
 export interface MaximilianClient {
   health(signal?: AbortSignal): Promise<Health>
   listExecutions(signal?: AbortSignal): Promise<{ count: number; executions: ExecutionTrace[] }>
@@ -181,10 +281,13 @@ export interface MaximilianClient {
   getUsageSummary(range: UsageRange, signal?: AbortSignal): Promise<UsageSummary>
   chat(message: string, signal?: AbortSignal): Promise<ChatResponse>
   listJobs(signal?: AbortSignal): Promise<JobListResponse>
+  createJob(input: JobCreateInput, signal?: AbortSignal): Promise<Job>
   deleteJob(id: string, signal?: AbortSignal): Promise<void>
   triggerJob(id: string, signal?: AbortSignal): Promise<JobTriggerResponse>
   listWorkspaces(signal?: AbortSignal): Promise<WorkspaceListResponse>
   getWorkspace(id: string, signal?: AbortSignal): Promise<WorkspacePayload>
+  listEvolutionAgents(signal?: AbortSignal): Promise<AgentProfilesResponse>
+  getEvolutionLeaderboard(signal?: AbortSignal): Promise<LeaderboardResponse>
 }
 
 export function createMaximilianClient(baseUrl: string, token?: string): MaximilianClient {
@@ -238,6 +341,7 @@ export function createMaximilianClient(baseUrl: string, token?: string): Maximil
       getJson<UsageSummary>(`/api/obs/usage/summary?range=${encodeURIComponent(range)}`, signal),
     chat: (message, signal) => postJson<ChatResponse>("/api/chat", { message }, signal),
     listJobs: (signal) => getJson<JobListResponse>("/api/jobs", signal),
+    createJob: (input, signal) => postJson<Job>("/api/jobs", input, signal),
     deleteJob: (id, signal) => deleteJson(`/api/jobs/${encodeURIComponent(id)}`, signal),
     triggerJob: (id, signal) =>
       postJson<JobTriggerResponse>(
@@ -248,5 +352,9 @@ export function createMaximilianClient(baseUrl: string, token?: string): Maximil
     listWorkspaces: (signal) => getJson<WorkspaceListResponse>("/api/workspaces?limit=20", signal),
     getWorkspace: (id, signal) =>
       getJson<WorkspacePayload>(`/api/workspaces/${encodeURIComponent(id)}`, signal),
+    listEvolutionAgents: (signal) =>
+      getJson<AgentProfilesResponse>("/api/evolution/agents?limit=100", signal),
+    getEvolutionLeaderboard: (signal) =>
+      getJson<LeaderboardResponse>("/api/evolution/leaderboard", signal),
   }
 }

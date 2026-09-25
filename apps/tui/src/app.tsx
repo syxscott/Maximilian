@@ -26,6 +26,8 @@ import { DialogLanguageList } from "./components/dialog-language-list"
 import { JobsDialog } from "./components/jobs-dialog"
 import { GoalsPanel } from "./components/goals-panel"
 import { UsagePanel } from "./components/usage-panel"
+import { AgentsPanel } from "./components/agents-panel"
+import { CronPanel } from "./components/cron-panel"
 import { appendCommandPaletteCommands } from "./command-palette"
 import {
   ClipboardProvider,
@@ -370,10 +372,10 @@ function App({ config }: AppProps) {
     )
   }
 
-  // Jobs / Goals / Usage panels — the three data faces the dashboard has,
-  // mounted through the same command-palette registration as /language and
-  // bound to ctrl+J / ctrl+G / ctrl+U next to ctrl+l. Registration re-runs
-  // on locale change so the titles follow the active language.
+  // Jobs / Goals / Usage / Agents / Cron panels — the data faces the dashboard
+  // has, mounted through the same command-palette registration as /language
+  // and bound to ctrl+J / ctrl+G / ctrl+U / ctrl+A / ctrl+O next to ctrl+l.
+  // Registration re-runs on locale change so the titles follow the language.
   function openJobsDialog() {
     dialog.replace(<JobsDialog />, { size: "large" })
   }
@@ -382,6 +384,12 @@ function App({ config }: AppProps) {
   }
   function openUsagePanel() {
     dialog.replace(<UsagePanel />, { size: "medium" })
+  }
+  function openAgentsPanel() {
+    dialog.replace(<AgentsPanel />, { size: "large" })
+  }
+  function openCronPanel() {
+    dialog.replace(<CronPanel />, { size: "large" })
   }
 
   React.useEffect(() => {
@@ -406,6 +414,20 @@ function App({ config }: AppProps) {
         category: "workspace",
         suggested: true,
         onSelect: openUsagePanel,
+      },
+      {
+        name: "agents",
+        title: t("tui.agents", "Agents"),
+        category: "workspace",
+        suggested: true,
+        onSelect: openAgentsPanel,
+      },
+      {
+        name: "cron",
+        title: t("tui.cron", "Cron"),
+        category: "workspace",
+        suggested: true,
+        onSelect: openCronPanel,
       },
     ])
     // We intentionally re-register on every locale change so the titles
@@ -450,8 +472,9 @@ function App({ config }: AppProps) {
     if (key.ctrl && input === "l") {
       openLanguageDialog()
     }
-    // ctrl+J / ctrl+G / ctrl+U open the Jobs / Goals / Usage panels (only
-    // from the base view — inside a dialog they would replace it).
+    // ctrl+J / ctrl+G / ctrl+U / ctrl+A / ctrl+O open the Jobs / Goals /
+    // Usage / Agents / Cron panels (only from the base view — inside a
+    // dialog they would replace it).
     if (key.ctrl && input === "j" && dialog.stack.length === 0) {
       openJobsDialog()
     }
@@ -460,6 +483,12 @@ function App({ config }: AppProps) {
     }
     if (key.ctrl && input === "u" && dialog.stack.length === 0) {
       openUsagePanel()
+    }
+    if (key.ctrl && input === "a" && dialog.stack.length === 0) {
+      openAgentsPanel()
+    }
+    if (key.ctrl && input === "o" && dialog.stack.length === 0) {
+      openCronPanel()
     }
   })
 
@@ -589,8 +618,8 @@ function Home() {
         />
       </Box>
       <Text color={theme.theme.textMuted}>
-        Press ctrl+l to change language · ctrl+j/g/u for jobs/goals/usage · ctrl+\ for the command
-        palette (stub).
+        Press ctrl+l to change language · ctrl+j/g/u/a/o for jobs/goals/usage/agents/cron · ctrl+\
+        for the command palette (stub).
       </Text>
     </Box>
   )
