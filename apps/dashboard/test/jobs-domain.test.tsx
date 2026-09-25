@@ -16,6 +16,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactElement } from "react"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
+import { useUiShellStore } from "../src/stores/uiShellStore"
 
 import jobsEn from "../src/locales/jobs.en-US.json"
 import {
@@ -100,7 +101,57 @@ describe("jobs-domain model", () => {
     expect(v?.lastEvent).toEqual({
       at: "2026-09-23T02:00:00.000Z",
       kind: "scheduled-trigger",
+      workspaceId: null,
     })
+    // No materialized backfill in the trail → no workspace surfaced.
+    expect(v?.materializedWorkspaceId).toBeNull()
+  })
+
+  it("surfaces the newest materialized workspace id from the event trail", () => {
+    const v = toJobViews({
+      jobs: [
+        {
+          id: "job_2",
+          name: "nightly",
+          schedule: "0 2 * * *",
+          scheduleKind: "cron",
+          events: [
+            { at: "2026-09-23T02:00:00.000Z", kind: "scheduled-trigger" },
+            {
+              at: "2026-09-23T02:00:01.000Z",
+              kind: "dispatched",
+              queued: true,
+              workspaceJobId: "42",
+            },
+            { at: "2026-09-23T02:00:05.000Z", kind: "materialized", workspaceId: "ws-older" },
+            {
+              at: "2026-09-23T02:00:09.000Z",
+              kind: "materialized",
+              workspaceId: "ws-real-9",
+              status: "planning",
+            },
+          ],
+        },
+      ],
+    })[0]
+    // Newest backfill wins.
+    expect(v?.materializedWorkspaceId).toBe("ws-real-9")
+    expect(v?.lastEvent).toMatchObject({ kind: "materialized", workspaceId: "ws-real-9" })
+  })
+
+  it("defends the materialized-workspace scan against malformed trail entries", () => {
+    const v = toJobViews({
+      jobs: [
+        {
+          id: "job_3",
+          name: "x",
+          schedule: "*",
+          scheduleKind: "interval",
+          events: [null, 42, { kind: "materialized" }, { workspaceId: 7 }, { workspaceId: "  " }],
+        },
+      ],
+    })[0]
+    expect(v?.materializedWorkspaceId).toBeNull()
   })
 
   it("flags payload presence and coerces unknown schedule kinds", () => {
@@ -423,5 +474,38 @@ describe("JobsPanel render smoke", () => {
       schedule: "0 2 * * *",
       payload: { kind: "workspace", message: "rotate the reports" },
     })
+  })
+
+  it("renders the materialized workspace and routes its click to the workspace tab", () => {
+    useUiShellStore.setState({ tab: "settings" })
+    const materializedRow = {
+      ...jobRow,
+      events: [
+        ...jobRow.events,
+        { at: "2026-09-23T02:00:01.000Z", kind: "dispatched", queued: true, workspaceJobId: "7" },
+        {
+          at: "2026-09-23T02:00:05.000Z",
+          kind: "materialized",
+          workspaceId: "ws-real-9",
+          status: "planning",
+        },
+      ],
+    }
+    mocked.useJobs.mockReturnValue(
+      q({
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        data: { jobs: [materializedRow] },
+      }) as never,
+    )
+    renderWithQuery(<JobsPanel />)
+    fireEvent.click(screen.getByText("nightly")) // unfold the detail block
+    const chip = screen.getByTestId("jobs-workspace-job_1")
+    expect(chip.textContent).toBe("ws-real-9")
+    // The click hands the user to the workspace surface (the shell's
+    // existing navigation behavior reachable from settings).
+    fireEvent.click(chip)
+    expect(useUiShellStore.getState().tab).toBe("workspace")
   })
 })

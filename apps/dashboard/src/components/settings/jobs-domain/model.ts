@@ -13,6 +13,8 @@
 export interface JobEventView {
   at: string | null
   kind: string
+  /** "materialized" entries: the real workspace the worker ran. */
+  workspaceId: string | null
 }
 
 export interface JobView {
@@ -28,6 +30,11 @@ export interface JobView {
   nextRunAt: string | null
   triggerCount: number
   lastEvent: JobEventView | null
+  /**
+   * The workspace the worker materialized from this job's fire (newest
+   * `materialized` backfill wins) — null when no fire produced one.
+   */
+  materializedWorkspaceId: string | null
 }
 
 export type JobSortKey = "createdAt" | "name" | "nextRunAt"
@@ -44,6 +51,21 @@ function dateOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null
 }
 
+/**
+ * Newest-first scan of the raw event trail for the workspace a fire
+ * materialized. Defensive: passthrough entries may be missing, malformed
+ * or carry no workspaceId — only a non-empty string counts.
+ */
+export function latestMaterializedWorkspaceId(events: unknown[]): string | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]
+    if (e == null || typeof e !== "object") continue
+    const id = (e as Record<string, unknown>).workspaceId
+    if (typeof id === "string" && id.trim().length > 0) return id
+  }
+  return null
+}
+
 /** Defensive /jobs row (passthrough JSON) → typed view. */
 export function toJobView(row: unknown): JobView | null {
   if (row == null || typeof row !== "object") return null
@@ -58,7 +80,12 @@ export function toJobView(row: unknown): JobView | null {
   let lastEvent: JobEventView | null = null
   if (last != null && typeof last === "object") {
     const e = last as Record<string, unknown>
-    lastEvent = { at: dateOrNull(e.at), kind: str(e.kind, "unknown") }
+    lastEvent = {
+      at: dateOrNull(e.at),
+      kind: str(e.kind, "unknown"),
+      workspaceId:
+        typeof e.workspaceId === "string" && e.workspaceId.length > 0 ? e.workspaceId : null,
+    }
   }
 
   return {
@@ -74,6 +101,7 @@ export function toJobView(row: unknown): JobView | null {
     nextRunAt: dateOrNull(r.nextRunAt),
     triggerCount: num(r.triggerCount) ?? 0,
     lastEvent,
+    materializedWorkspaceId: latestMaterializedWorkspaceId(events),
   }
 }
 

@@ -24,9 +24,12 @@
  *     onto the BullMQ WORKSPACE_QUEUE via the same producer path POST
  *     /api/chat uses (Queue.add("execute", …)). The enqueued data is the
  *     standard WorkspaceJobData shape plus the scheduler's message; the
- *     worker consumes it through its normal WORKSPACE_QUEUE loop (extra
- *     fields are ignored by the current processor — materializing a
- *     workspace FROM the message is the deliberate follow-up).
+ *     worker materializes that message into a real workspace through its
+ *     commander/runtime path (apps/worker/src/jobs-materialize.ts) and
+ *     publishes the jobId→workspaceId backfill on the workspace-event
+ *     channel as a `job-materialized` event. `recordDispatchResult` is
+ *     the ingestion half: feed it those events and the fire's trail here
+ *     gains a `materialized` entry naming the workspace that ran.
  *
  * Degradation is equally honest: when the queue is not configured
  * (TASK_QUEUE_ENABLED=false or no REDIS_URL) the workspace dispatch
@@ -206,7 +209,7 @@ export function nextRunAtMs(parsed: ParsedSchedule, fromMs: number): string | nu
 export type TriggerKind = "manual-trigger" | "scheduled-trigger" | "recovered-trigger"
 
 /** Executor event kinds appended after a trigger entry. */
-export type DispatchEventKind = "dispatched" | "dispatch-failed"
+export type DispatchEventKind = "dispatched" | "dispatch-failed" | "materialized"
 
 export interface JobEventEntry {
   at: string
@@ -218,6 +221,13 @@ export interface JobEventEntry {
   queued?: boolean
   /** "dispatch-failed" entries: the BullMQ add() error message. */
   error?: string
+  /**
+   * "materialized" entries: the REAL workspace the worker created from
+   * the fire's message (the backfill half of the dispatch loop).
+   */
+  workspaceId?: string
+  /** "materialized" entries: workspace status at backfill time. */
+  status?: string
 }
 
 export interface JobRecord {
@@ -350,9 +360,10 @@ export function asDispatchPayload(payload: unknown): WorkspaceDispatchPayload | 
 
 /** Data enqueued onto the BullMQ WORKSPACE_QUEUE for one scheduled fire. */
 export interface ScheduledWorkspaceJobData {
-  /** Deterministic per-fire target (`ws-sched-<jobId>-<n>`); the worker's
-   * normal consumer reads it — today it skips unknown workspaces, and
-   * materializing a workspace from `message` is the planned follow-up. */
+  /** Deterministic per-fire target (`ws-sched-<jobId>-<n>`). A placeholder:
+   * no workspace with this id exists yet — the worker materializes a REAL
+   * workspace from `message` (jobs-materialize.ts) and reports the mapping
+   * back through the workspace-event channel. */
   workspaceId: string
   mode: "commander"
   /** The scheduler's instruction (payload.message). */
@@ -427,10 +438,35 @@ export interface JobsRegistry {
    * recovered EXACTLY ONCE via the normal dispatch path.
    */
   recoverOrphans(): Promise<RecoveredSlot[]>
-  /** Fire every job whose nextRunAt is due. Returns the fired count. */
+  /**
+   * Fire every job whose nextRunAt is due. Returns the fired count.
+   */
   tick(): Promise<number>
   startScheduler(): void
   stopScheduler(): void
+  /**
+   * Ingestion half of the dispatch loop: record the worker's
+   * `job-materialized` backfill (real workspaceId — or the rejection /
+   * failure reason when the fire never became a workspace) as a
+   * `materialized` entry on the job's event trail. Unknown job ids are
+   * ignored (the job may have been deleted while the fire ran).
+   */
+  recordDispatchResult(result: JobDispatchResult): JobRecord | undefined
+}
+
+/** The worker's jobId→workspaceId backfill, normalized for ingestion. */
+export interface JobDispatchResult {
+  jobId: string
+  /** The deterministic placeholder id the fire enqueued (ws-sched-…). */
+  scheduledWorkspaceId?: string
+  /** The REAL workspace created from the message, when one materialized. */
+  workspaceId?: string
+  /** Workspace status at backfill time ("planning" while executing). */
+  status?: string
+  /** Rejection/failure reason when no workspace materialized. */
+  error?: string
+  /** Instant of the backfill (defaults to now). */
+  at?: string
 }
 
 export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegistry {
@@ -639,6 +675,23 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
     /** Fire every job whose nextRunAt is due. Returns the fired count. */
     tick: () => tick(),
 
+    recordDispatchResult(result) {
+      const job = jobs.get(result.jobId)
+      if (!job) return undefined
+      const at = result.at ?? new Date(now()).toISOString()
+      const materialized = typeof result.workspaceId === "string" && result.workspaceId.length > 0
+      pushEvent(job, {
+        at,
+        kind: "materialized",
+        ...(materialized ? { workspaceId: result.workspaceId, status: result.status } : {}),
+        ...(!materialized && result.error !== undefined ? { error: result.error } : {}),
+        note: materialized
+          ? `worker materialized ${result.scheduledWorkspaceId ?? "scheduled fire"} → ${result.workspaceId}`
+          : `worker could not materialize ${result.scheduledWorkspaceId ?? "scheduled fire"}: ${result.error ?? "unknown reason"}`,
+      })
+      return job
+    },
+
     startScheduler() {
       if (scheduler !== undefined) return
       scheduler = setInterval(() => {
@@ -704,6 +757,10 @@ export const JobEventSchema = z.object({
   queued: z.boolean().optional(),
   /** "dispatch-failed" entries: the BullMQ add() error message. */
   error: z.string().optional(),
+  /** "materialized" entries: the real workspace the worker ran. */
+  workspaceId: z.string().optional(),
+  /** "materialized" entries: workspace status at backfill time. */
+  status: z.string().optional(),
 })
 
 export const JobSchema = z.object({

@@ -631,3 +631,53 @@ describe("jobs route handlers", () => {
     expect((await h.remove(fakeContext({ param: { id } }))).status).toBe(404)
   })
 })
+
+// ── Materialization backfill ingestion ───────────────────────────────────────
+
+describe("registry.recordDispatchResult", () => {
+  it("appends a materialized entry naming the real workspace", () => {
+    const { registry } = makeRegistry()
+    const created = registry.create({ name: "j", schedule: "60000" })
+    const id = created.ok ? created.job.id : ""
+
+    const updated = registry.recordDispatchResult({
+      jobId: id,
+      scheduledWorkspaceId: "ws-sched-job_test-1-1",
+      workspaceId: "ws-real-9",
+      status: "planning",
+      at: "2026-09-24T11:00:00.000Z",
+    })
+    expect(updated).toBeDefined()
+    const entry = updated?.events.at(-1)
+    expect(entry).toMatchObject({
+      at: "2026-09-24T11:00:00.000Z",
+      kind: "materialized",
+      workspaceId: "ws-real-9",
+      status: "planning",
+    })
+    expect(entry?.note).toContain("ws-sched-job_test-1-1")
+    expect(entry?.note).toContain("ws-real-9")
+  })
+
+  it("records the failure reason when no workspace materialized", () => {
+    const { registry } = makeRegistry()
+    const created = registry.create({ name: "j", schedule: "60000" })
+    const id = created.ok ? created.job.id : ""
+
+    const updated = registry.recordDispatchResult({
+      jobId: id,
+      scheduledWorkspaceId: "ws-sched-job_test-1-1",
+      error: "scheduled fire rejected by preflight: Plan has no tasks",
+    })
+    const entry = updated?.events.at(-1)
+    expect(entry?.kind).toBe("materialized")
+    expect(entry?.workspaceId).toBeUndefined()
+    expect(entry?.error).toContain("Plan has no tasks")
+    expect(entry?.note).toContain("could not materialize")
+  })
+
+  it("ignores unknown job ids (job deleted while the fire ran)", () => {
+    const { registry } = makeRegistry()
+    expect(registry.recordDispatchResult({ jobId: "ghost", workspaceId: "ws-x" })).toBeUndefined()
+  })
+})

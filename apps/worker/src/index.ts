@@ -55,9 +55,15 @@ import {
   type WorkspaceProcessor,
 } from "@max/queue"
 import { Gateway, createWebhookAdapter } from "@max/gateway"
+import { Commander, type ModelSelectorPort as CommanderModelSelectorPort } from "@max/commander"
 import { bootstrapModelRouting } from "@max/core"
 import type { Job } from "bullmq"
 import type { WorkspaceJobData } from "@max/queue"
+import {
+  asScheduledExtras,
+  materializeScheduledWorkspace,
+  type ScheduledJobExtras,
+} from "./jobs-materialize.js"
 
 const log = getLogger("worker")
 
@@ -297,6 +303,37 @@ async function main() {
     modelRouter: modelRouterPort,
   })
 
+  // Commander (POST /api/chat parity) — kind=workspace job fires arrive as
+  // a bare `message`; materializing them into real workspaces goes through
+  // the same planner the API's chat route uses, with the same
+  // evolution-aware model selection when evolution is ON.
+  const commanderModelSelector: CommanderModelSelectorPort | undefined = evolution
+    ? {
+        select(role) {
+          const sel = evolution!.selectForRole(role)
+          return { provider: sel.provider, model: sel.model, score: sel.score, reason: sel.reason }
+        },
+      }
+    : undefined
+  const commander = new Commander(() => registry.default()!, {
+    providerRegistry,
+    modelSelector: commanderModelSelector,
+  })
+
+  // Scheduled-fire extras in flight. BullMQ delivers the scheduler's
+  // fields (message/jobId/scheduledAt) on job.data, but the shared
+  // WorkspaceProcessor contract only passes workspaceId/mode/tenantId/
+  // resourceBudget. BullMQ emits "active" for a job strictly before it
+  // invokes the processor (run loop: getNextJob → emit → processJob), so
+  // stashing here and taking inside the processor is race-free for this
+  // consumer. Delete-on-read keeps the map bounded; a missed entry (job
+  // data without a workspaceId) degrades to today's skip behaviour.
+  const pendingScheduled = new Map<string, ScheduledJobExtras>()
+  // Placeholder → real workspace id for fires this process materialized,
+  // so the completed/failure logs and webhook notifications can name the
+  // workspace that actually ran instead of the ws-sched-… placeholder.
+  const materializedByScheduledId = new Map<string, string>()
+
   // Runtime event forwarding. Two jobs:
   //  1. Evolution feeding — in queue mode the worker IS the execution
   //     process, so this is the only place recordCompletion / metrics /
@@ -458,12 +495,56 @@ async function main() {
       "processing workspace job",
     )
 
+    // Scheduled fire? Take (read + delete) the extras the "active" hook
+    // stashed for this job before BullMQ invoked the processor.
+    const scheduledExtras =
+      workspaceId != null ? (pendingScheduled.get(workspaceId) ?? undefined) : undefined
+    if (workspaceId != null) pendingScheduled.delete(workspaceId)
+
     // Load with the job's tenant scope. Without this, a dev-mode worker
     // would refuse to surface tenant-owned workspaces and execution
     // would silently never start.
     tenantCacheSet(workspaceId, tenantId)
     const workspace = await store.loadWorkspace(workspaceId, tenantId)
     if (!workspace) {
+      if (scheduledExtras) {
+        // Scheduled fire for a not-yet-existing workspace: MATERIALIZE.
+        // Runner mode — the workspace is created here through the same
+        // commander/runtime path POST /api/chat uses (no HTTP), then
+        // executed; the jobId→workspaceId backfill rides the existing
+        // publishWorkspaceEvent channel (type "job-materialized").
+        log.info(
+          { workspaceId, jobId: scheduledExtras.jobId ?? "unknown" },
+          "scheduled fire: materializing workspace from message",
+        )
+        const lease = await acquireResourceLease(redisUrl, resourceBudget)
+        try {
+          const final = await materializeScheduledWorkspace(
+            { commander, runtime, store, publishEvent: publishWorkspaceEvent },
+            scheduledExtras,
+            { tenantId, scheduledWorkspaceId: workspaceId },
+          )
+          if (workspaceId != null) materializedByScheduledId.set(workspaceId, final.id)
+          log.info(
+            {
+              jobId: scheduledExtras.jobId ?? "unknown",
+              scheduledWorkspaceId: workspaceId,
+              workspaceId: final.id,
+              status: final.status,
+            },
+            "scheduled fire materialized and executed",
+          )
+        } catch (err) {
+          log.error(
+            { workspaceId, jobId: scheduledExtras.jobId ?? "unknown", err },
+            "scheduled fire materialization failed",
+          )
+          throw err
+        } finally {
+          await lease.release()
+        }
+        return
+      }
       log.error({ workspaceId, tenantId }, "workspace not found — skipping job")
       return
     }
@@ -538,6 +619,15 @@ async function main() {
     log.info({ concurrency, redisUrl: redisUrl.replace(/\/\/.*@/, "//***@") }, "worker ready")
   })
 
+  // Stash the scheduler's extras (message/jobId/…) before the processor
+  // runs — see pendingScheduled above for why this is race-free.
+  worker.on("active", (job: Job<WorkspaceJobData>) => {
+    const extras = asScheduledExtras(job.data)
+    if (extras && typeof job.data.workspaceId === "string") {
+      pendingScheduled.set(job.data.workspaceId, extras)
+    }
+  })
+
   // Per-workspace crash budgets (ZCode zcode-server-cli borrowing): a
   // workspace whose jobs keep crashing inside the window stops burning
   // BullMQ retries — the job is discarded with the budget's structured
@@ -585,14 +675,26 @@ async function main() {
   worker.on("completed", (job: Job<WorkspaceJobData>) => {
     // A clean completion proves health — the budget starts fresh.
     crashBudgetFor(job.data.workspaceId).reset()
-    log.info({ jobId: job.id, workspaceId: job.data.workspaceId }, "job completed")
+    // Name the workspace that actually ran (materialized scheduled fires
+    // completed under a ws-sched-… placeholder id).
+    const ranWorkspaceId = materializedByScheduledId.get(job.data.workspaceId)
+    log.info(
+      {
+        jobId: job.id,
+        workspaceId: ranWorkspaceId ?? job.data.workspaceId,
+        ...(ranWorkspaceId ? { scheduledWorkspaceId: job.data.workspaceId } : {}),
+      },
+      "job completed",
+    )
     if (notificationGateway) {
-      const workspaceId = job.data.workspaceId
+      const workspaceId = ranWorkspaceId ?? job.data.workspaceId
       notificationGateway.notify({
         channel: "webhook",
         recipientId: process.env.GATEWAY_NOTIFY_RECIPIENT ?? "default",
         title: `Workspace ${workspaceId} completed`,
-        body: `All tasks finished (job ${String(job.id)}).`,
+        body: ranWorkspaceId
+          ? `Scheduled job ${String(job.id)} materialized workspace ${workspaceId}; all tasks finished.`
+          : `All tasks finished (job ${String(job.id)}).`,
         workspaceId,
         severity: "info",
       })

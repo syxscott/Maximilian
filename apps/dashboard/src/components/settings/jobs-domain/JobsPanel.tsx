@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useLocale, t } from "@max/i18n"
+import { useUiShellStore } from "@/stores/uiShellStore"
 import {
   useCreateJob,
   useDeleteJob,
@@ -234,6 +235,21 @@ export function JobsPanel() {
                             <p className="font-mono text-[10px] text-muted-foreground">
                               {j.lastEvent.kind} · {formatTimestamp(j.lastEvent.at)}
                             </p>
+                          )}
+                          {j.materializedWorkspaceId !== null && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                {t("jobs.detail.materialized")}
+                              </span>
+                              <button
+                                type="button"
+                                className="font-mono text-[10px] underline underline-offset-2 hover:text-foreground"
+                                onClick={() => useUiShellStore.getState().setTab("workspace")}
+                                data-testid={`jobs-workspace-${j.id}`}
+                              >
+                                {j.materializedWorkspaceId}
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}
