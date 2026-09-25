@@ -46,6 +46,10 @@ export interface WorkspaceDockAreaProps {
   live: boolean
   submitting: boolean
   onSubmit: (message: string) => void
+  onNavigate: (
+    tab:
+      "workspace" | "executions" | "governance" | "evolution" | "providers" | "usage" | "settings",
+  ) => void
   onAbort?: () => void
   mentionSuggestions?: MentionSuggestion[]
   onOpenProviders?: () => void
@@ -63,6 +67,7 @@ export function WorkspaceDockArea({
   submitting,
   onSubmit,
   onAbort,
+  onNavigate,
   mentionSuggestions,
   onOpenProviders,
   onOpenPalette,
@@ -87,6 +92,7 @@ export function WorkspaceDockArea({
           mentionSuggestions={mentionSuggestions}
           onOpenProviders={onOpenProviders}
           onOpenPalette={onOpenPalette}
+          onNavigate={onNavigate}
           events={events}
           live={live}
           showHeading={false}
