@@ -7,19 +7,30 @@
  * WorkspaceDockSidebar — the workspace tab's right-hand sidebar as a
  * dock-resident panel system. Each workspace panel (agents, tasks,
  * subagents, trajectory, file changes, sessions, artifacts, goals,
- * deliverables) is a stable-id leaf of a DockContainer; the tree is
- * persisted under its own storage key through the dock layout engine,
- * so arrangements and closures survive reloads. A small "add panel"
- * menu at the top lists every registered panel that is not currently
- * docked and reopens its leaf on pick — the menu is driven purely by
- * the registry, so registering a leaf in WORKSPACE_PANELS is the whole
- * mount. The panel list itself and its FEATURE_DOMAINS projection live
- * in src/features (the single registry — see workspacePanelDomains
- * there); this module owns only the panel→component wiring and the
- * dock store. The panels themselves are untouched — this module only
- * wraps them.
+ * deliverables, search) is a stable-id leaf of a DockContainer; the
+ * tree is persisted under its own storage key through the dock layout
+ * engine, so arrangements and closures survive reloads. A small "add
+ * panel" menu at the top lists every registered panel that is not
+ * currently docked — grouped by the feature registry's sections — and
+ * reopens its leaf on pick; the menu is driven purely by the registry,
+ * so registering a leaf in WORKSPACE_PANELS is the whole mount. The
+ * panel list itself and its FEATURE_DOMAINS projection live in
+ * src/features (the single registry — see workspacePanelDomains there);
+ * this module owns only the panel→component wiring and the dock store.
+ *
+ * Two content-density layers ride on the pure model in panelModel.ts:
+ *   - conditional leaves: the review / output summaries are registry
+ *     leaves too — panelsForWorkspace adds them only while the
+ *     workspace carries the content to back them (review result /
+ *     output or failed status) and withConditionalPanels keeps them
+ *     docked view-time (stale ones pruned), replacing the old
+ *     always-on strip below the dock;
+ *   - header badges: badgesForPanel decides per leaf whether its header
+ *     shows the unread / parked-permission dot (files leaf unread since
+ *     the caller's seen watermark; agent leaf while permission prompts
+ *     await a decision).
  */
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ListPlus, RotateCcw } from "lucide-react"
 import { t, useLocale } from "@max/i18n"
 import type { RuntimeEvent, Workspace } from "@/api"
@@ -28,6 +39,14 @@ import {
   createStackedDockModel,
   flattenPanels,
 } from "@/components/layout/dockModel"
+import {
+  CONDITIONAL_PANEL_IDS,
+  badgesForPanel,
+  fileChangeCount,
+  groupPanelsForMenu,
+  panelsForWorkspace,
+  withConditionalPanels,
+} from "@/components/layout/panelModel"
 import { createDockLayoutStore, useDockLayoutStore } from "@/components/layout/useDockLayout"
 import { DockContainer } from "@/components/layout/DockContainer"
 import { AgentPanel } from "@/components/AgentPanel"
@@ -95,10 +114,42 @@ export function WorkspaceDockSidebar({
   const openPanel = useWorkspaceDockStore((s) => s.openPanel)
   const resetWorkspaceDock = useWorkspaceDockStore((s) => s.resetLayout)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // Workspace-conditioned registry: the base panels plus the review /
+  // output leaves only while the workspace carries their content.
+  const registry = useMemo(() => panelsForWorkspace(workspace, WORKSPACE_PANELS), [workspace])
+
+  // View-time residency for the conditional leaves: content arrives → the
+  // leaf docks (bottom, fair share); content goes away → the leaf is
+  // pruned. Pure transform — the persisted store tree stays untouched,
+  // and closure is intentionally not offered for content-backed leaves
+  // (the tri-state hidden strip is the "get out of my face" affordance).
+  const ensureConditionals = useCallback(
+    (current: DockModel) => withConditionalPanels(current, registry),
+    [registry],
+  )
+  const conditionalIds = useMemo(
+    () => new Set(registry.filter((p) => CONDITIONAL_PANEL_IDS.includes(p.id)).map((p) => p.id)),
+    [registry],
+  )
+
+  // Header badges: the pure policy from the event stream, softened by the
+  // caller's seen watermark — focusing the files leaf acknowledges its
+  // current change count so the dot clears until fresh edits arrive.
+  const [seenFileChanges, setSeenFileChanges] = useState(0)
+  const activeId = model.activeId
+  useEffect(() => {
+    if (activeId === "files") setSeenFileChanges(fileChangeCount(events))
+  }, [activeId, events])
+  const badgeFor = useCallback(
+    (panelId: string) => badgesForPanel(panelId, events, { seenCount: seenFileChanges }),
+    [events, seenFileChanges],
+  )
+
   const closedPanels = useMemo(() => {
     const docked = new Set(flattenPanels(model.root).map((l) => l.id))
-    return WORKSPACE_PANELS.filter((p) => !docked.has(p.id))
-  }, [model])
+    return registry.filter((p) => !docked.has(p.id))
+  }, [model, registry])
 
   // Dock leaf id → panel element. Purely a mapping: the components are
   // the exact ones the inline sidebar used to render, unmodified.
@@ -129,6 +180,10 @@ export function WorkspaceDockSidebar({
         return <DeliverablesPanel workspaceId={workspace?.id} />
       case "search":
         return <SessionSearchPanel workspaceId={workspace?.id} onOpenSession={onOpenSession} />
+      case "review":
+        return <ReviewPanel workspace={workspace} />
+      case "output":
+        return <OutputPanel workspace={workspace} />
       default:
         return null
     }
@@ -137,10 +192,11 @@ export function WorkspaceDockSidebar({
   return (
     <div data-testid="workspace-dock-sidebar" className="flex h-full min-h-0 flex-col gap-2">
       {/* Add-panel menu (top of the sidebar): lists every registered panel
-          that is not currently docked; picking one reopens its leaf. Next
-          to it, "Reset layout" restores both persisted trees — the nine
-          registry panels here and the shell dock's default conversation
-          grid (chat | timeline) — and mirrors the reset to storage. */}
+          that is not currently docked, grouped by the feature registry's
+          sections; picking one reopens its leaf. Next to it, "Reset
+          layout" restores both persisted trees — the registry panels here
+          and the shell dock's default conversation grid (chat | timeline)
+          — and mirrors the reset to storage. */}
       <div className="relative flex shrink-0 items-center justify-end gap-2">
         <button
           type="button"
@@ -179,41 +235,50 @@ export function WorkspaceDockSidebar({
                 {t("layout.addPanelMenu.allDocked")}
               </span>
             ) : (
-              closedPanels.map((panel) => (
-                <button
-                  key={panel.id}
-                  type="button"
-                  role="menuitem"
-                  data-testid={`workspace-dock-add-${panel.id}`}
-                  title={t(descriptionKeyFor(panel.titleKey), t(panel.titleKey))}
-                  className="block w-full rounded px-2 py-1 text-left hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => {
-                    openPanel(panel.id)
-                    setMenuOpen(false)
-                  }}
+              groupPanelsForMenu(closedPanels).map((group) => (
+                <div
+                  key={group.section}
+                  role="group"
+                  aria-label={t(group.titleKey)}
+                  data-testid={`workspace-dock-add-group-${group.section}`}
                 >
-                  {t(panel.titleKey)}
-                </button>
+                  <div className="px-2 pb-0.5 pt-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                    {t(group.titleKey)}
+                  </div>
+                  {group.panels.map((panel) => (
+                    <button
+                      key={panel.id}
+                      type="button"
+                      role="menuitem"
+                      data-testid={`workspace-dock-add-${panel.id}`}
+                      title={t(descriptionKeyFor(panel.titleKey), t(panel.titleKey))}
+                      className="block w-full rounded px-2 py-1 text-left hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => {
+                        openPanel(panel.id)
+                        setMenuOpen(false)
+                      }}
+                    >
+                      {t(panel.titleKey)}
+                    </button>
+                  ))}
+                </div>
               ))
             )}
           </div>
         )}
       </div>
 
-      {/* The resident leaves — DockContainer renders the persisted tree. */}
+      {/* The resident leaves — DockContainer renders the persisted tree,
+          view-time-repaired to carry the conditional review/output leaves
+          exactly while their content exists. */}
       <div className="min-h-0 flex-1">
-        <DockContainer store={useWorkspaceDockStore} renderPanel={renderPanel} />
-      </div>
-
-      {/* The workspace's final review / live output summary keeps its
-          always-visible slot below the dock — dock residency covers the
-          nine registry panels; this conditional pair stays a plain strip. */}
-      <div className="max-h-64 shrink-0 overflow-y-auto">
-        {workspace?.review ? (
-          <ReviewPanel workspace={workspace} />
-        ) : (
-          <OutputPanel workspace={workspace} />
-        )}
+        <DockContainer
+          store={useWorkspaceDockStore}
+          renderPanel={renderPanel}
+          transformModel={ensureConditionals}
+          lockedPanelIds={conditionalIds}
+          badgeFor={badgeFor}
+        />
       </div>
     </div>
   )

@@ -16,6 +16,7 @@ import type { ReactNode } from "react"
 import { Maximize2, Minimize2, X } from "lucide-react"
 import { t, useLocale } from "@max/i18n"
 import { cn } from "@/lib/utils"
+import type { DockPanelBadge } from "@/components/layout/panelModel"
 
 export interface DockPanelProps {
   /** Panel id — also the testid anchor (dock-panel-<id>). */
@@ -31,6 +32,11 @@ export interface DockPanelProps {
   maximized?: boolean
   /** false hides the close affordance (resident leaves, e.g. the chat). */
   closable?: boolean
+  /**
+   * Unread / parked dot for the header (null hides it) — the model
+   * decision comes from panelModel.badgesForPanel, this is view only.
+   */
+  badge?: DockPanelBadge | null
   onClose?: (id: string) => void
   /** Advances the tri-state display cycle for this panel. */
   onCycleDisplay?: (id: string) => void
@@ -44,6 +50,7 @@ export function DockPanel({
   active = false,
   maximized = false,
   closable = true,
+  badge = null,
   onClose,
   onCycleDisplay,
   onFocus,
@@ -71,6 +78,21 @@ export function DockPanel({
         <span className="truncate" aria-current={active ? "true" : undefined}>
           {title}
         </span>
+        {badge !== null && (
+          <span
+            data-testid={`dock-badge-${id}`}
+            title={t(
+              badge.reason === "parked" ? "layout.panel.badgeParked" : "layout.panel.badgeUnread",
+            )}
+            aria-label={t(
+              badge.reason === "parked" ? "layout.panel.badgeParked" : "layout.panel.badgeUnread",
+            )}
+            className={cn(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              badge.reason === "parked" ? "bg-destructive" : "bg-primary",
+            )}
+          />
+        )}
         <span className="flex-1" />
         {onCycleDisplay && (
           <button

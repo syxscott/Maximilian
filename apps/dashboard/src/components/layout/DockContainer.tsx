@@ -31,6 +31,7 @@ import {
   ratioFromPointer,
 } from "@/components/layout/dockModel"
 import { type DockLayoutStore, useDockLayoutStore } from "@/components/layout/useDockLayout"
+import { type DockPanelBadge } from "@/components/layout/panelModel"
 import { DockPanel } from "@/components/layout/DockPanel"
 
 /** Divider thickness in px — subtracted once from the split's free space. */
@@ -58,6 +59,12 @@ export interface DockContainerProps {
    * store state itself is never written.
    */
   transformModel?: (model: DockModel) => DockModel
+  /**
+   * Optional header-badge policy — panel id → unread/parked dot (the
+   * pure decision lives in panelModel.badgesForPanel; the container only
+   * threads the result into the leaf header).
+   */
+  badgeFor?: (panelId: string) => DockPanelBadge | null
   className?: string
 }
 
@@ -73,6 +80,7 @@ interface NodeViewProps {
   onResizeSplit: (splitId: string, ratio: number) => void
   onResetSplit: (splitId: string) => void
   lockedPanelIds?: ReadonlySet<string>
+  badgeFor?: (panelId: string) => DockPanelBadge | null
 }
 
 function HiddenStripView({
@@ -107,6 +115,7 @@ function LeafView({
   onCycleDisplay,
   onFocus,
   lockedPanelIds,
+  badgeFor,
 }: {
   leaf: DockLeaf
   display: DockPanelDisplay
@@ -116,6 +125,7 @@ function LeafView({
   onCycleDisplay: (id: string) => void
   onFocus: (id: string) => void
   lockedPanelIds?: ReadonlySet<string>
+  badgeFor?: (panelId: string) => DockPanelBadge | null
 }) {
   // Hidden leaves collapse to a thin restore strip — never a full panel.
   if (display === "hidden") {
@@ -130,6 +140,7 @@ function LeafView({
       active={active}
       maximized={display === "maximized"}
       closable={closable}
+      badge={badgeFor?.(leaf.id) ?? null}
       onClose={closable ? onClose : undefined}
       onCycleDisplay={onCycleDisplay}
       onFocus={onFocus}
@@ -151,6 +162,7 @@ function NodeView({ node, ...rest }: NodeViewProps) {
         onCycleDisplay={rest.onCycleDisplay}
         onFocus={rest.onFocus}
         lockedPanelIds={rest.lockedPanelIds}
+        badgeFor={rest.badgeFor}
       />
     )
   }
@@ -285,6 +297,7 @@ export function DockContainer({
   store,
   lockedPanelIds,
   transformModel,
+  badgeFor,
   className,
 }: DockContainerProps) {
   // The shell dock is the default; scoped docks pass their own store.
@@ -314,6 +327,7 @@ export function DockContainer({
             onCycleDisplay={cycleDisplay}
             onFocus={setActive}
             lockedPanelIds={lockedPanelIds}
+            badgeFor={badgeFor}
           />
         </div>
       )
@@ -348,6 +362,7 @@ export function DockContainer({
         onResizeSplit={resizeSplit}
         onResetSplit={resetSplitAction}
         lockedPanelIds={lockedPanelIds}
+        badgeFor={badgeFor}
       />
     </div>
   )

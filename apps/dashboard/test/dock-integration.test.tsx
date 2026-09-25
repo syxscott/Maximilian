@@ -10,8 +10,15 @@
  *     with its translated header and real panel content;
  *   - closing a leaf drives the scoped dock store and persists the layout
  *     document under "maximilian.workspace-dock-layout";
- *   - the add-panel menu lists only closed panels and restores leaves,
- *     including into a fully-emptied dock (dock-empty state);
+ *   - the add-panel menu lists only closed panels — grouped by the
+ *     feature registry's sections — and restores leaves, including into
+ *     a fully-emptied dock (dock-empty state);
+ *   - the review / output summaries are CONDITIONAL leaves: registered
+ *     only while the workspace carries their content
+ *     (panelsForWorkspace / withConditionalPanels), replacing the old
+ *     always-on strip below the dock;
+ *   - leaf headers carry the unread / parked badges the model derives
+ *     from the event stream (badgesForPanel);
  *   - persisted documents rehydrate, and hand-edited layouts with
  *     unknown panel ids render without crashing;
  *   - the panel registry maps one-to-one onto the feature-domain
@@ -29,6 +36,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { getDictionary, setLocale } from "@max/i18n"
 import { applyDashboardDictionaries } from "../src/locales/index"
+import type { RuntimeEvent, Workspace } from "../src/api"
 import {
   DOCK_MAIN_PANEL_ID,
   createDefaultDockModel,
@@ -86,18 +94,52 @@ afterEach(() => {
   }
 })
 
-const renderSidebar = () => {
+const renderSidebar = (props?: Partial<Parameters<typeof WorkspaceDockSidebar>[0]>) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
-      <WorkspaceDockSidebar workspace={null} events={[]} />
+      <WorkspaceDockSidebar workspace={null} events={[]} {...props} />
     </QueryClientProvider>,
   )
 }
 
 const dockedIds = () => flattenPanels(useWorkspaceDockStore.getState().model.root).map((l) => l.id)
+
+// ── density fixtures (conditional review/output leaves + badges) ────────────
+
+const REVIEW_RESULT = {
+  id: "rev-1",
+  score: 8,
+  issues: [],
+  suggestions: [],
+  summary: "solid work",
+  reviewedAt: "2026-01-01T01:00:00Z",
+}
+
+const RESULT_ROW = {
+  id: "res-1",
+  taskId: "t1",
+  agentRole: "coder",
+  agentId: "a1",
+  output: "did the thing",
+  metadata: {},
+  createdAt: "2026-01-01T00:30:00Z",
+}
+
+const densityWorkspace = (overrides: Partial<Workspace>): Workspace => ({
+  id: "ws-density",
+  userRequest: "build the thing",
+  status: "completed",
+  plan: undefined,
+  results: [],
+  review: undefined,
+  error: undefined,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+  ...overrides,
+})
 
 describe("WorkspaceDockSidebar — dock residency", () => {
   it("renders all registered panels as stable-id dock leaves with translated headers", () => {
@@ -268,6 +310,86 @@ describe("WorkspaceDockSidebar — dock residency", () => {
     // the raw id as the header title instead of throwing.
     expect(screen.getByTestId("dock-panel-ghost")).toBeTruthy()
     expect(screen.getByTestId("dock-header-ghost").textContent).toBe("ghost")
+  })
+})
+
+// ── density — conditional leaves, header badges, grouped add-menu ───────────
+
+describe("WorkspaceDockSidebar — conditional leaves, badges, grouped menu", () => {
+  it("docks the review leaf exactly while the workspace carries a review result", () => {
+    renderSidebar({ workspace: densityWorkspace({ review: REVIEW_RESULT }) })
+    const leaf = screen.getByTestId("dock-panel-review")
+    expect(screen.getByTestId("dock-header-review").textContent).toBe("Review")
+    // The real ReviewPanel body lives inside the leaf (score + summary).
+    expect(leaf.textContent).toContain("solid work")
+    // Completed without results → no output leaf; the old below-dock
+    // strip is gone — the review summary is dock residency now.
+    expect(screen.queryByTestId("dock-panel-output")).toBeNull()
+  })
+
+  it("docks the output leaf for a failed workspace; a clean workspace gets neither leaf", () => {
+    const failed = renderSidebar({
+      workspace: densityWorkspace({ status: "failed", error: "boom" }),
+    })
+    expect(screen.getByTestId("dock-panel-output")).toBeTruthy()
+    expect(screen.getByTestId("dock-header-output").textContent).toBe("Output")
+    expect(screen.queryByTestId("dock-panel-review")).toBeNull()
+    failed.unmount()
+
+    // Clean: neither leaf docks, and the registry-driven add-panel menu
+    // does not offer them either.
+    renderSidebar({ workspace: densityWorkspace({}) })
+    expect(screen.queryByTestId("dock-panel-review")).toBeNull()
+    expect(screen.queryByTestId("dock-panel-output")).toBeNull()
+    fireEvent.click(screen.getByTestId("workspace-dock-add-toggle"))
+    expect(screen.queryByTestId("workspace-dock-add-review")).toBeNull()
+    expect(screen.queryByTestId("workspace-dock-add-output")).toBeNull()
+  })
+
+  it("keeps the conditional leaves view-time only — the persisted tree stays base-only", () => {
+    renderSidebar({
+      workspace: densityWorkspace({ review: REVIEW_RESULT, results: [RESULT_ROW] }),
+    })
+    // Both leaves dock (review + output independently conditioned).
+    expect(screen.getByTestId("dock-panel-review")).toBeTruthy()
+    expect(screen.getByTestId("dock-panel-output")).toBeTruthy()
+    // The store document stays untouched by the residency transform —
+    // exactly like the shell dock's ensureResidentLeaf repair.
+    expect(dockedIds()).toEqual(WORKSPACE_PANELS.map((p) => p.id))
+    expect(localStorage.getItem(WORKSPACE_DOCK_STORAGE_KEY)).toBeNull()
+    // Content-backed leaves are resident: no close affordance.
+    expect(screen.queryByTestId("dock-close-review")).toBeNull()
+  })
+
+  it("renders the add-panel menu grouped by the feature registry's sections", () => {
+    renderSidebar()
+    fireEvent.click(screen.getByTestId("dock-close-files"))
+    fireEvent.click(screen.getByTestId("workspace-dock-add-toggle"))
+    const menu = screen.getByTestId("workspace-dock-add-menu")
+    const group = screen.getByTestId("workspace-dock-add-group-workspace")
+    expect(menu.contains(group)).toBe(true)
+    // The section heading renders above the pickable closed panels.
+    expect(group.textContent).toContain("Workspace panels")
+    expect(group.contains(screen.getByTestId("workspace-dock-add-files"))).toBe(true)
+  })
+
+  it("badges leaf headers: parked permission on agent, unread files cleared by focus", () => {
+    const events: RuntimeEvent[] = [
+      { type: "tool-start", toolName: "bash", workspaceId: "ws-density" },
+      { type: "permission-request", requestId: "r1", taskId: "t1", workspaceId: "ws-density" },
+      { type: "tool-start", toolName: "edit", workspaceId: "ws-density" },
+    ]
+    renderSidebar({ workspace: null, events })
+    // Parked permission → the dot sits on the agent header alone.
+    expect(screen.getByTestId("dock-badge-agent")).toBeTruthy()
+    expect(screen.queryByTestId("dock-badge-tasks")).toBeNull()
+    // A file edit in the stream → unread dot on the files leaf...
+    expect(screen.getByTestId("dock-badge-files")).toBeTruthy()
+    // ...which clears once the user focuses the files leaf (seen watermark).
+    fireEvent.pointerDown(screen.getByTestId("dock-panel-files"))
+    expect(screen.queryByTestId("dock-badge-files")).toBeNull()
+    // The parked dot survives focus — only a resolution clears it.
+    expect(screen.getByTestId("dock-badge-agent")).toBeTruthy()
   })
 })
 

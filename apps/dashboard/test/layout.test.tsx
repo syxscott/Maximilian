@@ -10,6 +10,11 @@
  *     duplicate ids, over-deep trees, cyclic graphs), plus the density
  *     layer: resetSplit (double-click even-split) and the tri-state
  *     panel display (normal → maximized → hidden strip) cycle;
+ *   - panelModel.ts — the panel-registry density model: the
+ *     workspace-conditioned review/output leaves (panelsForWorkspace +
+ *     withConditionalPanels), the leaf-header badge policy
+ *     (badgesForPanel) and the add-panel menu's section grouping
+ *     (groupPanelsForMenu);
  *   - useDockLayout — store actions + "maximilian.dock-layout" persistence;
  *   - DockPanel / DockContainer — render smoke, tri-state display wiring,
  *     splitter drag tooltip / double-click reset driven through pointer
@@ -65,6 +70,13 @@ import {
 import { DockContainer } from "../src/components/layout/DockContainer"
 import { DockPanel } from "../src/components/layout/DockPanel"
 import { WorkspaceDockArea } from "../src/components/layout/WorkspaceDockArea"
+import {
+  type PanelSpec,
+  badgesForPanel,
+  groupPanelsForMenu,
+  panelsForWorkspace,
+  withConditionalPanels,
+} from "../src/components/layout/panelModel"
 import { WORKSPACE_PANELS } from "../src/features"
 import {
   WORKSPACE_PREFS_STORAGE_KEY,
@@ -324,6 +336,244 @@ describe("dockModel resetSplit + tri-state display", () => {
     expect(
       cyclePanelDisplay({ maximizedId: "x", hiddenIds: "nope" as unknown as string[] }, "a"),
     ).toEqual({ maximizedId: "a", hiddenIds: [] })
+  })
+})
+
+// ── panelModel: workspace-conditioned registry (review / output leaves) ─────
+
+describe("panelModel — panelsForWorkspace", () => {
+  const clean = {
+    id: "ws-1",
+    userRequest: "ship it",
+    status: "running",
+    results: [],
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  }
+  const reviewed = {
+    ...clean,
+    status: "completed",
+    review: { id: "r1", score: 8, issues: [], suggestions: [], summary: "solid" },
+  }
+  const withResults = { ...clean, status: "completed", results: [{ id: "res-1" }] }
+  const failed = { ...clean, status: "failed", error: "boom" }
+
+  it("keeps exactly the base registry for a clean (or absent) workspace", () => {
+    expect(panelsForWorkspace(null, WORKSPACE_PANELS)).toEqual([...WORKSPACE_PANELS])
+    expect(panelsForWorkspace(undefined, WORKSPACE_PANELS)).toEqual([...WORKSPACE_PANELS])
+    expect(panelsForWorkspace(clean, WORKSPACE_PANELS)).toEqual([...WORKSPACE_PANELS])
+    expect(panelsForWorkspace(clean, WORKSPACE_PANELS)).toHaveLength(WORKSPACE_PANELS.length)
+  })
+
+  it("adds the review leaf only when the workspace carries a review result", () => {
+    const panels = panelsForWorkspace(reviewed, WORKSPACE_PANELS)
+    expect(panels).toHaveLength(WORKSPACE_PANELS.length + 1)
+    expect(panels.at(-1)).toEqual({ id: "review", titleKey: "layout.panel.review" })
+  })
+
+  it("adds the output leaf for a failed workspace even without results", () => {
+    const panels = panelsForWorkspace(failed, WORKSPACE_PANELS)
+    expect(panels).toHaveLength(WORKSPACE_PANELS.length + 1)
+    expect(panels.at(-1)).toEqual({ id: "output", titleKey: "layout.panel.output" })
+    // Materialized results count as output too.
+    const withOutput = panelsForWorkspace(withResults, WORKSPACE_PANELS)
+    expect(withOutput.at(-1)).toEqual({ id: "output", titleKey: "layout.panel.output" })
+  })
+
+  it("adds both leaves independently when review and output coexist", () => {
+    const panels = panelsForWorkspace({ ...reviewed, results: [{ id: "res-1" }] }, WORKSPACE_PANELS)
+    expect(panels.map((p) => p.id)).toEqual([
+      ...WORKSPACE_PANELS.map((p) => p.id),
+      "review",
+      "output",
+    ])
+  })
+
+  it("is pure and idempotent: base list untouched, no duplicate conditional ids", () => {
+    const base = [...WORKSPACE_PANELS]
+    const once = panelsForWorkspace(reviewed, base)
+    expect(base).toEqual(WORKSPACE_PANELS) // the input is never mutated
+    const preSeeded: PanelSpec[] = [...WORKSPACE_PANELS, { id: "review", titleKey: "custom" }]
+    expect(panelsForWorkspace(reviewed, preSeeded)).toEqual(preSeeded)
+    expect(once.every((p) => p !== null && typeof p.id === "string")).toBe(true)
+  })
+})
+
+// ── panelModel: leaf-header badges (unread / parked dots) ───────────────────
+
+describe("panelModel — badgesForPanel", () => {
+  const ev = (seq: number, type: string, extra: Record<string, unknown> = {}) => ({
+    type,
+    workspaceId: "ws-1",
+    seq,
+    ...extra,
+  })
+  const parked = [
+    ev(0, "tool-start", { toolName: "bash", taskId: "t1" }),
+    ev(1, "permission-request", { requestId: "r1", taskId: "t1", tool: "bash" }),
+  ]
+  const edits = [
+    ev(0, "tool-start", { toolName: "edit" }),
+    ev(1, "tool-start", { toolName: "write" }),
+    ev(2, "tool-start", { toolName: "bash" }),
+  ]
+
+  it("badges the agent leaf while permission prompts are parked", () => {
+    expect(badgesForPanel("agent", parked)).toEqual({ reason: "parked", count: 1 })
+    // The matching resolution clears the dot.
+    const resolved = [...parked, ev(2, "permission-resolved", { requestId: "r1" })]
+    expect(badgesForPanel("agent", resolved)).toBeNull()
+    // Two parked prompts answer with count 2; one resolution leaves one.
+    const twoRequests = [...parked, ev(2, "permission-request", { requestId: "r2" })]
+    expect(badgesForPanel("agent", twoRequests)).toEqual({ reason: "parked", count: 2 })
+    expect(
+      badgesForPanel("agent", [...twoRequests, ev(3, "permission-resolved", { requestId: "r2" })]),
+    ).toEqual({
+      reason: "parked",
+      count: 1,
+    })
+  })
+
+  it("badges the files leaf with unseen file changes, cleared by the seen watermark", () => {
+    expect(badgesForPanel("files", edits)).toEqual({ reason: "unread", count: 2 })
+    expect(badgesForPanel("files", edits, { seenCount: 2 })).toBeNull()
+    expect(badgesForPanel("files", edits, { seenCount: 1 })).toEqual({ reason: "unread", count: 2 })
+    // No file changes → no dot, watermark or not.
+    expect(badgesForPanel("files", [ev(0, "tool-start", { toolName: "bash" })])).toBeNull()
+    expect(badgesForPanel("files", [])).toBeNull()
+  })
+
+  it("stays null for other leaves and defensive about junk input", () => {
+    expect(badgesForPanel("chat", parked)).toBeNull()
+    expect(badgesForPanel("timeline", edits)).toBeNull()
+    expect(badgesForPanel("agent", undefined)).toBeNull()
+    expect(badgesForPanel("", parked)).toBeNull()
+    expect(badgesForPanel("files", [null, 42, "junk", undefined] as never)).toBeNull()
+    // A permission event missing its requestId pairs by stream position.
+    const anonymous = [ev(0, "permission-request", { taskId: "t9" })]
+    expect(badgesForPanel("agent", anonymous)).toEqual({ reason: "parked", count: 1 })
+  })
+})
+
+// ── panelModel: add-panel menu grouping (FEATURE_DOMAINS sections) ──────────
+
+describe("panelModel — groupPanelsForMenu", () => {
+  it("groups the default registry under the workspace section, order preserved", () => {
+    const groups = groupPanelsForMenu(WORKSPACE_PANELS)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].section).toBe("workspace")
+    expect(groups[0].titleKey).toBe("layout.addPanelMenu.section.workspace")
+    expect(groups[0].panels).toEqual([...WORKSPACE_PANELS])
+  })
+
+  it("routes panels via the domain registry in canonical section order", () => {
+    const domains = [
+      { id: "alpha", titleKey: "t.a", glyph: "a", section: "workspace" as const },
+      { id: "beta", titleKey: "t.b", glyph: "b", section: "observe" as const },
+      { id: "gamma", titleKey: "t.g", glyph: "g", section: "admin" as const },
+    ]
+    const groups = groupPanelsForMenu(
+      [
+        { id: "gamma", titleKey: "t.g" },
+        { id: "alpha", titleKey: "t.a" },
+        { id: "beta", titleKey: "t.b" },
+      ],
+      domains,
+      {},
+    )
+    expect(groups.map((g) => g.section)).toEqual(["workspace", "observe", "admin"])
+    expect(groups.map((g) => g.panels[0].id)).toEqual(["alpha", "beta", "gamma"])
+    // Sections without panels are omitted entirely.
+    const onlyAdmin = groupPanelsForMenu([{ id: "gamma", titleKey: "t.g" }], domains, {})
+    expect(onlyAdmin).toEqual([
+      {
+        section: "admin",
+        titleKey: "layout.addPanelMenu.section.admin",
+        panels: [{ id: "gamma", titleKey: "t.g" }],
+      },
+    ])
+  })
+
+  it("honors aliases and falls back to workspace for unmapped or junk rows", () => {
+    // The real alias map routes the agent leaf to the chat domain.
+    expect(groupPanelsForMenu([{ id: "agent", titleKey: "agent.title" }])[0].section).toBe(
+      "workspace",
+    )
+    const domains = [{ id: "beta", titleKey: "t.b", glyph: "b", section: "observe" as const }]
+    const groups = groupPanelsForMenu(
+      [
+        { id: "ghost", titleKey: "t.g" },
+        { id: "beta", titleKey: "t.b" },
+        null as unknown as PanelSpec,
+        { id: "", titleKey: "t.x" },
+      ],
+      domains,
+      {},
+    )
+    // Unmapped panels fall back to workspace so a registry row can never
+    // vanish from the menu; junk rows drop out.
+    expect(groups.map((g) => g.section)).toEqual(["workspace", "observe"])
+    expect(groups[0].panels.map((p) => p.id)).toEqual(["ghost"])
+    expect(groups[1].panels.map((p) => p.id)).toEqual(["beta"])
+    // Duplicate ids collapse within a group.
+    expect(
+      groupPanelsForMenu(
+        [
+          { id: "beta", titleKey: "t.b" },
+          { id: "beta", titleKey: "t.b" },
+        ],
+        domains,
+        {},
+      )[0].panels,
+    ).toHaveLength(1)
+  })
+})
+
+// ── panelModel: conditional-leaf residency (withConditionalPanels) ──────────
+
+describe("panelModel — withConditionalPanels", () => {
+  const reviewed = {
+    id: "ws-1",
+    status: "completed",
+    results: [{ id: "res-1" }],
+    review: { id: "r1", score: 9 },
+  }
+  const base = () => createStackedDockModel(WORKSPACE_PANELS)
+
+  it("docks the backed conditional leaves without stealing focus", () => {
+    const next = withConditionalPanels(base(), panelsForWorkspace(reviewed, WORKSPACE_PANELS))
+    expect(flattenPanels(next.root).map((l) => l.id)).toEqual([
+      ...WORKSPACE_PANELS.map((p) => p.id),
+      "review",
+      "output",
+    ])
+    expect(next.activeId).toBe("agent") // the user's focus stays put
+  })
+
+  it("prunes stale conditional leaves whose content is gone", () => {
+    // A persisted document carrying a review leaf for a now-clean workspace.
+    const stale: DockModel = {
+      root: makeSplit(
+        "vertical",
+        makeLeaf("agent", "agent.title"),
+        makeLeaf("review", "layout.panel.review"),
+        0.5,
+      ),
+      activeId: "review",
+    }
+    const pruned = withConditionalPanels(stale, WORKSPACE_PANELS)
+    expect(flattenPanels(pruned.root).map((l) => l.id)).toEqual(["agent"])
+    expect(pruned.activeId).toBe("agent") // focus falls back to the survivor
+  })
+
+  it("grows the leaf into an emptied dock; plain registries change nothing", () => {
+    const grown = withConditionalPanels({ root: null, activeId: null }, [
+      { id: "review", titleKey: "layout.panel.review" },
+    ])
+    expect(flattenPanels(grown.root).map((l) => l.id)).toEqual(["review"])
+    expect(grown.activeId).toBe("review")
+    const plain = base()
+    expect(withConditionalPanels(plain, WORKSPACE_PANELS)).toBe(plain)
   })
 })
 
@@ -619,6 +869,20 @@ describe("DockPanel", () => {
     expect(screen.queryByLabelText("Close panel")).toBeNull()
     expect(screen.queryByLabelText("Maximize panel")).toBeNull()
   })
+
+  it("shows the header badge dot exactly when the model hands one over", () => {
+    const { rerender } = render(
+      <DockPanel id="agent" titleKey="agent.title" badge={{ reason: "parked", count: 2 }} />,
+    )
+    expect(screen.getByTestId("dock-badge-agent")).toBeTruthy()
+    expect(screen.getByLabelText("Permission waiting for approval")).toBeTruthy()
+    // The unread flavor labels itself distinctly.
+    rerender(<DockPanel id="agent" titleKey="agent.title" badge={{ reason: "unread", count: 3 }} />)
+    expect(screen.getByLabelText("New activity")).toBeTruthy()
+    // No badge → no dot.
+    rerender(<DockPanel id="agent" titleKey="agent.title" />)
+    expect(screen.queryByTestId("dock-badge-agent")).toBeNull()
+  })
 })
 
 // ── DockContainer ───────────────────────────────────────────────────────────
@@ -736,6 +1000,27 @@ describe("DockContainer", () => {
     // Listeners are released after pointerup — later moves are ignored.
     windowPointer("pointermove", 100, 0)
     expect(rootSplit(useDockLayoutStore.getState().model).ratio).toBe(0.75)
+  })
+
+  it("threads badgeFor into the leaf headers — dots only where the model says so", () => {
+    act(() => {
+      useDockLayoutStore.setState({
+        model: createDockModel([
+          { id: "chat", titleKey: "layout.panel.chat" },
+          { id: "agent", titleKey: "agent.title" },
+        ]),
+        maximizedId: null,
+        hiddenIds: [],
+      })
+    })
+    render(
+      <DockContainer
+        renderPanel={(id) => <div data-testid={`content-${id}`} />}
+        badgeFor={(id) => (id === "agent" ? { reason: "unread", count: 1 } : null)}
+      />,
+    )
+    expect(screen.getByTestId("dock-badge-agent")).toBeTruthy()
+    expect(screen.queryByTestId("dock-badge-chat")).toBeNull()
   })
 
   it("a vertical split maps the y axis", () => {

@@ -8,7 +8,11 @@
       "hidden": "Panel collapsed — click to restore",
       "chat": "Conversation",
       "timeline": "Timeline",
-      "untitled": "Untitled panel"
+      "untitled": "Untitled panel",
+      "review": "Review",
+      "output": "Output",
+      "badgeUnread": "New activity",
+      "badgeParked": "Permission waiting for approval"
     },
     "splitter": "Drag to resize",
     "splitterReset": "Double-click to split evenly",
@@ -23,7 +27,12 @@
       "allDocked": "All panels are open",
       "hint": "Pick a panel to dock in the sidebar",
       "workspaceSection": "Workspace panels",
-      "shellSection": "Conversation area"
+      "shellSection": "Conversation area",
+      "section": {
+        "workspace": "Workspace panels",
+        "observe": "Observability",
+        "admin": "Administration"
+      }
     }
   }
 }

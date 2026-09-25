@@ -8,7 +8,11 @@
       "hidden": "面板已折叠——点击还原",
       "chat": "会话",
       "timeline": "时间线",
-      "untitled": "未命名面板"
+      "untitled": "未命名面板",
+      "review": "评审",
+      "output": "输出",
+      "badgeUnread": "有新动态",
+      "badgeParked": "权限等待审批"
     },
     "splitter": "拖动调整大小",
     "splitterReset": "双击均分",
@@ -23,7 +27,12 @@
       "allDocked": "所有面板均已打开",
       "hint": "选择要停靠到侧栏的面板",
       "workspaceSection": "工作区面板",
-      "shellSection": "会话区"
+      "shellSection": "会话区",
+      "section": {
+        "workspace": "工作区面板",
+        "observe": "观测",
+        "admin": "管理"
+      }
     }
   }
 }
