@@ -84,6 +84,9 @@
     "notify": {
       "toggleFailed": "Failed to toggle \"{name}\"",
       "restoreFailed": "Rebuild of \"{name}\" failed and the restore did not complete"
-    }
+    },
+    "search.label": "Search automations",
+    "slots.hint": "Slots come from the underlying job's PendingSlot; times are server-side schedule/update times",
+    "history.hint": "Recent triggers, filterable by kind — trigger one manually from any row"
   }
 }

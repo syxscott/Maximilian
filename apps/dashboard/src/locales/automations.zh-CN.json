@@ -84,6 +84,9 @@
     "notify": {
       "toggleFailed": "自动化 “{name}” 切换失败",
       "restoreFailed": "自动化 “{name}” 重建失败且恢复未完成"
-    }
+    },
+    "search.label": "搜索自动化",
+    "slots.hint": "调度槽位读取自底层作业的 PendingSlot，时间为服务端的计划/更新时间",
+    "history.hint": "最近的触发记录，可按类型筛选，也可在任意行立即手动触发"
   }
 }

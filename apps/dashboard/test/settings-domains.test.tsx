@@ -37,6 +37,12 @@ import { MemoryDomain } from "../src/components/settings/memory-domain/MemoryDom
 import { SkillsDomain } from "../src/components/settings/skills-domain/SkillsDomain"
 import { toMigrationsStatusView } from "../src/components/settings/store-domain/model"
 import { MigrationCandidatesCard } from "../src/components/settings/store-domain/MigrationCandidatesCard"
+import {
+  SETTINGS_SECTION_DOMAINS,
+  SETTINGS_SECTIONS,
+  SettingsSectionNav,
+} from "../src/components/settings/sections"
+import { filterSections, type SettingsSearchSection } from "../src/components/settings/search-model"
 
 /** Domain JSONs are nested; t() looks up flat dotted keys — flatten first. */
 function flatten(tree: Record<string, unknown>, prefix = ""): Record<string, string> {
@@ -393,5 +399,134 @@ describe("MigrationCandidatesCard render smoke", () => {
     )
     expect(screen.getByText("Failed to load")).toBeTruthy()
     expect(screen.getByText("Retry")).toBeTruthy()
+  })
+})
+
+// ── Settings global search: model + nav wiring ───────────────────────────────
+
+describe("settings search model (filterSections)", () => {
+  const fixtures: SettingsSearchSection[] = [
+    {
+      id: "providers",
+      titleKey: "settings.providersHealth.title",
+      title: "Providers health",
+      descriptionKey: "settings.providersHealth.description",
+      entries: [
+        { id: "providers", titleKey: "nav.providers", title: "Providers" },
+        { id: "model-picker", titleKey: "modelPicker.title", title: "Model picker" },
+      ],
+    },
+    {
+      id: "store",
+      titleKey: "settingsDeep.store.title",
+      title: "Session store",
+      descriptionKey: "settingsDeep.store.description",
+      entries: [{ id: "sessions", titleKey: "sessions.title", title: "Sessions" }],
+    },
+    {
+      id: "memory",
+      titleKey: "memory.title",
+      title: "Role memory",
+      descriptionKey: "memory.description",
+      entries: [{ id: "memory", titleKey: "memory.title", title: "Role memory" }],
+    },
+  ]
+  const ids = (query: string) => filterSections(fixtures, query).map((s) => s.id)
+
+  it("keeps every section in order for an empty or whitespace query", () => {
+    expect(filterSections(fixtures, "").map((s) => s.id)).toEqual(["providers", "store", "memory"])
+    expect(filterSections(fixtures, "   ").map((s) => s.id)).toEqual([
+      "providers",
+      "store",
+      "memory",
+    ])
+    // New array, input untouched.
+    expect(filterSections(fixtures, "")).not.toBe(fixtures)
+  })
+
+  it("matches localized section titles case-insensitively", () => {
+    expect(ids("session store")).toEqual(["store"])
+    expect(ids("ROLE MEMORY")).toEqual(["memory"])
+    expect(ids("health")).toEqual(["providers"])
+  })
+
+  it("matches a section through the subdomains it surfaces", () => {
+    // "model-picker" is only a registry entry of the providers section.
+    expect(ids("model-picker")).toEqual(["providers"])
+    // "sessions" is the store section's subdomain (entry id and title).
+    expect(ids("sessions")).toEqual(["store"])
+  })
+
+  it("falls back to titleKeys and section ids for matching", () => {
+    expect(ids("settingsDeep.store")).toEqual(["store"])
+    expect(ids("memory.title")).toEqual(["memory"])
+    expect(ids("store")).toEqual(["store"])
+  })
+
+  it("returns nothing for a no-hit query (the nav shows its empty state)", () => {
+    expect(filterSections(fixtures, "zzz-nothing")).toEqual([])
+    expect(ids("providerss")).toEqual([])
+  })
+
+  it("projects the real settings bridge into searchable rows", () => {
+    // Same projection the nav renders with: sections + their registry
+    // subdomains, matched on keys (labels resolve via t() at render time).
+    const bridge: SettingsSearchSection[] = SETTINGS_SECTIONS.map((section) => ({
+      id: section.id,
+      titleKey: section.titleKey,
+      title: section.titleKey,
+      descriptionKey: section.descriptionKey,
+      entries: (SETTINGS_SECTION_DOMAINS.find((d) => d.id === section.id)?.domains ?? []).map(
+        (domainId) => ({ id: domainId, titleKey: domainId, title: domainId }),
+      ),
+    }))
+    expect(bridge).toHaveLength(SETTINGS_SECTIONS.length)
+    expect(filterSections(bridge, "")).toHaveLength(bridge.length)
+    expect(filterSections(bridge, "memory").map((s) => s.id)).toEqual(["memory"])
+    expect(filterSections(bridge, "model-picker").map((s) => s.id)).toEqual(["providers"])
+    expect(filterSections(bridge, "usageCharts").map((s) => s.id)).toEqual(["usageCharts"])
+  })
+})
+
+describe("settings search nav smoke", () => {
+  it("narrows the section buttons to the query matches and still selects", () => {
+    const onSelect = vi.fn()
+    renderWithQuery(<SettingsSectionNav active="appearance" onSelect={onSelect} />)
+    const nav = screen.getByTestId("settings-nav")
+    expect(nav.querySelectorAll("button")).toHaveLength(SETTINGS_SECTIONS.length)
+
+    fireEvent.change(screen.getByTestId("settings-section-search"), {
+      target: { value: "memory" },
+    })
+    // Only the matching section remains, with the match count beside the input.
+    expect(screen.getByText("Role memory")).toBeTruthy()
+    expect(nav.querySelectorAll("button")).toHaveLength(1)
+    expect(screen.getByTestId("settings-search-count").textContent).toBe("1 sections match")
+    // The filtered button still drives section selection.
+    fireEvent.click(screen.getByText("Role memory"))
+    expect(onSelect).toHaveBeenCalledWith("memory")
+
+    // Subdomain matching: "model-picker" surfaces the providers section.
+    fireEvent.change(screen.getByTestId("settings-section-search"), {
+      target: { value: "model-picker" },
+    })
+    expect(nav.querySelectorAll("button")).toHaveLength(1)
+    expect(screen.getByText("Provider health")).toBeTruthy()
+  })
+
+  it("shows the empty state when nothing matches and recovers on clear", () => {
+    renderWithQuery(<SettingsSectionNav active="memory" onSelect={vi.fn()} />)
+    const nav = screen.getByTestId("settings-nav")
+    fireEvent.change(screen.getByTestId("settings-section-search"), {
+      target: { value: "zzz-nothing" },
+    })
+    expect(screen.getByTestId("settings-search-empty")).toBeTruthy()
+    expect(nav.querySelectorAll("button")).toHaveLength(0)
+
+    // Clearing the query restores the full section list.
+    fireEvent.change(screen.getByTestId("settings-section-search"), { target: { value: "" } })
+    expect(screen.queryByTestId("settings-search-empty")).toBeNull()
+    expect(screen.queryByTestId("settings-search-count")).toBeNull()
+    expect(nav.querySelectorAll("button")).toHaveLength(SETTINGS_SECTIONS.length)
   })
 })

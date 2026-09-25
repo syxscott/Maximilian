@@ -224,5 +224,10 @@
   "settingsDeep.system.item.oracle": "Oracle 语料",
   "settingsDeep.system.state.ok": "正常",
   "settingsDeep.system.state.degraded": "降级",
-  "settingsDeep.system.state.unknown": "未知"
+  "settingsDeep.system.state.unknown": "未知",
+  "settingsDeep.search.label": "搜索设置域",
+  "settingsDeep.search.placeholder": "筛选设置分区或子域，如 memory、store…",
+  "settingsDeep.search.hint": "按分区名称、子域（registry 域）名称与标识匹配",
+  "settingsDeep.search.noMatch": "没有匹配的设置分区",
+  "settingsDeep.search.count": "匹配 {count} 个分区"
 }

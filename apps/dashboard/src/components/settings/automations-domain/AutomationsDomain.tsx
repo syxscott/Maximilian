@@ -129,7 +129,10 @@ function AutomationDetail({
   return (
     <div className="space-y-2 border-t px-2 py-1.5" data-testid={`automations-detail-${a.id}`}>
       <div className="space-y-1" data-testid={`automations-slots-${a.id}`}>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <p
+          className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+          title={t("automations.slots.hint")}
+        >
           {t("automations.slots.title")}
         </p>
         {slotRows.map((row, i) => (
@@ -137,7 +140,10 @@ function AutomationDetail({
         ))}
       </div>
       <div className="space-y-1" data-testid={`automations-history-${a.id}`}>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <p
+          className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+          title={t("automations.history.hint")}
+        >
           {t("automations.history.title")}
         </p>
         {allEvents.length === 0 ? (
@@ -428,7 +434,7 @@ export function AutomationsDomain() {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t("automations.searchPlaceholder")}
                 className="h-8 max-w-48 text-xs"
-                aria-label={t("automations.searchPlaceholder")}
+                aria-label={t("automations.search.label")}
               />
               <Button size="sm" onClick={() => setCreateOpen(true)} data-testid="automations-new">
                 {t("automations.create")}

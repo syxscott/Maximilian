@@ -224,5 +224,10 @@
   "settingsDeep.system.item.oracle": "Oracle corpus",
   "settingsDeep.system.state.ok": "ok",
   "settingsDeep.system.state.degraded": "degraded",
-  "settingsDeep.system.state.unknown": "unknown"
+  "settingsDeep.system.state.unknown": "unknown",
+  "settingsDeep.search.label": "Search settings",
+  "settingsDeep.search.placeholder": "Filter sections or subdomains, e.g. memory, store…",
+  "settingsDeep.search.hint": "Matches section names, subdomain (registry domain) names, and ids",
+  "settingsDeep.search.noMatch": "No matching settings sections",
+  "settingsDeep.search.count": "{count} sections match"
 }

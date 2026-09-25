@@ -15,7 +15,7 @@
  * mounted.
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input"
 import { useLocale, t } from "@max/i18n"
 import { systemApi, ProviderListResponseSchema } from "@/api"
 import { featureDomain } from "@/features"
+import { filterSections, type SettingsSearchSection } from "./search-model"
 import { useJobs } from "@/hooks/useJobsQueries"
 import { useJobsStore } from "@/stores/jobsStore"
 import { useNotificationStore } from "@/stores/notificationStore"
@@ -168,21 +169,73 @@ export function SettingsSectionNav({
   active: SettingsSectionId
   onSelect: (id: SettingsSectionId) => void
 }) {
-  useLocale()
+  const { locale } = useLocale()
+  const [query, setQuery] = useState("")
+
+  // Global search model: one row per section with its registry subdomains
+  // (FEATURE_DOMAINS entries) as match targets. Labels resolve per locale so
+  // a language flip re-derives them; filterSections itself stays pure.
+  const searchable = useMemo<SettingsSearchSection[]>(
+    () =>
+      SETTINGS_SECTIONS.map((section) => ({
+        id: section.id,
+        titleKey: section.titleKey,
+        title: t(section.titleKey),
+        descriptionKey: section.descriptionKey,
+        entries: (SETTINGS_SECTION_DOMAINS.find((d) => d.id === section.id)?.domains ?? []).map(
+          (domainId) => {
+            const domain = featureDomain(domainId)
+            return {
+              id: domainId,
+              titleKey: domain?.titleKey ?? domainId,
+              title: domain === null ? domainId : t(domain.titleKey),
+            }
+          },
+        ),
+      })),
+    [locale],
+  )
+  const visible = filterSections(searchable, query)
+  const filtering = query.trim() !== ""
+
   return (
-    <nav className="flex flex-wrap gap-1" data-testid="settings-nav">
-      {SETTINGS_SECTIONS.map((s) => (
-        <Button
-          key={s.id}
-          variant={active === s.id ? "default" : "ghost"}
-          size="sm"
-          title={t(s.descriptionKey)}
-          onClick={() => onSelect(s.id)}
-        >
-          {t(s.titleKey)}
-        </Button>
-      ))}
-    </nav>
+    <div className="space-y-1" data-testid="settings-search-root">
+      <div className="flex items-center gap-2">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("settingsDeep.search.placeholder")}
+          aria-label={t("settingsDeep.search.label")}
+          title={t("settingsDeep.search.hint")}
+          className="h-7 w-full max-w-56 text-xs"
+          data-testid="settings-section-search"
+        />
+        {filtering && (
+          <span className="text-[10px] text-muted-foreground" data-testid="settings-search-count">
+            {t("settingsDeep.search.count", { count: visible.length })}
+          </span>
+        )}
+      </div>
+      <nav className="flex flex-wrap gap-1" data-testid="settings-nav">
+        {visible.length === 0 ? (
+          <p className="py-1 text-xs text-muted-foreground" data-testid="settings-search-empty">
+            {t("settingsDeep.search.noMatch")}
+          </p>
+        ) : (
+          visible.map((s) => (
+            <Button
+              key={s.id}
+              variant={active === s.id ? "default" : "ghost"}
+              size="sm"
+              title={t(s.descriptionKey ?? s.titleKey)}
+              onClick={() => onSelect(s.id as SettingsSectionId)}
+            >
+              {t(s.titleKey)}
+            </Button>
+          ))
+        )}
+      </nav>
+    </div>
   )
 }
 

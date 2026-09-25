@@ -13,9 +13,11 @@
  * opens an inline tooltip with the decision's mean and sample count, read
  * straight off the ledger. Each bucket carries its own glyph. A search box
  * filters entries across buckets. The active role's memory can be exported
- * as JSON (Blob download, clipboard fallback) and a validated JSON file can
- * be imported back through POST /evolution/agents/{role}/memory-import after
- * an explicit confirm dialog.
+ * as JSON (Blob download, clipboard fallback — a "exported at HH:MM:SS"
+ * stamp in the system-domain refreshed-at style marks the last success) and
+ * a validated JSON file can be imported back through
+ * POST /evolution/agents/{role}/memory-import after an explicit confirm
+ * dialog.
  */
 
 import { useMemo, useRef, useState } from "react"
@@ -39,6 +41,7 @@ import {
   useSubagentProfiles,
 } from "@/hooks/useSettingsQueries"
 import { useQueryClient } from "@tanstack/react-query"
+import { formatClock } from "../store-domain/model"
 import {
   MEMORY_BUCKETS,
   buildMemoryExportEnvelope,
@@ -73,6 +76,10 @@ export function MemoryDomain() {
   const [openBuckets, setOpenBuckets] = useState<Record<string, boolean>>({})
   const [openEntry, setOpenEntry] = useState<string | null>(null)
   const [exportState, setExportState] = useState<ExportState>({ kind: "idle" })
+  // Wall-clock of the last successful export (HH:MM:SS via the same
+  // formatClock the system-domain "refreshed at" badge uses), so the export
+  // entry reads like the migrations card's refresh stamp.
+  const [exportedClock, setExportedClock] = useState<string | null>(null)
   const [pendingImport, setPendingImport] = useState<MemoryImportParseResult>(NO_PENDING_IMPORT)
   const [importError, setImportError] = useState<string | null>(null)
   const [importOk, setImportOk] = useState<number | null>(null)
@@ -119,10 +126,12 @@ export function MemoryDomain() {
     const file = exportFileName(active.role, exportedAt)
     if (await downloadJson(text, file)) {
       setExportState({ kind: "download", file })
+      setExportedClock(formatClock(Date.now()))
       return
     }
     if (await copyToClipboard(text)) {
       setExportState({ kind: "clipboard" })
+      setExportedClock(formatClock(Date.now()))
       return
     }
     setExportState({ kind: "error" })
@@ -246,24 +255,28 @@ export function MemoryDomain() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1">
+                  {/* Same control pattern as the migrations card's refresh
+                      entry: ghost button + text-[10px] muted stamp beside it. */}
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-[11px]"
+                    variant="ghost"
+                    className="h-6 px-1 text-[10px]"
+                    title={t("memory.io.exportHint")}
                     onClick={() => void handleExport()}
                     data-testid="memory-export"
                   >
-                    <Download className="mr-1 h-3 w-3" aria-hidden />
+                    <Download className="mr-0.5 h-3 w-3" aria-hidden />
                     {t("memory.io.export")}
                   </Button>
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-[11px]"
+                    variant="ghost"
+                    className="h-6 px-1 text-[10px]"
+                    title={t("memory.io.importHint")}
                     onClick={openImportPicker}
                     data-testid="memory-import"
                   >
-                    <FileUp className="mr-1 h-3 w-3" aria-hidden />
+                    <FileUp className="mr-0.5 h-3 w-3" aria-hidden />
                     {t("memory.io.import")}
                   </Button>
                   <input
@@ -277,6 +290,14 @@ export function MemoryDomain() {
                       e.target.value = ""
                     }}
                   />
+                  {exportedClock !== null && (
+                    <span
+                      className="text-[10px] text-muted-foreground"
+                      data-testid="memory-exported-at"
+                    >
+                      {t("memory.io.exportedAt", { time: exportedClock })}
+                    </span>
+                  )}
                 </div>
 
                 {exportState.kind === "download" && (
@@ -310,6 +331,7 @@ export function MemoryDomain() {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={t("memory.search.placeholder")}
                   aria-label={t("memory.search.label")}
+                  title={t("memory.search.hint")}
                   className="h-8 text-xs"
                   data-testid="memory-search"
                 />
