@@ -33,7 +33,9 @@ import {
   automationTimelineInput,
   eventKindLabelKey,
   filterAutomations,
+  filterJobEvents,
   isAutomationEnabled,
+  JOB_EVENT_FILTER_CHIPS,
   planToggle,
   slotKeyTail,
   slotStatusLabelKey,
@@ -45,6 +47,7 @@ import {
   validateAutomationDraft,
   validateScheduleText,
   EMPTY_AUTOMATION_DRAFT,
+  type AutomationEventView,
 } from "../src/components/settings/automations-domain/model"
 import { AutomationsDomain } from "../src/components/settings/automations-domain/AutomationsDomain"
 
@@ -418,6 +421,72 @@ describe("automations slots panel + event log model", () => {
   })
 })
 
+describe("automations event kind filter (filterJobEvents)", () => {
+  // Newest-first views straight out of toAutomationEventViews' reversal.
+  const events = toAutomationEventViews(
+    [
+      { at: "2026-09-24T08:00:00.000Z", kind: "scheduled-trigger", note: "oldest" },
+      { at: "2026-09-24T11:00:00.000Z", kind: "recovered-trigger", note: "mid" },
+      { at: "2026-09-24T11:30:00.000Z", kind: "manual-trigger", note: "later" },
+      { at: "2026-09-24T11:59:00.000Z", kind: "manual-trigger", note: "newest" },
+      { at: "2026-09-24T11:58:00.000Z", kind: "mystery-trigger", note: "unknown kind" },
+    ],
+    NOW,
+  )
+
+  it("passes the full newest-first list through under the all chip", () => {
+    expect(filterJobEvents(events, "all")).toBe(events)
+    expect(filterJobEvents(events, "all").map((e) => e.note)).toEqual([
+      "unknown kind",
+      "newest",
+      "later",
+      "mid",
+      "oldest",
+    ])
+  })
+
+  it("maps each chip onto exactly its server trigger kind", () => {
+    expect(filterJobEvents(events, "manual").map((e) => e.kind)).toEqual([
+      "manual-trigger",
+      "manual-trigger",
+    ])
+    expect(filterJobEvents(events, "scheduled").map((e) => e.kind)).toEqual(["scheduled-trigger"])
+    expect(filterJobEvents(events, "recovered").map((e) => e.kind)).toEqual(["recovered-trigger"])
+  })
+
+  it("keeps unknown raw kinds visible only under all, never under a chip", () => {
+    for (const kind of ["manual", "scheduled", "recovered"] as const) {
+      expect(filterJobEvents(events, kind).some((e) => e.kind === "mystery-trigger")).toBe(false)
+    }
+    expect(filterJobEvents(events, "all").some((e) => e.kind === "mystery-trigger")).toBe(true)
+  })
+
+  it("preserves the newest-first time order within each filtered scope", () => {
+    const manual = filterJobEvents(events, "manual")
+    expect(manual.map((e) => e.note)).toEqual(["newest", "later"])
+    const parsed = manual.map((e) => Date.parse(e.at as string))
+    expect([...parsed].sort((a, b) => b - a)).toEqual(parsed)
+  })
+
+  it("defends against non-array input and yields empty lists", () => {
+    expect(filterJobEvents(null as unknown as AutomationEventView[], "manual")).toEqual([])
+    expect(filterJobEvents(undefined as unknown as AutomationEventView[], "all")).toEqual([])
+    expect(filterJobEvents([], "scheduled")).toEqual([])
+  })
+
+  it("exposes the chip row in canonical order with resolving label keys", () => {
+    expect(JOB_EVENT_FILTER_CHIPS.map((c) => c.kind)).toEqual([
+      "all",
+      "manual",
+      "scheduled",
+      "recovered",
+    ])
+    for (const chip of JOB_EVENT_FILTER_CHIPS) {
+      expect(t(chip.labelKey)).not.toBe(chip.labelKey)
+    }
+  })
+})
+
 // ── Render smoke ─────────────────────────────────────────────────────────────
 
 vi.mock("@/hooks/useJobsQueries", () => ({
@@ -580,6 +649,69 @@ describe("AutomationsDomain render smoke", () => {
       "No triggers recorded yet",
     )
     expect(screen.queryByTestId("automations-timeline-job_a1")).toBeNull()
+  })
+
+  it("filters the history timeline by kind chip and shows the filtered-empty state", () => {
+    showList({
+      jobs: [
+        {
+          ...enabledRow,
+          events: [
+            { at: "2026-09-23T02:00:00.000Z", kind: "scheduled-trigger", note: "oldest" },
+            { at: "2026-09-24T06:00:00.000Z", kind: "manual-trigger", note: "earlier run" },
+            { at: "2026-09-24T11:30:00.000Z", kind: "manual-trigger", note: "latest run" },
+          ],
+        },
+        disabledRow,
+        foreignRow,
+      ],
+      total: 3,
+    })
+    renderWithQuery(<AutomationsDomain />)
+    fireEvent.click(screen.getByTestId("automations-row-job_a1"))
+
+    // The chips render as a pressed-state group; "all" starts active.
+    const group = screen.getByTestId("automations-event-filter-job_a1")
+    expect(group.textContent).toContain("All")
+    expect(screen.getByTestId("automations-event-chip-all").getAttribute("aria-pressed")).toBe(
+      "true",
+    )
+    expect(screen.getByTestId("automations-event-chip-manual").getAttribute("aria-pressed")).toBe(
+      "false",
+    )
+
+    const timelineText = () => screen.getByTestId("automations-timeline-job_a1").textContent ?? ""
+    // All events, newest first: the newest manual fire leads the timeline.
+    expect(timelineText().indexOf("latest run")).toBeLessThan(
+      timelineText().lastIndexOf("Manual trigger"),
+    )
+    expect(timelineText().lastIndexOf("Manual trigger")).toBeLessThan(
+      timelineText().indexOf("Scheduled trigger · oldest"),
+    )
+
+    // Manual chip: only the manual fires survive, still newest-first.
+    fireEvent.click(screen.getByTestId("automations-event-chip-manual"))
+    expect(screen.getByTestId("automations-event-chip-manual").getAttribute("aria-pressed")).toBe(
+      "true",
+    )
+    expect(timelineText()).toContain("Manual trigger")
+    expect(timelineText()).not.toContain("Scheduled trigger")
+    expect(timelineText().indexOf("latest run")).toBeLessThan(
+      timelineText().lastIndexOf("Manual trigger"),
+    )
+
+    // Recovered chip: no recovered fires exist → the filtered-empty state
+    // replaces the timeline instead of an empty TimelineMini.
+    fireEvent.click(screen.getByTestId("automations-event-chip-recovered"))
+    expect(screen.queryByTestId("automations-timeline-job_a1")).toBeNull()
+    expect(screen.getByTestId("automations-history-filtered-empty-job_a1").textContent).toContain(
+      "No triggers of this kind yet",
+    )
+
+    // Back to all: the full newest-first timeline returns.
+    fireEvent.click(screen.getByTestId("automations-event-chip-all"))
+    expect(screen.getByTestId("automations-timeline-job_a1")).toBeTruthy()
+    expect(timelineText()).toContain("Scheduled trigger · oldest")
   })
 
   it("runs the trigger feedback loop: spinner, inline success, auto-dismiss", () => {

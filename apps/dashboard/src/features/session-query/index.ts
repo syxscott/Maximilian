@@ -7,6 +7,9 @@ export { SessionSearchPanel } from "./SessionSearchPanel"
 export {
   splitHighlight,
   groupSearchResults,
+  toSearchExport,
+  searchExportJson,
+  searchExportFileName,
   SNIPPET_CONTEXT_CHARS,
   MAX_GROUPS,
   MAX_HITS_PER_GROUP,
@@ -17,6 +20,7 @@ export type {
   SessionHitView,
   SessionSearchGroup,
   SessionSearchView,
+  SearchExportDocument,
 } from "./model"
 export { useSessionSearch } from "./useSessionSearch"
 export type { SessionSearchResponse } from "./useSessionSearch"

@@ -374,3 +374,36 @@ export function automationTimelineInput(
     })),
   }
 }
+
+// ── Event kind filter (history chips) ────────────────────────────────────────
+
+/** The history panel's filter chips: all events, or one trigger kind. */
+export type JobEventKindFilter = "all" | "manual" | "scheduled" | "recovered"
+
+/** Chip order + their i18n label keys (rendered as filter buttons). */
+export const JOB_EVENT_FILTER_CHIPS: Array<{
+  kind: JobEventKindFilter
+  labelKey: string
+}> = [
+  { kind: "all", labelKey: "automations.filter.all" },
+  { kind: "manual", labelKey: "automations.filter.manual" },
+  { kind: "scheduled", labelKey: "automations.filter.scheduled" },
+  { kind: "recovered", labelKey: "automations.filter.recovered" },
+]
+
+/**
+ * Kind-chip filter over the (newest-first) event views: "all" passes the
+ * list through untouched; a chip maps onto the server TriggerKind
+ * (`manual` → `manual-trigger`, …), so unknown raw kinds stay visible
+ * only under "all" instead of silently disappearing. Order is preserved
+ * — the newest-first sort from toAutomationEventViews survives filtering.
+ */
+export function filterJobEvents(
+  events: AutomationEventView[],
+  kind: JobEventKindFilter,
+): AutomationEventView[] {
+  if (!Array.isArray(events)) return []
+  if (kind === "all") return events
+  const raw = `${kind}-trigger`
+  return events.filter((e) => e.kind === raw)
+}

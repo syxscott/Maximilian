@@ -18,13 +18,41 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CopyField, StatusPill } from "@/components/ai-elements"
-import { Search } from "lucide-react"
+import { Download, Search } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import { useDebouncedValue } from "@/hooks/useDebouncedValue"
-import { groupSearchResults, roleStatus } from "./model"
+import {
+  groupSearchResults,
+  roleStatus,
+  searchExportFileName,
+  searchExportJson,
+  toSearchExport,
+} from "./model"
 import { useSessionSearch } from "./useSessionSearch"
 
 const DEBOUNCE_MS = 300
+
+/** Blob + a[download] save (memory-domain pattern); false when the
+ * environment refuses — the caller flips to the failure note. */
+async function downloadJsonFile(text: string, file: string): Promise<boolean> {
+  try {
+    const blob = new Blob([text], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = file
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Inline export feedback: null = nothing to show. */
+type ExportFeedback = { ok: true; file: string } | { ok: false } | null
 
 export function SessionSearchPanel({
   workspaceId,
@@ -32,11 +60,16 @@ export function SessionSearchPanel({
 }: {
   /** Optional workspace scope passed through to the search endpoint. */
   workspaceId?: string
-  /** Reserved wiring — called when the operator opens a hit's session. */
+  /**
+   * Reserved wiring — called when the operator opens a hit's session.
+   * The per-hit "open in session" buttons render only while this is
+   * provided (the App-level pickWorkspace chain owns the real jump).
+   */
   onOpenSession?: (sessionId: string) => void
 }) {
   useLocale()
   const [rawQuery, setRawQuery] = useState("")
+  const [exportFeedback, setExportFeedback] = useState<ExportFeedback>(null)
   const query = useDebouncedValue(rawQuery.trim(), DEBOUNCE_MS)
   const search = useSessionSearch(query, workspaceId)
   const view = useMemo(
@@ -46,14 +79,39 @@ export function SessionSearchPanel({
 
   const idle = query.length === 0
 
+  /** Export the FULL result set (not the render-capped groups) as JSON. */
+  const exportJson = () => {
+    const doc = toSearchExport(search.data?.results ?? [], query)
+    const file = searchExportFileName(query, doc.exportedAt)
+    downloadJsonFile(searchExportJson(doc), file).then((ok) =>
+      setExportFeedback(ok ? { ok: true, file } : { ok: false }),
+    )
+  }
+
   return (
     <Card data-testid="session-search-panel">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">{t("sessionQuery.title")}</CardTitle>
-        {!idle && !search.isPending && search.error === undefined && (
-          <Badge variant="secondary" className="h-5 px-2 text-[10px]">
-            {t("sessionQuery.resultCount", { count: view.hitCount })}
-          </Badge>
+        {/* react-query answers with error: null (not undefined) when the
+            request succeeded — a truthiness check is the honest gate. */}
+        {!idle && !search.isPending && !search.error && (
+          <div className="flex items-center gap-1">
+            {view.hitCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 px-2 text-[10px]"
+                onClick={exportJson}
+                data-testid="session-search-export-json"
+              >
+                <Download aria-hidden="true" className="mr-1 h-3 w-3" />
+                {t("sessionQuery.export")}
+              </Button>
+            )}
+            <Badge variant="secondary" className="h-5 px-2 text-[10px]">
+              {t("sessionQuery.resultCount", { count: view.hitCount })}
+            </Badge>
+          </div>
         )}
       </CardHeader>
       <CardContent className="space-y-3">
@@ -65,9 +123,24 @@ export function SessionSearchPanel({
             className="h-8 w-full rounded-md border border-border bg-background pl-7 pr-2 text-xs outline-none focus:ring-1 focus:ring-ring"
             placeholder={t("sessionQuery.placeholder")}
             value={rawQuery}
-            onChange={(e) => setRawQuery(e.target.value)}
+            onChange={(e) => {
+              setRawQuery(e.target.value)
+              setExportFeedback(null)
+            }}
           />
         </div>
+
+        {exportFeedback !== null && (
+          <p
+            role="status"
+            data-testid="session-search-export-status"
+            className={`text-xs ${exportFeedback.ok ? "text-muted-foreground" : "text-destructive"}`}
+          >
+            {exportFeedback.ok
+              ? t("sessionQuery.exported", { file: exportFeedback.file })
+              : t("sessionQuery.exportFailed")}
+          </p>
+        )}
 
         {idle ? (
           <p className="text-xs text-muted-foreground" data-testid="session-search-idle">
@@ -124,14 +197,16 @@ export function SessionSearchPanel({
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         <CopyField field={{ value: hit.content, label: t("sessionQuery.copy") }} />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 px-2 text-[10px]"
-                          onClick={() => onOpenSession?.(group.sessionId)}
-                        >
-                          {t("sessionQuery.openSession")}
-                        </Button>
+                        {onOpenSession !== undefined && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 px-2 text-[10px]"
+                            onClick={() => onOpenSession(group.sessionId)}
+                          >
+                            {t("sessionQuery.openSession")}
+                          </Button>
+                        )}
                       </div>
                     </li>
                   ))}

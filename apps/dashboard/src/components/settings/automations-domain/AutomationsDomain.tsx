@@ -48,11 +48,13 @@ import {
 } from "@/hooks/useJobsQueries"
 import {
   EMPTY_AUTOMATION_DRAFT,
+  JOB_EVENT_FILTER_CHIPS,
   TRIGGER_FEEDBACK_MS,
   automationName,
   automationSummary,
   automationTimelineInput,
   filterAutomations,
+  filterJobEvents,
   planToggle,
   slotStatusLabelKey,
   toAutomationEventViews,
@@ -63,6 +65,7 @@ import {
   type AutomationDraft,
   type AutomationSlotRow,
   type AutomationView,
+  type JobEventKindFilter,
 } from "./model"
 
 /** Inline trigger feedback: null = nothing to show. */
@@ -119,7 +122,10 @@ function AutomationDetail({
   useLocale()
   const slots = useJobSlots(a.id)
   const slotRows = toAutomationSlotRows(slots.isLoading ? null : slots.data, a.id)
-  const events = toAutomationEventViews(a.events)
+  const allEvents = toAutomationEventViews(a.events)
+  /** Kind-chip scope for the history timeline (resets when the row collapses). */
+  const [eventFilter, setEventFilter] = useState<JobEventKindFilter>("all")
+  const events = filterJobEvents(allEvents, eventFilter)
   return (
     <div className="space-y-2 border-t px-2 py-1.5" data-testid={`automations-detail-${a.id}`}>
       <div className="space-y-1" data-testid={`automations-slots-${a.id}`}>
@@ -134,12 +140,46 @@ function AutomationDetail({
         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {t("automations.history.title")}
         </p>
-        {events.length === 0 ? (
+        {allEvents.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t("automations.history.empty")}</p>
         ) : (
-          <div data-testid={`automations-timeline-${a.id}`}>
-            <TimelineMini timeline={automationTimelineInput(events, (key) => t(key))} />
-          </div>
+          <>
+            <div
+              className="flex flex-wrap gap-1"
+              role="group"
+              aria-label={t("automations.filter.label")}
+              data-testid={`automations-event-filter-${a.id}`}
+            >
+              {JOB_EVENT_FILTER_CHIPS.map((chip) => (
+                <button
+                  key={chip.kind}
+                  type="button"
+                  aria-pressed={eventFilter === chip.kind}
+                  onClick={() => setEventFilter(chip.kind)}
+                  data-testid={`automations-event-chip-${chip.kind}`}
+                  className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                    eventFilter === chip.kind
+                      ? "border-transparent bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                >
+                  {t(chip.labelKey)}
+                </button>
+              ))}
+            </div>
+            {events.length === 0 ? (
+              <p
+                className="text-xs text-muted-foreground"
+                data-testid={`automations-history-filtered-empty-${a.id}`}
+              >
+                {t("automations.history.filteredEmpty")}
+              </p>
+            ) : (
+              <div data-testid={`automations-timeline-${a.id}`}>
+                <TimelineMini timeline={automationTimelineInput(events, (key) => t(key))} />
+              </div>
+            )}
+          </>
         )}
       </div>
       <p className="text-xs text-muted-foreground">

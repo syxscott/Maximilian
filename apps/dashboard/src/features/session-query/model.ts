@@ -148,3 +148,79 @@ export function groupSearchResults(
   }
   return { groups: [...bySession.values()], hitCount }
 }
+
+// ── Export (JSON download, deliverables/toDeliverablesJson pattern) ─────────
+
+/**
+ * Machine-readable export document for one search result set: the full
+ * hit list (NOT the render caps — an export carries everything the API
+ * returned) plus the query and provenance stamps.
+ */
+export interface SearchExportDocument {
+  query: string
+  exportedAt: string
+  hitCount: number
+  sessionCount: number
+  results: Array<{
+    sessionId: string
+    workspaceId: string | null
+    role: string
+    createdAt: string | null
+    content: string
+  }>
+}
+
+/**
+ * Flat hit list (passthrough JSON from GET /sessions/search) → typed
+ * export document. Same defensive row validation as groupSearchResults
+ * (sessionId + matching content required, missing fields defaulted) but
+ * without the render caps; input order (newest first) is preserved.
+ */
+export function toSearchExport(
+  results: readonly unknown[],
+  query: string,
+  exportedAt: string = new Date().toISOString(),
+): SearchExportDocument {
+  const rows: SearchExportDocument["results"] = []
+  const sessions = new Set<string>()
+  for (const raw of results) {
+    if (raw === null || typeof raw !== "object") continue
+    const row = raw as Record<string, unknown>
+    if (typeof row.sessionId !== "string" || typeof row.content !== "string") continue
+    sessions.add(row.sessionId)
+    rows.push({
+      sessionId: row.sessionId,
+      workspaceId: typeof row.workspaceId === "string" ? row.workspaceId : null,
+      role: typeof row.role === "string" && row.role.length > 0 ? row.role : "message",
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : null,
+      content: row.content,
+    })
+  }
+  return {
+    query,
+    exportedAt,
+    hitCount: rows.length,
+    sessionCount: sessions.size,
+    results: rows,
+  }
+}
+
+/** Deterministic pretty-printed JSON for the export download (trailing newline). */
+export function searchExportJson(document: SearchExportDocument): string {
+  return JSON.stringify(document, null, 2) + "\n"
+}
+
+/**
+ * Suggested download filename: the query flattened to a safe slug
+ * (non-word runs → "_"), the export day, and the feature prefix —
+ * `maximilian-session-search-nightly-login-2026-09-25.json`.
+ */
+export function searchExportFileName(query: string, exportedAt: string): string {
+  const day = exportedAt.slice(0, 10) || "export"
+  const slug = query
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40)
+  return `maximilian-session-search-${slug.length > 0 ? slug : "results"}-${day}.json`
+}

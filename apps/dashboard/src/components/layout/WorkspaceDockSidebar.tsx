@@ -41,6 +41,7 @@ import { ReviewPanel } from "@/components/ReviewPanel"
 import { OutputPanel } from "@/components/OutputPanel"
 import { GoalSummaryCard, GoalTree } from "@/features/goals"
 import { DeliverablesPanel } from "@/features/deliverables"
+import { SessionSearchPanel } from "@/features/session-query"
 import { WORKSPACE_PANELS } from "@/features"
 
 /**
@@ -75,12 +76,19 @@ export interface WorkspaceDockSidebarProps {
   events: RuntimeEvent[]
   /** Task ids parked on a permission/approval gate (AgentPanel dots). */
   parkedTaskIds?: ReadonlySet<string>
+  /**
+   * Optional cross-workspace session opener for the search leaf's hits —
+   * wiring it up needs the App-level pickWorkspace chain; while it is
+   * absent the panel hides its per-hit "open in session" buttons.
+   */
+  onOpenSession?: (sessionId: string) => void
 }
 
 export function WorkspaceDockSidebar({
   workspace,
   events,
   parkedTaskIds,
+  onOpenSession,
 }: WorkspaceDockSidebarProps) {
   useLocale() // re-render on locale switches (leaf headers + menu)
   const model = useWorkspaceDockStore((s) => s.model)
@@ -119,6 +127,8 @@ export function WorkspaceDockSidebar({
         )
       case "deliverables":
         return <DeliverablesPanel workspaceId={workspace?.id} />
+      case "search":
+        return <SessionSearchPanel workspaceId={workspace?.id} onOpenSession={onOpenSession} />
       default:
         return null
     }

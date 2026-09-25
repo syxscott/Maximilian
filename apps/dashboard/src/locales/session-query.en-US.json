@@ -8,5 +8,8 @@
   "sessionQuery.resultCount": "{count} results",
   "sessionQuery.groupHits": "{count} hits",
   "sessionQuery.openSession": "Open in session",
-  "sessionQuery.copy": "message"
+  "sessionQuery.copy": "message",
+  "sessionQuery.export": "Export JSON",
+  "sessionQuery.exported": "Downloaded {file}",
+  "sessionQuery.exportFailed": "Export failed"
 }

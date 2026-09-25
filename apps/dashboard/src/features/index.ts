@@ -130,6 +130,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelSpec[] = [
   { id: "artifacts", titleKey: "artifacts.title" },
   { id: "goals", titleKey: "goals.title" },
   { id: "deliverables", titleKey: "deliverables.title" },
+  { id: "search", titleKey: "sessionQuery.title" },
 ]
 
 /**
@@ -138,6 +139,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelSpec[] = [
  */
 export const WORKSPACE_PANEL_DOMAIN_ALIASES: Readonly<Record<string, string>> = {
   agent: "chat", // the agent leaf hosts the chat domain's conversation surface
+  search: "session-query", // the search leaf hosts the session-query domain's panel
 }
 
 /** One row of the WORKSPACE_PANELS ↔ FEATURE_DOMAINS correspondence. */

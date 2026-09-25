@@ -20,8 +20,8 @@
  * The workspace MAIN area is dock-hosted too (WorkspaceDockArea): the
  * conversation is the shell dock's resident "chat" leaf — locked (no
  * close affordance), re-inserted when a stale document lost it, and kept
- * by the persisted document across reloads; the nine-panel sidebar
- * stays an independent dock in the trailing column, and "Reset layout"
+ * by the persisted document across reloads; the panel sidebar stays an
+ * independent dock in the trailing column, and "Reset layout"
  * restores both trees.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
@@ -100,7 +100,7 @@ const renderSidebar = () => {
 const dockedIds = () => flattenPanels(useWorkspaceDockStore.getState().model.root).map((l) => l.id)
 
 describe("WorkspaceDockSidebar — dock residency", () => {
-  it("renders all nine registered panels as stable-id dock leaves with translated headers", () => {
+  it("renders all registered panels as stable-id dock leaves with translated headers", () => {
     renderSidebar()
     const expectedHeaders: Record<string, string> = {
       agent: "Agents",
@@ -112,6 +112,7 @@ describe("WorkspaceDockSidebar — dock residency", () => {
       artifacts: "Artifacts",
       goals: "Goal Progress",
       deliverables: "Deliverables",
+      search: "Session search",
     }
     for (const panel of WORKSPACE_PANELS) {
       expect(screen.getByTestId(`dock-panel-${panel.id}`)).toBeTruthy()
@@ -119,7 +120,7 @@ describe("WorkspaceDockSidebar — dock residency", () => {
         expectedHeaders[panel.id],
       )
     }
-    // The registry drives the default layout: all nine are resident.
+    // The registry drives the default layout: every panel is resident.
     expect(dockedIds()).toEqual(WORKSPACE_PANELS.map((p) => p.id))
   })
 
@@ -143,6 +144,15 @@ describe("WorkspaceDockSidebar — dock residency", () => {
     const deliverablesLeaf = screen.getByTestId("dock-panel-deliverables")
     expect(deliverablesLeaf.querySelector("[data-testid='deliverables-panel']")).toBeTruthy()
     expect(deliverablesLeaf.querySelector("[data-testid='deliverables-empty']")).toBeTruthy()
+    // Search leaf: the real SessionSearchPanel body in its idle state —
+    // no query, so no export button and no per-hit open buttons (the
+    // onOpenSession chain is not wired at this mount).
+    const searchLeaf = screen.getByTestId("dock-panel-search")
+    expect(searchLeaf.querySelector("[data-testid='session-search-panel']")).toBeTruthy()
+    expect(searchLeaf.querySelector("[data-testid='session-search-idle']")?.textContent).toContain(
+      "Type to search",
+    )
+    expect(screen.queryByTestId("session-search-export-json")).toBeNull()
   })
 
   it("closing a leaf removes it and persists the layout document", () => {
@@ -276,7 +286,7 @@ describe("workspacePanelDomains — panel registry ↔ feature-domain registry",
     for (const id of domainIds) expect(known.has(id)).toBe(true)
   })
 
-  it("resolves the shared-id overlap plus the agent→chat alias", () => {
+  it("resolves the shared-id overlap plus the agent→chat and search aliases", () => {
     const byId = new Map(workspacePanelDomains().map((m) => [m.panelId, m]))
     for (const id of [
       "subagents",
@@ -289,6 +299,9 @@ describe("workspacePanelDomains — panel registry ↔ feature-domain registry",
       expect(byId.get(id)?.domainId).toBe(id)
     }
     expect(byId.get("agent")?.domainId).toBe("chat")
+    // The search leaf answers to the session-query domain's registry row.
+    expect(byId.get("search")?.domainId).toBe("session-query")
+    expect(byId.get("search")?.titleKey).toBe("sessionQuery.title")
   })
 
   it("same-id overlaps agree with the domain's titleKey", () => {

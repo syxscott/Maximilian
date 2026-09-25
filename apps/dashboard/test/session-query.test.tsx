@@ -5,10 +5,12 @@
 
 /**
  * Tests for the session-query feature domain:
- *   - model.ts pure functions (highlight split / grouping), and
+ *   - model.ts pure functions (highlight split / grouping / JSON export
+ *     document + filename), and
  *   - SessionSearchPanel render smoke across the three UI states
  *     (idle / loading / error / empty / results), mocking the data hook
- *     the UsagePanel way (@tanstack/react-query test mode).
+ *     the UsagePanel way (@tanstack/react-query test mode), plus the
+ *     export download flow and the onOpenSession honest boundary.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
@@ -19,6 +21,9 @@ import { applyDashboardDictionaries } from "../src/locales/index"
 import {
   splitHighlight,
   groupSearchResults,
+  toSearchExport,
+  searchExportJson,
+  searchExportFileName,
   SessionSearchPanel,
 } from "../src/features/session-query/index"
 import type { SessionSearchResponse } from "../src/features/session-query/index"
@@ -96,6 +101,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
@@ -176,6 +182,108 @@ describe("groupSearchResults", () => {
   })
 })
 
+describe("search export — toSearchExport / searchExportJson / searchExportFileName", () => {
+  const HITS = [
+    {
+      sessionId: "sess-1",
+      workspaceId: "ws-1",
+      role: "user",
+      content: "login broken again",
+      createdAt: "2026-01-02T00:00:00.000Z",
+    },
+    {
+      sessionId: "sess-1",
+      workspaceId: "ws-1",
+      role: "assistant",
+      content: "login fixed in auth.ts",
+      createdAt: null,
+    },
+    { sessionId: "sess-2", workspaceId: null, role: "user", content: "second login mention" },
+  ]
+
+  it("builds a typed export document with provenance, counts and full contents", () => {
+    const doc = toSearchExport(HITS, "login", "2026-09-25T00:00:00.000Z")
+    expect(doc).toEqual({
+      query: "login",
+      exportedAt: "2026-09-25T00:00:00.000Z",
+      hitCount: 3,
+      sessionCount: 2,
+      results: [
+        {
+          sessionId: "sess-1",
+          workspaceId: "ws-1",
+          role: "user",
+          createdAt: "2026-01-02T00:00:00.000Z",
+          content: "login broken again",
+        },
+        {
+          sessionId: "sess-1",
+          workspaceId: "ws-1",
+          role: "assistant",
+          createdAt: null,
+          content: "login fixed in auth.ts",
+        },
+        {
+          sessionId: "sess-2",
+          workspaceId: null,
+          role: "user",
+          createdAt: null,
+          content: "second login mention",
+        },
+      ],
+    })
+  })
+
+  it("exports every hit the API returned, beyond the render caps", () => {
+    // The panel renders at most 5 hits per session; the export does not cap.
+    const many = Array.from({ length: 8 }, (_, i) => ({
+      sessionId: "sess-1",
+      role: "user",
+      content: `hit number ${i}`,
+    }))
+    expect(groupSearchResults(many, "hit").hitCount).toBe(5)
+    expect(toSearchExport(many, "hit", "2026-09-25T00:00:00.000Z").results).toHaveLength(8)
+  })
+
+  it("drops malformed rows and defaults missing fields, defensively", () => {
+    const doc = toSearchExport(
+      [
+        null,
+        42,
+        { role: "user" }, // no sessionId
+        { sessionId: "s9", content: 7 }, // non-string content
+        { sessionId: "s8", content: "ok", workspaceId: 7, createdAt: 0, role: "" },
+      ],
+      "q",
+    )
+    expect(doc.results).toEqual([
+      { sessionId: "s8", workspaceId: null, role: "message", createdAt: null, content: "ok" },
+    ])
+    expect(doc.hitCount).toBe(1)
+    expect(doc.sessionCount).toBe(1)
+  })
+
+  it("round-trips through a deterministic pretty-printed JSON document", () => {
+    const doc = toSearchExport(HITS, "login", "2026-09-25T00:00:00.000Z")
+    const json = searchExportJson(doc)
+    expect(json.endsWith("\n")).toBe(true)
+    expect(searchExportJson(doc)).toBe(json)
+    expect(JSON.parse(json)).toEqual(doc)
+  })
+
+  it("suggests a slug-safe filename carrying the export day", () => {
+    expect(searchExportFileName("Login Failure!", "2026-09-25T10:00:00.000Z")).toBe(
+      "maximilian-session-search-login_failure-2026-09-25.json",
+    )
+    expect(searchExportFileName("   ", "2026-09-25T10:00:00.000Z")).toBe(
+      "maximilian-session-search-results-2026-09-25.json",
+    )
+    expect(searchExportFileName("no stamp", "")).toBe(
+      "maximilian-session-search-no_stamp-export.json",
+    )
+  })
+})
+
 describe("SessionSearchPanel", () => {
   it("shows the idle hint and does not fire the search for an empty query", () => {
     mockHook({})
@@ -236,5 +344,68 @@ describe("SessionSearchPanel", () => {
     mockHook({ data: makeResponse([]) })
     renderPanelWithQuery("login")
     expect(screen.getByTestId("session-search-empty")).toHaveTextContent(/no messages matched/i)
+  })
+
+  it("hides the per-hit open buttons when no onOpenSession handler is wired", () => {
+    // Honest boundary: without the App-level pickWorkspace chain there is
+    // nothing to open — the affordance disappears instead of dead-ending.
+    mockHook({ data: makeResponse([HIT]) })
+    renderPanelWithQuery("login")
+    expect(screen.getByTestId("session-search-groups")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Open in session" })).not.toBeInTheDocument()
+  })
+
+  it("offers no export while idle (nothing to export)", () => {
+    mockHook({})
+    renderPanel()
+    expect(screen.queryByTestId("session-search-export-json")).not.toBeInTheDocument()
+  })
+
+  it("exports the full result set as a JSON download (Blob + a[download])", async () => {
+    const createObjectURL = vi.fn(() => "blob:mock")
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    mockHook({
+      data: makeResponse([
+        HIT,
+        { ...HIT, sessionId: "sess-2", role: "assistant", content: "another login hit" },
+      ]),
+    })
+    // Real timers here: the export click resolves through a promise chain,
+    // and findByTestId absorbs the 300ms debounce without fake-clock care.
+    renderPanel()
+    fireEvent.change(screen.getByTestId("session-search-input"), {
+      target: { value: "login" },
+    })
+    fireEvent.click(await screen.findByTestId("session-search-export-json", {}, { timeout: 3000 }))
+
+    const status = await screen.findByTestId("session-search-export-status")
+    expect(status.textContent).toContain("Downloaded maximilian-session-search-login-")
+    expect(status.textContent?.endsWith(".json")).toBe(true)
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock")
+    const blobArg = createObjectURL.mock.calls[0]?.[0] as Blob
+    expect(blobArg).toBeInstanceOf(Blob)
+    expect(blobArg.size).toBeGreaterThan(0)
+  })
+
+  it("reports a failed download instead of a fake success note", async () => {
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: () => {
+        throw new Error("no blob urls here")
+      },
+      revokeObjectURL: () => {},
+    })
+    mockHook({ data: makeResponse([HIT]) })
+    renderPanel()
+    fireEvent.change(screen.getByTestId("session-search-input"), {
+      target: { value: "login" },
+    })
+    fireEvent.click(await screen.findByTestId("session-search-export-json", {}, { timeout: 3000 }))
+    const status = await screen.findByTestId("session-search-export-status")
+    expect(status.textContent).toContain("Export failed")
   })
 })

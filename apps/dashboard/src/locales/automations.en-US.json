@@ -42,7 +42,15 @@
     },
     "history": {
       "title": "Trigger history",
-      "empty": "No triggers recorded yet"
+      "empty": "No triggers recorded yet",
+      "filteredEmpty": "No triggers of this kind yet"
+    },
+    "filter": {
+      "label": "Filter by trigger kind",
+      "all": "All",
+      "manual": "Manual",
+      "scheduled": "Scheduled",
+      "recovered": "Recovered"
     },
     "event": {
       "manual": "Manual trigger",
