@@ -61,6 +61,8 @@ export interface WorkspaceDockAreaProps {
     tab:
       "workspace" | "executions" | "governance" | "evolution" | "providers" | "usage" | "settings",
   ) => void
+  /** Open a session-search hit's workspace (session-query leaf). */
+  onOpenSession?: (sessionId: string) => void
   onAbort?: () => void
   mentionSuggestions?: MentionSuggestion[]
   onOpenProviders?: () => void
@@ -79,6 +81,7 @@ export function WorkspaceDockArea({
   onSubmit,
   onAbort,
   onNavigate,
+  onOpenSession,
   mentionSuggestions,
   onOpenProviders,
   onOpenPalette,
@@ -123,6 +126,7 @@ export function WorkspaceDockArea({
           // owns the open/close affordances (close button + sidebarHidden).
           sidebar={
             <WorkspaceDockSidebar
+              onOpenSession={onOpenSession}
               workspace={workspace}
               events={events}
               parkedTaskIds={parkedTaskIds}

@@ -734,6 +734,9 @@ export function App() {
                 onOpenProviders={() => setTab("providers")}
                 onOpenPalette={() => setCommandOpen(true)}
                 onNavigate={setTab}
+                onOpenSession={(id) => {
+                  if (id && id !== workspace?.id) void pickWorkspace(id)
+                }}
                 sidebarHidden={sidebarHidden}
                 parkedTaskIds={
                   pendingPermissions.size > 0
