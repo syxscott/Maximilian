@@ -134,6 +134,8 @@ import {
   migrationsStatusHandler,
   memoryImportRoute,
   memoryImportHandler,
+  oracleLessonSaveRoute,
+  oracleLessonSaveHandler,
 } from "./routes/admin-status.js"
 import { truthReportRoute } from "./routes/meta.js"
 import {
@@ -2417,6 +2419,7 @@ api.openapi(
   requireAuthMiddleware(),
   migrationsStatusHandler({ store: sessionStore?.store }),
 )
+api.openapi(oracleLessonSaveRoute, requireAuthMiddleware(), oracleLessonSaveHandler())
 
 // Session history (SQLite side store, read side of the double-write).
 const sessions = sessionRoutes({ store: sessionStore?.store })
