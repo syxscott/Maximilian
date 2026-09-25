@@ -279,3 +279,40 @@ export function taskStateColor(state: GoalTaskState): string {
       return "gray"
   }
 }
+
+/**
+ * The dependency chain as one display string ("t1 → t2"), for the "↳
+ * depends:" line under an indented sub-goal. Non-string / unknown ids are
+ * not the panel's problem here — what the plan declared is what shows. null
+ * when the task declares no dependencies (no line is rendered).
+ */
+export function dependsOnSummary(task: Pick<GoalTaskView, "dependsOn">): string | null {
+  const deps = Array.isArray(task?.dependsOn)
+    ? task.dependsOn.filter((d): d is string => typeof d === "string" && d.length > 0)
+    : []
+  return deps.length > 0 ? deps.join(" → ") : null
+}
+
+/**
+ * Error summary for the failed sub-goals line: id + best-available label
+ * for every task in state "failed", in plan order. null when nothing
+ * failed (the panel hides the line entirely — no "0 failed" noise).
+ * Defensive: a garbage array yields null rather than a throw.
+ */
+export interface FailureSummary {
+  count: number
+  /** `${id} ${label}`-style entries, label falling back to the id. */
+  entries: string[]
+}
+
+export function failureSummary(subGoals: GoalTaskView[]): FailureSummary | null {
+  const rows = Array.isArray(subGoals) ? subGoals : []
+  const entries: string[] = []
+  for (const task of rows) {
+    if (task == null || typeof task !== "object" || task.state !== "failed") continue
+    const id = typeof task.id === "string" && task.id.length > 0 ? task.id : "?"
+    const label = typeof task.label === "string" && task.label.length > 0 ? task.label : id
+    entries.push(`${id} ${label}`)
+  }
+  return entries.length > 0 ? { count: entries.length, entries } : null
+}

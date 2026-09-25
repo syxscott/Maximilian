@@ -8,15 +8,18 @@
 import { describe, it, expect } from "vitest"
 import type { Job } from "../src/api"
 import {
+  elapsedSeconds,
   formatJobEvent,
   formatRelativeTime,
   formatSchedule,
   humanizeInterval,
   jobDetailEvents,
+  jobEventKindLabel,
   jobStatusView,
   payloadKind,
   payloadLabelKey,
   relativeTime,
+  scheduleEstimate,
 } from "../src/components/jobs-model"
 
 const NOW = Date.parse("2026-09-25T12:00:00.000Z")
@@ -175,5 +178,125 @@ describe("schedule + detail helpers", () => {
     ).toBe("10:01:02 dispatched — queued:42 on workspace")
     expect(formatJobEvent({} as Job["events"][number])).toBe("??:??:?? unknown")
     expect(jobDetailEvents(makeJob({ events: [] }))).toEqual([])
+  })
+})
+
+describe("jobEventKindLabel (trigger-history kind routing)", () => {
+  it("routes every kind the API writes to its event key", () => {
+    for (const kind of [
+      "scheduled-trigger",
+      "manual-trigger",
+      "dispatched",
+      "dispatch-failed",
+      "materialized",
+    ]) {
+      expect(jobEventKindLabel(kind)).toEqual({ key: `tui.jobs.event.${kind}`, known: true })
+    }
+  })
+
+  it("marks unknown/garbage kinds so the dialog prints the raw kind (never a bare key)", () => {
+    expect(jobEventKindLabel("future-kind")).toEqual({
+      key: "tui.jobs.event.future-kind",
+      known: false,
+    })
+    expect(jobEventKindLabel(undefined)).toEqual({ key: "tui.jobs.event.unknown", known: false })
+    expect(jobEventKindLabel(null).known).toBe(false)
+    expect(jobEventKindLabel(42).known).toBe(false)
+    expect(jobEventKindLabel("").known).toBe(false)
+    expect(jobEventKindLabel("   ").known).toBe(false)
+  })
+})
+
+describe("formatJobEvent deepening (relative time + localized kind)", () => {
+  it("appends a relative marker when nowMs is given", () => {
+    const event = { at: "2026-09-25T11:55:00.000Z", kind: "scheduled-trigger" }
+    expect(formatJobEvent(event, NOW)).toBe("11:55:00 scheduled-trigger (5m ago)")
+    expect(formatJobEvent(event, Date.parse("2026-09-25T11:55:10.000Z"))).toBe(
+      "11:55:00 scheduled-trigger (just now)",
+    )
+  })
+
+  it("replaces the kind with the localized label when kindLabel is given", () => {
+    expect(
+      formatJobEvent(
+        { at: "2026-09-25T11:55:00.000Z", kind: "scheduled-trigger", note: "cron 0 9" },
+        NOW,
+        "计划触发",
+      ),
+    ).toBe("11:55:00 计划触发 — cron 0 9 (5m ago)")
+  })
+
+  it("drops the relative marker for unparseable timestamps instead of lying", () => {
+    // Short garbage slices to an empty clock ("junk".slice(11, 19) === "").
+    expect(formatJobEvent({ at: "junk", kind: "dispatched" }, NOW)).toBe(" dispatched")
+    // Long-enough garbage keeps its raw slice but never gains "(never)".
+    expect(formatJobEvent({ at: "2026-13-99T99:99:99Z", kind: "dispatched" }, NOW)).toBe(
+      "99:99:99 dispatched",
+    )
+    expect(formatJobEvent({ at: "2026-09-25T11:55:00.000Z", kind: "x" }, Number.NaN)).toBe(
+      "11:55:00 x",
+    )
+  })
+})
+
+describe("scheduleEstimate (honest next-fire estimate)", () => {
+  it("reads pure-digit schedules as intervalMs rounded to whole seconds", () => {
+    expect(
+      scheduleEstimate(makeJob({ schedule: "300000", scheduleKind: "interval", intervalMs: null })),
+    ).toEqual({ kind: "interval", intervalMs: 300_000, label: "every 5m" })
+    // 29.5s rounds up to a whole 30s — never a fractional second.
+    expect(
+      scheduleEstimate(makeJob({ schedule: "29500", scheduleKind: "interval", intervalMs: null })),
+    ).toEqual({ kind: "interval", intervalMs: 30_000, label: "every 30s" })
+  })
+
+  it("labels 5-field cron expressions honestly: the expression passes through, no time is computed", () => {
+    expect(scheduleEstimate(makeJob())).toEqual({ kind: "cron", label: "0 9 * * *" })
+    expect(scheduleEstimate(makeJob({ schedule: "*/5 * * * *" }))).toEqual({
+      kind: "cron",
+      label: "*/5 * * * *",
+    })
+  })
+
+  it("falls back to a positive intervalMs field when the schedule string is unparseable", () => {
+    expect(scheduleEstimate(makeJob({ schedule: "every morning", intervalMs: 60_000 }))).toEqual({
+      kind: "interval",
+      intervalMs: 60_000,
+      label: "every 1m",
+    })
+  })
+
+  it("yields unknown ('?') when nothing is derivable — never invents a time", () => {
+    expect(scheduleEstimate(makeJob({ schedule: "nonsense literal", intervalMs: null }))).toEqual({
+      kind: "unknown",
+      label: "?",
+    })
+    expect(scheduleEstimate(makeJob({ schedule: "0 9 * * * extra", intervalMs: null }))).toEqual({
+      kind: "unknown",
+      label: "?",
+    })
+    expect(scheduleEstimate(makeJob({ schedule: "", intervalMs: null }))).toEqual({
+      kind: "unknown",
+      label: "?",
+    })
+    expect(scheduleEstimate(makeJob({ schedule: "-500", intervalMs: null }))).toEqual({
+      kind: "unknown",
+      label: "?",
+    })
+  })
+})
+
+describe("elapsedSeconds (refresh hint)", () => {
+  it("returns whole seconds clamped at zero against clock skew", () => {
+    expect(elapsedSeconds(1_000, 61_000)).toBe(60)
+    expect(elapsedSeconds(61_000, 1_000)).toBe(0)
+    expect(elapsedSeconds(1_000, 1_000)).toBe(0)
+  })
+
+  it("yields null on garbage so the dialog can hide the hint", () => {
+    expect(elapsedSeconds(undefined, 1_000)).toBeNull()
+    expect(elapsedSeconds(1_000, "junk" as unknown as number)).toBeNull()
+    expect(elapsedSeconds(Number.NaN, 1_000)).toBeNull()
+    expect(elapsedSeconds(1_000, Number.POSITIVE_INFINITY)).toBeNull()
   })
 })

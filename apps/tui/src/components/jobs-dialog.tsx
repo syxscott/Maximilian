@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { t } from "@max/i18n"
 import { Box, Text, useInput } from "ink"
 import Spinner from "ink-spinner"
@@ -8,14 +8,17 @@ import { useSDK } from "../context/sdk"
 import { useToast } from "./toast"
 import { useJobs, deleteJobViaSdk, triggerJobViaSdk } from "../hooks/useJobs"
 import {
+  elapsedSeconds,
   formatJobEvent,
   formatRelativeTime,
   formatSchedule,
   jobDetailEvents,
+  jobEventKindLabel,
   jobStatusView,
   payloadKind,
   payloadLabelKey,
   relativeTime,
+  scheduleEstimate,
   type RelativeTime,
 } from "./jobs-model"
 import "../locales/tui-panels"
@@ -23,10 +26,11 @@ import "../locales/tui-panels"
 /**
  * Jobs dialog — the TUI face of GET /api/jobs (the dashboard's jobs card,
  * ported to ink and the existing dialog-* patterns). Navigation is j/k,
- * Enter expands the selected job's detail (payload kind + recent event
- * trail), d deletes (two-press confirm, the dialog-workspace-list pattern),
- * t fires a manual trigger, r refreshes. Success/failure surfaces through
- * the existing toast.
+ * Enter expands the selected job's detail (schedule estimate + payload kind
+ * + the last 5 trigger-history events with localized kinds and relative
+ * times), d deletes (two-press confirm, the dialog-workspace-list pattern),
+ * t fires a manual trigger, r refreshes (a live "updated Ns ago" hint keeps
+ * the cadence visible). Success/failure surfaces through the existing toast.
  */
 export function JobsDialog() {
   const sdk = useSDK()
@@ -36,6 +40,12 @@ export function JobsDialog() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // 1s heartbeat so the refresh hint ages without waiting for a keypress.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
   // Freeze "now" per data load so all relative timestamps age consistently
   // within one render pass (and tests / screenshots stay deterministic).
   const nowRef = useRef(Date.now())
@@ -174,13 +184,21 @@ export function JobsDialog() {
           ))
         )}
       </Box>
-      <Box marginTop={1}>
+      <Box marginTop={1} flexDirection="column">
         <Text dimColor>
           {t(
             "tui.jobs.hints",
             "j/k move · Enter details · d delete · t trigger · r refresh · esc close",
           )}
         </Text>
+        {(() => {
+          const age = elapsedSeconds(now, Date.now())
+          return age !== null ? (
+            <Text dimColor>
+              {t("tui.jobs.refreshAgo", { seconds: age }, `updated ${age}s ago · r refresh`)}
+            </Text>
+          ) : null
+        })()}
       </Box>
     </Box>
   )
@@ -223,9 +241,19 @@ function JobRow(props: {
 function JobDetail({ job, now }: { job: Job; now: number }) {
   const kind = payloadKind(job.payload)
   const next: RelativeTime | null = relativeTime(job.nextRunAt, now)
-  const events = jobDetailEvents(job, 3)
+  const estimate = scheduleEstimate(job)
+  // Trigger history: the 5 most recent trail entries, newest first.
+  const events = jobDetailEvents(job, 5)
   return (
     <Box flexDirection="column" paddingLeft={4} marginBottom={1}>
+      <Text dimColor>
+        {t("tui.jobs.estimate", "next fire")}:{" "}
+        {estimate.kind === "interval"
+          ? estimate.label
+          : estimate.kind === "cron"
+            ? `${t("tui.jobs.estimate.cron", "cron — exact time not computed")} (${estimate.label})`
+            : estimate.label}
+      </Text>
       <Text dimColor>
         {t("tui.jobs.payload", "payload")}: {t(payloadLabelKey(kind), kind)}
         {kind === "workspace" && typeof (job.payload as { message?: unknown })?.message === "string"
@@ -240,12 +268,20 @@ function JobDetail({ job, now }: { job: Job; now: number }) {
       {events.length === 0 ? (
         <Text dimColor> —</Text>
       ) : (
-        events.map((event, i) => (
-          <Text key={`${event.at}-${i}`} dimColor>
-            {" "}
-            {formatJobEvent(event)}
-          </Text>
-        ))
+        events.map((event, i) => {
+          const label = jobEventKindLabel(event?.kind)
+          const kindText = label.known
+            ? t(label.key, typeof event?.kind === "string" ? event.kind : "unknown")
+            : typeof event?.kind === "string" && event.kind.length > 0
+              ? event.kind
+              : t("tui.jobs.event.unknown", "unknown")
+          return (
+            <Text key={`${event?.at ?? "?"}-${i}`} dimColor>
+              {" "}
+              {formatJobEvent(event, now, kindText)}
+            </Text>
+          )
+        })
       )}
     </Box>
   )

@@ -6,7 +6,14 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { dependencyDepths, deriveGoals, taskStateColor } from "../src/components/goals-model"
+import {
+  dependsOnSummary,
+  dependencyDepths,
+  deriveGoals,
+  failureSummary,
+  taskStateColor,
+  type GoalTaskView,
+} from "../src/components/goals-model"
 
 const COMPLETED_WORKSPACE = {
   id: "ws-1",
@@ -153,6 +160,55 @@ describe("dependencyDepths (indent depth from the dependsOn chain)", () => {
     // level below that and "a" one below "b" — finite and stable.
     expect(depths.get("b")).toBe(1)
     expect(depths.get("a")).toBe(2)
+  })
+
+  it("survives a self-loop (a task depending on itself) without recursing forever", () => {
+    const depths = dependencyDepths([
+      { id: "t1", description: "", state: "pending" as const, role: "", dependsOn: ["t1"] },
+      { id: "t2", description: "", state: "pending" as const, role: "", dependsOn: ["t1"] },
+    ])
+    // The revisit of "t1" inside its own chain is cut to 0; the entry leg
+    // still counts one level — finite, deterministic, no stack overflow.
+    expect(depths.get("t1")).toBe(1)
+    expect(depths.get("t2")).toBe(2)
+  })
+})
+
+describe("failureSummary + dependsOnSummary (deepened panel helpers)", () => {
+  const MIXED = deriveGoals({
+    userRequest: "r",
+    status: "running",
+    plan: {
+      tasks: [
+        { id: "t1", description: "base", status: "completed" },
+        { id: "t2", description: "broken step", status: "failed", dependsOn: ["t1"] },
+        { id: "t3", description: "", status: "failed", dependsOn: ["t2", "ghost"] },
+      ],
+    },
+  })
+
+  it("lists failed sub-goals in plan order with id + best-available label", () => {
+    expect(failureSummary(MIXED.subGoals)).toEqual({
+      count: 2,
+      entries: ["t2 broken step", "t3 t3"], // empty label falls back to the id
+    })
+  })
+
+  it("returns null when nothing failed (the error line stays hidden)", () => {
+    expect(failureSummary(deriveGoals(COMPLETED_WORKSPACE).subGoals)).toBeNull()
+    expect(failureSummary([])).toBeNull()
+  })
+
+  it("is defensive against garbage input (never throws)", () => {
+    expect(failureSummary(null as unknown as GoalTaskView[])).toBeNull()
+    expect(failureSummary([null, 42] as unknown as GoalTaskView[])).toBeNull()
+  })
+
+  it("joins the declared dependency chain with arrows; null when there are none", () => {
+    expect(dependsOnSummary(MIXED.subGoals[0]!)).toBeNull()
+    expect(dependsOnSummary(MIXED.subGoals[1]!)).toBe("t1")
+    expect(dependsOnSummary(MIXED.subGoals[2]!)).toBe("t2 → ghost") // declared is shown as-is
+    expect(dependsOnSummary({ dependsOn: [1, "", "ok"] as unknown as string[] })).toBe("ok")
   })
 })
 

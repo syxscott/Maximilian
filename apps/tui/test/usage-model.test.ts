@@ -5,7 +5,13 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { compactTokens, formatCostUsd, usageMetrics } from "../src/components/usage-model"
+import {
+  cacheHitRate,
+  compactTokens,
+  formatCostUsd,
+  unpricedCount,
+  usageMetrics,
+} from "../src/components/usage-model"
 
 describe("compactTokens", () => {
   it("keeps small counts plain and compacts K / M / B with stable digits", () => {
@@ -77,5 +83,42 @@ describe("usageMetrics (the compact three-line view model)", () => {
   it("never throws on a garbage payload", () => {
     expect(usageMetrics(null)).toEqual({ requests: "0", tokens: "0", cost: "—" })
     expect(usageMetrics("junk")).toEqual({ requests: "0", tokens: "0", cost: "—" })
+  })
+})
+
+describe("cacheHitRate (deepened panel line)", () => {
+  it("divides cache reads by the honest grand total (real + reads)", () => {
+    // realTotalTokens EXCLUDES cache reads, so the denominator is the sum —
+    // dividing by realTotal alone could exceed 100%.
+    expect(cacheHitRate({ realTotalTokens: 700, totalCacheReadTokens: 300 })).toBe(30)
+    expect(cacheHitRate({ realTotalTokens: 1, totalCacheReadTokens: 3 })).toBe(75)
+    expect(cacheHitRate({ realTotalTokens: 150, totalCacheReadTokens: 50 })).toBe(25)
+    expect(cacheHitRate({ realTotalTokens: 0, totalCacheReadTokens: 25 })).toBe(100)
+  })
+
+  it("yields null when either count is missing/garbage or the total is zero", () => {
+    expect(cacheHitRate({ realTotalTokens: 0, totalCacheReadTokens: 0 })).toBeNull()
+    expect(cacheHitRate({ realTotalTokens: 100 })).toBeNull()
+    expect(cacheHitRate({ totalCacheReadTokens: 100 })).toBeNull()
+    expect(cacheHitRate({ realTotalTokens: -1, totalCacheReadTokens: 5 })).toBeNull()
+    expect(cacheHitRate({ realTotalTokens: "700", totalCacheReadTokens: 300 })).toBeNull()
+    expect(cacheHitRate(null)).toBeNull()
+    expect(cacheHitRate("junk")).toBeNull()
+  })
+})
+
+describe("unpricedCount (deepened panel line)", () => {
+  it("discloses the count only when the cost total is partial", () => {
+    expect(unpricedCount({ totalCostUsdKnown: false, unpricedRequestCount: 3 })).toBe(3)
+    expect(unpricedCount({ totalCostUsdKnown: true, unpricedRequestCount: 3 })).toBeNull()
+    expect(unpricedCount({ unpricedRequestCount: 3 })).toBeNull()
+    expect(unpricedCount(null)).toBeNull()
+  })
+
+  it("degrades a garbage count to 0 instead of hiding a known-partial total", () => {
+    expect(unpricedCount({ totalCostUsdKnown: false })).toBe(0)
+    expect(unpricedCount({ totalCostUsdKnown: false, unpricedRequestCount: "3" })).toBe(0)
+    expect(unpricedCount({ totalCostUsdKnown: false, unpricedRequestCount: -2 })).toBe(0)
+    expect(unpricedCount({ totalCostUsdKnown: false, unpricedRequestCount: 2.6 })).toBe(3)
   })
 })

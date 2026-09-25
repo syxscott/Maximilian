@@ -5,7 +5,13 @@ import Spinner from "ink-spinner"
 
 import type { ExecutionTrace } from "../api"
 import { useSDK } from "../context/sdk"
-import { deriveGoals, taskStateColor, type GoalsView } from "./goals-model"
+import {
+  dependsOnSummary,
+  deriveGoals,
+  failureSummary,
+  taskStateColor,
+  type GoalsView,
+} from "./goals-model"
 import "../locales/tui-panels"
 
 /**
@@ -126,6 +132,12 @@ function GoalTree({ goals }: { goals: GoalsView }) {
   const bar = "█".repeat(Math.max(0, filled)) + "░".repeat(Math.max(0, themeWidth - filled))
   const request = goals.request || t("tui.goals.noRequest", "(no request recorded)")
   const review = goals.milestones.find((m) => m.key === "review")
+  const failures = failureSummary(goals.subGoals)
+  // Error summary discloses at most 3 labels inline; the count stays honest.
+  const failureLabels =
+    failures != null
+      ? failures.entries.slice(0, 3).join(", ") + (failures.entries.length > 3 ? ", …" : "")
+      : ""
   return (
     <Box flexDirection="column">
       {/* Primary goal — the user request, colored by workspace status. */}
@@ -177,17 +189,45 @@ function GoalTree({ goals }: { goals: GoalsView }) {
       {/* Sub-goal tree — plan.tasks with dependsOn indent depth. */}
       {goals.subGoals.length > 0 ? (
         <Box marginTop={1} flexDirection="column">
-          {goals.subGoals.map((task) => (
-            <Box key={task.id} flexDirection="row">
-              <Text>{"  ".repeat(task.depth)} </Text>
-              <Text color={taskStateColor(task.state)}>
-                {task.state === "running" ? "◐" : "●"}{" "}
-              </Text>
-              <Text>{task.label || task.id}</Text>
-              {task.role !== "unknown" ? <Text dimColor> · {task.role}</Text> : null}
-            </Box>
-          ))}
+          {goals.subGoals.map((task) => {
+            const deps = dependsOnSummary(task)
+            const failed = task.state === "failed"
+            return (
+              <Box key={task.id} flexDirection="column">
+                <Box flexDirection="row">
+                  <Text>{"  ".repeat(task.depth)} </Text>
+                  <Text color={taskStateColor(task.state)}>
+                    {task.state === "running" ? "◐" : "●"}{" "}
+                  </Text>
+                  <Text color={failed ? "red" : undefined} bold={failed}>
+                    {task.label || task.id}
+                  </Text>
+                  {task.role !== "unknown" ? <Text dimColor> · {task.role}</Text> : null}
+                </Box>
+                {/* Dependency chain, indented one level past the task. */}
+                {deps != null ? (
+                  <Text dimColor>
+                    {"  "}
+                    {"  ".repeat(task.depth)}↳{" "}
+                    {t("tui.goals.dependsOn", { deps }, `depends: {deps}`)}
+                  </Text>
+                ) : null}
+              </Box>
+            )
+          })}
         </Box>
+      ) : null}
+      {/* Error summary — only when something actually failed. */}
+      {failures != null ? (
+        <Text color="red">
+          {" "}
+          ✗{" "}
+          {t(
+            "tui.goals.failedSummary",
+            { count: failures.count, labels: failureLabels },
+            `{count} failed: {labels}`,
+          )}
+        </Text>
       ) : null}
       <Box marginTop={1}>
         <Text dimColor>

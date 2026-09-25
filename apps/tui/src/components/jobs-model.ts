@@ -143,6 +143,35 @@ export function payloadLabelKey(kind: PayloadKind): string {
   }
 }
 
+// ── Trigger-history view (expanded detail) ───────────────────────────────────
+
+/**
+ * The event kinds the API actually writes (apps/api job trail). Anything
+ * else is rendered as its raw string — the list is a rendering aid, not a
+ * validator, so a future kind degrades to visible text instead of a key.
+ */
+export const JOB_EVENT_KINDS = [
+  "scheduled-trigger",
+  "manual-trigger",
+  "dispatched",
+  "dispatch-failed",
+  "materialized",
+] as const
+
+/**
+ * Localization route for a trail entry's kind: known kinds map to the
+ * "tui.jobs.event.<kind>" key; unknown/garbage kinds come back with
+ * known === false so the dialog prints the raw kind verbatim (honest) —
+ * never a bare i18n key, never a console.warn from the dictionary.
+ */
+export function jobEventKindLabel(kind: unknown): { key: string; known: boolean } {
+  const raw = typeof kind === "string" && kind.trim().length > 0 ? kind : "unknown"
+  return {
+    key: `tui.jobs.event.${raw}`,
+    known: (JOB_EVENT_KINDS as readonly string[]).includes(raw),
+  }
+}
+
 /**
  * The most recent trail entries for the expanded detail view, newest first.
  * Defensive: a garbage events array yields [].
@@ -152,10 +181,77 @@ export function jobDetailEvents(job: Job, limit = 3): JobEvent[] {
   return events.slice(-limit).reverse()
 }
 
-/** "12:34 kind — note" one-liner for a trail entry (defensive). */
-export function formatJobEvent(event: JobEvent): string {
+/**
+ * "12:34 kind — note" one-liner for a trail entry (defensive).
+ *
+ * Deepened for the trigger-history view without breaking the pinned compact
+ * form: an optional `nowMs` appends a relative marker ("(5m ago)") after the
+ * note, and an optional `kindLabel` replaces the raw kind with its localized
+ * label (the dialog passes t(jobEventKindLabel(kind).key) for known kinds).
+ * Garbage in any field degrades that field only.
+ */
+export function formatJobEvent(event: JobEvent, nowMs?: number, kindLabel?: string): string {
   const at = typeof event?.at === "string" ? event.at.slice(11, 19) : "??:??:??"
-  const kind = typeof event?.kind === "string" ? event.kind : "unknown"
+  const kind =
+    typeof kindLabel === "string" && kindLabel.length > 0
+      ? kindLabel
+      : typeof event?.kind === "string" && event.kind.length > 0
+        ? event.kind
+        : "unknown"
   const note = typeof event?.note === "string" && event.note.length > 0 ? ` — ${event.note}` : ""
-  return `${at} ${kind}${note}`
+  const rt =
+    typeof nowMs === "number" && Number.isFinite(nowMs) ? relativeTime(event?.at, nowMs) : null
+  const rel = rt !== null ? ` (${formatRelativeTime(rt)})` : ""
+  return `${at} ${kind}${note}${rel}`
+}
+
+// ── Next-fire estimate (honest, no cron math) ────────────────────────────────
+
+/**
+ * What can honestly be said about when a job fires next, derived from the
+ * RAW schedule string (the API stores exactly what was provided):
+ *   - pure digits      → an intervalMs; rounded to whole seconds and
+ *                        humanized ("every 30s") — that IS the estimate
+ *   - 5 cron fields    → labeled "cron" with the expression passed through;
+ *                        NO concrete time is computed (a real cron parser
+ *                        would be a lie at this layer) — the dialog renders
+ *                        the estimate.cron disclosure next to it
+ *   - otherwise        → falls back to a positive numeric intervalMs field,
+ *                        else "unknown" ("?")
+ */
+export type ScheduleEstimate =
+  | { kind: "interval"; intervalMs: number; label: string }
+  | { kind: "cron"; label: string }
+  | { kind: "unknown"; label: string }
+
+export function scheduleEstimate(job: Job): ScheduleEstimate {
+  const raw = typeof job?.schedule === "string" ? job.schedule.trim() : ""
+  if (/^\d+$/.test(raw)) {
+    const ms = Number(raw)
+    if (Number.isFinite(ms) && ms > 0) {
+      const intervalMs = Math.round(ms / 1000) * 1000 // whole-second honesty
+      return { kind: "interval", intervalMs, label: humanizeInterval(intervalMs) }
+    }
+  }
+  if (raw.split(/\s+/).length === 5 && raw.length > 0) {
+    return { kind: "cron", label: raw }
+  }
+  const fallbackMs = typeof job?.intervalMs === "number" ? job.intervalMs : 0
+  if (Number.isFinite(fallbackMs) && fallbackMs > 0) {
+    return { kind: "interval", intervalMs: fallbackMs, label: humanizeInterval(fallbackMs) }
+  }
+  return { kind: "unknown", label: "?" }
+}
+
+// ── Refresh hint ─────────────────────────────────────────────────────────────
+
+/**
+ * Whole seconds since the dialog last refreshed (for the "updated Ns ago ·
+ * r refresh" hint). Clock skew is clamped to 0; garbage in either operand
+ * yields null so the dialog can hide the hint instead of guessing.
+ */
+export function elapsedSeconds(fromMs: unknown, toMs: unknown): number | null {
+  if (typeof fromMs !== "number" || !Number.isFinite(fromMs)) return null
+  if (typeof toMs !== "number" || !Number.isFinite(toMs)) return null
+  return Math.max(0, Math.round((toMs - fromMs) / 1000))
 }

@@ -5,14 +5,17 @@ import Spinner from "ink-spinner"
 
 import type { UsageSummary } from "../api"
 import { useSDK } from "../context/sdk"
-import { usageMetricsFromSummary } from "./usage-model"
+import { cacheHitRate, unpricedCount, usageMetricsFromSummary } from "./usage-model"
 import "../locales/tui-panels"
 
 /**
  * Usage panel — the TUI face of GET /api/obs/usage/summary: the three core
  * metrics (totalRequests / totalTokens / totalCost) as a compact three-line
  * readout, with the dashboard's honest "—" when the window contained
- * unpriced requests (totalCostUsdKnown === false). r refreshes, esc closes.
+ * unpriced requests (totalCostUsdKnown === false). Deepened with a cache
+ * hit-rate line (cache reads over the honest grand total) and a yellow
+ * unpriced-request count line shown only when the cost total is partial.
+ * r refreshes, esc closes.
  */
 export function UsagePanel() {
   const sdk = useSDK()
@@ -54,6 +57,10 @@ export function UsagePanel() {
   })
 
   const metrics = summary != null ? usageMetricsFromSummary(summary) : null
+  // Deepened disclosures: cache hit rate (read tokens over the grand total)
+  // and the unpriced-request count (only when the cost total is partial).
+  const hitRate = summary != null ? cacheHitRate(summary) : null
+  const unpriced = summary != null ? unpricedCount(summary) : null
 
   return (
     <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
@@ -86,6 +93,18 @@ export function UsagePanel() {
               {" "}
               {t("tui.usage.cost", "cost")}: {metrics.cost}
             </Text>
+            {hitRate !== null ? (
+              <Text color="cyan">
+                {" "}
+                {t("tui.usage.cacheHitRate", "cache hit")}: {hitRate.toFixed(1)}%
+              </Text>
+            ) : null}
+            {unpriced !== null ? (
+              <Text color="yellow">
+                {" "}
+                ⚠ {t("tui.usage.unpriced", { count: unpriced }, "unpriced requests: {count}")}
+              </Text>
+            ) : null}
           </>
         )}
       </Box>

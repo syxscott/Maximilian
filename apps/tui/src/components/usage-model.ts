@@ -78,3 +78,39 @@ export function usageMetrics(summary: unknown): UsageMetricsView {
 export function usageMetricsFromSummary(summary: UsageSummary): UsageMetricsView {
   return usageMetrics(summary)
 }
+
+/**
+ * Cache hit rate for the deepened panel: cache-read tokens over the honest
+ * grand total. realTotalTokens EXCLUDES cache reads (input + output +
+ * cache-creation only), so the denominator is realTotal + cacheRead —
+ * dividing by realTotal alone could exceed 100%. Both counts must be
+ * present, finite, non-negative and the denominator strictly positive;
+ * anything else yields null (the panel hides the line — no "NaN%").
+ * Returns a percentage rounded to one decimal, clamped to 0..100.
+ */
+export function cacheHitRate(summary: unknown): number | null {
+  const record =
+    summary != null && typeof summary === "object" ? (summary as Record<string, unknown>) : {}
+  const read = record.totalCacheReadTokens
+  const real = record.realTotalTokens
+  if (typeof read !== "number" || !Number.isFinite(read) || read < 0) return null
+  if (typeof real !== "number" || !Number.isFinite(real) || real < 0) return null
+  const total = real + read
+  if (total <= 0) return null
+  return Math.max(0, Math.min(100, Math.round((read / total) * 1000) / 10))
+}
+
+/**
+ * Unpriced-request count for the disclosure line: only shown when the
+ * summary says the cost total is partial (totalCostUsdKnown === false) —
+ * a known total means nothing is unpriced and the line stays hidden
+ * (null). The count itself is read defensively; garbage degrades to 0.
+ */
+export function unpricedCount(summary: unknown): number | null {
+  const record =
+    summary != null && typeof summary === "object" ? (summary as Record<string, unknown>) : {}
+  if (record.totalCostUsdKnown !== false) return null
+  const count = record.unpricedRequestCount
+  if (typeof count !== "number" || !Number.isFinite(count) || count < 0) return 0
+  return Math.round(count)
+}
