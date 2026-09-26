@@ -121,6 +121,17 @@
  * limit surface. The collapsed inline error row gains the ✗ marker,
  * matching the group outcome badges (aria-hidden, no new locale keys —
  * errors render verbatim).
+ *
+ * The "wrap-up" round locks the converged surfaces with fixtures: all
+ * three group renderers carry the countOutcomes stats row (count line +
+ * ok/failed/unrecorded badges) with the humanized avgDuration beside it —
+ * execute/changes/cua each asserted from a real payload; the audit's
+ * density verdicts are pinned at 60 full + the two deliberate
+ * primary-plus-fallback entries with "schema-complete" retired; the
+ * collapsed inline error's decorative ✗ prefix is verified across
+ * renderers (a failed child inside a group, the generic fallback) and
+ * against the group failed badge's destructive semantics; and every
+ * domain key's {placeholder} slots must match between zh-CN and en-US.
  */
 
 import { describe, it, expect, afterEach } from "vitest"
@@ -5366,5 +5377,123 @@ describe("closing round — audit coverage locked 62/62", () => {
     }
     expect(RENDERER_FIELD_AUDIT.edit?.note).toContain("DiffPreview")
     expect(RENDERER_FIELD_AUDIT["list-apps"]?.note).toContain("no input fields")
+  })
+})
+
+// ── wrap-up round — converged-surface locks (fixtures + matrix) ─────────────
+
+describe("wrap-up — group stats wiring locked for all three groups", () => {
+  it("cua-group: the full stats row — count, ok/failed/unrecorded badges, humanized mean", () => {
+    renderInput("cua-group", {
+      items: [
+        { action: "click", ok: true, durationMs: 2000 },
+        { action: "type", ok: false, durationMs: 3000 },
+        { action: "key" },
+      ],
+    })
+    expect(screen.getByTestId("tool-group-count")).toHaveTextContent("3 sub-calls")
+    expect(screen.getByTestId("tool-group-ok")).toHaveTextContent("1 ok")
+    expect(screen.getByTestId("tool-group-failed")).toHaveTextContent("1 failed")
+    expect(screen.getByTestId("tool-group-unknown")).toHaveTextContent("1 unrecorded")
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("avg 2.5s")
+  })
+
+  it("changes-group: the mean humanizes past the minute mark beside the badges", () => {
+    renderInput("changes-group", {
+      items: [
+        { oldString: "a", newString: "b", ok: true, durationMs: 120000 },
+        { content: "x", ok: true, durationMs: 130000 },
+      ],
+    })
+    expect(screen.getByTestId("tool-group-ok")).toHaveTextContent("2 ok")
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("avg 2m5s")
+  })
+
+  it("each of the three groups renders the count line (shared GroupBodyBase wiring)", () => {
+    for (const tool of ["execute-group", "changes-group", "cua-group"]) {
+      renderInput(tool, { items: [{ tool: "bash", command: "one", ok: true }] })
+      expect(screen.getByTestId("tool-group-count"), tool).toHaveTextContent("1 sub-calls")
+      expect(screen.getByTestId("tool-group-outcomes"), tool).toBeInTheDocument()
+      cleanup()
+    }
+  })
+
+  it("the summary row keeps one shape across the groups — count, outcomes, average", () => {
+    for (const tool of ["execute-group", "changes-group", "cua-group"]) {
+      renderInput(tool, { items: [{ tool: "bash", command: "one", ok: true, durationMs: 1500 }] })
+      const count = screen.getByTestId("tool-group-count")
+      expect(count.nextElementSibling, tool).toHaveAttribute("data-testid", "tool-group-outcomes")
+      expect(count.nextElementSibling?.nextElementSibling, tool).toHaveAttribute(
+        "data-testid",
+        "tool-group-avg",
+      )
+      cleanup()
+    }
+  })
+})
+
+describe("wrap-up — LOW_DENSITY_RENDERERS convergence lock", () => {
+  it("density verdicts converge: 60 full + the two deliberate pair, schema-complete retired", () => {
+    const tools = Object.keys(RENDERER_FIELD_AUDIT)
+    expect(tools).toHaveLength(62)
+    const density = (tool: string) => RENDERER_FIELD_AUDIT[tool]?.density
+    const full = tools.filter((t) => density(t) === "full")
+    const deliberate = tools.filter((t) => density(t) === "primary-plus-fallback")
+    const retired = tools.filter((t) => density(t) === "schema-complete")
+    expect(full).toHaveLength(60)
+    expect(deliberate.sort()).toEqual(["edit", "list-apps"])
+    expect(retired).toHaveLength(0)
+    // LOW_DENSITY_RENDERERS is exactly the not-full complement — the
+    // derivation and the table cannot drift apart.
+    expect(new Set([...deliberate, ...retired])).toEqual(new Set(LOW_DENSITY_RENDERERS))
+    expect(LOW_DENSITY_RENDERERS).toHaveLength(2)
+  })
+})
+
+describe("wrap-up — collapsed ✗ prefix unified across renderers", () => {
+  it("a failed child inside a group carries the same ✗-prefixed inline error as a top-level call", () => {
+    renderInput("execute-group", {
+      items: [
+        { tool: "bash", command: "fine", ok: true },
+        { tool: "task", prompt: "p", ok: false, error: "boom" },
+      ],
+    })
+    const line = within(screen.getByTestId("tool-call-task")).getByTestId("tool-error-collapsed")
+    const marker = line.querySelector("span[aria-hidden]")
+    expect(marker?.textContent).toBe("✗")
+    expect(line.textContent).toMatch(/^✗/)
+    expect(line.getAttribute("title")).toBe("boom")
+    // The group's failed OutcomeBadge renders the same decorative glyph.
+    const badge = within(screen.getByTestId("tool-group-outcomes")).getByTestId("tool-group-failed")
+    expect(within(badge).getByText("✗")).toHaveAttribute("aria-hidden", "true")
+  })
+
+  it("the prefix is renderer-independent — the generic fallback body carries it too", () => {
+    render(<ToolCallBlock tool="never-seen-tool" input={{ x: 1 }} ok={false} error="kaput" />)
+    const line = screen.getByTestId("tool-error-collapsed")
+    expect(line.textContent).toMatch(/^✗/)
+    expect(line.querySelector("span[aria-hidden]")?.textContent).toBe("✗")
+  })
+
+  it("the failed badges share destructive semantics — group OutcomeBadge and registry Badge", () => {
+    renderInput("execute-group", {
+      items: [{ tool: "task", prompt: "p", ok: false, error: "boom" }],
+    })
+    const groupBadge = screen.getByTestId("tool-group-failed")
+    expect(groupBadge.className).toContain("destructive")
+    const button = within(screen.getByTestId("tool-call-task")).getByRole("button")
+    const registryBadge = button.querySelector(".bg-destructive")
+    expect(registryBadge?.textContent).toBe("✗")
+  })
+})
+
+describe("wrap-up — i18n slot parity", () => {
+  it("every domain key's {placeholder} set matches between zh-CN and en-US", () => {
+    const slots = (value: string) => [...value.matchAll(/\{[^}]+\}/g)].map((m) => m[0]).sort()
+    for (const key of Object.keys(zhDomain)) {
+      expect(slots(enDomain[key as keyof typeof enDomain] ?? ""), key).toEqual(
+        slots(zhDomain[key as keyof typeof zhDomain] ?? ""),
+      )
+    }
   })
 })
