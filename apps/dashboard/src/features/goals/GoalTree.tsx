@@ -27,7 +27,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { DeltaBadge } from "@/components/ai-elements"
+import { DeltaBadge, EmptyHint } from "@/components/ai-elements"
 import { useLocale, t } from "@max/i18n"
 import { deriveGoals, roleColor } from "./model"
 import type { GoalMilestoneView, GoalTaskView } from "./model"
@@ -159,9 +159,11 @@ export function GoalTree({ workspace }: { workspace: unknown }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {view.sources.length === 0 ? (
-          <p className="text-xs text-muted-foreground" data-testid="goals-empty">
-            {t("goals.empty")}
-          </p>
+          // Empty state through the shared EmptyHint placeholder (icon +
+          // copy) — the same style the timeline and deliverables use.
+          <div data-testid="goals-empty">
+            <EmptyHint hint={{ title: t("goals.empty") }} />
+          </div>
         ) : (
           <>
             <div className="flex items-center gap-3" data-testid="goal-primary">

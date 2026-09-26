@@ -132,3 +132,22 @@ export function migrationsMetrics(raw: unknown): SubsystemMetric[] {
   push("coreKeys", i18n.coreKeys)
   return out
 }
+
+// ── Copyable environment summary ────────────────────────────────────────────
+//
+// The overview row's real observations as one paste-able line for bug
+// reports: `<subsystem>=<state>` pairs followed by the migrations
+// anchors. Deliberately locale-independent technical tokens (the states
+// and metric ids ARE the vocabulary); the CopyField chip hides itself
+// while nothing has been observed (empty health row → empty string).
+
+/** Fold the health row + numeric anchors into one `k=v k=v` line. */
+export function systemSummary(
+  health: ReadonlyArray<SubsystemHealth>,
+  metrics: ReadonlyArray<SubsystemMetric>,
+): string {
+  if (health.length === 0) return ""
+  const parts = health.map(({ id, state }) => `${id}=${state}`)
+  for (const { id, value } of metrics) parts.push(`${id}=${value}`)
+  return parts.join(" ")
+}

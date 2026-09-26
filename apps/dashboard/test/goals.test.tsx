@@ -14,7 +14,8 @@
  * ever shows metrics the leaderboard actually reported — degrading
  * explicitly when the engine is unavailable. The ai-elements mount
  * round covers the summary card's DonutStat ring + StatCard strip and
- * the goal tree's failed-sub-goal DeltaBadge count.
+ * the goal tree's failed-sub-goal DeltaBadge count, plus the empty
+ * state through the shared EmptyHint placeholder.
  */
 
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest"
@@ -458,7 +459,11 @@ describe("goals render smoke", () => {
 
   it("GoalTree degrades to the empty state and the no-plan hint", () => {
     const first = renderWithClient(<GoalTree workspace={null} />)
-    expect(screen.getByTestId("goals-empty")).toBeTruthy()
+    // The empty state renders through the shared EmptyHint placeholder
+    // (icon + copy in a role="status" block), not a bare text row.
+    const empty = screen.getByTestId("goals-empty")
+    expect(empty.querySelector('[role="status"]')).toBeTruthy()
+    expect(empty.textContent).toContain("No goal data yet")
     first.unmount()
 
     renderWithClient(

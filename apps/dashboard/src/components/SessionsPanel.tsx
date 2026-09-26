@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button"
 import { useLocale, t, formatRelative } from "@max/i18n"
 import { sessionsApi } from "@/api"
 import { queryKeys } from "@/lib/api/hooks"
-import { SkeletonBlock } from "@/components/ai-elements"
+import { SkeletonBlock, EmptyHint } from "@/components/ai-elements"
 
 export function SessionsPanel({ workspaceId }: { workspaceId?: string }) {
   useLocale()
@@ -49,7 +49,11 @@ export function SessionsPanel({ workspaceId }: { workspaceId?: string }) {
             <SkeletonBlock shape={{ variant: "text", lines: 3 }} />
           </div>
         ) : sessions.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{t("sessions.empty")}</p>
+          // Empty state through the shared EmptyHint placeholder — the
+          // same icon + copy style the timeline and deliverables use.
+          <div data-testid="sessions-empty">
+            <EmptyHint hint={{ title: t("sessions.empty") }} />
+          </div>
         ) : (
           <ul className="space-y-1" data-testid="sessions-list">
             {sessions.map((session) => {

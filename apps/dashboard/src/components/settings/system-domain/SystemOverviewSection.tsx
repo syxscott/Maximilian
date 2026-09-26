@@ -17,6 +17,11 @@
  * counts are not token usage, so the token component itself stays
  * unmounted and the chips carry the honest settingsDeep.migrations
  * labels instead.
+ *
+ * A CopyField chip at the row's end copies the whole observation line
+ * (`vault=ok … openapiRoutes=42 …`) for bug reports — built by the
+ * systemSummary model fn from exactly what the row renders, and
+ * self-hiding until the first fetch lands (or without a clipboard).
  */
 
 import { Fragment, useMemo } from "react"
@@ -24,7 +29,7 @@ import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, CheckCircle2, MinusCircle } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import { systemApi } from "@/api"
-import { SkeletonBlock } from "@/components/ai-elements"
+import { CopyField, SkeletonBlock } from "@/components/ai-elements"
 import {
   useMigrationCandidates,
   useSessionStoreStatus,
@@ -35,6 +40,7 @@ import { SessionStoreStatusCard } from "../store-domain/SessionStoreStatusCard"
 import { MigrationCandidatesCard } from "../store-domain/MigrationCandidatesCard"
 import {
   migrationsMetrics,
+  systemSummary,
   toSystemHealthView,
   type SubsystemId,
   type SubsystemState,
@@ -110,6 +116,10 @@ export function SystemOverviewSection() {
     [migrationsQuery.data, migrationsQuery.isError],
   )
 
+  // One paste-able line of the row's real observations (states + anchors)
+  // for bug reports; CopyField hides itself until the first fetch lands.
+  const summary = useMemo(() => systemSummary(health, metrics), [health, metrics])
+
   return (
     <div className="space-y-3" data-testid="settings-system-overview">
       <div className="flex flex-wrap items-center gap-2" data-testid="system-health-row">
@@ -142,6 +152,12 @@ export function SystemOverviewSection() {
             </Fragment>
           )
         })}
+        {/* Environment summary as a copyable chip (CopyField): the same
+            states + anchors the row shows, joined for paste-into-a-report.
+            Self-hiding without a clipboard or before the first fetch. */}
+        <span data-testid="system-copy-summary" className="ml-auto flex">
+          <CopyField field={{ value: summary, label: t("settingsDeep.system.title") }} />
+        </span>
       </div>
       {/* Composed cards, each gated on its subsystem's FIRST load: the
           summary row's queries are the same keys the cards use, so the

@@ -13,8 +13,9 @@
  * EmptyHint empty states, and — appended here because system-domain is in
  * the same task's ownership while only these two test files are — the
  * system-domain overview's migrationsMetrics model and metric-chip
- * render. Complements — and must not break — the existing
- * deliverables.test.tsx suite.
+ * render, and the third round's systemSummary model + CopyField chip
+ * that copies the overview row's real observation line. Complements —
+ * and must not break — the existing deliverables.test.tsx suite.
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest"
@@ -40,7 +41,11 @@ import {
 } from "../src/features/deliverables/model"
 import type { TaskReviewLink } from "../src/features/deliverables/model"
 import { DeliverablesPanel } from "../src/features/deliverables/DeliverablesPanel"
-import { migrationsMetrics } from "../src/components/settings/system-domain/model"
+import {
+  migrationsMetrics,
+  systemSummary,
+  toSystemHealthView,
+} from "../src/components/settings/system-domain/model"
 import { SystemOverviewSection } from "../src/components/settings/system-domain/SystemOverviewSection"
 import { useMigrationCandidates, useSessionStoreStatus } from "@/hooks/useSettingsQueries"
 import { systemApi, chatApi } from "@/api"
@@ -526,6 +531,32 @@ describe("migrationsMetrics — numeric anchors for the overview row", () => {
   })
 })
 
+describe("systemSummary — copyable environment summary line", () => {
+  it("joins the health row and the numeric anchors into one k=v line", () => {
+    const payload = { api: { openapiRoutes: 42 }, i18n: { locales: 2, coreKeys: 1200 } }
+    const health = toSystemHealthView({
+      vault: { configured: true, open: true },
+      store: { available: true },
+      migrations: payload,
+      oracle: { configured: true },
+    })
+    // Locale-independent technical tokens — the paste-able form of what
+    // the health row renders.
+    expect(systemSummary(health, migrationsMetrics(payload))).toBe(
+      "vault=ok store=ok migrations=ok oracle=ok openapiRoutes=42 locales=2 coreKeys=1200",
+    )
+  })
+
+  it("keeps unknown states honestly and returns empty when nothing was observed", () => {
+    // No payloads at all → every subsystem unknown, still a real line.
+    expect(systemSummary(toSystemHealthView({}), [])).toBe(
+      "vault=unknown store=unknown migrations=unknown oracle=unknown",
+    )
+    // Metrics without a health row → nothing observed, CopyField hides.
+    expect(systemSummary([], [{ id: "locales", value: 2 }])).toBe("")
+  })
+})
+
 describe("SystemOverviewSection render — health row + metric chips", () => {
   function primeQueries({
     migrations,
@@ -572,6 +603,42 @@ describe("SystemOverviewSection render — health row + metric chips", () => {
     expect(screen.queryByTestId("system-metric-openapiRoutes")).toBeNull()
     expect(screen.queryByTestId("system-metric-locales")).toBeNull()
     expect(screen.queryByTestId("system-metric-coreKeys")).toBeNull()
+  })
+
+  it("copies the real environment summary line through the CopyField chip", async () => {
+    primeQueries({
+      migrations: { api: { openapiRoutes: 42 }, i18n: { locales: 2, coreKeys: 1200 } },
+    })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    try {
+      renderWithQuery(<SystemOverviewSection />)
+      const summary =
+        "vault=ok store=ok migrations=ok oracle=ok openapiRoutes=42 locales=2 coreKeys=1200"
+      await waitFor(() => {
+        expect(screen.getByTestId("system-copy-summary").textContent).toContain("vault=ok")
+      })
+      // The chip carries exactly what the row renders: the four states in
+      // order, then the migrations anchors.
+      const chip = screen.getByTestId("system-copy-summary")
+      expect(chip.querySelector("code")?.textContent).toBe(summary)
+      // act(): the copy confirmation flips CopyField's state when the
+      // stubbed writeText resolves.
+      await act(async () => {
+        fireEvent.click(chip.querySelector("button") as HTMLButtonElement)
+      })
+      expect(writeText).toHaveBeenCalledWith(summary)
+    } finally {
+      Reflect.deleteProperty(navigator, "clipboard")
+    }
+  })
+
+  it("hides the copy chip without a clipboard API", () => {
+    primeQueries({})
+    Reflect.deleteProperty(navigator, "clipboard")
+    renderWithQuery(<SystemOverviewSection />)
+    // The wrapper stays, but CopyField self-hides → no chip inside.
+    expect(screen.getByTestId("system-copy-summary").children).toHaveLength(0)
   })
 })
 
