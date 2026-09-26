@@ -190,6 +190,27 @@ export interface EfficacyRowView extends GatingInference {
 
 // ── Efficacy ledger sort + bucket filter (deepened panel) ───────────────────
 
+/** Shared defensive coercion behind both ledger sorts (garbage in → null). */
+function coerceEfficacyRow(raw: unknown): EfficacyRowView | null {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null
+  const record = raw as Record<string, unknown>
+  const bucket = MEMORY_BUCKETS.find((key) => key === record.bucket)
+  if (bucket == null) return null
+  const numeric = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0
+  const injectedCount = numeric(record.injectedCount)
+  return {
+    bucket,
+    labelKey: `tui.memory.bucket.${bucket}`,
+    injectedCount: injectedCount > 0 ? injectedCount : 0,
+    deltaSum: numeric(record.deltaSum),
+    mean: numeric(record.mean),
+    decision: record.decision === "skip" ? "skip" : "inject",
+    evidence: record.evidence === "sufficient" ? "sufficient" : "insufficient",
+    observed: record.observed === true,
+  }
+}
+
 /**
  * Sort the efficacy ledger worst-first: mean ascending — the most negative
  * bucket (the one the engine gates out) heads the list, the healthy ones
@@ -203,31 +224,41 @@ export interface EfficacyRowView extends GatingInference {
  */
 export function sortEfficacy(rows: unknown): EfficacyRowView[] {
   const list = Array.isArray(rows) ? rows : []
-  const numeric = (value: unknown): number =>
-    typeof value === "number" && Number.isFinite(value) ? value : 0
   const out: EfficacyRowView[] = []
   for (const raw of list) {
-    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue
-    const record = raw as Record<string, unknown>
-    const bucket = MEMORY_BUCKETS.find((key) => key === record.bucket)
-    if (bucket == null) continue
-    const injectedCount = numeric(record.injectedCount)
-    out.push({
-      bucket,
-      labelKey: `tui.memory.bucket.${bucket}`,
-      injectedCount: injectedCount > 0 ? injectedCount : 0,
-      deltaSum: numeric(record.deltaSum),
-      mean: numeric(record.mean),
-      decision: record.decision === "skip" ? "skip" : "inject",
-      evidence: record.evidence === "sufficient" ? "sufficient" : "insufficient",
-      observed: record.observed === true,
-    })
+    const row = coerceEfficacyRow(raw)
+    if (row != null) out.push(row)
   }
   const order = new Map<MemoryBucketKey, number>(MEMORY_BUCKETS.map((key, i) => [key, i]))
   return out.sort((a, b) => {
     if (a.mean !== b.mean) return a.mean - b.mean
     if (b.injectedCount !== a.injectedCount) return b.injectedCount - a.injectedCount
     return (order.get(a.bucket) ?? 0) - (order.get(b.bucket) ?? 0)
+  })
+}
+
+/**
+ * The STABLE variant the panel paints: worst-first (mean ascending) with the
+ * mean tie broken by the bucket key's ALPHABETICAL order — deliberately NOT
+ * the MEMORY_BUCKETS catalog order, so two ledgers with equal means always
+ * interleave identically no matter when buckets were added to the profile
+ * (a stable, content-addressed order the eye can learn). Identical inputs
+ * therefore always produce byte-identical output (Array#sort is stable, and
+ * bucket keys are unique after coercion, so the tie-break is total).
+ *
+ * Same defensive contract as sortEfficacy (shared coercion): garbage rows
+ * degrade per-field, unknown buckets are dropped, input never mutated.
+ */
+export function sortEfficacyStable(rows: unknown): EfficacyRowView[] {
+  const list = Array.isArray(rows) ? rows : []
+  const out: EfficacyRowView[] = []
+  for (const raw of list) {
+    const row = coerceEfficacyRow(raw)
+    if (row != null) out.push(row)
+  }
+  return out.sort((a, b) => {
+    if (a.mean !== b.mean) return a.mean - b.mean
+    return a.bucket.localeCompare(b.bucket)
   })
 }
 
@@ -367,4 +398,69 @@ export function memoryExportJson(doc: MemoryExportDoc): string {
 export function formatSigned(value: unknown): string {
   const n = typeof value === "number" && Number.isFinite(value) ? value : 0
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`
+}
+
+// ── Search (/ key) — coexists with the f-key bucket filter ──────────────────
+
+/**
+ * Normalized search query: trimmed, never null. Garbage (non-string /
+ * undefined) degrades to "" — the model's "no filter" sentinel, so an empty
+ * input can never turn into "no results".
+ */
+export function normalizeSearchQuery(query: unknown): string {
+  return typeof query === "string" ? query.trim() : ""
+}
+
+/**
+ * Does one memory entry match the query? Case-insensitive substring over
+ * the full content, the one-line preview, the mime and the bucket key. An
+ * empty/garbage query matches everything (search off); a garbage entry
+ * matches nothing once a query is active — it could not be displayed
+ * anyway.
+ */
+export function matchesMemoryQuery(entry: unknown, query: unknown): boolean {
+  const q = normalizeSearchQuery(query).toLowerCase()
+  if (q.length === 0) return true
+  if (entry == null || typeof entry !== "object" || Array.isArray(entry)) return false
+  const e = entry as Partial<MemoryEntryView>
+  return [e.content, e.preview, e.mime, e.bucket].some(
+    (field) => typeof field === "string" && field.toLowerCase().includes(q),
+  )
+}
+
+/**
+ * Filter the flat entry list by the search query. Order-preserving (the
+ * bucket-order cursor mapping stays valid); non-object rows are dropped —
+ * with the query OFF too, since they cannot render. Non-array input yields
+ * []. The input array is never mutated.
+ */
+export function searchMemoryEntries(entries: unknown, query: unknown): MemoryEntryView[] {
+  const list = Array.isArray(entries) ? entries : []
+  return list.filter((entry) =>
+    entry != null && typeof entry === "object" && !Array.isArray(entry)
+      ? matchesMemoryQuery(entry, query)
+      : false,
+  )
+}
+
+/**
+ * Filter the efficacy ledger rows by the search query — case-insensitive
+ * substring over the bucket key (and its label key, which embeds it). This
+ * is the second half of the filter/search coexistence contract: the f-key
+ * filter narrows by gating decision, the query narrows by bucket name, and
+ * BOTH stay live at once — filtering first then searching still finds the
+ * matching buckets within the filtered set (and vice versa; the two
+ * predicates commute). Same defensive contract as filterBuckets.
+ */
+export function searchEfficacyRows(rows: unknown, query: unknown): EfficacyRowView[] {
+  const q = normalizeSearchQuery(query).toLowerCase()
+  const list = Array.isArray(rows) ? rows : []
+  return list.filter((raw): raw is EfficacyRowView => {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return false
+    if (q.length === 0) return true
+    const row = raw as Partial<EfficacyRowView>
+    return [row.bucket, row.labelKey].some(
+      (field) => typeof field === "string" && field.toLowerCase().includes(q),
+    )
+  })
 }

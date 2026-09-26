@@ -5,7 +5,14 @@ import Spinner from "ink-spinner"
 
 import type { AgentProfilePayload, LeaderboardEntryPayload } from "../api"
 import { useSDK } from "../context/sdk"
-import { agentDetail, buildAgentRows, leaderboardByRole, type AgentRowView } from "./agents-model"
+import {
+  agentDetail,
+  buildAgentRows,
+  leaderboardByRole,
+  scoreAgoLabel,
+  wrapCursor,
+  type AgentRowView,
+} from "./agents-model"
 import { elapsedSeconds } from "./jobs-model"
 import "../locales/tui-panels"
 
@@ -87,12 +94,15 @@ export function AgentsPanel() {
   const selected = rows.length > 0 ? rows[safeCursor] : undefined
 
   useInput((input, key) => {
+    // j/k wrap around the ends (last → first, first → last) so a long role
+    // list can be circled with one key; wrapCursor clamps a stale cursor
+    // first, so a shrinking list can never strand the selection.
     if (key.upArrow || input === "k") {
-      setCursor((prev) => Math.max(0, Math.min(prev, maxCursor) - 1))
+      setCursor((prev) => wrapCursor(prev, -1, rows.length))
       return
     }
     if (key.downArrow || input === "j") {
-      setCursor((prev) => Math.min(maxCursor, Math.min(prev, maxCursor) + 1))
+      setCursor((prev) => wrapCursor(prev, 1, rows.length))
       return
     }
     if (key.return) {
@@ -137,6 +147,7 @@ export function AgentsPanel() {
               row={row}
               selected={index === safeCursor}
               expanded={expandedRole === row.role}
+              now={now}
               detail={agentDetail(
                 profiles.find((p) => p?.role === row.role) ?? null,
                 byRole.get(row.role) ?? null,
@@ -166,9 +177,11 @@ function AgentRow(props: {
   row: AgentRowView
   selected: boolean
   expanded: boolean
+  /** Frozen "now" (ms) the relative timestamps age against. */
+  now: number
   detail: ReturnType<typeof agentDetail>
 }) {
-  const { row, selected, expanded, detail } = props
+  const { row, selected, expanded, now, detail } = props
   const score = row.avgScore != null ? row.avgScore.toFixed(1) : t("tui.agents.unrated", "unrated")
   return (
     <Box flexDirection="column">
@@ -186,13 +199,17 @@ function AgentRow(props: {
           {row.model != null ? ` · ${row.model}` : ""}
         </Text>
       </Box>
-      {expanded ? <AgentDetail row={row} detail={detail} /> : null}
+      {expanded ? <AgentDetail row={row} now={now} detail={detail} /> : null}
     </Box>
   )
 }
 
-function AgentDetail(props: { row: AgentRowView; detail: ReturnType<typeof agentDetail> }) {
-  const { row, detail } = props
+function AgentDetail(props: {
+  row: AgentRowView
+  now: number
+  detail: ReturnType<typeof agentDetail>
+}) {
+  const { row, now, detail } = props
   const total = detail.totalEntries
   return (
     <Box flexDirection="column" paddingLeft={4} marginBottom={1}>
@@ -218,7 +235,7 @@ function AgentDetail(props: { row: AgentRowView; detail: ReturnType<typeof agent
             <Text key={`${s.version}-${i}`} dimColor>
               {" "}
               {s.score.toFixed(1)} ★ → {s.version}
-              {s.at != null ? ` · ${s.at.slice(0, 10)}` : ""}
+              {s.at != null ? ` · ${scoreAgoLabel(s.at, now) ?? s.at.slice(0, 10)}` : ""}
             </Text>
           ))}
         </>
@@ -232,7 +249,7 @@ function AgentDetail(props: { row: AgentRowView; detail: ReturnType<typeof agent
             <Text key={`top-${s.version}-${i}`} color="green">
               {" "}
               #{i + 1} {s.score.toFixed(1)} ★ → {s.version}
-              {s.at != null ? ` · ${s.at.slice(0, 10)}` : ""}
+              {s.at != null ? ` · ${scoreAgoLabel(s.at, now) ?? s.at.slice(0, 10)}` : ""}
             </Text>
           ))}
         </>
@@ -253,7 +270,7 @@ function AgentDetail(props: { row: AgentRowView; detail: ReturnType<typeof agent
               {p.oldAvgScore != null && p.newAvgScore != null
                 ? ` (${p.oldAvgScore.toFixed(1)} → ${p.newAvgScore.toFixed(1)})`
                 : ""}
-              {p.at != null ? ` · ${p.at.slice(0, 10)}` : ""}
+              {p.at != null ? ` · ${scoreAgoLabel(p.at, now) ?? p.at.slice(0, 10)}` : ""}
               {p.reason.length > 0 ? ` — ${p.reason}` : ""}
             </Text>
           ))}

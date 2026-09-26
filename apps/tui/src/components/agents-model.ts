@@ -20,6 +20,7 @@ import type {
   LeaderboardEntryPayload,
   LeaderboardVersionDecision,
 } from "../api"
+import { formatRelativeTime, relativeTime } from "./jobs-model"
 
 // ── Score grade (the row's rating dot) ──────────────────────────────────────
 
@@ -365,4 +366,41 @@ export function topScores(
     .sort((a, b) => (b.newAvgScore as number) - (a.newAvgScore as number))
     .slice(0, cap)
     .map((d) => ({ score: d.newAvgScore as number, version: d.toVersion, at: d.at }))
+}
+
+// ── Relative time + list navigation (detail deepening) ──────────────────────
+
+/**
+ * Compact relative label for a review-score timestamp — the display half of
+ * the detail's review-score timelines. Reuses the jobs dialog's relativeTime
+ * convention ("just now", "5m ago", ..., past 30 days a plain YYYY-MM-DD,
+ * which stays more useful than "214d ago") so every panel ages timestamps
+ * identically. Defensive: a non-string / unparseable instant degrades to
+ * null (the caller hides the segment), a garbage `nowMs` falls back to the
+ * live clock, and a parseable instant always yields a label (the absolute
+ * date is the floor).
+ */
+export function scoreAgoLabel(at: unknown, nowMs: unknown): string | null {
+  if (typeof at !== "string" || at.length === 0) return null
+  const now = typeof nowMs === "number" && Number.isFinite(nowMs) ? nowMs : Date.now()
+  const rt = relativeTime(at, now)
+  return rt == null ? null : formatRelativeTime(rt, at.slice(0, 10))
+}
+
+/**
+ * j/k list navigation with first/last wrap-around: pressing j on the last
+ * row lands on the first and k on the first lands on the last, so long role
+ * lists can be circled without releasing the keys. Defensive: a stale cursor
+ * beyond the current length is clamped into range BEFORE wrapping (rows may
+ * have shrunk since the last keypress), garbage operands read as 0 (a
+ * garbage length yields 0 — no rows to move through), and fractional inputs
+ * are truncated. Pure: nothing here mutates or touches React state.
+ */
+export function wrapCursor(cursor: unknown, delta: unknown, length: unknown): number {
+  const len = typeof length === "number" && Number.isFinite(length) ? Math.trunc(length) : 0
+  if (len <= 0) return 0
+  const cur = typeof cursor === "number" && Number.isFinite(cursor) ? Math.trunc(cursor) : 0
+  const step = typeof delta === "number" && Number.isFinite(delta) ? Math.trunc(delta) : 0
+  const base = Math.min(len - 1, Math.max(0, cur))
+  return (((base + step) % len) + len) % len
 }

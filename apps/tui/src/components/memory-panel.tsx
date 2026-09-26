@@ -18,7 +18,9 @@ import {
   formatSigned,
   memoryExportJson,
   memoryPanelView,
-  sortEfficacy,
+  searchEfficacyRows,
+  searchMemoryEntries,
+  sortEfficacyStable,
   type EfficacyFilter,
   type MemoryEntryView,
   type MemoryPanelView,
@@ -42,9 +44,12 @@ const EFFICACY_FILTER_LABELS: Record<EfficacyFilter, { key: string; fallback: st
  * deltaSum / mean) with the gating-inference badge. The badge thresholds are
  * the engine's (@max/evolution gatingDecisions: skip iff samples ≥ 3 AND
  * mean < −0.25, strictly), exported from ./memory-model so UI and engine
- * can't drift. The ledger is sorted worst-first (mean ascending — the gated
- * bucket heads the list) and f cycles a bucket filter over it
- * (all → skip-only → inject-only).
+ * can't drift. The ledger is sorted with the stable worst-first order (mean
+ * ascending, equal means alphabetical by bucket) and f cycles a bucket
+ * filter over it (all → skip-only → inject-only) while / searches: the two
+ * predicates compose — filtering by decision never blanks the query, and
+ * searching still narrows within the active filter (entry list and ledger
+ * rows both).
  *
  * e exports the role's memory as JSON. The TUI has no Blob-download surface
  * (that's the dashboard's pattern), so it copies to the clipboard and
@@ -64,6 +69,10 @@ export function MemoryPanel() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   // f-key filter over the efficacy ledger: all → skip-only → inject-only.
   const [efficacyFilter, setEfficacyFilter] = useState<EfficacyFilter>("all")
+  // /-key search over the entries AND the ledger rows — independent state
+  // from the f filter, so neither predicate ever resets the other.
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searching, setSearching] = useState(false)
   const [nonce, setNonce] = useState(0)
   // 1s heartbeat so the refresh hint ages without waiting for a keypress.
   const [, setTick] = useState(0)
@@ -116,9 +125,12 @@ export function MemoryPanel() {
   const profile = role != null ? (profiles.find((p) => p?.role === role) ?? null) : null
   const view: MemoryPanelView | null = role != null ? memoryPanelView(profile ?? null) : null
   const flatEntries = view?.flatEntries ?? []
-  const maxItemCursor = Math.max(0, flatEntries.length - 1)
+  // The cursor maps onto the SEARCHED list, so narrowing the view can never
+  // point at a hidden row; the query itself is untouched by the f filter.
+  const visibleEntries = searchMemoryEntries(flatEntries, searchQuery)
+  const maxItemCursor = Math.max(0, visibleEntries.length - 1)
   const safeItemCursor = Math.min(itemCursor, maxItemCursor)
-  const selectedEntry = flatEntries.length > 0 ? flatEntries[safeItemCursor] : undefined
+  const selectedEntry = visibleEntries.length > 0 ? visibleEntries[safeItemCursor] : undefined
 
   const exportRoleMemory = useCallback(async () => {
     if (role == null) return
@@ -151,7 +163,9 @@ export function MemoryPanel() {
   }, [clipboard, profile, role, toast])
 
   useInput((input, key) => {
-    if (input === "r") {
+    // Guarded with !searching: while the query has the keyboard, "r" is text,
+    // not the refresh key (every other shortcut sits below the search block).
+    if (input === "r" && !searching) {
       nowRef.current = Date.now()
       refresh()
       return
@@ -170,10 +184,41 @@ export function MemoryPanel() {
         setRole(selectedRole)
         setItemCursor(0)
         setExpandedKey(null)
+        setSearching(false)
+        setSearchQuery("")
       }
       return
     }
-    // Role memory view.
+    // Role memory view — search mode captures printable keys first (only the
+    // arrows fall through, so the filtered list stays navigable while
+    // typing). The f filter stays armed the whole time: toggling it never
+    // touches the query, and the query never resets the filter.
+    if (searching && !key.upArrow && !key.downArrow) {
+      if (key.escape) {
+        setSearching(false)
+        setSearchQuery("")
+        return
+      }
+      if (key.return) {
+        setSearching(false)
+        return
+      }
+      if (key.backspace || key.delete) {
+        const next = searchQuery.slice(0, -1)
+        setSearchQuery(next)
+        if (next.length === 0) setSearching(false)
+        return
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setSearchQuery((prev) => (prev + input).slice(0, 64))
+      }
+      return
+    }
+    if (input === "/") {
+      // Edit the live query (kept, not cleared, when a search is active).
+      setSearching(true)
+      return
+    }
     if (key.upArrow || input === "k") {
       setItemCursor((prev) => Math.max(0, Math.min(prev, maxItemCursor) - 1))
       return
@@ -199,6 +244,8 @@ export function MemoryPanel() {
       setRole(null)
       setItemCursor(0)
       setExpandedKey(null)
+      setSearching(false)
+      setSearchQuery("")
     }
   })
 
@@ -250,13 +297,31 @@ export function MemoryPanel() {
             ))
           )
         ) : (
-          <RoleMemoryView
-            view={view}
-            cursor={safeItemCursor}
-            expandedKey={expandedKey}
-            hasProfile={profile != null}
-            filter={efficacyFilter}
-          />
+          <>
+            {(searching || searchQuery.length > 0) && (
+              <Text color={searching ? "green" : "cyan"}>
+                {searching
+                  ? t(
+                      "tui.memory.search.editing",
+                      { query: searchQuery },
+                      `/${searchQuery}▏ enter keep · esc clear`,
+                    )
+                  : t(
+                      "tui.memory.search.active",
+                      { query: searchQuery },
+                      `/${searchQuery} · / edit · esc clear`,
+                    )}
+              </Text>
+            )}
+            <RoleMemoryView
+              view={view}
+              cursor={safeItemCursor}
+              expandedKey={expandedKey}
+              hasProfile={profile != null}
+              filter={efficacyFilter}
+              query={searchQuery}
+            />
+          </>
         )}
       </Box>
       <Box marginTop={1} flexDirection="column">
@@ -265,7 +330,7 @@ export function MemoryPanel() {
             ? t("tui.memory.hints.roles", "j/k move · Enter open · r refresh · esc close")
             : t(
                 "tui.memory.hints.role",
-                "j/k move · Enter expand · b roles · e export · f filter · r refresh · esc close",
+                "j/k move · Enter expand · / search · b roles · e export · f filter · r refresh · esc close",
               )}
         </Text>
         {(() => {
@@ -287,40 +352,56 @@ function RoleMemoryView(props: {
   expandedKey: string | null
   hasProfile: boolean
   filter: EfficacyFilter
+  /** Live /-search query — narrows entries AND ledger rows, keeps the filter. */
+  query: string
 }) {
-  const { view, cursor, expandedKey, hasProfile, filter } = props
+  const { view, cursor, expandedKey, hasProfile, filter, query } = props
   if (view == null || !hasProfile) {
     return (
       <Text color="gray">{t("tui.memory.roleVanished", "Profile gone — press r to refresh.")}</Text>
     )
   }
-  // Running flat index across all bucket entries — the cursor maps onto it.
+  // Running flat index across the SEARCHED entries — the cursor maps onto
+  // it, and it stays aligned with the panel's searchMemoryEntries(flat)
+  // because both walk the buckets in the same order.
   let flatIndex = -1
+  const searchedFlat = searchMemoryEntries(view.flatEntries, query)
   return (
     <Box flexDirection="column">
-      {view.buckets.map((bucket) => (
-        <Box key={bucket.key} flexDirection="column">
-          <Text bold color="cyan">
-            {t(bucket.labelKey, bucket.key)} ({bucket.count})
-          </Text>
-          {bucket.count === 0 ? (
-            <Text dimColor> {t("tui.memory.emptyBucket", "(empty)")}</Text>
-          ) : (
-            bucket.entries.map((entry) => {
-              flatIndex += 1
-              return (
-                <EntryLine
-                  key={entry.key}
-                  entry={entry}
-                  selected={flatIndex === cursor}
-                  expanded={expandedKey === entry.key}
-                />
-              )
-            })
-          )}
-        </Box>
-      ))}
-      <EfficacyLedger view={view} filter={filter} />
+      {query.length > 0 && searchedFlat.length === 0 ? (
+        <Text color="gray">
+          {" "}
+          {t("tui.memory.search.none", { query }, `no entries match /${query}`)}
+        </Text>
+      ) : null}
+      {view.buckets.map((bucket) => {
+        const entries = searchMemoryEntries(bucket.entries, query)
+        return (
+          <Box key={bucket.key} flexDirection="column">
+            <Text bold color="cyan">
+              {t(bucket.labelKey, bucket.key)} ({entries.length})
+            </Text>
+            {bucket.count === 0 ? (
+              <Text dimColor> {t("tui.memory.emptyBucket", "(empty)")}</Text>
+            ) : entries.length === 0 ? (
+              <Text dimColor> {t("tui.memory.search.bucketNone", "(no match)")}</Text>
+            ) : (
+              entries.map((entry) => {
+                flatIndex += 1
+                return (
+                  <EntryLine
+                    key={entry.key}
+                    entry={entry}
+                    selected={flatIndex === cursor}
+                    expanded={expandedKey === entry.key}
+                  />
+                )
+              })
+            )}
+          </Box>
+        )
+      })}
+      <EfficacyLedger view={view} filter={filter} query={query} />
     </Box>
   )
 }
@@ -359,15 +440,16 @@ function EntryLine(props: { entry: MemoryEntryView; selected: boolean; expanded:
   )
 }
 
-function EfficacyLedger(props: { view: MemoryPanelView; filter: EfficacyFilter }) {
-  const { view, filter } = props
+function EfficacyLedger(props: { view: MemoryPanelView; filter: EfficacyFilter; query: string }) {
+  const { view, filter, query } = props
   const total = view.efficacy.length
   if (total === 0) {
     return <Text dimColor> {t("tui.memory.noEfficacy", "no efficacy records yet")}</Text>
   }
-  // Worst-first (mean ascending) with the f-key filter applied — the model
-  // layer owns both so the panel just paints the rows it is handed.
-  const rows = filterBuckets(sortEfficacy(view.efficacy), filter)
+  // Stable worst-first (equal means alphabetical by bucket), then the f-key
+  // filter, then the search query — the model layer owns all three so the
+  // predicates compose exactly here, in either active combination.
+  const rows = searchEfficacyRows(filterBuckets(sortEfficacyStable(view.efficacy), filter), query)
   const filterLabel = EFFICACY_FILTER_LABELS[filter] ?? EFFICACY_FILTER_LABELS.all!
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -387,7 +469,9 @@ function EfficacyLedger(props: { view: MemoryPanelView; filter: EfficacyFilter }
       {rows.length === 0 ? (
         <Text dimColor>
           {" "}
-          {t("tui.memory.efficacy.filter.empty", "no buckets match this filter")}
+          {query.length > 0
+            ? t("tui.memory.search.noneBuckets", { query }, `no buckets match /${query}`)
+            : t("tui.memory.efficacy.filter.empty", "no buckets match this filter")}
         </Text>
       ) : (
         rows.map((row) => (

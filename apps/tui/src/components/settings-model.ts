@@ -252,3 +252,88 @@ export function clampSettingsCursor(cursor: unknown, length: unknown): number {
   const cur = typeof cursor === "number" && Number.isFinite(cursor) ? Math.trunc(cursor) : 0
   return Math.min(len - 1, Math.max(0, cur))
 }
+
+/**
+ * j/k navigation WITH wrap-around: j on the last section lands on the first,
+ * k on the first lands on the last — a four-row list is circled without
+ * releasing the key. A stale cursor beyond the current length (the section
+ * list shrank after a filter/probe change) is clamped into range BEFORE
+ * wrapping, so the selection can never sit outside the list. Garbage
+ * operands read as 0 (a garbage length yields 0 — nothing to move through).
+ * Pure, like every navigation helper here.
+ */
+export function wrapSettingsCursor(cursor: unknown, delta: unknown, length: unknown): number {
+  const len = typeof length === "number" && Number.isFinite(length) ? Math.trunc(length) : 0
+  if (len <= 0) return 0
+  const cur = typeof cursor === "number" && Number.isFinite(cursor) ? Math.trunc(cursor) : 0
+  const step = typeof delta === "number" && Number.isFinite(delta) ? Math.trunc(delta) : 0
+  const base = Math.min(len - 1, Math.max(0, cur))
+  return (((base + step) % len) + len) % len
+}
+
+// ── Availability probe cache ────────────────────────────────────────────────
+
+/**
+ * Memoized health-probe outcomes, keyed by probe name. The dialog fires ONE
+ * probe per key for its whole lifetime: j/k re-renders, effect re-runs and
+ * even a changed sdk client identity reuse the cached verdict — a DEFINITIVE
+ * FAILURE (false) is cached exactly like a success, so navigating around a
+ * blocked section never re-probes the (still down) API. Volatile-while-
+ * probing is not modeled: the dialog lives only as long as it is open.
+ */
+export interface ProbeCache {
+  /** The cached boolean outcome, or undefined when the key was never probed. */
+  get(key: unknown): boolean | undefined
+  /** Stores only real boolean outcomes; garbage keys/values are ignored. */
+  set(key: unknown, outcome: unknown): void
+  /** Number of cached probes — surfaced for tests and debug lines. */
+  readonly size: number
+}
+
+export function createProbeCache(): ProbeCache {
+  const store = new Map<string, boolean>()
+  const keyOf = (key: unknown): string | null =>
+    typeof key === "string" && key.length > 0 ? key : null
+  return {
+    get(key) {
+      const k = keyOf(key)
+      return k == null ? undefined : store.get(k)
+    },
+    set(key, outcome) {
+      const k = keyOf(key)
+      if (k == null) return
+      if (outcome === true || outcome === false) store.set(k, outcome)
+    },
+    get size() {
+      return store.size
+    },
+  }
+}
+
+/**
+ * Probe only what is not cached yet: a cached verdict (success OR failure)
+ * is returned WITHOUT invoking `probe`; otherwise the probe runs once, its
+ * outcome (resolved true, everything else false; a rejection is a definitive
+ * failure too) is stored, and returned. Defensive: a garbage cache still
+ * probes (it just cannot memoize) and a garbage probe yields null — the
+ * caller keeps its current state. The dialog passes this the /api/health
+ * call, so j/k around an unreachable API costs zero network round-trips.
+ */
+export async function cachedProbe(
+  cache: unknown,
+  key: unknown,
+  probe: unknown,
+): Promise<boolean | null> {
+  if (typeof probe !== "function") return null
+  const c = cache != null && typeof cache === "object" ? (cache as ProbeCache) : null
+  const cached = c != null && typeof c.get === "function" ? c.get(key) : undefined
+  if (cached === true || cached === false) return cached
+  let outcome = false
+  try {
+    outcome = (await (probe as () => Promise<unknown>)()) === true
+  } catch {
+    outcome = false
+  }
+  if (c != null && typeof c.set === "function") c.set(key, outcome)
+  return outcome
+}

@@ -6,15 +6,18 @@
  * too, per the dashboard's model/presentation discipline.
  */
 
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import {
+  cachedProbe,
   clampSettingsCursor,
+  createProbeCache,
   filterSettingsSections,
   sectionAvailability,
   SETTINGS_SECTIONS,
   settingsSectionsView,
   sortSettingsSections,
   TUI_THEME_SWITCHING_SUPPORTED,
+  wrapSettingsCursor,
   type SettingsSection,
 } from "../src/components/settings-model"
 
@@ -179,5 +182,87 @@ describe("clampSettingsCursor", () => {
     expect(clampSettingsCursor(0, 0)).toBe(0)
     expect(clampSettingsCursor(0, undefined)).toBe(0)
     expect(clampSettingsCursor(0, -5)).toBe(0)
+  })
+})
+
+describe("wrapSettingsCursor (j/k navigation with first↔last wrap)", () => {
+  it("wraps j on the last section to the first and k on the first to the last", () => {
+    expect(wrapSettingsCursor(3, 1, 4)).toBe(0) // j past the bottom → top
+    expect(wrapSettingsCursor(0, -1, 4)).toBe(3) // k past the top → bottom
+    expect(wrapSettingsCursor(1, 1, 4)).toBe(2)
+    expect(wrapSettingsCursor(2, -1, 4)).toBe(1)
+  })
+
+  it("clamps a stale cursor BEFORE wrapping and degrades garbage to the top", () => {
+    // The section list shrank to 4 rows while the cursor sat at 9.
+    expect(wrapSettingsCursor(9, 1, 4)).toBe(0)
+    expect(wrapSettingsCursor(-2, -1, 4)).toBe(3)
+    for (const cursor of [undefined, null, "1", Number.NaN, {}]) {
+      // A garbage cursor reads as the top row...
+      expect(wrapSettingsCursor(cursor, 0, 4)).toBe(0)
+      // ...and the step still applies from there.
+      expect(wrapSettingsCursor(cursor, 1, 4)).toBe(1)
+    }
+    expect(wrapSettingsCursor(1, "junk", 4)).toBe(1) // garbage delta = no step
+    for (const length of [0, -4, undefined, "4", Number.NaN]) {
+      expect(wrapSettingsCursor(0, 1, length)).toBe(0)
+    }
+    // A single-section list is a fixed point in both directions.
+    expect(wrapSettingsCursor(0, 1, 1)).toBe(0)
+    expect(wrapSettingsCursor(0, -1, 1)).toBe(0)
+  })
+})
+
+describe("probe cache (cached availability verdicts — j/k never re-probes)", () => {
+  it("invokes the probe once and serves every repeat from the cache", async () => {
+    const cache = createProbeCache()
+    const probe = vi.fn(async () => true)
+    expect(await cachedProbe(cache, "api.health", probe)).toBe(true)
+    expect(await cachedProbe(cache, "api.health", probe)).toBe(true)
+    expect(await cachedProbe(cache, "api.health", probe)).toBe(true)
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(cache.size).toBe(1)
+  })
+
+  it("caches a DEFINITIVE FAILURE the same way — a down API is probed exactly once", async () => {
+    const cache = createProbeCache()
+    const probe = vi.fn(async () => {
+      throw new Error("ECONNREFUSED")
+    })
+    expect(await cachedProbe(cache, "api.health", probe)).toBe(false)
+    for (let i = 0; i < 5; i += 1) {
+      // Repeated navigation around the blocked sections keeps hitting the
+      // cached failure — zero extra round-trips while the API stays down.
+      expect(await cachedProbe(cache, "api.health", probe)).toBe(false)
+    }
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(cache.get("api.health")).toBe(false)
+  })
+
+  it("normalizes outcomes to strict booleans and ignores garbage keys/values", async () => {
+    const cache = createProbeCache()
+    // Only `=== true` counts as reachable — anything else is a failure.
+    expect(await cachedProbe(cache, "k1", async () => ({ ok: 1 }))).toBe(false)
+    expect(await cachedProbe(cache, "k2", async () => true)).toBe(true)
+    expect(cache.get("k1")).toBe(false)
+    expect(cache.get("k2")).toBe(true)
+    cache.set("k1", "junk") // non-boolean outcome ignored
+    expect(cache.get("k1")).toBe(false)
+    cache.set(42, true) // non-string key ignored
+    expect(cache.get(42)).toBeUndefined()
+    expect(cache.get("")).toBeUndefined()
+    expect(cache.get(undefined)).toBeUndefined()
+  })
+
+  it("degrades garbage operands: no cache still probes, no probe yields null", async () => {
+    const probe = vi.fn(async () => true)
+    // Without a usable cache the probe still answers — it just cannot be
+    // memoized, so every call re-probes.
+    expect(await cachedProbe(null, "k", probe)).toBe(true)
+    expect(await cachedProbe(undefined, "k", probe)).toBe(true)
+    expect(await cachedProbe("junk", "k", probe)).toBe(true)
+    expect(probe).toHaveBeenCalledTimes(3)
+    expect(await cachedProbe(createProbeCache(), "k", null)).toBeNull()
+    expect(await cachedProbe(createProbeCache(), "k", "not-a-function")).toBeNull()
   })
 })

@@ -23,9 +23,11 @@ import {
   agentDetail,
   buildAgentRows,
   leaderboardByRole,
+  scoreAgoLabel,
   scoreGrade,
   topScores,
   versionTimeline,
+  wrapCursor,
 } from "../src/components/agents-model"
 
 function makeProfile(overrides: Partial<AgentProfilePayload> = {}): AgentProfilePayload {
@@ -366,6 +368,90 @@ describe("agentDetail (memory buckets + review scores + promotions)", () => {
     expect(empty.buckets.every((b) => b.count === 0)).toBe(true)
     expect(empty.currentVersion).toBe("v1")
     expect(empty.recentScores).toEqual([])
+  })
+})
+
+// ── Detail deepening: relative time + j/k wrap navigation ───────────────────
+
+describe("scoreAgoLabel (review-score timeline relative time)", () => {
+  const NOW = Date.parse("2026-09-25T12:00:00.000Z")
+
+  it("renders the compact relative units the jobs dialog uses", () => {
+    // Same convention as jobs-model.relativeTime, so every panel ages
+    // timestamps identically.
+    expect(scoreAgoLabel("2026-09-25T11:59:40.000Z", NOW)).toBe("just now")
+    expect(scoreAgoLabel("2026-09-25T11:50:00.000Z", NOW)).toBe("10m ago")
+    expect(scoreAgoLabel("2026-09-25T06:00:00.000Z", NOW)).toBe("6h ago")
+    expect(scoreAgoLabel("2026-09-22T12:00:00.000Z", NOW)).toBe("3d ago")
+  })
+
+  it("falls back to the plain calendar date past 30 days", () => {
+    // "214d ago" is noise; the absolute date is what the eye wants there.
+    expect(scoreAgoLabel("2026-01-05T08:00:00.000Z", NOW)).toBe("2026-01-05")
+  })
+
+  it("degrades garbage instants to null and survives a garbage clock", () => {
+    for (const at of [null, undefined, "", 42, {}]) {
+      expect(scoreAgoLabel(at, NOW)).toBeNull()
+    }
+    // Unparseable string → null (the panel keeps its absolute-date fallback).
+    expect(scoreAgoLabel("not-a-date", NOW)).toBeNull()
+    // Garbage nowMs reads as the live clock — still a label for a real date.
+    expect(typeof scoreAgoLabel("2026-09-25T11:59:00.000Z", Number.NaN)).toBe("string")
+  })
+
+  it("formats the at field of the topScores points the panel hands it", () => {
+    const entry = makeEntry({
+      versionHistory: [
+        {
+          fromVersion: "v1",
+          toVersion: "v2",
+          outcome: "promoted",
+          oldAvgScore: 6,
+          newAvgScore: 9,
+          triggeredAt: "2026-09-01T00:00:00.000Z",
+          reason: "test",
+        },
+      ],
+    })
+    const [top] = topScores(entry)
+    expect(scoreAgoLabel(top!.at, Date.parse("2026-09-03T00:00:00.000Z"))).toBe("2d ago")
+  })
+})
+
+describe("wrapCursor (j/k first↔last wrap navigation)", () => {
+  it("wraps k on the first row to the last and j on the last row to the first", () => {
+    expect(wrapCursor(0, -1, 4)).toBe(3)
+    expect(wrapCursor(3, 1, 4)).toBe(0)
+  })
+
+  it("moves within bounds and survives multi-step deltas", () => {
+    expect(wrapCursor(1, 1, 4)).toBe(2)
+    expect(wrapCursor(2, -1, 4)).toBe(1)
+    expect(wrapCursor(3, 2, 4)).toBe(1) // j j past the end wraps to 1
+    expect(wrapCursor(0, -5, 4)).toBe(3) // k×5 wraps to the last row
+  })
+
+  it("clamps a stale cursor into range BEFORE wrapping (shrunken lists)", () => {
+    // The list shrank from 5 rows to 4 while the cursor sat at the old bottom.
+    expect(wrapCursor(4, 1, 4)).toBe(0)
+    expect(wrapCursor(-2, -1, 4)).toBe(3)
+  })
+
+  it("degrades garbage operands — no rows means no movement", () => {
+    for (const cursor of [undefined, null, "1", Number.NaN, {}]) {
+      // A garbage cursor reads as the top row...
+      expect(wrapCursor(cursor, 0, 4)).toBe(0)
+      // ...and the step still applies from there (top + j → second row).
+      expect(wrapCursor(cursor, 1, 4)).toBe(1)
+    }
+    expect(wrapCursor(1, "junk", 4)).toBe(1) // garbage delta reads as no step
+    for (const length of [0, -3, undefined, "4", Number.NaN]) {
+      expect(wrapCursor(0, 1, length)).toBe(0)
+    }
+    // A single-row list is a fixed point in both directions.
+    expect(wrapCursor(0, 1, 1)).toBe(0)
+    expect(wrapCursor(0, -1, 1)).toBe(0)
   })
 })
 

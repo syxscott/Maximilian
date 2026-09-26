@@ -28,14 +28,20 @@ import {
   filterBuckets,
   formatSigned,
   inferGating,
+  matchesMemoryQuery,
   memoryBuckets,
   memoryExportJson,
   memoryPanelView,
   normalizeMemoryEntry,
+  normalizeSearchQuery,
+  searchEfficacyRows,
+  searchMemoryEntries,
   sortEfficacy,
+  sortEfficacyStable,
   truncateEntryPreview,
   type EfficacyRowView,
   type MemoryBucketKey,
+  type MemoryEntryView,
 } from "../src/components/memory-model"
 
 function entry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -484,5 +490,160 @@ describe("filterBuckets + cycleEfficacyFilter (the f-key bucket filter)", () => 
     expect(filterBuckets(sortEfficacy(ledger), "inject-only").map((r) => r.bucket)).toEqual([
       "goodExamples",
     ])
+  })
+})
+
+describe("sortEfficacyStable (worst-first, mean ties alphabetical by bucket)", () => {
+  it("breaks mean ties by bucket ALPHABETICAL order — not MEMORY_BUCKETS order", () => {
+    const sorted = sortEfficacyStable([
+      ledgerRow("userFeedback", { mean: 0 }),
+      ledgerRow("goodExamples", { mean: 0 }),
+      ledgerRow("reviewSuggestions", { mean: 0 }),
+      ledgerRow("commonErrors", { mean: 0 }),
+    ])
+    // Alphabetical: commonErrors < goodExamples < reviewSuggestions <
+    // userFeedback — deliberately different from the catalog order the
+    // input was listed in, so the ledger reads the same no matter when a
+    // bucket appeared in the profile.
+    expect(sorted.map((r) => r.bucket)).toEqual([
+      "commonErrors",
+      "goodExamples",
+      "reviewSuggestions",
+      "userFeedback",
+    ])
+  })
+
+  it("keeps worst-first overall and is byte-identical for identical input", () => {
+    const rows = [
+      ledgerRow("goodExamples", { mean: 0.4 }),
+      ledgerRow("commonErrors", { mean: -0.9 }),
+      ledgerRow("reviewSuggestions", { mean: -0.9 }),
+      ledgerRow("userFeedback", { mean: -0.1 }),
+    ]
+    const first = sortEfficacyStable(rows)
+    expect(first.map((r) => r.bucket)).toEqual([
+      "commonErrors",
+      "reviewSuggestions",
+      "userFeedback",
+      "goodExamples",
+    ])
+    expect(sortEfficacyStable(rows).map((r) => r.bucket)).toEqual(first.map((r) => r.bucket))
+    // At the −0.9 tie the two sorts deliberately DIVERGE: sortEfficacy falls
+    // back to evidence then the MEMORY_BUCKETS catalog order, the stable
+    // sort to alphabetical — that divergence is the point of this variant.
+    expect(sortEfficacy(rows).map((r) => r.bucket)).toEqual([
+      "reviewSuggestions",
+      "commonErrors",
+      "userFeedback",
+      "goodExamples",
+    ])
+  })
+
+  it("shares sortEfficacy's defensive coercion and never mutates the input", () => {
+    const input: unknown[] = [
+      null,
+      "junk",
+      42,
+      { bucket: "nope", mean: -5 }, // unknown bucket → dropped
+      ledgerRow("commonErrors", { mean: -1 }),
+      ledgerRow("userFeedback", { mean: -1 }), // mean tie −1 → alphabetical
+    ]
+    const snapshot = input.map((row) =>
+      row != null && typeof row === "object" && !Array.isArray(row) ? { ...row } : row,
+    )
+    const sorted = sortEfficacyStable(input)
+    expect(sorted.map((r) => r.bucket)).toEqual(["commonErrors", "userFeedback"])
+    expect(input).toEqual(snapshot)
+    expect(sorted).not.toBe(input)
+    expect(sortEfficacyStable(undefined)).toEqual([])
+    expect(sortEfficacyStable({ 0: ledgerRow("commonErrors") })).toEqual([])
+  })
+})
+
+describe("search (/ key) — coexists with the f-key bucket filter", () => {
+  const entryView = (
+    key: string,
+    bucket: MemoryBucketKey,
+    mime: string,
+    content: string,
+  ): MemoryEntryView => ({
+    key,
+    bucket,
+    mime,
+    content,
+    preview: content.slice(0, 20),
+    isTruncated: false,
+  })
+  const entries: MemoryEntryView[] = [
+    entryView("commonErrors:0", "commonErrors", "text/plain", "forgot lockfile"),
+    entryView("goodExamples:0", "goodExamples", "application/json", '{"clean": true}'),
+  ]
+  const ledger = (): EfficacyRowView[] => [
+    ledgerRow("commonErrors", { mean: -0.9, decision: "skip", evidence: "sufficient" }),
+    ledgerRow("userFeedback", { mean: -0.1 }),
+    ledgerRow("goodExamples", { mean: 0.4 }),
+  ]
+
+  it("matches content, mime and bucket case-insensitively; empty query keeps all", () => {
+    expect(normalizeSearchQuery("  Lock  ")).toBe("Lock")
+    for (const garbage of [undefined, null, 42, {}, []]) {
+      expect(normalizeSearchQuery(garbage)).toBe("")
+    }
+    expect(matchesMemoryQuery(entries[0], "LOCK")).toBe(true)
+    expect(matchesMemoryQuery(entries[1], "json")).toBe(true)
+    expect(matchesMemoryQuery(entries[1], "goodexamples")).toBe(true)
+    expect(matchesMemoryQuery(entries[0], "clean")).toBe(false)
+    // An empty or garbage query is "search off" — everything matches.
+    for (const query of ["", "   ", undefined, null]) {
+      expect(matchesMemoryQuery(entries[0], query)).toBe(true)
+    }
+    // A garbage entry cannot match an active query (it cannot render anyway).
+    for (const row of [null, undefined, 42, "text"]) {
+      expect(matchesMemoryQuery(row, "lock")).toBe(false)
+    }
+  })
+
+  it("filters the flat list order-preservingly and drops non-object rows", () => {
+    expect(searchMemoryEntries([entries[0], null, 42, entries[1]], "lockfile")).toEqual([
+      entries[0],
+    ])
+    expect(searchMemoryEntries(entries, "")).toEqual(entries) // search off
+    expect(searchMemoryEntries(undefined, "lockfile")).toEqual([])
+    expect(searchMemoryEntries({ 0: entries[0] }, "")).toEqual([])
+  })
+
+  it("search still applies AFTER the f-key filter — and the two commute", () => {
+    const sorted = sortEfficacyStable(ledger())
+    // Filter first, then search: the query still narrows within the set —
+    // a gated bucket is still findable by name under skip-only.
+    expect(
+      searchEfficacyRows(filterBuckets(sorted, "skip-only"), "common").map((r) => r.bucket),
+    ).toEqual(["commonErrors"])
+    expect(searchEfficacyRows(filterBuckets(sorted, "skip-only"), "good")).toEqual([])
+    expect(
+      searchEfficacyRows(filterBuckets(sorted, "inject-only"), "user").map((r) => r.bucket),
+    ).toEqual(["userFeedback"])
+    // Search first, then filter: same result — the predicates commute, so
+    // neither can blank the other.
+    expect(
+      filterBuckets(searchEfficacyRows(sorted, "common"), "skip-only").map((r) => r.bucket),
+    ).toEqual(["commonErrors"])
+    // An empty/garbage query leaves any filter untouched.
+    expect(filterBuckets(searchEfficacyRows(sorted, ""), "skip-only")).toEqual(
+      filterBuckets(sorted, "skip-only"),
+    )
+    expect(filterBuckets(searchEfficacyRows(sorted, undefined), "inject-only")).toEqual(
+      filterBuckets(sorted, "inject-only"),
+    )
+  })
+
+  it("is defensive on its own operands, like the rest of the model", () => {
+    expect(searchEfficacyRows(undefined, "common")).toEqual([])
+    expect(searchEfficacyRows([ledger()[0], null, 42, "junk"], "common")).toEqual([ledger()[0]])
+    expect(searchEfficacyRows(ledger(), undefined)).toEqual(ledger())
+    // The panel's full chain — stable sort, then filter, then search.
+    expect(
+      searchEfficacyRows(filterBuckets(sortEfficacyStable(ledger()), "skip-only"), "user"),
+    ).toEqual([])
   })
 })
