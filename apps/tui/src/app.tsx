@@ -29,6 +29,7 @@ import { UsagePanel } from "./components/usage-panel"
 import { AgentsPanel } from "./components/agents-panel"
 import { CronPanel } from "./components/cron-panel"
 import { MemoryPanel } from "./components/memory-panel"
+import { SettingsDialog } from "./components/settings-dialog"
 import { appendCommandPaletteCommands } from "./command-palette"
 import {
   ClipboardProvider,
@@ -396,6 +397,20 @@ function App({ config }: AppProps) {
   function openMemoryPanel() {
     dialog.replace(<MemoryPanel />, { size: "large" })
   }
+  // Settings dialog — the section hub. It receives the open callbacks so
+  // Enter on a section swaps this dialog for the real face (jobs view /
+  // memory panel / usage panel) through the exact same openers as the
+  // ctrl-key shortcuts.
+  function openSettingsDialog() {
+    dialog.replace(
+      <SettingsDialog
+        onOpenJobs={openJobsDialog}
+        onOpenMemory={openMemoryPanel}
+        onOpenUsage={openUsagePanel}
+      />,
+      { size: "medium" },
+    )
+  }
 
   React.useEffect(() => {
     appendCommandPaletteCommands([
@@ -440,6 +455,13 @@ function App({ config }: AppProps) {
         category: "workspace",
         suggested: true,
         onSelect: openMemoryPanel,
+      },
+      {
+        name: "settings",
+        title: t("tui.settings", "Settings"),
+        category: "settings",
+        suggested: true,
+        onSelect: openSettingsDialog,
       },
     ])
     // We intentionally re-register on every locale change so the titles
@@ -506,6 +528,11 @@ function App({ config }: AppProps) {
     }
     if (key.ctrl && input === "e" && dialog.stack.length === 0) {
       openMemoryPanel()
+    }
+    // ctrl+s opens the settings dialog (same base-view-only rule as the
+    // panels above — inside another dialog it would silently replace it).
+    if (key.ctrl && input === "s" && dialog.stack.length === 0) {
+      openSettingsDialog()
     }
   })
 
@@ -636,7 +663,7 @@ function Home() {
       </Box>
       <Text color={theme.theme.textMuted}>
         Press ctrl+l to change language · ctrl+j/g/u/a/o/e for jobs/goals/usage/agents/cron/memory ·
-        ctrl+\ for the command palette (stub).
+        ctrl+s for settings · ctrl+\ for the command palette (stub).
       </Text>
     </Box>
   )

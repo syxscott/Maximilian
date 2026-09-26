@@ -163,6 +163,17 @@ const en: Dict = {
   // ── Relative-time units (model layer outputs compact units) ──────────────
   "tui.relative.now": "just now",
   "tui.relative.ago": "{value}{unit} ago",
+  // ── Settings dialog (dashboard settings center, TUI face) ────────────────
+  "tui.settings": "Settings",
+  "tui.settings.hints": "j/k move · Enter open · esc close",
+  "tui.settings.appearance": "Appearance",
+  "tui.settings.appearance.hint": "Theme — live switching lives in the dashboard",
+  "tui.settings.jobs.hint": "Scheduled jobs — opens the jobs view",
+  "tui.settings.memory.hint": "Agent memory buckets — opens the memory panel",
+  "tui.settings.usage.hint": "Token & cost windows — opens the usage panel",
+  "tui.settings.unavailable.dashboardOnly": "theme switching is dashboard-only",
+  "tui.settings.unavailable.apiUnreachable": "API unreachable — start the server and retry",
+  "tui.settings.unavailable.unknown": "unknown section",
 }
 
 const zh: Dict = {
@@ -310,6 +321,17 @@ const zh: Dict = {
   // ── 相对时间单位（模型层输出紧凑单位）────────────────────────────────────
   "tui.relative.now": "刚刚",
   "tui.relative.ago": "{value}{unit}前",
+  // ── 设置对话框（dashboard 设置中心的 TUI 版）───────────────────────────────
+  "tui.settings": "设置",
+  "tui.settings.hints": "j/k 移动 · Enter 打开 · esc 关闭",
+  "tui.settings.appearance": "外观",
+  "tui.settings.appearance.hint": "主题——实时切换仅 dashboard 支持",
+  "tui.settings.jobs.hint": "计划任务——打开任务视图",
+  "tui.settings.memory.hint": "角色记忆桶——打开记忆面板",
+  "tui.settings.usage.hint": "令牌与费用窗口——打开用量面板",
+  "tui.settings.unavailable.dashboardOnly": "主题切换仅 dashboard 支持",
+  "tui.settings.unavailable.apiUnreachable": "API 不可达——请先启动服务端",
+  "tui.settings.unavailable.unknown": "未知分区",
 }
 
 /** Per-locale subtree; locales not listed here fall back to English. */

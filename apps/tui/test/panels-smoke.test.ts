@@ -21,6 +21,7 @@ vi.mock("ink-spinner", () => ({ default: () => null }))
 import { JobsDialog } from "../src/components/jobs-dialog"
 import { GoalsPanel } from "../src/components/goals-panel"
 import { UsagePanel } from "../src/components/usage-panel"
+import { SettingsDialog } from "../src/components/settings-dialog"
 import { getDictionary } from "@max/i18n"
 import "../src/locales/tui-panels"
 
@@ -29,6 +30,7 @@ describe("panel component modules", () => {
     expect(typeof JobsDialog).toBe("function")
     expect(typeof GoalsPanel).toBe("function")
     expect(typeof UsagePanel).toBe("function")
+    expect(typeof SettingsDialog).toBe("function")
   })
 
   it("merge the panel strings into the zh-CN and en-US dictionaries", () => {
@@ -37,9 +39,33 @@ describe("panel component modules", () => {
       expect(dict?.["tui.jobs"]).toBeTruthy()
       expect(dict?.["tui.goals"]).toBeTruthy()
       expect(dict?.["tui.usage"]).toBeTruthy()
+      expect(dict?.["tui.settings"]).toBeTruthy()
     }
     // Locales without a translation fall back to the English subtree.
     const ja = getDictionary("ja-JP") as Record<string, string> | undefined
     expect(ja?.["tui.jobs"]).toBe("Jobs")
+  })
+
+  it("register the settings dialog's section + availability strings", () => {
+    for (const locale of ["zh-CN", "en-US"]) {
+      const dict = getDictionary(locale) as Record<string, string> | undefined
+      for (const key of [
+        "tui.settings.hints",
+        "tui.settings.appearance",
+        "tui.settings.jobs.hint",
+        "tui.settings.memory.hint",
+        "tui.settings.usage.hint",
+        "tui.settings.unavailable.dashboardOnly",
+        "tui.settings.unavailable.apiUnreachable",
+      ]) {
+        expect(dict?.[key]).toBeTruthy()
+      }
+    }
+    // Section titles reuse the panels' own keys (single source per face).
+    const en = getDictionary("en-US") as Record<string, string> | undefined
+    expect(en?.["tui.settings.appearance"]).toBe("Appearance")
+    expect(en?.["tui.jobs"]).toBe("Jobs")
+    expect(en?.["tui.memory"]).toBe("Memory")
+    expect(en?.["tui.usage"]).toBe("Usage")
   })
 })
