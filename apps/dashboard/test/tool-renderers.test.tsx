@@ -137,6 +137,8 @@
 import { describe, it, expect, afterEach } from "vitest"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 
 import zhDomain from "../src/locales/tool-renderers.zh-CN.json"
 import enDomain from "../src/locales/tool-renderers.en-US.json"
@@ -5494,6 +5496,178 @@ describe("wrap-up — i18n slot parity", () => {
       expect(slots(enDomain[key as keyof typeof enDomain] ?? ""), key).toEqual(
         slots(zhDomain[key as keyof typeof zhDomain] ?? ""),
       )
+    }
+  })
+})
+
+// ── closeout round — source verification + density final checks ─────────────
+// The audit table's own claims are re-verified against the repo itself:
+// every cited source path must exist on disk, the core-tool spellings must
+// compile against the real schemas, no collapsed line may summarize to ""
+// (the last gap: write/edit payloads without a path alias), and the group
+// summary surfaces carry their data tooltips.
+
+describe("closeout — audit sources resolve to real repo files", () => {
+  const REPO_ROOT = join(__dirname, "..", "..", "..")
+
+  /** Every packages source path the audit cites (primary + per-field). */
+  function citedRepoPaths(): string[] {
+    const paths = new Set<string>()
+    for (const entry of Object.values(RENDERER_FIELD_AUDIT)) {
+      const sources = [entry.source, ...Object.values(entry.fields)]
+      for (const source of sources) {
+        for (const match of source.matchAll(/packages\/[a-z-]+\/src\/[A-Za-z0-9._/-]+/g)) {
+          paths.add(match[0])
+        }
+      }
+    }
+    return [...paths]
+  }
+
+  it("every packages/** path cited by the audit exists on disk", () => {
+    const cited = citedRepoPaths()
+    // The audit's three source classes: tools schemas, core runtime, engine.
+    expect(cited.length).toBeGreaterThanOrEqual(12)
+    for (const rel of cited) {
+      expect(existsSync(join(REPO_ROOT, rel)), rel).toBe(true)
+    }
+    // S_PASSTHROUGH's compound string names runtime.ts without a standalone
+    // packages path — existence-check the doc-named truths directly too.
+    for (const rel of ["packages/core/src/runtime.ts", ...cited]) {
+      expect(existsSync(join(REPO_ROOT, rel)), rel).toBe(true)
+    }
+  })
+
+  it("the core-tool field spellings compile against the real schemas (fixture bridge)", () => {
+    // bashPayload/readPayload/editPayload/writePayload/globPayload/
+    // grepPayload are typed against the packages/tools/src input schemas —
+    // a misspelled audit field (timeouts, includes, file_path) cannot
+    // produce a compiling fixture.
+    expect(bashPayload({ command: "ls", workdir: "w", timeout: 1, description: "d" })).toEqual({
+      command: "ls",
+      workdir: "w",
+      timeout: 1,
+      description: "d",
+    })
+    expect(readPayload({ path: "p", offset: 0, limit: 1 })).toEqual({
+      path: "p",
+      offset: 0,
+      limit: 1,
+    })
+    expect(globPayload({ pattern: "**/*", path: "src", limit: 5 })).toHaveProperty("pattern")
+    expect(grepPayload({ pattern: "x", path: "src", include: "*.ts", limit: 5 })).toHaveProperty(
+      "include",
+      "*.ts",
+    )
+    expect(editPayload({ path: "a.ts", oldString: "o", newString: "n", replaceAll: true })).toEqual(
+      { path: "a.ts", oldString: "o", newString: "n", replaceAll: true },
+    )
+    expect(writePayload({ path: "a.ts", content: "c" })).toEqual({ path: "a.ts", content: "c" })
+  })
+})
+
+describe("closeout — summarize density final check (no empty collapsed line)", () => {
+  it("no registry key summarizes to an empty string for any payload shape", () => {
+    const variants: unknown[] = [null, undefined, {}, 42, "text", { unrelated: true }]
+    for (const tool of Object.keys(RENDERERS)) {
+      for (const payload of variants) {
+        const label = `${tool} ← ${JSON.stringify(payload) ?? String(payload)}`
+        expect(summarizeToolInput(tool, payload).length, label).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it("write/edit payloads without a path alias fall back instead of blanking the row", () => {
+    // Fields landed (content-only write, half edit pair) → raw JSON.
+    expect(summarizeToolInput("write", { content: "hi" })).toMatch(/^\{/)
+    expect(summarizeToolInput("write", { content: "hi" })).toContain("content")
+    expect(summarizeToolInput("edit", { oldString: "a", newString: "b" })).toMatch(/^\{/)
+    // Nothing landed → the tool-name fallback.
+    expect(summarizeToolInput("write", {})).toBe("write")
+    expect(summarizeToolInput("edit", null)).toBe("edit")
+    // An alias spelling still headlines — the primary field is not lost.
+    expect(summarizeToolInput("write", { file_path: "a.ts", content: "x" })).toBe("a.ts")
+    expect(summarizeToolInput("edit", { filePath: "b.ts", oldString: "o", newString: "n" })).toBe(
+      "b.ts",
+    )
+  })
+
+  it("a whitespace-only path no longer blanks the collapsed line either", () => {
+    expect(summarizeToolInput("write", { path: "   ", content: "x" }).length).toBeGreaterThan(0)
+    expect(
+      summarizeToolInput("edit", { path: "\n\t", oldString: "o", newString: "n" }).length,
+    ).toBeGreaterThan(0)
+  })
+})
+
+describe("closeout — group summary tooltips (count / avg / overflow)", () => {
+  it("the count line carries the shown/total tooltip, clamped and unclamped", () => {
+    const items = Array.from({ length: 12 }, (_, i) => ({ command: `cmd-${i}`, ok: true }))
+    renderInput("execute-group", { items })
+    expect(screen.getByTestId("tool-group-count")).toHaveAttribute("title", "8/12")
+    cleanup()
+    renderInput("execute-group", { items: [{ command: "one", ok: true }] })
+    expect(screen.getByTestId("tool-group-count")).toHaveAttribute("title", "1/1")
+  })
+
+  it("the average badge's tooltip keeps the exact mean in raw milliseconds", () => {
+    renderInput("execute-group", {
+      items: [
+        { tool: "bash", command: "a", ok: true, durationMs: 100 },
+        { tool: "bash", command: "b", ok: true, durationMs: 250 },
+      ],
+    })
+    const avg = screen.getByTestId("tool-group-avg")
+    expect(avg).toHaveAttribute("title", "175ms")
+    expect(avg).toHaveTextContent("avg 175ms")
+  })
+
+  it("the overflow note's tooltip names the hidden children verbatim (capped at 20)", () => {
+    const items = Array.from({ length: 12 }, (_, i) => ({ command: `cmd-${i}`, ok: true }))
+    renderInput("execute-group", { items })
+    const title = screen.getByTestId("tool-group-more").getAttribute("title") ?? ""
+    const lines = title.split("\n")
+    expect(lines).toHaveLength(4)
+    expect(lines[0]).toContain("bash")
+    expect(lines[0]).toContain("cmd-8")
+    expect(lines[3]).toContain("cmd-11")
+    const big = Array.from({ length: 40 }, (_, i) => ({ command: `many-${i}`, ok: true }))
+    cleanup()
+    renderInput("execute-group", { items: big })
+    const capped = screen.getByTestId("tool-group-more").getAttribute("title") ?? ""
+    expect(capped.split("\n")).toHaveLength(20)
+    expect(capped).toContain("many-27")
+    expect(capped).not.toContain("many-28")
+  })
+
+  it("no overflow → no tooltip; the tooltip data is locale-neutral under zh-CN", () => {
+    renderInput("cua-group", { items: [{ action: "click", ok: true }] })
+    expect(screen.getByTestId("tool-group-count")).toHaveAttribute("title", "1/1")
+    expect(screen.queryByTestId("tool-group-more")).toBeNull()
+    cleanup()
+    setLocale("zh-CN")
+    renderInput("changes-group", {
+      items: [
+        { oldString: "a", newString: "b", ok: true, durationMs: 40 },
+        { content: "x", ok: true, durationMs: 110 },
+      ],
+    })
+    expect(screen.getByTestId("tool-group-count")).toHaveAttribute("title", "2/2")
+    expect(screen.getByTestId("tool-group-avg")).toHaveAttribute("title", "75ms")
+    expect(screen.getByTestId("tool-group-avg")).toHaveTextContent("平均 75ms")
+  })
+})
+
+describe("closeout — i18n sync stays intact after the round", () => {
+  it("zh-CN and en-US still carry identical key sets and group keys", () => {
+    expect(Object.keys(zhDomain).sort()).toEqual(Object.keys(enDomain).sort())
+    for (const key of [
+      "toolRenderers.group.count",
+      "toolRenderers.group.more",
+      "toolRenderers.group.avgDuration",
+    ]) {
+      expect(enDomain[key as keyof typeof enDomain], key).toBeDefined()
+      expect(zhDomain[key as keyof typeof zhDomain], key).toBeDefined()
     }
   })
 })

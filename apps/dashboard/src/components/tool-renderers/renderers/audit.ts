@@ -14,6 +14,14 @@
  * per registry key (kept 1:1 with RENDERERS — a test fails if the two
  * drift):
  *
+ * The audit closeout round re-verified the table against the repo itself:
+ * every cited source path exists on disk (locked by a test that resolves
+ * each packages/** path through fs), the core-tool field spellings match
+ * the real input schemas (compile-time via test-fixtures.ts builders),
+ * and the last summarize density gap — write/edit payloads without a
+ * path alias rendered an empty collapsed line — now falls back like the
+ * other arms (raw JSON when fields landed, the tool name otherwise).
+ *
  *   fields  → the canonical payload fields the extractor reads, each
  *             mapped to the real source its spelling was verified against;
  *   source  → the primary real source for the payload shape;

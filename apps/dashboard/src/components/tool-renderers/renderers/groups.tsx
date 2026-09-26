@@ -11,7 +11,9 @@
  * the children carries the outcome badges tallied by countOutcomes
  * (✓ ok / ✗ failed / unrecorded) and the mean sub-call duration from
  * avgDuration, humanized by the shell's humanizeDuration (hidden when no
- * child is timed). Nested group envelopes are
+ * child is timed). The count / average / overflow surfaces carry
+ * locale-neutral data tooltips (shown/total, raw mean ms, the hidden
+ * children's verbatim summaries — see hiddenSummaries). Nested group envelopes are
  * bounded by the model's MAX_GROUP_DEPTH: each level passes depth+1 to
  * its children and a body beyond the budget renders the depth note
  * instead of recursing.
@@ -19,7 +21,7 @@
 
 import { useLocale, t } from "@max/i18n"
 import { ToolCallBlock, type ToolCallProps } from "../registry"
-import { humanizeDuration } from "../model"
+import { humanizeDuration, summarizeToolInput } from "../model"
 import {
   avgDuration,
   countOutcomes,
@@ -27,6 +29,7 @@ import {
   GROUP_LIMIT,
   MAX_GROUP_DEPTH,
   withinGroupDepth,
+  type GroupChild,
   type GroupKind,
 } from "./group.model"
 import { JsonFallback } from "./common"
@@ -35,6 +38,28 @@ const GROUP_TITLE_KEYS: Record<GroupKind, string> = {
   execute: "toolRenderers.execute-group.title",
   changes: "toolRenderers.changes-group.title",
   cua: "toolRenderers.cua-group.title",
+}
+
+/**
+ * Tooltips for the summary row, following the shell's locale-neutral data
+ * precedent (the collapsed duration's raw `${durationMs}ms` title, the
+ * inline error's verbatim title): numbers and child data, no locale keys.
+ *
+ *   count    → "8/12" — how many of the total the clamp expands below
+ *   avg      → the exact mean in raw milliseconds ("175ms"), the same
+ *              raw-ms-within-tooltip contract as the shell duration
+ *   overflow → one verbatim "tool · summary" line per hidden child
+ *              (capped at 20), so "还有 N 个" names what is not shown
+ */
+
+/** Cap on the verbatim hidden-child lines carried by the overflow title. */
+const OVERFLOW_TIP_LIMIT = 20
+
+function hiddenSummaries(children: GroupChild[]): string {
+  return children
+    .slice(GROUP_LIMIT, GROUP_LIMIT + OVERFLOW_TIP_LIMIT)
+    .map((child) => `${child.tool} · ${summarizeToolInput(child.tool, child.input)}`)
+    .join("\n")
 }
 
 /** One outcome badge in the summary stats row (label carries the count). */
@@ -87,7 +112,7 @@ function GroupBodyBase({
       </div>
     )
   }
-  const { children, total, overflow } = extractGroupChildren(input, kind)
+  const { children, total, shown, overflow } = extractGroupChildren(input, kind)
   if (children.length === 0) return <JsonFallback input={input} />
   const { ok, failed, unknown } = countOutcomes(children)
   const avg = avgDuration(children)
@@ -97,7 +122,11 @@ function GroupBodyBase({
         {t(GROUP_TITLE_KEYS[kind])}
       </p>
       <div className="flex flex-wrap items-center gap-1.5">
-        <p className="text-[10px] uppercase text-muted-foreground" data-testid="tool-group-count">
+        <p
+          className="text-[10px] uppercase text-muted-foreground"
+          title={`${shown}/${total}`}
+          data-testid="tool-group-count"
+        >
           {t("toolRenderers.group.count", { count: total })}
         </p>
         <span className="flex items-center gap-1.5" data-testid="tool-group-outcomes">
@@ -120,7 +149,11 @@ function GroupBodyBase({
           )}
         </span>
         {avg !== undefined && (
-          <span className="text-[10px] text-muted-foreground" data-testid="tool-group-avg">
+          <span
+            className="text-[10px] text-muted-foreground"
+            title={Number.isFinite(avg) ? `${Math.round(avg)}ms` : humanizeDuration(avg)}
+            data-testid="tool-group-avg"
+          >
             {/* Same humanization as the shell's collapsed duration (the
                 {duration} slot carries humanizeDuration's "12.5s"/"2m5s"). */}
             {t("toolRenderers.group.avgDuration", { duration: humanizeDuration(avg) })}
@@ -139,7 +172,11 @@ function GroupBodyBase({
         />
       ))}
       {overflow > 0 && (
-        <p className="text-[10px] text-muted-foreground" data-testid="tool-group-more">
+        <p
+          className="text-[10px] text-muted-foreground"
+          title={hiddenSummaries(children)}
+          data-testid="tool-group-more"
+        >
           {t("toolRenderers.group.more", { count: overflow })}
         </p>
       )}

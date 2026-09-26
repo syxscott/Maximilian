@@ -67,8 +67,16 @@ export function summarizeToolInput(tool: string, input: unknown): string {
       return head(Object.keys(obj).length > 0 ? JSON.stringify(obj) : tool)
     }
     case "write":
-    case "edit":
-      return head(extractFileChange(tool, obj).headline)
+    case "edit": {
+      // Guard the headline: a payload whose path aliases are all absent
+      // (a content-only write, a half-specified edit) leaves
+      // extractFileChange's headline "" — the collapsed row must fall
+      // back like every other arm (raw JSON when fields landed, the tool
+      // name otherwise), never render an empty summary.
+      const headline = extractFileChange(tool, obj).headline
+      if (headline.length > 0) return head(headline)
+      return head(Object.keys(obj).length > 0 ? JSON.stringify(obj) : tool)
+    }
     default: {
       // Dedicated renderers expose a headline extractor (see renderers/)
       // — reuse it so collapsed lines read as a target, not raw JSON.
