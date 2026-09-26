@@ -815,7 +815,7 @@ describe("TurnGroup / RetryWaveGroup rendering", () => {
     if (!turn) throw new Error("expected a turn")
     render(<TurnGroup turn={turn} />)
     expect(screen.getByTestId("turn-group")).toHaveAttribute("data-turn-id", "task-t1")
-    expect(screen.getByText("backend")).toBeInTheDocument()
+    expect(screen.getByText("Backend")).toBeInTheDocument()
     expect(screen.getByTestId("turn-status")).toHaveTextContent("Done")
     expect(screen.getByTestId("turn-duration")).toHaveTextContent("1.0 s")
     expect(screen.getByTestId("retry-wave")).toBeInTheDocument()
@@ -830,6 +830,21 @@ describe("TurnGroup / RetryWaveGroup rendering", () => {
     render(<TurnGroup turn={userTurn} />)
     expect(screen.getByText("你")).toBeInTheDocument()
     expect(getDictionary("zh-CN")?.["conversation.preview.stats"]).toContain("个回合")
+  })
+
+  it("localizes the agent role badges (the passthrough role ids) under zh-CN", () => {
+    const units = buildTurnFlowItems([taskStart("t1", "backend"), taskStart("t2", "review")], null)
+    const turns = groupUnitsByTurn(units)
+    setLocale("zh-CN")
+    render(
+      <div>
+        {turns.map((turn) => (
+          <TurnGroup key={turn.turnId} turn={turn} />
+        ))}
+      </div>,
+    )
+    expect(screen.getByText("后端")).toBeInTheDocument()
+    expect(screen.getByText("评审")).toBeInTheDocument()
   })
 })
 
@@ -1030,7 +1045,7 @@ describe("ConversationTimeline rendering", () => {
     expect(screen.queryByTestId("window-load-earlier")).not.toBeInTheDocument()
   })
 
-  it("over the virtual budget it hints the estimated height and renders placeholder bars", () => {
+  it("over the virtual budget the density affordances all engage", () => {
     // 400 one-line message turns → 400 × 28px = 11200px > 8000px budget.
     const many = msgTurnEvents(400)
     expect(estimateVirtualHeight(buildTurnFlowItems(many, null))).toBeGreaterThan(
@@ -1045,17 +1060,12 @@ describe("ConversationTimeline rendering", () => {
     expect(spacers).toHaveLength(50)
     expect(spacers[0]).toHaveAttribute("data-spacer-height", "28")
     expect(spacers[0]).toHaveStyle({ height: "28px" })
-  })
-
-  it("over the budget the toolbar carries the total estimate and cards reserve a minHeight", () => {
-    const many = msgTurnEvents(400)
-    render(<ConversationTimeline events={many} workspace={null} live={false} />)
-    // The total estimate sits beside the find box with a hover title.
+    // The total estimate sits beside the find box with a hover title…
     const total = screen.getByTestId("timeline-estimated-height")
     expect(total).toHaveTextContent("≈ 11.2k px")
     expect(total.getAttribute("title")).toBeTruthy()
-    // Each rendered card wrapper reserves its turn's estimate (anti-jump)
-    // in addition to the placeholder bar.
+    // …and each rendered card wrapper reserves its turn's estimate
+    // (anti-jump) in addition to the placeholder bar.
     const rows = screen.getByTestId("conversation-window").querySelectorAll("[data-min-height]")
     expect(rows.length).toBeGreaterThan(0)
     expect(rows[0]).toHaveAttribute("data-min-height", "28")
@@ -2619,27 +2629,16 @@ describe("markFirstSeen", () => {
 })
 
 describe("TurnGroup text-unit rendering (steering segments surface via TextUnitBlock)", () => {
+  // The steering blocks' purple source styling + turn containment is
+  // covered at the strongest level through ChatPanel (test/ChatPanel
+  // .test.tsx "ChatPanel text units" — the full withTextUnitEvents →
+  // ConversationTimeline → TurnGroup chain). What remains unique at
+  // this level: find highlights working inside the block.
   const steeringTurnEvents = [
     taskStart("t1"),
     ev({ type: "steering-applied", taskIds: ["t1"], messages: ["steer mid-run"] }),
     textEv("narration after steering", "t1"),
   ]
-
-  it("renders steering text units as purple TextUnitBlocks inside the turn", () => {
-    const units = buildTurnFlowItems(withTextUnitEvents(steeringTurnEvents, null), null)
-    const turns = groupUnitsByTurn(units)
-    expect(turns).toHaveLength(1)
-    render(<TurnGroup turn={turns[0]!} />)
-    const block = screen.getByTestId("text-unit-block")
-    expect(block).toHaveAttribute("data-source", "steering")
-    // The purple steering styling comes from TextUnitBlock's source map.
-    expect(block.className).toContain("border-purple-500/40")
-    expect(screen.getByTestId("text-unit-body")).toHaveTextContent("steer mid-run")
-    // Ordinary narration keeps the plain text render.
-    expect(screen.getByTestId("turn-text")).toHaveTextContent("narration after steering")
-    // And it sits INSIDE the steered task's turn.
-    expect(screen.getByTestId("turn-group")).toHaveAttribute("data-turn-id", "task-t1")
-  })
 
   it("keeps find highlights and the amber current-match mark working inside the block", () => {
     const units = buildTurnFlowItems(withTextUnitEvents(steeringTurnEvents, null), null)

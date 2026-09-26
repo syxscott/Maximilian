@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { getDictionary, setLocale } from "@max/i18n"
 import { ChatPanel } from "../src/components/ChatPanel"
@@ -32,9 +32,18 @@ describe("ChatPanel", () => {
     render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} />)
     expect(screen.getByPlaceholderText(/enter your request/i)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /send/i })).toBeDisabled()
-    // 3 presets + send + 4 timeline toolbar buttons (find / prev / next / share)
-    // + the onboarding "Skip tour" button in the empty state.
-    expect(screen.getAllByRole("button")).toHaveLength(9)
+    // Button inventory BY IDENTITY, not a global count — a global count
+    // breaks whenever any other surface (empty state, toolbar) grows a
+    // control, which is not this panel's contract to freeze.
+    expect(screen.getByRole("button", { name: /todo web app/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /scraper/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /blog/i })).toBeInTheDocument()
+    // The timeline toolbar's four controls (find / prev / next / share)…
+    for (const name of [/find/i, /next task/i, /prev task/i, /copy as markdown/i]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument()
+    }
+    // …and the onboarding "Skip tour" button in the empty state.
+    expect(screen.getByRole("button", { name: /skip tour/i })).toBeInTheDocument()
   })
 
   it("enables Send when text is entered", async () => {
@@ -125,8 +134,10 @@ describe("ChatPanel", () => {
     expect(shell.className).not.toContain("absolute")
     expect(shell.className).not.toContain("ml-20")
     expect(document.querySelector("h2")).toBeNull()
-    // Button inventory unchanged (the badge is not a button).
-    expect(screen.getAllByRole("button")).toHaveLength(9)
+    // The badge is not a button — the toolbar row keeps its four
+    // controls (find / prev / next / share). Scoped to the row: this
+    // panel's toolbar contract, not a whole-document inventory.
+    expect(within(toolbarRow!).getAllByRole("button")).toHaveLength(4)
   })
 
   it("omits the title badge entirely when dock-hosted (showHeading=false)", () => {
@@ -318,6 +329,9 @@ describe("ChatPanel text units", () => {
     // The steering block precedes the narration that follows it in the
     // stream — "same turn, inserted before later units".
     expect(block.compareDocumentPosition(narration) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Ordinary narration keeps the plain text render (no provenance
+    // block of its own — source tiers are for extracted units only).
+    expect(narration).toHaveTextContent("narration after steering")
   })
 
   it("surfaces task description prose as system blocks without duplicating the user request", () => {
@@ -368,23 +382,21 @@ describe("ChatPanel live status", () => {
     expect(screen.queryByTestId("tool-error-collapsed")).not.toBeInTheDocument()
   })
 
-  it("steering blocks carry the one-shot entry flash with the 2s fade class", () => {
-    const events = [
-      evx({ type: "task-start", taskId: "t1" }),
-      evx({ type: "steering-applied", taskIds: ["t1"], messages: ["focus the flaky tests"] }),
-    ]
-    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={null} events={events} />)
-    const flash = screen.getByTestId("text-unit-flash")
-    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-flash", "true")
-    expect(flash.className).toContain("transition-opacity")
-    expect(flash.className).toContain("duration-[2000ms]")
-  })
+  // Flash timing (hold → 2s fade, driven by the component's mount
+  // timer) is covered at the strongest level in test/conversation
+  // .test.tsx "flashes a steering block once on entry and fades it out
+  // over 2s" (fake timers). Here the panel-level contract is the
+  // flash-once REGISTRY: historical steering never re-flashes.
 
   // Flash-once across the workspace switch: tab A → tab B → tab A makes
   // the panel replay A's FULL event list, and the historical steering
   // block remounts — with the flash retired (the flash-once registry
   // scopes its keys per workspace, so B's own steering still flashes).
-  it("does not re-flash historical steering blocks when switching workspaces away and back", () => {
+  // This is also the source-tier x flash COEXISTENCE proof: both
+  // features ride the SAME unit — the provenance source tier (data-source
+  // + purple styling) is permanent, the entry flash is a one-shot
+  // overlay on top of it, and replaying retires ONLY the overlay.
+  it("keeps source styling on a steering unit while the flash retires across a workspace round trip", () => {
     const wsA: Workspace = { ...baseWorkspace, id: "ws-A" }
     const wsB: Workspace = { ...baseWorkspace, id: "ws-B" }
     const steeringEvents = [
@@ -394,7 +406,14 @@ describe("ChatPanel live status", () => {
     const { rerender } = render(
       <ChatPanel onSubmit={() => {}} submitting={false} workspace={wsA} events={steeringEvents} />,
     )
-    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-flash", "true")
+    const block = screen.getByTestId("text-unit-block")
+    // FIRST sighting — source tier and the lit flash ride the SAME
+    // element without interfering: purple provenance + overlay + the
+    // one-time screen-reader announcement.
+    expect(block).toHaveAttribute("data-source", "steering")
+    expect(block.className).toContain("border-purple-500/40")
+    expect(block).toHaveAttribute("data-flash", "true")
+    expect(screen.getByTestId("text-unit-flash")).toBeInTheDocument()
     // The one-time announcement rides the fresh flash (screen-reader only).
     expect(screen.getByTestId("text-unit-flash-status")).toHaveTextContent("Steering applied")
 
@@ -414,9 +433,15 @@ describe("ChatPanel live status", () => {
     rerender(
       <ChatPanel onSubmit={() => {}} submitting={false} workspace={wsA} events={steeringEvents} />,
     )
-    expect(screen.getByTestId("text-unit-block")).toHaveAttribute("data-flash", "false")
+    const replayed = screen.getByTestId("text-unit-block")
+    // The flash layer retired…
+    expect(replayed).toHaveAttribute("data-flash", "false")
     expect(screen.getByTestId("text-unit-flash")).toHaveClass("opacity-0")
     expect(screen.queryByTestId("text-unit-flash-status")).toBeNull()
+    // …while the source tier survives untouched on the same unit.
+    expect(replayed).toHaveAttribute("data-source", "steering")
+    expect(replayed.className).toContain("border-purple-500/40")
+    expect(screen.getByTestId("text-unit-source")).toHaveTextContent("Steering")
   })
 })
 

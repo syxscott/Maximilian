@@ -3,7 +3,11 @@
     "role": {
       "user": "You",
       "assistant": "Assistant",
-      "system": "System"
+      "system": "System",
+      "general": "General",
+      "backend": "Backend",
+      "frontend": "Frontend",
+      "review": "Review"
     },
     "status": {
       "running": "Running",

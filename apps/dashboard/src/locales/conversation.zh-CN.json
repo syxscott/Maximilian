@@ -3,7 +3,11 @@
     "role": {
       "user": "你",
       "assistant": "助手",
-      "system": "系统"
+      "system": "系统",
+      "general": "通用",
+      "backend": "后端",
+      "frontend": "前端",
+      "review": "评审"
     },
     "status": {
       "running": "运行中",

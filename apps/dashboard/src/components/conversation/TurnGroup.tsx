@@ -57,6 +57,12 @@ function roleLabel(role: string): string {
   if (role === "user") return t("conversation.role.user")
   if (role === "assistant") return t("conversation.role.assistant")
   if (role === "system") return t("conversation.role.system")
+  // Known agent roles localize too; a passthrough role id with no key
+  // falls back to its raw string (defensive — agentRole is untyped).
+  if (role === "backend") return t("conversation.role.backend")
+  if (role === "frontend") return t("conversation.role.frontend")
+  if (role === "general") return t("conversation.role.general")
+  if (role === "review") return t("conversation.role.review")
   return role
 }
 

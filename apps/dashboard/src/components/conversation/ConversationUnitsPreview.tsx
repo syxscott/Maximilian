@@ -6,9 +6,13 @@
 /**
  * ConversationUnitsPreview — the turn-unit pipeline assembled end to
  * end: events + workspace → buildTurnFlowItems → groupUnitsByTurn →
- * TurnGroup list. A demo/test surface for the deep surface the main
- * ConversationTimeline will adopt later; ChatPanel wiring stays with
- * the main session.
+ * TurnGroup list. STATIC preview/test surface only: it compiles the
+ * pipeline once per prop change and renders the plain turn list — no
+ * windowing, find, live-tail or flash-once registry. The LIVE render
+ * path (ChatPanel's real-time stream) is ConversationTimeline, which
+ * wraps the same pipeline in ConversationWindow / VirtualTurnWindow.
+ * The two are the only renders of TurnGroup; there is no other
+ * timeline path.
  */
 
 import { useMemo } from "react"
