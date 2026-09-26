@@ -18,10 +18,12 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest"
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { render, screen, waitFor, within, act } from "@testing-library/react"
+import type { RenderResult } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
+import { applyDashboardDictionaries } from "../src/locales/index"
 
 import goalsEn from "../src/locales/goals.en-US.json"
 import aiEn from "../src/locales/ai-elements.en-US.json"
@@ -41,12 +43,39 @@ import {
   getEvolutionLeaderboard,
   getEvolutionVersionsByRoleDecisions,
 } from "../src/api-generated"
+import {
+  WORKSPACE_DOCK_STORAGE_KEY,
+  WorkspaceDockSidebar,
+  createWorkspaceDockModel,
+  useWorkspaceDockStore,
+} from "../src/components/layout/WorkspaceDockSidebar"
+import type { Workspace } from "../src/api"
 
 vi.mock("../src/api-generated", () => ({
   getEvolutionLeaderboard: vi.fn(),
   getEvolutionAgentsByRole: vi.fn(),
   getEvolutionVersionsByRoleDecisions: vi.fn(),
 }))
+
+// The dock-wiring round mounts the whole WorkspaceDockSidebar; every sibling
+// leaf is stubbed so the suite exercises ONLY the goals leaf's wiring (the
+// deliverables leaf gets the same treatment in deliverables-deep.test.tsx).
+// chatApi.getWorkspace is stubbed so the deliverables leaf's fetch degrades
+// instead of hitting the network.
+vi.mock("../src/api", () => ({
+  chatApi: { getWorkspace: vi.fn() },
+  systemApi: { vaultStatus: vi.fn(), oracleLessons: vi.fn() },
+}))
+vi.mock("@/components/AgentPanel", () => ({ AgentPanel: () => null }))
+vi.mock("@/components/TaskPanel", () => ({ TaskPanel: () => null }))
+vi.mock("@/components/SubagentsPanel", () => ({ SubagentsPanel: () => null }))
+vi.mock("@/features/trajectory", () => ({ TrajectoryPanel: () => null }))
+vi.mock("@/components/FileChangesPanel", () => ({ FileChangesPanel: () => null }))
+vi.mock("@/components/SessionsPanel", () => ({ SessionsPanel: () => null }))
+vi.mock("@/components/ArtifactsExplorer", () => ({ ArtifactsExplorer: () => null }))
+vi.mock("@/components/ReviewPanel", () => ({ ReviewPanel: () => null }))
+vi.mock("@/components/OutputPanel", () => ({ OutputPanel: () => null }))
+vi.mock("@/features/session-query", () => ({ SessionSearchPanel: () => null }))
 
 const mockedLeaderboard = vi.mocked(getEvolutionLeaderboard)
 const mockedAgentsByRole = vi.mocked(getEvolutionAgentsByRole)
@@ -67,6 +96,10 @@ function flattenAi(tree: Record<string, unknown>, prefix = ""): Record<string, s
 }
 
 beforeAll(() => {
+  // The dock-wiring round mounts the whole WorkspaceDockSidebar, whose leaf
+  // headers translate registry title keys from many domains — register the
+  // aggregated dictionaries exactly like main.tsx first, then overlay.
+  applyDashboardDictionaries(getDictionary("zh-CN") ?? {}, getDictionary("en-US") ?? {})
   const existing = getDictionary("en-US") ?? {}
   registerLocale("en-US", {
     ...existing,
@@ -711,5 +744,101 @@ describe("GoalEvolutionPanel render smoke", () => {
     )
     expect(screen.queryByTestId("goal-evolution-panel")).toBeNull()
     expect(mockedLeaderboard).not.toHaveBeenCalled()
+  })
+})
+
+// ── Dock wiring: the goals leaf receives the real workspace ─────────────────
+//
+// WorkspaceDockSidebar renders the goals leaf as GoalTree + GoalSummaryCard
+// with the workspace prop handed straight through. The dock-integration suite
+// only ever mounts the sidebar with a null workspace (empty states); these
+// tests pin the real-data side of that wiring: a workspace-bearing sidebar
+// renders the DERIVED goal view (ring, request, basis) inside the dock leaf,
+// for both goal components, and re-derives when the workspace changes.
+
+describe("WorkspaceDockSidebar wiring — the goals leaf", () => {
+  const resetDock = () => {
+    try {
+      localStorage.removeItem(WORKSPACE_DOCK_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+    useWorkspaceDockStore.setState({ model: createWorkspaceDockModel(), maximizedId: null })
+  }
+
+  // Reset BEFORE each test only: RTL cleanup unmounts the previous tree
+  // after afterEach hooks run, so resetting there would update a still-
+  // mounted subscriber outside act.
+  beforeEach(() => {
+    resetDock()
+    mockedLeaderboard.mockResolvedValue({ entries: [] })
+  })
+
+  it("renders the derived goal view of the real workspace inside the goals leaf", async () => {
+    // act-wrapped: the dock store's async rehydration settles after the
+    // synchronous render and must not update outside act.
+    await act(async () => {
+      renderWithClient(
+        <WorkspaceDockSidebar workspace={ALL_SUCCESS as unknown as Workspace} events={[]} />,
+      )
+      // Let react-query's macrotask-batched notifications settle inside act.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    const leaf = screen.getByTestId("dock-panel-goals")
+    // Both leaf children are the real goal components...
+    expect(leaf.querySelector("[data-testid='goal-tree']")).toBeTruthy()
+    expect(leaf.querySelector("[data-testid='goal-summary-card']")).toBeTruthy()
+    // ...showing the workspace's real derivation: the request as the primary
+    // goal, the 100% status-completed ring, and the matching summary headline.
+    expect(leaf.querySelector("[data-testid='goal-progress-ring']")?.textContent).toContain("100%")
+    expect(leaf.querySelector("[data-testid='goal-primary']")?.textContent).toContain(
+      "Ship the export feature",
+    )
+    expect(leaf.querySelector("[data-testid='goal-summary-percent']")?.textContent).toBe(
+      "100% overall",
+    )
+    // Sub-goals from the plan render inside the leaf too (dependency depth attr).
+    expect(leaf.querySelector("[data-testid='subgoal-t2']")?.getAttribute("data-depth")).toBe("1")
+  })
+
+  it("re-derives the leaf when the workspace prop changes (running → task ratio)", async () => {
+    const running = {
+      ...ALL_SUCCESS,
+      status: "running",
+      review: undefined,
+      plan: {
+        ...ALL_SUCCESS.plan,
+        tasks: [
+          task("t1", { status: "completed" }),
+          task("t2", { status: "pending" }),
+          task("t3", { status: "pending" }),
+          task("t4", { status: "pending" }),
+        ],
+      },
+    }
+    let mounted: RenderResult
+    await act(async () => {
+      mounted = renderWithClient(
+        <WorkspaceDockSidebar workspace={running as unknown as Workspace} events={[]} />,
+      )
+      // Let react-query's macrotask-batched notifications settle inside act.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.getByTestId("goal-progress-ring").textContent).toContain("25%")
+    await act(async () => {
+      mounted!.rerender(
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          <WorkspaceDockSidebar
+            workspace={{ ...running, status: "failed" } as unknown as Workspace}
+            events={[]}
+          />
+        </QueryClientProvider>,
+      )
+    })
+    // Same tasks, failed status → the failure-ratio basis (0 of 4 completed,
+    // 0 failed → honest 0%), re-derived from the new payload.
+    expect(screen.getByTestId("goal-progress-ring").textContent).toContain("0%")
   })
 })

@@ -18,10 +18,11 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest"
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactElement } from "react"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
+import { applyDashboardDictionaries } from "../src/locales/index"
 
 import deliverablesEn from "../src/locales/deliverables.en-US.json"
 import aiEn from "../src/locales/ai-elements.en-US.json"
@@ -42,7 +43,14 @@ import { DeliverablesPanel } from "../src/features/deliverables/DeliverablesPane
 import { migrationsMetrics } from "../src/components/settings/system-domain/model"
 import { SystemOverviewSection } from "../src/components/settings/system-domain/SystemOverviewSection"
 import { useMigrationCandidates, useSessionStoreStatus } from "@/hooks/useSettingsQueries"
-import { systemApi } from "@/api"
+import { systemApi, chatApi } from "@/api"
+import type { Workspace } from "../src/api"
+import {
+  WORKSPACE_DOCK_STORAGE_KEY,
+  WorkspaceDockSidebar,
+  createWorkspaceDockModel,
+  useWorkspaceDockStore,
+} from "../src/components/layout/WorkspaceDockSidebar"
 
 /** The ai-elements dictionaries are nested trees; flatten to dotted keys. */
 function flattenAi(tree: Record<string, unknown>, prefix = ""): Record<string, string> {
@@ -59,6 +67,10 @@ function flattenAi(tree: Record<string, unknown>, prefix = ""): Record<string, s
 }
 
 beforeAll(() => {
+  // The dock-wiring round mounts the whole WorkspaceDockSidebar, whose leaf
+  // headers translate registry title keys from many domains — register the
+  // aggregated dictionaries exactly like main.tsx first, then overlay.
+  applyDashboardDictionaries(getDictionary("zh-CN") ?? {}, getDictionary("en-US") ?? {})
   const existing = getDictionary("en-US") ?? {}
   registerLocale("en-US", {
     ...existing,
@@ -97,6 +109,20 @@ vi.mock("../src/components/settings/store-domain/SessionStoreStatusCard", () => 
 vi.mock("../src/components/settings/store-domain/MigrationCandidatesCard", () => ({
   MigrationCandidatesCard: () => null,
 }))
+
+// The dock-wiring round mounts the whole WorkspaceDockSidebar; every sibling
+// leaf is stubbed so the suite exercises ONLY the deliverables leaf's wiring
+// (the goals leaf gets the same treatment in goals.test.tsx).
+vi.mock("@/components/AgentPanel", () => ({ AgentPanel: () => null }))
+vi.mock("@/components/TaskPanel", () => ({ TaskPanel: () => null }))
+vi.mock("@/components/SubagentsPanel", () => ({ SubagentsPanel: () => null }))
+vi.mock("@/features/trajectory", () => ({ TrajectoryPanel: () => null }))
+vi.mock("@/components/FileChangesPanel", () => ({ FileChangesPanel: () => null }))
+vi.mock("@/components/SessionsPanel", () => ({ SessionsPanel: () => null }))
+vi.mock("@/components/ArtifactsExplorer", () => ({ ArtifactsExplorer: () => null }))
+vi.mock("@/components/ReviewPanel", () => ({ ReviewPanel: () => null }))
+vi.mock("@/components/OutputPanel", () => ({ OutputPanel: () => null }))
+vi.mock("@/features/session-query", () => ({ SessionSearchPanel: () => null }))
 
 function renderWithQuery(ui: ReactElement) {
   const client = new QueryClient({
@@ -546,5 +572,155 @@ describe("SystemOverviewSection render — health row + metric chips", () => {
     expect(screen.queryByTestId("system-metric-openapiRoutes")).toBeNull()
     expect(screen.queryByTestId("system-metric-locales")).toBeNull()
     expect(screen.queryByTestId("system-metric-coreKeys")).toBeNull()
+  })
+})
+
+// ── Wiring round: Sparkline ↔ list same-source + dock leaf wiring ───────────
+//
+// Two consistency contracts the earlier rounds only pinned at the model
+// layer, now asserted against what actually renders:
+//   1. the header Sparkline and the grouped list derive from the SAME views
+//      — one polyline sample per role, and every rendered group's row count
+//      is the series entry at the same index (so the sparkline can never
+//      disagree with the visible rows);
+//   2. the dock's deliverables leaf receives the real workspace id — the
+//      leaf fetches through chatApi.getWorkspace and lists the fetched rows
+//      inside its dock panel (WorkspaceDockSidebar's wiring, exercised
+//      end-to-end).
+
+const CONSISTENCY_WORKSPACE = {
+  id: "ws-consistency",
+  userRequest: "Consistency probe",
+  status: "completed",
+  results: [
+    { taskId: "t1", agentRole: "planner", output: "the plan" },
+    { taskId: "t2", agentRole: "executor", output: "the code" },
+    { taskId: "t3", agentRole: "executor", output: "the tests" },
+    { taskId: "t4", agentRole: "reviewer", output: "the verdict" },
+  ],
+}
+
+/** Row count per rendered role group, in render order. */
+function renderedGroupRowCounts(): number[] {
+  const groups = screen.getByTestId("deliverables-groups").children
+  return Array.from(groups, (group) => group.querySelectorAll("li").length)
+}
+
+describe("Sparkline ↔ rendered list — same-source derivation", () => {
+  it("one polyline sample per role and per-group row counts equal the series", () => {
+    const series = seriesByRole(toDeliverableViews(CONSISTENCY_WORKSPACE))
+    expect(series).toEqual([1, 2, 1]) // planner, executor, reviewer — first-seen order
+
+    renderWithQuery(<DeliverablesPanel workspace={CONSISTENCY_WORKSPACE} />)
+    const spark = screen.getByTestId("deliverables-role-sparkline")
+    const polyline = spark.querySelector("polyline") as SVGPolylineElement
+    expect(polyline.getAttribute("points").trim().split(/\s+/)).toHaveLength(series.length)
+    expect(renderedGroupRowCounts()).toEqual(series)
+    // The rows behind the series are exactly the rows on screen.
+    const total = series.reduce((sum, count) => sum + count, 0)
+    expect(renderedGroupRowCounts().reduce((sum, count) => sum + count, 0)).toBe(total)
+    expect(screen.getByTestId("deliverables-stats").textContent).toContain(
+      `${total} deliverable(s)`,
+    )
+  })
+
+  it("the sparkline keeps the full series while the filtered list narrows to one role", () => {
+    renderWithQuery(<DeliverablesPanel workspace={CONSISTENCY_WORKSPACE} />)
+    fireEvent.change(screen.getByLabelText("Filter by role"), { target: { value: "executor" } })
+    // Series source stays the UNFILTERED views (the documented contract):
+    // still three samples for three roles...
+    const spark = screen.getByTestId("deliverables-role-sparkline")
+    const polyline = spark.querySelector("polyline") as SVGPolylineElement
+    expect(polyline.getAttribute("points").trim().split(/\s+/)).toHaveLength(3)
+    // ...while the list shows only the executor group's two rows.
+    expect(renderedGroupRowCounts()).toEqual([2])
+  })
+})
+
+const DOCK_WORKSPACE = {
+  id: "ws-dock-1",
+  userRequest: "Dock wiring probe",
+  status: "completed",
+  plan: undefined,
+  results: [],
+  review: undefined,
+  error: undefined,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+} as unknown as Workspace
+
+const DOCK_FETCHED: Workspace = {
+  id: "ws-dock-1",
+  userRequest: "Dock wiring probe",
+  status: "completed",
+  results: [
+    {
+      id: "r1",
+      taskId: "t1",
+      agentRole: "planner",
+      agentId: "a1",
+      output: "the plan",
+      metadata: {},
+      createdAt: "2026-01-01T00:10:00Z",
+    },
+    {
+      id: "r2",
+      taskId: "t2",
+      agentRole: "executor",
+      agentId: "a2",
+      output: "the code",
+      metadata: {},
+      createdAt: "2026-01-01T00:20:00Z",
+    },
+  ],
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:30:00Z",
+}
+
+const mockedGetWorkspace = vi.mocked(chatApi.getWorkspace)
+
+describe("WorkspaceDockSidebar wiring — the deliverables leaf", () => {
+  const resetDock = () => {
+    try {
+      localStorage.removeItem(WORKSPACE_DOCK_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+    useWorkspaceDockStore.setState({ model: createWorkspaceDockModel(), maximizedId: null })
+  }
+
+  // Reset BEFORE each test only: RTL cleanup unmounts the previous tree
+  // after afterEach hooks run, so resetting there would update a still-
+  // mounted subscriber outside act.
+  beforeEach(resetDock)
+
+  it("passes the workspace id down: the leaf fetches and lists the real rows", async () => {
+    mockedGetWorkspace.mockResolvedValue(DOCK_FETCHED)
+    renderWithQuery(<WorkspaceDockSidebar workspace={DOCK_WORKSPACE} events={[]} />)
+    // The leaf's workspaceId wiring: fetched with the dock workspace's id
+    // (plus the react-query abort signal), not with a stub or a stale id.
+    expect(mockedGetWorkspace).toHaveBeenCalledWith("ws-dock-1", expect.anything())
+
+    const leaf = await screen.findByTestId("dock-panel-deliverables")
+    await waitFor(() => {
+      expect(leaf.querySelector("[data-testid='deliverable-t1']")).toBeTruthy()
+    })
+    expect(leaf.querySelector("[data-testid='deliverable-t2']")).toBeTruthy()
+    // The leaf body IS the real panel: stats row + sparkline mounted.
+    expect(leaf.querySelector("[data-testid='deliverables-stats']")?.textContent).toContain(
+      "2 deliverable(s)",
+    )
+    expect(leaf.querySelector("[data-testid='deliverables-role-sparkline']")).toBeTruthy()
+  })
+
+  it("without a workspace there is no fetch and the leaf degrades to the empty state", async () => {
+    // act-wrapped: the dock store's async rehydration settles after the
+    // synchronous render and must not update outside act.
+    await act(async () => {
+      renderWithQuery(<WorkspaceDockSidebar workspace={null} events={[]} />)
+    })
+    expect(mockedGetWorkspace).not.toHaveBeenCalled()
+    const leaf = screen.getByTestId("dock-panel-deliverables")
+    expect(leaf.querySelector("[data-testid='deliverables-empty']")).toBeTruthy()
   })
 })
