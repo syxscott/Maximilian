@@ -25,7 +25,14 @@
       "nextRun": "Next:",
       "fires": "Fires:",
       "trigger": "Trigger",
-      "delete": "Delete"
+      "delete": "Delete",
+      "materialized": "Materialized:",
+      "latestMaterialized": "Latest materialized:"
+    },
+    "status": {
+      "materialized": "Materialized",
+      "materializeFailed": "Materialize failed",
+      "recordOnly": "Record-only"
     },
     "detail": {
       "slot": "Execution slot:",
@@ -34,7 +41,6 @@
       "payloadPresent": "attached",
       "payloadNone": "none",
       "payloadHint": "JSON payload handed to the target on trigger",
-      "materialized": "Materialized workspace:",
       "openWorkspace": "Open this workspace"
     },
     "slot": {

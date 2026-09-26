@@ -9,13 +9,19 @@
  * picks the dispatch kind: "none" stays record-only, "workspace" makes
  * every fire enqueue a real BullMQ workspace job with the given message.
  *
- * A dispatch record's materialized workspaceId is clickable when the
- * shell hands down `onOpenWorkspace` (the App's pickWorkspace bridge) —
- * without the callback (or for the already-active workspace) the chip
- * degrades to plain text instead of throwing.
+ * Materialization is surfaced without unfolding a row: every collapsed
+ * row leads with a three-state status icon (record-only / materialized /
+ * materialize-failed) and carries its materialized workspaceId chip, and
+ * a summary strip above the list keeps the globally latest materialized
+ * workspace reachable even when its row is sorted or windowed away.
+ *
+ * A chip is clickable when the shell hands down `onOpenWorkspace` (the
+ * App's pickWorkspace bridge) — without the callback (or for the
+ * already-active workspace) it degrades to plain text instead of throwing.
  */
 
 import { useMemo, useState } from "react"
+import { CheckCircle2, CircleDashed, XCircle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,16 +39,20 @@ import {
 import {
   EMPTY_JOB_DRAFT,
   buildJobPayload,
+  dispatchStatus,
   filterJobs,
   formatIntervalMs,
   formatTimestamp,
+  latestMaterialized,
   sortJobs,
   toJobViews,
   toSlotBadge,
   validateJobDraft,
   windowList,
+  type DispatchStatus,
   type JobDraftKind,
   type JobSortKey,
+  type JobView,
 } from "./model"
 
 const MAX_VISIBLE = 20
@@ -55,6 +65,9 @@ export interface JobsPanelProps {
   activeWorkspaceId?: string
 }
 
+/** Cyan success tint shared by the status icon and the workspace chips. */
+const CHIP_TONE = "text-cyan-600 dark:text-cyan-400"
+
 /**
  * The materialized workspaceId of a dispatch record. A real button only
  * when the shell handed down the opener AND the row is not the active
@@ -65,15 +78,22 @@ function MaterializedChip({
   workspaceId,
   onOpenWorkspace,
   activeWorkspaceId,
+  testId,
+  className,
 }: {
   jobId: string
   workspaceId: string
   onOpenWorkspace?: (workspaceId: string) => void
   activeWorkspaceId?: string
+  /** Override for the global summary strip (avoids per-row testid clashes). */
+  testId?: string
+  className?: string
 }) {
+  const tone = `${CHIP_TONE}${className ? ` ${className}` : ""}`
+  const id = testId ?? `jobs-workspace-${jobId}`
   if (onOpenWorkspace === undefined || workspaceId === activeWorkspaceId) {
     return (
-      <span className="font-mono text-[10px]" data-testid={`jobs-workspace-${jobId}`}>
+      <span className={`font-mono text-[10px] ${tone}`} data-testid={id}>
         {workspaceId}
       </span>
     )
@@ -81,13 +101,53 @@ function MaterializedChip({
   return (
     <button
       type="button"
-      className="font-mono text-[10px] underline underline-offset-2 hover:text-foreground"
+      className={`font-mono text-[10px] underline underline-offset-2 hover:text-foreground ${tone}`}
       onClick={() => onOpenWorkspace(workspaceId)}
       title={t("jobs.detail.openWorkspace")}
-      data-testid={`jobs-workspace-${jobId}`}
+      data-testid={id}
     >
       {workspaceId}
     </button>
+  )
+}
+
+const STATUS_META: Record<
+  DispatchStatus,
+  { icon: typeof CheckCircle2; className: string; labelKey: string }
+> = {
+  materialized: {
+    icon: CheckCircle2,
+    className: CHIP_TONE,
+    labelKey: "jobs.status.materialized",
+  },
+  "materialize-failed": {
+    icon: XCircle,
+    className: "text-destructive",
+    labelKey: "jobs.status.materializeFailed",
+  },
+  "record-only": {
+    icon: CircleDashed,
+    className: "text-muted-foreground",
+    labelKey: "jobs.status.recordOnly",
+  },
+}
+
+/** Row-leading three-state materialization icon (visible without unfolding). */
+function DispatchStatusIcon({ job }: { job: JobView }) {
+  const status = dispatchStatus(job)
+  const meta = STATUS_META[status]
+  const Icon = meta.icon
+  const label = t(meta.labelKey)
+  return (
+    <span
+      className={`inline-flex shrink-0 ${meta.className}`}
+      role="img"
+      aria-label={label}
+      title={label}
+      data-testid={`jobs-status-${job.id}`}
+    >
+      <Icon className="h-3 w-3" aria-hidden="true" />
+    </span>
   )
 }
 
@@ -125,10 +185,13 @@ export function JobsPanel({ onOpenWorkspace, activeWorkspaceId }: JobsPanelProps
   const [draftError, setDraftError] = useState<string | null>(null)
 
   const jobs = useMemo(() => toJobViews(qc.data), [qc.data])
+  const latest = useMemo(() => latestMaterialized(jobs), [jobs])
   const visible = useMemo(
     () => windowList(sortJobs(filterJobs(jobs, query), sortKey), MAX_VISIBLE),
     [jobs, query, sortKey],
   )
+  const latestJobName =
+    latest === null ? null : (jobs.find((j) => j.id === latest.jobId)?.name ?? null)
 
   const draftValidation = validateJobDraft(draft)
   const canSubmit = draftValidation === null && !createJob.isPending
@@ -199,6 +262,27 @@ export function JobsPanel({ onOpenWorkspace, activeWorkspaceId }: JobsPanelProps
               </select>
             </div>
 
+            {latest !== null && (
+              <div
+                className="flex flex-wrap items-center gap-2"
+                data-testid="jobs-latest-materialized"
+              >
+                <span className="text-xs text-muted-foreground">
+                  {t("jobs.row.latestMaterialized")}
+                </span>
+                <MaterializedChip
+                  testId="jobs-latest-workspace"
+                  jobId={latest.jobId}
+                  workspaceId={latest.workspaceId}
+                  onOpenWorkspace={onOpenWorkspace}
+                  activeWorkspaceId={activeWorkspaceId}
+                />
+                {latestJobName !== null && (
+                  <span className="text-xs text-muted-foreground">({latestJobName})</span>
+                )}
+              </div>
+            )}
+
             {jobs.length === 0 ? (
               <p className="text-xs text-muted-foreground" data-testid="jobs-empty">
                 {t("jobs.state.empty")}
@@ -218,6 +302,7 @@ export function JobsPanel({ onOpenWorkspace, activeWorkspaceId }: JobsPanelProps
                           onClick={() => setExpanded(open ? null : j.id)}
                           aria-expanded={open}
                         >
+                          <DispatchStatusIcon job={j} />
                           <span className="truncate text-xs font-medium">{j.name}</span>
                           <Badge variant="secondary" className="h-4 px-1 font-mono text-[10px]">
                             {j.schedule}
@@ -234,6 +319,19 @@ export function JobsPanel({ onOpenWorkspace, activeWorkspaceId }: JobsPanelProps
                           </span>
                         </button>
                         <span className="flex items-center gap-1">
+                          {j.materializedWorkspaceId !== null && (
+                            <span className="flex items-center gap-1 pr-1">
+                              <span className="text-[10px] text-muted-foreground">
+                                {t("jobs.row.materialized")}
+                              </span>
+                              <MaterializedChip
+                                jobId={j.id}
+                                workspaceId={j.materializedWorkspaceId}
+                                onOpenWorkspace={onOpenWorkspace}
+                                activeWorkspaceId={activeWorkspaceId}
+                              />
+                            </span>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -283,19 +381,6 @@ export function JobsPanel({ onOpenWorkspace, activeWorkspaceId }: JobsPanelProps
                             <p className="font-mono text-[10px] text-muted-foreground">
                               {j.lastEvent.kind} · {formatTimestamp(j.lastEvent.at)}
                             </p>
-                          )}
-                          {j.materializedWorkspaceId !== null && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">
-                                {t("jobs.detail.materialized")}
-                              </span>
-                              <MaterializedChip
-                                jobId={j.id}
-                                workspaceId={j.materializedWorkspaceId}
-                                onOpenWorkspace={onOpenWorkspace}
-                                activeWorkspaceId={activeWorkspaceId}
-                              />
-                            </div>
                           )}
                         </div>
                       )}

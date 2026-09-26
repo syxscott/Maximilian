@@ -25,7 +25,14 @@
       "nextRun": "下次：",
       "fires": "触发次数：",
       "trigger": "手动触发",
-      "delete": "删除"
+      "delete": "删除",
+      "materialized": "已物化：",
+      "latestMaterialized": "最近物化："
+    },
+    "status": {
+      "materialized": "已物化",
+      "materializeFailed": "物化失败",
+      "recordOnly": "仅记录"
     },
     "detail": {
       "slot": "执行槽：",
@@ -34,7 +41,6 @@
       "payloadPresent": "已附带",
       "payloadNone": "无",
       "payloadHint": "触发时传给目标的 JSON 负载",
-      "materialized": "物化工作区：",
       "openWorkspace": "打开该工作区"
     },
     "slot": {

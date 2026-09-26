@@ -5,7 +5,9 @@
 
 /**
  * Pure model layer for the jobs domain: defensive normalization of the
- * /jobs payload into typed row views, sort/filter helpers, schedule
+ * /jobs payload into typed row views, materialization-outcome tracking
+ * (newest-first time-sorted trail, per-row dispatch status, global
+ * latest-materialized summary), sort/filter helpers, schedule
  * formatting and draft validation. The backend JSON is passthrough —
  * every field read here guards its shape (subagents-domain pattern).
  */
@@ -15,6 +17,25 @@ export interface JobEventView {
   kind: string
   /** "materialized" entries: the real workspace the worker ran. */
   workspaceId: string | null
+}
+
+/** One materialization-relevant trail entry, defensively normalized. */
+export interface DispatchOutcomeView {
+  at: string | null
+  kind: "materialized" | "dispatch-failed"
+  /** Real workspace on success; null when the fire never materialized. */
+  workspaceId: string | null
+  /** True for a "dispatch-failed" entry or a "materialized" without a workspace. */
+  failed: boolean
+}
+
+/** Row-leading materialization state (drives the status icon). */
+export type DispatchStatus = "record-only" | "materialized" | "materialize-failed"
+
+/** The single newest successful materialization across a jobs list. */
+export interface LatestMaterialized {
+  jobId: string
+  workspaceId: string
 }
 
 export interface JobView {
@@ -31,10 +52,17 @@ export interface JobView {
   triggerCount: number
   lastEvent: JobEventView | null
   /**
-   * The workspace the worker materialized from this job's fire (newest
-   * `materialized` backfill wins) — null when no fire produced one.
+   * The workspace of the newest SUCCESSFUL materialization (time-based,
+   * not trail position) — null when no fire produced one.
    */
   materializedWorkspaceId: string | null
+  /** `at` of that newest successful materialization — null alongside. */
+  materializedAt: string | null
+  /**
+   * Newest materialization outcome overall (success OR failure, by `at`) —
+   * null when the trail has no materialization-relevant entry at all.
+   */
+  dispatchOutcome: DispatchOutcomeView | null
 }
 
 export type JobSortKey = "createdAt" | "name" | "nextRunAt"
@@ -51,19 +79,73 @@ function dateOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null
 }
 
+/** Stable newest-first ordering by parsed `at`; undated entries sink last. */
+function newestFirst<T extends { at: string | null }>(entries: T[]): T[] {
+  const keyed = entries.map((e, index) => {
+    const parsed = e.at === null ? Number.NaN : Date.parse(e.at)
+    return { e, index, ms: Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed }
+  })
+  keyed.sort((a, b) => (b.ms !== a.ms ? b.ms - a.ms : a.index - b.index))
+  return keyed.map((k) => k.e)
+}
+
 /**
- * Newest-first scan of the raw event trail for the workspace a fire
- * materialized. Defensive: passthrough entries may be missing, malformed
- * or carry no workspaceId — only a non-empty string counts.
+ * Materialization-relevant slice of a raw event trail ("materialized" +
+ * "dispatch-failed" entries), normalized and sorted newest-first by `at`
+ * — NOT by trail position: concurrent backfills can append out of
+ * chronological order. Garbage entries are dropped silently.
  */
-export function latestMaterializedWorkspaceId(events: unknown[]): string | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i]
+export function dispatchTrail(events: unknown[]): DispatchOutcomeView[] {
+  if (!Array.isArray(events)) return []
+  const out: DispatchOutcomeView[] = []
+  for (const e of events) {
     if (e == null || typeof e !== "object") continue
-    const id = (e as Record<string, unknown>).workspaceId
-    if (typeof id === "string" && id.trim().length > 0) return id
+    const r = e as Record<string, unknown>
+    const kind = str(r.kind)
+    if (kind !== "materialized" && kind !== "dispatch-failed") continue
+    const id = str(r.workspaceId)
+    const workspaceId = id.trim().length > 0 ? id : null
+    out.push({
+      at: dateOrNull(r.at),
+      kind,
+      workspaceId,
+      // A "materialized" entry without a workspace is the rejection shape
+      // the API writes when the worker could not materialize the fire.
+      failed: workspaceId === null,
+    })
   }
-  return null
+  return newestFirst(out)
+}
+
+/**
+ * Three-state row status from a job's newest materialization outcome:
+ * "record-only" (no materialization-relevant entry at all), "materialized"
+ * (newest outcome succeeded) or "materialize-failed" (newest outcome is a
+ * failed backfill or a dispatch failure — even if an older fire succeeded).
+ */
+export function dispatchStatus(job: JobView): DispatchStatus {
+  if (job.dispatchOutcome === null) return "record-only"
+  return job.dispatchOutcome.failed ? "materialize-failed" : "materialized"
+}
+
+/**
+ * The most recently materialized workspace across a jobs list — the
+ * {jobId, workspaceId} of the newest successful backfill. Time-based
+ * (undated successes count as oldest, list order breaks ties); failed
+ * materializations never surface here. Null when nothing materialized.
+ */
+export function latestMaterialized(jobs: JobView[]): LatestMaterialized | null {
+  let best: LatestMaterialized | null = null
+  let bestMs = Number.NEGATIVE_INFINITY
+  for (const j of jobs) {
+    if (j.materializedWorkspaceId === null) continue
+    const parsed = j.materializedAt === null ? Number.NaN : Date.parse(j.materializedAt)
+    const ms = Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed
+    if (best !== null && ms <= bestMs) continue
+    best = { jobId: j.id, workspaceId: j.materializedWorkspaceId }
+    bestMs = ms
+  }
+  return best
 }
 
 /** Defensive /jobs row (passthrough JSON) → typed view. */
@@ -88,6 +170,9 @@ export function toJobView(row: unknown): JobView | null {
     }
   }
 
+  const trail = dispatchTrail(events)
+  const newestSuccess = trail.find((t) => t.workspaceId !== null) ?? null
+
   return {
     id,
     name: str(r.name, id),
@@ -101,7 +186,9 @@ export function toJobView(row: unknown): JobView | null {
     nextRunAt: dateOrNull(r.nextRunAt),
     triggerCount: num(r.triggerCount) ?? 0,
     lastEvent,
-    materializedWorkspaceId: latestMaterializedWorkspaceId(events),
+    materializedWorkspaceId: newestSuccess?.workspaceId ?? null,
+    materializedAt: newestSuccess?.at ?? null,
+    dispatchOutcome: trail.length > 0 ? (trail[0] ?? null) : null,
   }
 }
 

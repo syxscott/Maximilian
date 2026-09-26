@@ -21,9 +21,12 @@ import jobsEn from "../src/locales/jobs.en-US.json"
 import {
   EMPTY_JOB_DRAFT,
   buildJobPayload,
+  dispatchStatus,
+  dispatchTrail,
   filterJobs,
   formatIntervalMs,
   formatTimestamp,
+  latestMaterialized,
   parsePayloadJson,
   sortJobs,
   toJobViews,
@@ -98,6 +101,28 @@ function materializedRow() {
   }
 }
 
+/** A row whose newest fire failed to materialize (API rejection shape:
+ * a `materialized` entry without a workspaceId, carrying the error). */
+function failedRow() {
+  return {
+    ...jobRow,
+    id: "job_fail",
+    events: [
+      ...jobRow.events,
+      {
+        at: "2026-09-23T02:30:00.000Z",
+        kind: "materialized",
+        error: "worker could not materialize: planning threw",
+      },
+    ],
+  }
+}
+
+/** Record-only row (same shape as jobRow but a distinct id). */
+function recordOnlyRow() {
+  return { ...jobRow, id: "job_ro" }
+}
+
 // ── Model ────────────────────────────────────────────────────────────────────
 
 describe("jobs-domain model", () => {
@@ -168,6 +193,136 @@ describe("jobs-domain model", () => {
       ],
     })[0]
     expect(v?.materializedWorkspaceId).toBeNull()
+  })
+
+  it("reports the three-state dispatch status per row", () => {
+    const recordOnly = toJobViews({ jobs: [jobRow] })[0]
+    const ok = toJobViews({ jobs: [materializedRow()] })[0]
+    const bad = toJobViews({ jobs: [failedRow()] })[0]
+    expect(dispatchStatus(recordOnly as JobView)).toBe("record-only")
+    expect(dispatchStatus(ok as JobView)).toBe("materialized")
+    expect(dispatchStatus(bad as JobView)).toBe("materialize-failed")
+  })
+
+  it("lets the newest failed outcome mask an older materialized success", () => {
+    const v = toJobViews({
+      jobs: [
+        {
+          id: "job_mixed",
+          name: "x",
+          schedule: "*",
+          events: [
+            { at: "2026-09-23T01:00:00.000Z", kind: "materialized", workspaceId: "ws-old" },
+            { at: "2026-09-23T02:00:00.000Z", kind: "dispatch-failed", error: "queue down" },
+          ],
+        },
+      ],
+    })[0]
+    expect(dispatchStatus(v as JobView)).toBe("materialize-failed")
+    // …but the last workspace that DID run stays reachable for the chip.
+    expect(v?.materializedWorkspaceId).toBe("ws-old")
+  })
+
+  it("picks the dispatch status by timestamp, not trail storage order", () => {
+    // Newest outcome stored FIRST (reverse-chronological backfill).
+    const v = toJobViews({
+      jobs: [
+        {
+          id: "job_rev",
+          name: "x",
+          schedule: "*",
+          events: [
+            { at: "2026-09-23T09:00:00.000Z", kind: "materialized", workspaceId: "ws-late" },
+            { at: "2026-09-23T08:00:00.000Z", kind: "materialized", error: "boom" },
+          ],
+        },
+      ],
+    })[0]
+    expect(dispatchStatus(v as JobView)).toBe("materialized")
+    expect(v?.materializedWorkspaceId).toBe("ws-late")
+    expect(v?.dispatchOutcome).toMatchObject({
+      kind: "materialized",
+      workspaceId: "ws-late",
+      failed: false,
+    })
+  })
+
+  it("time-sorts the materialized trail newest-first regardless of append order", () => {
+    const trail = dispatchTrail([
+      { at: "2026-09-23T02:00:05.000Z", kind: "materialized", workspaceId: "ws-2" },
+      { at: "2026-09-23T02:00:09.000Z", kind: "materialized", workspaceId: "ws-4" },
+      { at: "2026-09-23T02:00:01.000Z", kind: "dispatched", queued: true },
+      { at: "2026-09-23T02:00:07.000Z", kind: "materialized", workspaceId: "ws-3" },
+      { kind: "materialized", workspaceId: "ws-undated" },
+      { at: "not-a-date", kind: "materialized", workspaceId: "ws-garbage-date" },
+      null,
+    ])
+    // Newest-first by `at`; undated/unparseable entries sink in input order;
+    // non-materialization kinds ("dispatched") and garbage are dropped.
+    expect(trail.map((e) => e.workspaceId)).toEqual([
+      "ws-4",
+      "ws-3",
+      "ws-2",
+      "ws-undated",
+      "ws-garbage-date",
+    ])
+    expect(trail[0]).toMatchObject({ at: "2026-09-23T02:00:09.000Z", failed: false })
+  })
+
+  it("surfaces the globally latest materialized workspace across the list", () => {
+    const jobs = toJobViews({
+      jobs: [
+        {
+          id: "job_old",
+          name: "older",
+          schedule: "*",
+          events: [{ at: "2026-09-23T01:00:00.000Z", kind: "materialized", workspaceId: "ws-old" }],
+        },
+        {
+          id: "job_new",
+          name: "newer",
+          schedule: "*",
+          events: [{ at: "2026-09-23T05:00:00.000Z", kind: "materialized", workspaceId: "ws-new" }],
+        },
+      ],
+    })
+    expect(latestMaterialized(jobs)).toEqual({ jobId: "job_new", workspaceId: "ws-new" })
+  })
+
+  it("returns no global latest when nothing ever materialized", () => {
+    expect(latestMaterialized([])).toBeNull()
+    expect(latestMaterialized(toJobViews({ jobs: [jobRow] }))).toBeNull()
+    // Failed materializations never surface as a latest workspace.
+    expect(latestMaterialized(toJobViews({ jobs: [failedRow()] }))).toBeNull()
+    expect(latestMaterialized(toJobViews(null))).toBeNull()
+  })
+
+  it("treats undated successes as oldest and breaks ties by list order", () => {
+    const jobs = toJobViews({
+      jobs: [
+        {
+          id: "job_dated",
+          name: "d",
+          schedule: "*",
+          events: [
+            { at: "2026-09-23T01:00:00.000Z", kind: "materialized", workspaceId: "ws-dated" },
+          ],
+        },
+        {
+          id: "job_undated",
+          name: "u",
+          schedule: "*",
+          events: [{ kind: "materialized", workspaceId: "ws-undated" }],
+        },
+        {
+          id: "job_tie",
+          name: "t",
+          schedule: "*",
+          events: [{ at: "2026-09-23T01:00:00.000Z", kind: "materialized", workspaceId: "ws-tie" }],
+        },
+      ],
+    })
+    expect(latestMaterialized(jobs)).toEqual({ jobId: "job_dated", workspaceId: "ws-dated" })
   })
 
   it("flags payload presence and coerces unknown schedule kinds", () => {
@@ -548,5 +703,86 @@ describe("JobsPanel render smoke", () => {
     expect(chip.tagName).toBe("SPAN")
     fireEvent.click(chip)
     expect(openWorkspace).not.toHaveBeenCalled()
+  })
+
+  it("keeps the materialized chip visible and clickable on the collapsed row", () => {
+    const openWorkspace = vi.fn()
+    mocked.useJobs.mockReturnValue(
+      q({
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        data: { jobs: [materializedRow()] },
+      }) as never,
+    )
+    renderWithQuery(<JobsPanel onOpenWorkspace={openWorkspace} activeWorkspaceId="ws-other" />)
+    // No expansion first: the detail block is closed, yet the chip is on the row.
+    expect(screen.queryByTestId("jobs-detail-job_1")).toBeNull()
+    const chip = screen.getByTestId("jobs-workspace-job_1")
+    expect(chip.tagName).toBe("BUTTON")
+    fireEvent.click(chip)
+    expect(openWorkspace).toHaveBeenCalledTimes(1)
+    expect(openWorkspace).toHaveBeenCalledWith("ws-real-9")
+  })
+
+  it("surfaces the globally latest materialized workspace above the list", () => {
+    const openWorkspace = vi.fn()
+    mocked.useJobs.mockReturnValue(
+      q({
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        data: {
+          jobs: [
+            {
+              ...jobRow,
+              id: "job_old",
+              name: "older",
+              events: [
+                { at: "2026-09-23T01:00:00.000Z", kind: "materialized", workspaceId: "ws-old" },
+              ],
+            },
+            {
+              ...jobRow,
+              id: "job_new",
+              name: "newer",
+              events: [
+                { at: "2026-09-23T05:00:00.000Z", kind: "materialized", workspaceId: "ws-new" },
+              ],
+            },
+          ],
+        },
+      }) as never,
+    )
+    renderWithQuery(<JobsPanel onOpenWorkspace={openWorkspace} />)
+    const strip = screen.getByTestId("jobs-latest-materialized")
+    // The newer fire wins even though its row is listed second.
+    expect(strip.textContent).toContain("ws-new")
+    expect(strip.textContent).toContain("newer")
+    fireEvent.click(screen.getByTestId("jobs-latest-workspace"))
+    expect(openWorkspace).toHaveBeenCalledTimes(1)
+    expect(openWorkspace).toHaveBeenCalledWith("ws-new")
+  })
+
+  it("renders the three-state materialization icon per row", () => {
+    mocked.useJobs.mockReturnValue(
+      q({
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        data: { jobs: [materializedRow(), failedRow(), recordOnlyRow()] },
+      }) as never,
+    )
+    renderWithQuery(<JobsPanel />)
+    const ok = screen.getByTestId("jobs-status-job_1")
+    const bad = screen.getByTestId("jobs-status-job_fail")
+    const recordOnly = screen.getByTestId("jobs-status-job_ro")
+    // Cyan success, red failure, muted record-only — readable via title.
+    expect(ok.getAttribute("title")).toBe("Materialized")
+    expect(ok.className).toContain("text-cyan-600")
+    expect(bad.getAttribute("title")).toBe("Materialize failed")
+    expect(bad.className).toContain("text-destructive")
+    expect(recordOnly.getAttribute("title")).toBe("Record-only")
+    expect(recordOnly.className).toContain("text-muted-foreground")
   })
 })
