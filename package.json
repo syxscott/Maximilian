@@ -68,11 +68,12 @@
   },
   "pnpm": {
     "overrides": {
-      "cross-spawn": "^6.0.6",
-      "brace-expansion": "^2.1.2",
-      "shell-quote": "^1.9.0",
-      "@opentelemetry/auto-instrumentations-node": "^0.78.0",
-      "@opentelemetry/propagator-jaeger": "^2.9.0"
+      "hono": "^4.12.34",
+      "@hono/node-server": "^1.19.15",
+      "cross-spawn": "^7.0.6",
+      "@opentelemetry/propagator-jaeger": "^2.9.0",
+      "brace-expansion": "^2.1.7",
+      "protobufjs": "^7.6.5"
     },
     "neverBuiltDependencies": []
   },
