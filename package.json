@@ -73,7 +73,8 @@
       "cross-spawn": "^7.0.6",
       "@opentelemetry/propagator-jaeger": "^2.9.0",
       "brace-expansion": "^2.1.7",
-      "protobufjs": "^7.6.5"
+      "protobufjs": "^7.6.5",
+      "@grpc/grpc-js": "^1.14.5"
     },
     "neverBuiltDependencies": []
   },

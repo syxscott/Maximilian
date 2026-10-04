@@ -15,7 +15,4 @@ if [ -d .git ]; then
 
   # Run staged-file linters
   pnpm exec lint-staged --no-stash
-
-  # Validate commit message (commitlint reads from .commitlintrc.json)
-  pnpm exec commitlint --edit "$1"
 fi

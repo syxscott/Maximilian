@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# .husky/commit-msg
+#
+# Enforces Conventional Commits on the message being committed. This is
+# the correct hook for commitlint — it receives the message file as $1.
+# (It used to live in pre-commit, where $1 is undefined and commitlint
+# fell back to the PREVIOUS commit's message in .git/COMMIT_EDITMSG,
+# blocking every commit once one subject exceeded 72 chars.)
+
+. "$(dirname -- "$0")/_/husky.sh"
+
+pnpm exec commitlint --edit "$1"
