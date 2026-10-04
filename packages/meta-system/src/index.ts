@@ -89,6 +89,24 @@ export { ReplayEngine, type ReplayDeps, type ReplayInput } from "./replay-engine
 export { PendingProposalStore } from "./pending-proposal-store.js"
 export { TruthAudit, buildMeasurement, type TruthAuditDeps } from "./truth-audit.js"
 export {
+  GOAL_VERDICTS,
+  GOAL_VERDICT_QUALITY_DELTA,
+  GoalJudgementSchema,
+  goalJudgementToTruthMeasurement,
+  judgeGoal,
+  keywordGoalJudge,
+  recordGoalJudgement,
+  verdictIsTerminal,
+  type GoalEvidence,
+  type GoalJudgeFn,
+  type GoalJudgeInput,
+  type GoalJudgeResult,
+  type GoalJudgement,
+  type GoalJudgementCore,
+  type GoalTruthOptions,
+  type GoalVerdict,
+} from "./goal-judge.js"
+export {
   TruthCalibrator,
   type CalibratorRolePoint,
   type TruthCalibratorDeps,

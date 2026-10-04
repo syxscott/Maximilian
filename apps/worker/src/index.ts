@@ -49,14 +49,18 @@ import {
 import { FileWorkspaceStore } from "@max/workspace"
 import {
   createWorker,
+  createQueue,
   createWorkspaceEventPublisher,
   acquireResourceLease,
   CrashBudget,
+  crashCategoryOfClassification,
+  recoverStalledJobs,
+  subscribeWorkspaceStop,
   type WorkspaceProcessor,
 } from "@max/queue"
 import { Gateway, createWebhookAdapter } from "@max/gateway"
 import { Commander, type ModelSelectorPort as CommanderModelSelectorPort } from "@max/commander"
-import { bootstrapModelRouting } from "@max/core"
+import { AutoResumeSuppressedError, bootstrapModelRouting, classifyError } from "@max/core"
 import type { Job } from "bullmq"
 import type { WorkspaceJobData } from "@max/queue"
 import {
@@ -549,6 +553,19 @@ async function main() {
       return
     }
 
+    // Stop-suppression pre-check: an explicit user stop arms a window
+    // during which machinery must not re-dispatch this workspace. A BullMQ
+    // retry landing inside the window would otherwise reset the just-
+    // stopped workspace back to planning and undo the stop.
+    const suppression = runtime.checkAutoResume(workspaceId)
+    if (suppression.suppressed) {
+      log.warn(
+        { workspaceId, remainingMs: suppression.remainingMs },
+        "auto-resume suppressed (explicit stop within the suppression window) — skipping dispatch",
+      )
+      return
+    }
+
     if (workspace.status === "executing" || workspace.status === "reviewing") {
       // BullMQ retry path: a previous attempt crashed mid-execution and
       // left the workspace in a non-planning state. A fresh runtime cannot
@@ -572,8 +589,20 @@ async function main() {
     const lease = await acquireResourceLease(redisUrl, resourceBudget)
     let final: Workspace
     try {
-      final = await runtime.execute(workspace)
+      final = await runtime.execute(workspace, { autoResume: true })
     } catch (err) {
+      if (err instanceof AutoResumeSuppressedError) {
+        // The execute-time gate is the authoritative suppression check (it
+        // closes the race against a stop landing after our pre-check). The
+        // stop path already persisted the terminal state — do NOT mark
+        // failed here, and do NOT rethrow or BullMQ retries would fight
+        // the stop for the rest of the window.
+        log.warn(
+          { workspaceId, remainingMs: err.remainingMs },
+          "execution suppressed after explicit stop",
+        )
+        return
+      }
       // Runtime threw - the workspace must NOT be left in planning/executing
       // or the user sees a permanently stuck state. Persist a `failed`
       // terminal state with the error message so they have something to
@@ -614,6 +643,82 @@ async function main() {
   // Create and start the BullMQ worker.
   const concurrency = Number(config.WORKER_CONCURRENCY ?? 3)
   const { worker, stopHeartbeat } = createWorker(redisUrl, processor, concurrency)
+
+  // Cross-process stop signals (user stop arriving at the API while the
+  // workspace executes HERE): abort the local runtime — which also arms
+  // THIS process's suppression window, settles in-flight bash executions,
+  // and rejects parked permission prompts.
+  const unsubscribeStops = await subscribeWorkspaceStop(redisUrl, (signal) => {
+    log.info(
+      { workspaceId: signal.workspaceId, reason: signal.reason, source: signal.source },
+      "stop signal received",
+    )
+    runtime.abort(signal.workspaceId, signal.reason ?? "remote stop")
+  })
+
+  // Startup crash-recovery sweep (swarms borrowing): workspaces left in
+  // executing/reviewing by a dead worker are batch-reset per the closed
+  // error taxonomy — transient/rate_limit go back to planning and are
+  // re-enqueued; permanent/context_limit/cancelled are held with a reason;
+  // unknown is counted but left untouched.
+  try {
+    const recoveryQueue = createQueue(redisUrl)
+    const report = await recoverStalledJobs(
+      {
+        listStalledRunning: () => store.listStalledRunning(),
+        resetToRetryable: async (id) => {
+          const stalled = await store.listStalledRunning()
+          const row = stalled.find((r) => r.id === id)
+          const ws = await store.loadWorkspace(id, row?.tenantId ?? undefined)
+          if (!ws) return
+          ws.status = "planning"
+          await store.saveWorkspace(ws, row?.tenantId ?? undefined)
+          await recoveryQueue.add("execute", {
+            workspaceId: id,
+            mode: "commander",
+            ...(row?.tenantId !== null && row?.tenantId !== undefined
+              ? { tenantId: row.tenantId }
+              : {}),
+          })
+        },
+        holdWithReason: async (id, category) => {
+          const stalled = await store.listStalledRunning()
+          const row = stalled.find((r) => r.id === id)
+          const ws = await store.loadWorkspace(id, row?.tenantId ?? undefined)
+          if (!ws) return
+          const held = ws.metadata?.recoveryHold as { category?: string } | undefined
+          if (held?.category === category) return // idempotent across restarts
+          await store.saveWorkspace(
+            {
+              ...ws,
+              metadata: {
+                ...(ws.metadata ?? {}),
+                recoveryHold: { category, heldAt: new Date().toISOString() },
+              },
+            },
+            row?.tenantId ?? undefined,
+          )
+        },
+      },
+      (err) => crashCategoryOfClassification(classifyError(err)),
+      { maxResets: 20 },
+    )
+    log.info(
+      {
+        scanned: report.scanned,
+        reset: report.reset,
+        held: report.held,
+        unknownLeft: report.unknownLeft,
+        errors: report.errors.length,
+      },
+      "startup crash-recovery sweep complete",
+    )
+    await recoveryQueue.close()
+  } catch (err) {
+    // Recovery is best-effort: a sweep failure must not keep the worker
+    // from processing new jobs.
+    log.error({ err }, "startup crash-recovery sweep failed")
+  }
 
   worker.on("ready", () => {
     log.info({ concurrency, redisUrl: redisUrl.replace(/\/\/.*@/, "//***@") }, "worker ready")
@@ -731,6 +836,9 @@ async function main() {
         log.error({ err }, "error closing worker")
       })
       stopHeartbeat()
+      await unsubscribeStops().catch((err) => {
+        log.error({ err }, "error unsubscribing stop signals")
+      })
       await closeDb().catch((err) => {
         log.error({ err }, "error closing DB")
       })

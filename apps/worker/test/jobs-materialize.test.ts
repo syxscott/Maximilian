@@ -123,7 +123,9 @@ describe("materializeScheduledWorkspace", () => {
     })
     // The SAME workspace object that was saved is what executes — the
     // real workspaceId is born at the save, not at the placeholder.
-    expect(runtime.execute).toHaveBeenCalledWith(saved)
+    // Machinery-driven dispatch: the autoResume flag marks it subject to
+    // the stop-suppression window.
+    expect(runtime.execute).toHaveBeenCalledWith(saved, { autoResume: true })
     expect(final.id).toBe("ws-real-1")
     expect(final.status).toBe("completed")
   })

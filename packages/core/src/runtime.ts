@@ -51,6 +51,28 @@ import type { ReproducibilityManager, ReproducibilityReport } from "./safety/rep
 import type { FailureDetectionResult } from "./validation/failure-detector.js"
 import type { TaskPriority } from "./types.js"
 import type { ChannelValues, ConfigurableDict } from "./types.js"
+import {
+  cancelNonTerminalTasks,
+  buildCascadeStopReport,
+  planStopCascade,
+  reclaimPartialResults,
+  settleWithin,
+  type CascadeStopOutcome,
+  type CascadeStopReport,
+  type PartialResultSnapshot,
+  type StopCascadeNode,
+} from "./stop-cascade.js"
+import {
+  AutoResumeSuppressedError,
+  StopSuppressionWindow,
+  type SuppressionVerdict,
+} from "./stop-suppression.js"
+import { BashSettlementLedger } from "./bash-settlement.js"
+import {
+  GoalFinalReplyMachine,
+  normalizeReplyFingerprint,
+  type GoalFinalReplyState,
+} from "./goal-final-reply.js"
 
 /**
  * Long-term memory store interface.
@@ -246,6 +268,26 @@ export type RuntimeEvent =
       nextRetryAtMs: number
       reason: string
     }
+  | {
+      type: "cascade-stopped"
+      /** The workspace whose stop cascaded. */
+      workspaceId: string
+      reason: string
+      /** Every unit the stop reached (root first, then derived, BFS). */
+      stopped: string[]
+      /** Units that did not settle within the budget — still running. */
+      timedOut: string[]
+      /** Partial results salvaged from the stopped units. */
+      reclaimedResults: number
+    }
+  | {
+      type: "goal-final-reply"
+      workspaceId: string
+      goalId: string
+      reply: string
+      /** sha256 of the normalized reply — downstream dedup key. */
+      fingerprint?: string
+    }
 
 export type RuntimeListener = (event: RuntimeEvent) => void
 
@@ -438,6 +480,18 @@ export interface RuntimeOptions {
    * call surfaces as an error so the LLM can adapt). Default: 600_000 (10 min).
    */
   permissionAskTimeoutMs?: number
+  /**
+   * Stop suppression window (stop-suppression.ts): how long after an
+   * explicit stop automatic re-triggers (auto-continue, queue re-dispatch,
+   * cron re-fire) of the same workspace stay suppressed. Default 5000ms.
+   */
+  stopSuppressionWindowMs?: number
+  /**
+   * How long `stopCascade()` waits for each stopped unit's run to settle
+   * before giving up on it (the unit keeps running; the report marks it
+   * timed out). Default 1000ms — minimax DEFAULT_CANCELLATION_SETTLEMENT_TIMEOUT_MS.
+   */
+  cascadeSettlementTimeoutMs?: number
 }
 
 /**
@@ -654,6 +708,25 @@ export class AgentRuntime {
   private steeringQueues = new Map<string, import("@max/providers").ChatMessage[]>()
   /** Follow-up message queues per workspace (借鉴 pi). */
   private followUpQueues = new Map<string, import("@max/providers").ChatMessage[]>()
+  /**
+   * Derivation edges between workspaces (stop-cascade.ts). A stop of the
+   * parent must cascade to every derived child. Seeded by `forkFrom()` and
+   * by hosts declaring queue/cron-spawned children via
+   * `registerDerivedWorkspace()`.
+   */
+  private derivedWorkspaces = new Map<string, Set<string>>()
+  /** In-flight run promises per workspace so a stop can wait for settlement. */
+  private workspaceRuns = new Map<string, Promise<Workspace>>()
+  /** Stop reason per explicitly-aborted workspace, consumed by the executor's abort path. */
+  private workspaceStopReasons = new Map<string, string>()
+  /** Suppression window consulted before anything auto-resumes a stopped workspace. */
+  private readonly stopSuppression: StopSuppressionWindow
+  /** Settlement budget for cascade stops. */
+  private readonly cascadeSettlementTimeoutMs: number
+  /** Settlement records for bash executions observed through the tool loop. */
+  private readonly bashLedger = new BashSettlementLedger()
+  /** Goal final-reply machines, one active goal per workspace. */
+  private readonly goalMachines = new Map<string, GoalFinalReplyMachine>()
 
   constructor(
     private factory: AgentFactory,
@@ -671,6 +744,10 @@ export class AgentRuntime {
     this.runawayGuardPatience = options?.runawayGuardPatience ?? 4
     this.toolOutputMaxChars = options?.toolOutputMaxChars ?? 20_000
     this.toolOutputArtifactDir = options?.toolOutputArtifactDir
+    this.stopSuppression = new StopSuppressionWindow({
+      windowMs: options?.stopSuppressionWindowMs,
+    })
+    this.cascadeSettlementTimeoutMs = options?.cascadeSettlementTimeoutMs ?? 1_000
 
     // Retry-status event stream (minimax-code llm-retry borrowing): forward
     // every provider retry (waiting/recovered/exhausted) as a RuntimeEvent so
@@ -804,6 +881,52 @@ export class AgentRuntime {
       maxChars: this.toolOutputMaxChars,
       scope: workspaceId,
     }).afterToolCall
+  }
+
+  /**
+   * afterToolCall hook that feeds bash settlements (bash-settlement.ts)
+   * before delegating to the output-budget hook. The ledger snapshots each
+   * bash call's output so an interrupted execution's settlement can carry
+   * the partial output the process produced before it was killed.
+   */
+  private assembleBashAwareAfterToolCall(workspaceId: string, taskId: string) {
+    const budget = this.assembleAfterToolCall(workspaceId)
+    const observe = (ctx: import("./types.js").AfterToolCallContext): void => {
+      if ((ctx.toolCall as { name?: unknown } | undefined)?.name !== "bash") return
+      this.bashLedger.noteOutput(workspaceId, taskId, ctx.result)
+    }
+    if (!budget) {
+      return (ctx: import("./types.js").AfterToolCallContext) => {
+        observe(ctx)
+        return undefined
+      }
+    }
+    return (ctx: import("./types.js").AfterToolCallContext) => {
+      observe(ctx)
+      return budget(ctx)
+    }
+  }
+
+  /**
+   * Observe bash tool executions from the central event path so every bash
+   * execution settles exactly once (bash-settlement.ts): tool-start opens a
+   * pending execution, tool-end settles it with the observed outcome.
+   */
+  private observeBashToolEvents(event: RuntimeEvent): void {
+    if (event.type === "tool-start" && event.toolName === "bash") {
+      this.bashLedger.observeStart(event.workspaceId, event.taskId)
+    } else if (event.type === "tool-end" && event.toolName === "bash") {
+      this.bashLedger.observeEnd(event.workspaceId, event.taskId, {
+        ok: event.ok,
+        durationMs: event.durationMs,
+        ...(event.error !== undefined ? { error: event.error } : {}),
+      })
+    }
+  }
+
+  /** Settlement records of every bash execution observed for a workspace. */
+  bashSettlements(workspaceId: string) {
+    return this.bashLedger.records(workspaceId)
   }
 
   awaitPermission(
@@ -1330,10 +1453,13 @@ export class AgentRuntime {
     }
     await this.sink.saveWorkspace(forked)
     await this.checkpointSaver.copyThread({ thread_id: workspaceId }, { thread_id: forkId })
+    // The fork derives from its source: stopping the source cascades to it.
+    this.registerDerivedWorkspace(workspaceId, forkId)
     return forkId
   }
 
   private emit(event: RuntimeEvent): void {
+    this.observeBashToolEvents(event)
     for (const l of this.listeners) {
       // Listeners are declared as (event) => void but commonly return a Promise
       // (e.g. evolution.recordCompletion, metrics recording). If we don't
@@ -1354,9 +1480,21 @@ export class AgentRuntime {
   /**
    * Execute a plan against the given workspace.
    * MVP: sequential execution following plan.task order.
+   *
+   * `opts.autoResume` marks this call as machinery-driven (auto-continue,
+   * queue re-dispatch, cron re-fire) rather than user-initiated: when the
+   * workspace was explicitly stopped within the suppression window
+   * (stop-suppression.ts), the call throws `AutoResumeSuppressedError`
+   * instead of silently undoing the user's stop.
    */
-  async execute(workspace: Workspace): Promise<Workspace> {
-    return withSpan(
+  async execute(workspace: Workspace, opts?: { autoResume?: boolean }): Promise<Workspace> {
+    if (opts?.autoResume === true) {
+      const verdict = this.stopSuppression.check(workspace.id)
+      if (verdict.suppressed) {
+        throw new AutoResumeSuppressedError(workspace.id, verdict.remainingMs)
+      }
+    }
+    const run = withSpan(
       "workspace.execute",
       async (span) => {
         span?.setAttribute("workspace.id", workspace.id)
@@ -1365,6 +1503,23 @@ export class AgentRuntime {
       },
       { "workspace.id": workspace.id },
     )
+    // Track the in-flight promise so stopCascade() can wait, bounded, for a
+    // run to settle after aborting it (minimax stopAndSettle). A concurrent
+    // second execute() of the same workspace is rejected by the _executeImpl
+    // guard, so set-if-absent never displaces a live run. The tracking
+    // observer swallows its own branch of the rejection — the caller still
+    // receives it from `run` itself.
+    if (!this.workspaceRuns.has(workspace.id)) {
+      this.workspaceRuns.set(workspace.id, run)
+      run
+        .finally(() => {
+          if (this.workspaceRuns.get(workspace.id) === run) {
+            this.workspaceRuns.delete(workspace.id)
+          }
+        })
+        .catch(() => {})
+    }
+    return run
   }
 
   private async _executeImpl(workspace: Workspace): Promise<Workspace> {
@@ -1473,8 +1628,9 @@ export class AgentRuntime {
 
       while (pending.length > 0) {
         if (controller.signal.aborted) {
-          updated.status = "failed"
-          updated.error = "Aborted"
+          // Status, error and task cancellation are handled after the loop
+          // (single abort path — see the `controller.signal.aborted` block
+          // below), so every stop records the same shape.
           break
         }
 
@@ -1804,8 +1960,24 @@ export class AgentRuntime {
       }
 
       if (controller.signal.aborted) {
+        const stopReason = this.workspaceStopReasons.get(workspace.id) ?? "Aborted"
         updated.status = "failed"
-        updated.error = updated.error ?? "Aborted"
+        updated.error = stopReason
+        // A stop must leave every task terminal — never a workspace frozen
+        // at "pending". Completed results already in `updated.results` stay
+        // (partial-result reclaim), everything unfinished is cancelled.
+        for (const task of cancelNonTerminalTasks(
+          updated.plan?.tasks ?? [],
+          stopReason,
+          new Date().toISOString(),
+        )) {
+          this.emit({
+            type: "task-skipped",
+            workspaceId: updated.id,
+            taskId: task.id,
+            reason: stopReason,
+          })
+        }
       } else if (failed.size > 0 && completed.size === 0) {
         // Every task failed (none completed) - workspace is unrecoverable.
         // Surface the first failed task's error so callers can see the
@@ -1896,12 +2068,20 @@ export class AgentRuntime {
       }
 
       await this.sink.saveWorkspace(updated)
+      // A goal declared on this workspace reached its terminal state through
+      // a natural completion — emit its final reply exactly once before the
+      // done event (goal-final-reply.ts). Aborted/failed runs leave the goal
+      // working; the goal is only terminal when the work is.
+      if (updated.status === "completed") {
+        this.autoResolveGoal(updated.id, updated.results)
+      }
       this.emit({ type: "workspace-status", workspaceId: updated.id, status: updated.status })
       this.emit({ type: "done", workspaceId: updated.id, workspace: updated })
       this.runningWorkspaces.delete(workspace.id)
       return updated
     } finally {
       this._currentWorkspaceId = undefined
+      this.workspaceStopReasons.delete(workspace.id)
       // Clean up per-workspace bookkeeping so an exception path (e.g. a
       // failing sink.saveWorkspace) doesn't leak the AbortController or the
       // steering/follow-up queues (which grow unboundedly on long-lived
@@ -2219,7 +2399,7 @@ export class AgentRuntime {
                   },
                   undefined, // toolExecution (借鉴 pi)
                   safetyCheck, // beforeToolCall (SafetyGuardrails)
-                  this.assembleAfterToolCall(workspace.id), // afterToolCall (output budget)
+                  this.assembleBashAwareAfterToolCall(workspace.id, task.id), // afterToolCall (bash settlement + output budget)
                   this.assembleRunawayGuardOnStepEnd(workspace.id), // onStepEnd (runaway guard)
                 ),
                 ctx.signal,
@@ -2609,8 +2789,25 @@ export class AgentRuntime {
     return true
   }
 
-  abort(workspaceId: string): void {
+  /**
+   * Explicitly stop one workspace. Arms the stop suppression window
+   * (stop-suppression.ts), settles bash executions killed mid-flight as
+   * `cancelled` with unknown exit status (bash-settlement.ts), and marks the
+   * stop reason so the executor's abort path records it and cancels every
+   * non-terminal task instead of leaving the workspace frozen at "pending".
+   */
+  abort(workspaceId: string, reason = "Aborted"): void {
+    // Record the reason BEFORE flipping the controller: the executor's abort
+    // path reads it synchronously after the wave unwinds.
+    if (this.runningWorkspaces.has(workspaceId)) {
+      this.workspaceStopReasons.set(workspaceId, reason)
+    }
     this.runningWorkspaces.get(workspaceId)?.abort()
+    // Arm the suppression window even when nothing was running: a stop of a
+    // queued/cron-armed workspace must suppress its next automatic dispatch.
+    this.stopSuppression.recordStop(workspaceId, reason)
+    // Killed bash executions can no longer report their exit — settle them.
+    this.bashLedger.settleInterrupted(workspaceId, reason)
     // Reject any parked permission/approval prompts so runTask doesn't
     // hang forever waiting on a user response that will never come.
     // Without this, abort() only flips the AbortController but the
@@ -2655,6 +2852,131 @@ export class AgentRuntime {
   }
 
   /**
+   * Whether machinery (auto-continue, queue re-dispatch, cron re-fire) may
+   * automatically pull this workspace again right now. False while the
+   * workspace is inside the stop suppression window armed by `abort()` /
+   * `stopCascade()`. User-initiated calls bypass this gate.
+   */
+  checkAutoResume(workspaceId: string): SuppressionVerdict {
+    return this.stopSuppression.check(workspaceId)
+  }
+
+  /**
+   * Declare that `childId` was derived from `parentId` (queue-spawned
+   * follow-up workspace, fork, subagent session). Stopping the parent
+   * cascades to every derived descendant via `stopCascade()`.
+   */
+  registerDerivedWorkspace(parentId: string, childId: string): void {
+    if (parentId === childId) return
+    const children = this.derivedWorkspaces.get(parentId)
+    if (children) children.add(childId)
+    else this.derivedWorkspaces.set(parentId, new Set([childId]))
+  }
+
+  /** Transitively collected derivation nodes rooted at `rootId` (inclusive). */
+  private cascadeNodes(rootId: string): StopCascadeNode[] {
+    const nodes: StopCascadeNode[] = [{ id: rootId, parentId: null }]
+    const queue = [rootId]
+    const seen = new Set([rootId])
+    while (queue.length > 0) {
+      const id = queue.shift()!
+      for (const childId of this.derivedWorkspaces.get(id) ?? []) {
+        nodes.push({ id: childId, parentId: id })
+        if (!seen.has(childId)) {
+          seen.add(childId)
+          queue.push(childId)
+        }
+      }
+    }
+    return nodes
+  }
+
+  /**
+   * Stop `workspaceId` and everything derived from it, then reclaim the
+   * partial results of every stopped unit (minimax borrowing: the child
+   * Turn's `close()` stops each owned task with allSettled, `stopAndSettle`
+   * waits bounded for each run to settle before retiring it).
+   *
+   * Units are stopped parent-first. A unit that does not settle within the
+   * budget is reported as timed out and left to its executor — its workspace
+   * record is not touched (writing it would race the still-running executor's
+   * final save).
+   */
+  async stopCascade(
+    workspaceId: string,
+    reason = "user stop",
+    opts?: { settlementTimeoutMs?: number },
+  ): Promise<CascadeStopReport> {
+    const requestedAtMs = Date.now()
+    const settlementTimeoutMs = opts?.settlementTimeoutMs ?? this.cascadeSettlementTimeoutMs
+    const steps = planStopCascade(this.cascadeNodes(workspaceId), workspaceId)
+    const outcomes: CascadeStopOutcome[] = []
+    const snapshots = new Map<string, PartialResultSnapshot>()
+    const stopReason = `cascade stop: ${reason}`
+    for (const step of steps) {
+      const run = this.workspaceRuns.get(step.id)
+      const wasRunning = this.runningWorkspaces.has(step.id)
+      let status: CascadeStopOutcome["status"]
+      if (wasRunning) {
+        this.abort(step.id, stopReason)
+        const settled = run
+          ? await settleWithin(run, settlementTimeoutMs)
+          : { settled: true as const }
+        status = settled.settled ? "stopped" : "timeout"
+      } else {
+        status = "already-terminal"
+      }
+      outcomes.push({ id: step.id, status })
+      if (status === "timeout") continue
+      // Settled or idle: force stale non-terminal tasks to a terminal state
+      // and snapshot the partial results the unit kept.
+      await this.cancelStaleWorkspaceTasks(step.id, stopReason)
+      const stopped = await this.sink.loadWorkspace(step.id)
+      if (!stopped) continue
+      const lastResult = stopped.results[stopped.results.length - 1]
+      snapshots.set(step.id, {
+        id: step.id,
+        resultCount: stopped.results.length,
+        ...(lastResult ? { lastOutputPreview: lastResult.output.slice(0, 200) } : {}),
+      })
+    }
+    const reclaimed = reclaimPartialResults(steps, snapshots)
+    const timedOut = outcomes.filter((o) => o.status === "timeout").map((o) => o.id)
+    const report = buildCascadeStopReport({
+      rootId: workspaceId,
+      reason,
+      requestedAtMs,
+      steps,
+      outcomes,
+      reclaimed,
+    })
+    this.emit({
+      type: "cascade-stopped",
+      workspaceId,
+      reason,
+      stopped: steps.map((s) => s.id),
+      timedOut,
+      reclaimedResults: reclaimed.reduce((count, entry) => count + entry.resultCount, 0),
+    })
+    return report
+  }
+
+  /**
+   * Mark the non-terminal tasks of a workspace that is not running as
+   * cancelled (crash recovery, post-settle safety net). Returns 0 when there
+   * was nothing to cancel or the workspace is unknown.
+   */
+  private async cancelStaleWorkspaceTasks(workspaceId: string, reason: string): Promise<number> {
+    const stored = await this.sink.loadWorkspace(workspaceId)
+    if (!stored?.plan) return 0
+    const cancelled = cancelNonTerminalTasks(stored.plan.tasks, reason, new Date().toISOString())
+    if (cancelled.length === 0) return 0
+    stored.updatedAt = new Date().toISOString()
+    await this.sink.saveWorkspace(stored)
+    return cancelled.length
+  }
+
+  /**
    * Abort every in-flight workspace. Used by the worker on SIGTERM so
    * BullMQ doesn't have to wait for the stalled-job detector to re-enqueue
    * work that was about to be killed by k8s anyway. Each abort also
@@ -2662,6 +2984,73 @@ export class AgentRuntime {
    */
   abortAll(): void {
     for (const id of this.runningWorkspaces.keys()) this.abort(id)
+  }
+
+  // ── Goal final reply (goal-final-reply.ts) ──────────────────────────────
+
+  /**
+   * Declare the workspace's active goal and start pursuing it. Re-declaring
+   * the same goal while it is being worked is a no-op; a different goal id
+   * (or a declaration after closed/cancelled) starts a fresh cycle, which
+   * re-arms exactly one future final reply.
+   */
+  declareGoal(workspaceId: string, goalId: string): void {
+    const existing = this.goalMachines.get(workspaceId)
+    if (existing && existing.id === goalId && existing.state === "working") return
+    const machine = new GoalFinalReplyMachine(goalId)
+    machine.dispatch("goal-started")
+    this.goalMachines.set(workspaceId, machine)
+  }
+
+  /**
+   * Report the goal's terminal reply. Emits the `goal-final-reply` event —
+   * via the runtime event stream, exactly once per goal cycle — and returns
+   * whether it was emitted. Any further resolve (duplicate terminal event,
+   * re-executed workspace) is a rejected transition, not a duplicate event.
+   */
+  resolveGoal(workspaceId: string, reply: string): boolean {
+    const machine = this.goalMachines.get(workspaceId)
+    if (!machine) return false
+    const drive = machine.dispatch("goal-reached")
+    if (!drive.emitFinalReply) return false
+    this.emitEvent({
+      type: "goal-final-reply",
+      workspaceId,
+      goalId: machine.id ?? workspaceId,
+      reply,
+      fingerprint: normalizeReplyFingerprint(reply),
+    })
+    return true
+  }
+
+  /** Confirm the final reply was delivered downstream (final-reply → closed). */
+  acknowledgeGoalReply(workspaceId: string): boolean {
+    const machine = this.goalMachines.get(workspaceId)
+    return machine?.dispatch("reply-acked").accepted ?? false
+  }
+
+  /** Abandon the goal without a final reply (working/final-reply → idle). */
+  cancelGoal(workspaceId: string): boolean {
+    const machine = this.goalMachines.get(workspaceId)
+    return machine?.dispatch("goal-cancelled").accepted ?? false
+  }
+
+  /** Current goal state of a workspace, or undefined when no goal declared. */
+  goalFinalReplyState(workspaceId: string): GoalFinalReplyState | undefined {
+    return this.goalMachines.get(workspaceId)?.state
+  }
+
+  /**
+   * Natural completion is the goal's terminal state: when a declared goal is
+   * still `working` as the workspace completes, resolve it with the newest
+   * result. Multiple done events / re-executions cannot re-emit — the
+   * machine only fires on the working → final-reply edge.
+   */
+  private autoResolveGoal(workspaceId: string, results: Result[]): void {
+    const machine = this.goalMachines.get(workspaceId)
+    if (!machine || machine.state !== "working") return
+    const lastResult = results[results.length - 1]
+    this.resolveGoal(workspaceId, lastResult?.output ?? "")
   }
 }
 

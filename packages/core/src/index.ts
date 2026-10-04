@@ -314,3 +314,79 @@ export type {
 // Session export (borrowed from pi export-html template)
 export { exportSessionToHtml } from "./session-export.js"
 export type { ExportSessionOptions } from "./session-export.js"
+
+// Stop cascade — a stop of a session propagates to everything it derived,
+// with partial-result reclaim (minimax-code child-bash-lifecycle borrowing).
+export {
+  planStopCascade,
+  reclaimPartialResults,
+  buildCascadeStopReport,
+  cancelNonTerminalTasks,
+  settleWithin,
+} from "./stop-cascade.js"
+export type {
+  StopCascadeNode,
+  StopCascadeStep,
+  CascadeStopUnitStatus,
+  CascadeStopOutcome,
+  PartialResultSnapshot,
+  ReclaimedPartialResult,
+  CascadeStopReport,
+} from "./stop-cascade.js"
+
+// Stop suppression window — explicit stops briefly suppress auto-resume
+// triggers (minimax-code run-coordinator user_stop borrowing).
+export {
+  DEFAULT_STOP_SUPPRESSION_WINDOW_MS,
+  suppressionVerdict,
+  StopSuppressionWindow,
+  AutoResumeSuppressedError,
+} from "./stop-suppression.js"
+export type {
+  SuppressionVerdict,
+  StopSuppressionEntry,
+  StopSuppressionOptions,
+} from "./stop-suppression.js"
+
+// Bash task settlement — one terminal record per bash execution, cancelled
+// with unknown exit status when interrupted (minimax-code background-task
+// borrowing).
+export {
+  settleBashExecution,
+  extractOutputSnapshot,
+  BashSettlementLedger,
+} from "./bash-settlement.js"
+export type {
+  BashSettlementRecord,
+  BashSettlementStatus,
+  BashExitStatus,
+  BashSettleInput,
+  BashSettlementOptions,
+  SettledBashExecution,
+} from "./bash-settlement.js"
+
+// Goal final reply — exactly-one terminal reply per goal cycle
+// (minimax-code ChannelFinalReplyObserver / reply-fingerprint borrowing).
+export {
+  canDriveGoalFinalReply,
+  driveGoalFinalReply,
+  normalizeReplyFingerprint,
+  GoalFinalReplyMachine,
+} from "./goal-final-reply.js"
+export type {
+  GoalFinalReplyState,
+  GoalFinalReplyEvent,
+  GoalFinalReplyDrive,
+} from "./goal-final-reply.js"
+
+// Error taxonomy — closed execution-error classification + per-category
+// reset policy (swarms borrowing). Consumed by the queue's crash recovery
+// and available to any caller classifying execution failures.
+export {
+  ERROR_CATEGORIES,
+  ERROR_RESET_ACTIONS,
+  classifyError,
+  type ErrorCategory,
+  type ErrorResetAction,
+  type ClassifiedExecutionError,
+} from "./error-taxonomy.js"

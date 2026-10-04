@@ -28,6 +28,7 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises"
 import { getLogger } from "@max/telemetry"
+import type { AuditLedger } from "@max/workspace"
 import {
   validatePermissions,
   resolvePermission,
@@ -50,6 +51,7 @@ import {
   PermissionAuditQuerySchema,
   PermissionAuditResponseSchema,
 } from "../schemas.js"
+import { type RemoteApprovalGate, requestRemoteAddress } from "../lib/remote-approval-gate.js"
 
 const log = getLogger("permissions")
 
@@ -124,6 +126,20 @@ export interface PermissionsRoutesDeps {
    * tests that don't exercise multi-tenancy).
    */
   checkWorkspaceTenant?: (workspaceId: string, tenantId: string | undefined) => Promise<boolean>
+  /**
+   * Remote approval gate (oh-my-claudecode borrowing). When set and
+   * enabled, "allow" answers from non-loopback clients are held in
+   * pending-gate instead of resolving the prompt; a loopback caller must
+   * release them via /permissions/gate/release. Omit (or construct the
+   * gate disabled) for the legacy always-permit behaviour.
+   */
+  remoteApprovalGate?: RemoteApprovalGate
+  /**
+   * Security audit ledger — every ALLOW answer is recorded (the decision
+   * that can enable work); denies are visible via the runtime's own
+   * permission audit endpoint.
+   */
+  audit?: AuditLedger
 }
 
 function dirFor(rootDir?: string): string {
@@ -292,7 +308,7 @@ export const auditPermissionsRoute = createRoute({
 })
 
 export function permissionsRoutes(deps: PermissionsRoutesDeps = {}) {
-  const { rootDir, runtime, checkWorkspaceTenant } = deps
+  const { rootDir, runtime, checkWorkspaceTenant, remoteApprovalGate, audit } = deps
   return {
     /** GET /api/permissions — return the current persisted config. */
     get: async (c: Context) => {
@@ -451,6 +467,32 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps = {}) {
         }
       }
 
+      // Remote approval gate: an "allow" arriving from a non-loopback
+      // client is held in pending-gate. Nothing is resolved, nothing is
+      // persisted (so no allow-always pattern can leak into
+      // permissions.json), and the parked prompt keeps waiting for a
+      // loopback release via /permissions/gate/release. Deny passes —
+      // rejecting remotely can never enable anything.
+      if (remoteApprovalGate?.enabled === true && decision === "allow") {
+        const verdict = remoteApprovalGate.submit(requestId, decision, requestRemoteAddress(c))
+        if (verdict.action === "hold") {
+          log.warn(
+            { requestId, remoteAddress: verdict.entry.remoteAddress },
+            "remote allow held - pending gate release",
+          )
+          return c.json(
+            {
+              error: "remote_approval_gate_pending",
+              requestId,
+              gateState: "pending-gate",
+              decision,
+              releaseHint: "POST /api/permissions/gate/release from a loopback client",
+            },
+            403,
+          )
+        }
+      }
+
       // Resolve FIRST — only persist the decision if the request is still
       // alive. Persisting before resolve meant a stale request (already
       // aborted/timeout) would have its (tool, target) pattern silently
@@ -458,6 +500,15 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps = {}) {
       const ok = runtime.resolvePermission(requestId, decision)
       if (!ok) {
         return c.json({ error: "unknown_request" }, 404)
+      }
+
+      if (decision === "allow") {
+        await audit?.append("permission.allowed", {
+          requestId,
+          tool: pending?.tool ?? null,
+          target: pending?.target ?? null,
+          workspaceId: pending?.workspaceId ?? null,
+        })
       }
 
       if (pending && pending.target && isToolName(pending.tool)) {

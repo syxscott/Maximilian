@@ -136,6 +136,34 @@ export class PgWorkspaceStore {
     return rows.map((r) => r.id)
   }
 
+  /**
+   * Workspaces stuck in a non-terminal status — the crash residue the
+   * worker's startup recovery sweep feeds into `recoverStalledJobs`
+   * (@max/queue). Cross-tenant on purpose: recovery operates on process
+   * residue, not on user-visible listings. `lastError` is the stored
+   * error text (may be undefined for a hard kill with no failure record);
+   * the sweep's classifier decides per category what to do with it.
+   */
+  async listStalledRunning(): Promise<
+    { id: string; tenantId: string | null; lastError?: string; updatedAt: string }[]
+  > {
+    const rows = await this.db
+      .select({
+        id: workspaces.id,
+        tenantId: workspaces.tenantId,
+        error: workspaces.error,
+        updatedAt: workspaces.updatedAt,
+      })
+      .from(workspaces)
+      .where(sql`${workspaces.status} in ('executing', 'reviewing')`)
+    return rows.map((r) => ({
+      id: r.id,
+      tenantId: r.tenantId,
+      ...(r.error ? { lastError: r.error } : {}),
+      updatedAt: r.updatedAt.toISOString(),
+    }))
+  }
+
   async saveArtifact(workspaceId: string, filename: string, content: string): Promise<string> {
     await this.db
       .insert(workspaceArtifacts)

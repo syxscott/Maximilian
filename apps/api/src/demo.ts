@@ -68,7 +68,8 @@ async function main() {
   const { workspace, plan } = await commander.plan(USER_REQUEST)
   await store.saveWorkspace(workspace)
 
-  const final = await runtime.execute(workspace)
+  // Machinery-driven boot run — subject to the stop-suppression window.
+  const final = await runtime.execute(workspace, { autoResume: true })
 
   // Attach review as structured field.
   const reviewResult = final.results.find((r) => r.agentRole === "review")

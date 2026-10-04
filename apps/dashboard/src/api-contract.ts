@@ -13,6 +13,8 @@ export const API_PATHS = [
   "DELETE /jobs/{id}",
   "DELETE /subscriptions/{id}",
   "DELETE /tenants/{id}",
+  "GET /audit/shadow",
+  "GET /audit/verify",
   "GET /events/stream",
   "GET /evolution/agents",
   "GET /evolution/agents/{role}",
@@ -31,6 +33,7 @@ export const API_PATHS = [
   "GET /flags/{name}",
   "GET /gov/pending",
   "GET /health",
+  "GET /inbound/stats",
   "GET /jobs",
   "GET /jobs/{id}/slots",
   "GET /learning/agents",
@@ -59,6 +62,7 @@ export const API_PATHS = [
   "GET /opencode/sessions/{id}",
   "GET /permissions",
   "GET /permissions/audit",
+  "GET /permissions/gate/pending",
   "GET /providers",
   "GET /ready",
   "GET /sessions",
@@ -85,6 +89,8 @@ export const API_PATHS = [
   "GET /workspaces/{id}/events",
   "GET /workspaces/{id}/stream",
   "POST /approvals/answer",
+  "POST /audit/shadow",
+  "POST /audit/shadow/rollback",
   "POST /auth/login",
   "POST /auth/logout",
   "POST /auth/refresh",
@@ -106,6 +112,7 @@ export const API_PATHS = [
   "POST /meta/simulate",
   "POST /meta/simulate/compare",
   "POST /permissions/answer",
+  "POST /permissions/gate/release",
   "POST /permissions/reset",
   "POST /permissions/resolve",
   "POST /permissions/test",
@@ -116,6 +123,7 @@ export const API_PATHS = [
   "POST /system/providers/{id}/test-chat",
   "POST /tenants",
   "POST /workflows/run",
+  "POST /workspaces/{id}/stop",
   "PUT /evolution/oracle-lessons/{role}",
   "PUT /meta/governance/config",
   "PUT /permissions",
@@ -127,5 +135,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 114. */
-export const API_PATH_COUNT = 114
+/** Number of routes in the backend contract: 122. */
+export const API_PATH_COUNT = 122

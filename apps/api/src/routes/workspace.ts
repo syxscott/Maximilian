@@ -1,8 +1,9 @@
 import { createRoute } from "@hono/zod-openapi"
 import { z } from "zod"
 import type { Context } from "hono"
-import type { FileWorkspaceStore } from "@max/workspace"
+import type { FileWorkspaceStore, AuditLedger } from "@max/workspace"
 import type { EventLogRegistry } from "../event-log.js"
+import { publishWorkspaceStop, type WorkspaceStopSignal } from "@max/queue"
 import {
   IdParamsSchema,
   ErrorSchema,
@@ -201,5 +202,89 @@ export function getWorkspaceEvents(store: FileWorkspaceStore, registry: EventLog
       ts: e.ts,
     }))
     return c.json({ workspaceId: id, events })
+  }
+}
+
+// ── Stop ──────────────────────────────────────────────────────────────────
+
+export const stopWorkspaceRoute = createRoute({
+  method: "post",
+  path: "/workspaces/{id}/stop",
+  tags: ["workspaces"],
+  request: {
+    params: IdParamsSchema,
+    body: {
+      content: { "application/json": { schema: z.object({ reason: z.string().optional() }) } },
+      required: false,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({ ok: z.boolean(), workspaceId: z.string() }),
+        },
+      },
+      description: "Stop signal delivered to every process that may be running the workspace",
+    },
+    404: { content: { "application/json": { schema: ErrorSchema } }, description: "Not found" },
+  },
+})
+
+/**
+ * Runtime surface the stop route needs — the narrow slice of `AgentRuntime`
+ * (same port style as PermissionAnswerPort in routes/permissions.ts).
+ */
+export interface WorkspaceStopPort {
+  /**
+   * Explicitly stop the workspace: aborts in-process runs, arms the stop
+   * suppression window, settles in-flight bash executions, and rejects
+   * parked permission prompts.
+   */
+  abort(workspaceId: string, reason?: string): void
+}
+
+export interface StopWorkspaceDeps {
+  store: FileWorkspaceStore
+  runtime: WorkspaceStopPort
+  /** Redis URL for the cross-process stop signal (worker-side runs). */
+  redisUrl?: string
+  /** Security audit ledger — stops are security-relevant actions. */
+  audit?: AuditLedger
+  /** Overridable for tests. Defaults to the Redis pub/sub publisher. */
+  publish?: (redisUrl: string, signal: WorkspaceStopSignal) => Promise<void>
+}
+
+/**
+ * POST /workspaces/{id}/stop — the user-facing producer of the stop chain.
+ *
+ * A stop must reach the workspace wherever it runs: `runtime.abort()` here
+ * covers executions driven by THIS process (chat/DAGS runs execute in the
+ * API), and the Redis stop signal covers the worker process (BullMQ-driven
+ * executions). The worker's subscriber calls its own `runtime.abort()`,
+ * which arms its suppression window — so a queued/cron re-dispatch of the
+ * same workspace is refused there too (stop-suppression.ts).
+ */
+export function stopWorkspace(deps: StopWorkspaceDeps) {
+  return async (c: any) => {
+    const { id } = c.req.valid("param")
+    const tenantId = c.get("tenantId") as string | undefined
+    const ws = await deps.store.loadWorkspace(id, tenantId)
+    if (!ws) return c.json({ error: "Workspace not found" }, 404)
+
+    const body = c.req.valid("json" as never) as { reason?: string } | undefined
+    const reason = body?.reason ?? "user stop"
+
+    deps.runtime.abort(id, reason)
+    if (deps.redisUrl !== undefined) {
+      await (deps.publish ?? publishWorkspaceStop)(deps.redisUrl, {
+        workspaceId: id,
+        reason,
+        source: "api",
+      })
+    }
+    await deps.audit?.append("workspace.stopped", { workspaceId: id, reason })
+
+    return c.json({ ok: true, workspaceId: id })
   }
 }

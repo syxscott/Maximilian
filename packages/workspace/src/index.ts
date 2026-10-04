@@ -15,6 +15,36 @@ import { createStorage, type Storage } from "unstorage"
 import fsDriver from "unstorage/drivers/fs"
 import type { Workspace } from "@max/core"
 import { writeFileAtomic } from "./atomic.js"
+import { WriteLeaseCoordinator } from "./write-lease.js"
+
+export { writeFileAtomic, readModifyWriteAtomic } from "./atomic.js"
+export {
+  AuditLedger,
+  GENESIS_HASH,
+  canonicalJson,
+  verifyChain,
+  type AuditEntry,
+  type AuditVerifyResult,
+  type LedgerPayload,
+} from "./audit-ledger.js"
+export {
+  ShadowCommitError,
+  createShadowCommit,
+  evictShadowCommits,
+  listShadowCommits,
+  rollbackToShadow,
+  type ShadowCommitEntry,
+  type ShadowCommitErrorCode,
+  type ShadowCommitInfo,
+  type ShadowCommitOptions,
+} from "./shadow-commit.js"
+export {
+  WriteLeaseCoordinator,
+  normalizeLockKey,
+  type WriteLease,
+  type WriteLeaseOptions,
+  type WriteLeaseOutcome,
+} from "./write-lease.js"
 
 export interface WorkspaceStoreOptions {
   /** Root directory for filesystem driver. Ignored when driver is not fs. */
@@ -66,9 +96,34 @@ export class FileWorkspaceStore {
     }
   }
 
+  /**
+   * Serializes concurrent saves of the SAME workspace id. A save is two
+   * writes (tenant key, then ws key); without the per-key lease, two
+   * concurrent saves can interleave so the file pair ends up mixing
+   * tenant-of-A with workspace-of-B — a cross-tenant read for the next
+   * loadWorkspace. Different ids stay parallel (leases are per key).
+   */
+  private readonly saveLocks = new WriteLeaseCoordinator({ timeoutMs: 10_000 })
+
   // ── Workspace CRUD ─────────────────────────────────────────────────────
 
   async saveWorkspace(workspace: Workspace, tenantId?: string): Promise<void> {
+    const id = workspace.id
+    const outcome = await this.saveLocks.acquire([`ws/${id}`])
+    if (!outcome.ok) {
+      throw new Error(
+        `saveWorkspace: could not acquire the write lease for ws/${id} within ` +
+          `${outcome.waitedMs}ms (holder: ${outcome.holder ?? "unknown"})`,
+      )
+    }
+    try {
+      await this.saveWorkspaceLocked(workspace, tenantId)
+    } finally {
+      outcome.lease.release()
+    }
+  }
+
+  private async saveWorkspaceLocked(workspace: Workspace, tenantId?: string): Promise<void> {
     const id = workspace.id
     // Write the tenant key FIRST, then the workspace. If the process
     // crashes between the two writes, the tenant key exists but the
@@ -126,6 +181,36 @@ export class FileWorkspaceStore {
       .filter(({ tenant }) => (tenantId !== undefined ? tenant === tenantId : tenant === ""))
       .map(({ id }) => id)
     return filtered.sort().reverse()
+  }
+
+  /**
+   * Workspaces stuck in a non-terminal status — crash residue for the
+   * worker's startup recovery sweep (see PgWorkspaceStore.listStalledRunning
+   * for the Pg twin). Cross-tenant on purpose: recovery operates on process
+   * residue, not on user-visible listings.
+   */
+  async listStalledRunning(): Promise<
+    { id: string; tenantId: string | null; lastError?: string; updatedAt: string }[]
+  > {
+    const keys = await this.storage.getKeys("ws/")
+    const ids = keys.map((k) => k.replace(/^ws:/, "")).filter((id) => id.length > 0)
+    const workspaces = await Promise.all(ids.map((id) => this.loadWorkspace(id)))
+    return workspaces
+      .map((ws, i) => ({ ws, id: ids[i] }))
+      .filter(
+        (entry): entry is { ws: Workspace; id: string } =>
+          entry.ws !== undefined &&
+          (entry.ws.status === "executing" || entry.ws.status === "reviewing"),
+      )
+      .map(({ ws, id }) => {
+        const tenant = (ws.metadata?.tenantId as string | undefined) ?? null
+        return {
+          id,
+          tenantId: tenant,
+          ...(typeof ws.error === "string" && ws.error.length > 0 ? { lastError: ws.error } : {}),
+          updatedAt: ws.updatedAt,
+        }
+      })
   }
 
   // ── Artifact CRUD ──────────────────────────────────────────────────────

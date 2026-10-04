@@ -34,7 +34,12 @@
 
 import { getLogger } from "@max/telemetry"
 import type { Commander } from "@max/commander"
-import type { AgentRuntime, ReviewResult, Workspace } from "@max/core"
+import {
+  AgentRuntime,
+  AutoResumeSuppressedError,
+  type ReviewResult,
+  type Workspace,
+} from "@max/core"
 import type { FileWorkspaceStore } from "@max/workspace"
 
 const log = getLogger("worker:jobs-materialize")
@@ -249,8 +254,22 @@ export async function materializeScheduledWorkspace(
   //    state, then propagate so BullMQ records the job failure.
   let final: Workspace
   try {
-    final = await deps.runtime.execute(workspace)
+    final = await deps.runtime.execute(workspace, { autoResume: true })
   } catch (err) {
+    if (err instanceof AutoResumeSuppressedError) {
+      // Explicit stop within the suppression window: leave the terminal
+      // state the stop path persisted and skip rethrowing (BullMQ retries
+      // must not undo the stop for the rest of the window).
+      log.warn(
+        {
+          workspaceId: workspace.id,
+          jobId: extras.jobId ?? "unknown",
+          remainingMs: err.remainingMs,
+        },
+        "materialized execution suppressed after explicit stop",
+      )
+      return workspace
+    }
     const message = (err as Error)?.message ?? String(err)
     log.error(
       { workspaceId: workspace.id, jobId: extras.jobId ?? "unknown", err: message },

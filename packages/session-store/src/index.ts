@@ -22,6 +22,7 @@ import fs from "node:fs"
 import path from "node:path"
 import Database from "better-sqlite3"
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.js"
+import { GENESIS_HASH, messageChainHash } from "./hash-chain.js"
 
 /** Options for constructing a {@link SessionStore}. */
 export interface SessionStoreOptions {
@@ -49,6 +50,25 @@ export interface MessageRow {
   role: string
   content: string
   createdAt: string | null
+  /** Position in the session's hash chain (null for pre-chain legacy rows). */
+  seq: number | null
+  /** Hash of this entry's chain input (null for legacy rows). */
+  hash: string | null
+  /** Hash of the previous chain entry (null for legacy rows). */
+  prevHash: string | null
+}
+
+/** Result of {@link SessionStore.verifyHistory}. */
+export interface HistoryVerification {
+  ok: boolean
+  /**
+   * Message id of the first row that fails the chain walk (present only
+   * when `ok` is false). Legacy rows never break the chain; they are
+   * skipped, and verification effectively starts at the first chained row.
+   */
+  brokenAt?: string
+  /** Machine-readable failure cause (present only when `ok` is false). */
+  reason?: string
 }
 
 /** One cross-session search hit: a message row plus its session's workspace context. */
@@ -226,6 +246,28 @@ export class SessionStore {
           this.setMetaRaw("schema_version", "2")
         },
       },
+      {
+        // v2 -> v3 (minimax-code incremental SHA-256 borrowing): hash-chain
+        // columns on messages. Existing rows keep all three NULL — they are
+        // the "legacy segment" that verifyHistory skips; chaining starts at
+        // the first append after migration.
+        to: 3,
+        up: () => {
+          const cols = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{
+            name: string
+          }>
+          if (!cols.some((c) => c.name === "seq")) {
+            this.db.exec("ALTER TABLE messages ADD COLUMN seq INTEGER")
+          }
+          if (!cols.some((c) => c.name === "prev_hash")) {
+            this.db.exec("ALTER TABLE messages ADD COLUMN prev_hash TEXT")
+          }
+          if (!cols.some((c) => c.name === "hash")) {
+            this.db.exec("ALTER TABLE messages ADD COLUMN hash TEXT")
+          }
+          this.setMetaRaw("schema_version", "3")
+        },
+      },
     ]
 
     for (const edge of edges) {
@@ -369,13 +411,16 @@ export class SessionStore {
   listMessages(sessionId: string, limit = 1000): MessageRow[] {
     const rows = this.statement(
       "listMessages",
-      "SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at, id LIMIT ?",
+      "SELECT id, session_id, role, content, created_at, seq, prev_hash AS prevHash, hash FROM messages WHERE session_id = ? ORDER BY created_at, id LIMIT ?",
     ).all(sessionId, limit) as Array<{
       id: string
       session_id: string
       role: string
       content: string
       created_at: string | null
+      seq: number | null
+      prevHash: string | null
+      hash: string | null
     }>
     return rows.map((row) => ({
       id: row.id,
@@ -383,6 +428,9 @@ export class SessionStore {
       role: row.role,
       content: row.content,
       createdAt: row.created_at,
+      seq: row.seq,
+      hash: row.hash,
+      prevHash: row.prevHash,
     }))
   }
 
@@ -464,26 +512,133 @@ export class SessionStore {
   /**
    * Append a message. Re-appending an existing message id (e.g. a
    * dual-write retry) updates it in place rather than duplicating.
+   *
+   * Hash chain (minimax-code borrowing): every append extends the
+   * session's chain — `seq` is the next position, `prev_hash` is the
+   * current tail's hash (GENESIS_HASH when the session has no chained
+   * rows yet), and `hash` commits to seq+session+role+content+prev.
+   * A re-append of an already-chained id keeps its seq/prev_hash and
+   * rehashes with the new content: an identical retry is a no-op for the
+   * chain, while a content mutation intentionally breaks every link after
+   * it (that is the tamper evidence verifyHistory reports).
    */
   appendMessage(input: AppendMessageInput): void {
-    this.statement(
-      "appendMessage",
-      `INSERT INTO messages (id, session_id, role, content, created_at, turn_ordinal)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET
-         session_id = excluded.session_id,
-         role = excluded.role,
-         content = excluded.content,
-         created_at = excluded.created_at,
-         turn_ordinal = excluded.turn_ordinal`,
-    ).run(
-      input.id,
-      input.sessionId,
-      input.role,
-      input.content,
-      input.createdAt ?? nowIso(),
-      input.turnOrdinal ?? 0,
-    )
+    this.transaction(() => {
+      const existing = this.statement(
+        "getMessageChainState",
+        "SELECT seq, prev_hash FROM messages WHERE id = ?",
+      ).get(input.id) as { seq: number | null; prev_hash: string | null } | undefined
+
+      let seq: number
+      let prevHash: string
+      if (existing && existing.seq !== null) {
+        // Already chained: keep its chain position stable.
+        seq = existing.seq
+        prevHash = existing.prev_hash ?? GENESIS_HASH
+      } else {
+        const tail = this.statement(
+          "getChainTail",
+          "SELECT hash FROM messages WHERE session_id = ? AND hash IS NOT NULL ORDER BY seq DESC LIMIT 1",
+        ).get(input.sessionId) as { hash: string } | undefined
+        const next = this.statement(
+          "getNextSeq",
+          "SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM messages WHERE session_id = ?",
+        ).get(input.sessionId) as { seq: number }
+        seq = next.seq
+        prevHash = tail?.hash ?? GENESIS_HASH
+      }
+
+      const hash = messageChainHash({
+        seq,
+        sessionId: input.sessionId,
+        role: input.role,
+        content: input.content,
+        prevHash,
+      })
+
+      this.statement(
+        "appendMessage",
+        `INSERT INTO messages (id, session_id, role, content, created_at, turn_ordinal, seq, prev_hash, hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET
+           session_id = excluded.session_id,
+           role = excluded.role,
+           content = excluded.content,
+           created_at = excluded.created_at,
+           turn_ordinal = excluded.turn_ordinal,
+           seq = excluded.seq,
+           prev_hash = excluded.prev_hash,
+           hash = excluded.hash`,
+      ).run(
+        input.id,
+        input.sessionId,
+        input.role,
+        input.content,
+        input.createdAt ?? nowIso(),
+        input.turnOrdinal ?? 0,
+        seq,
+        prevHash,
+        hash,
+      )
+    })
+  }
+
+  /**
+   * Walk the session's hash chain and report the first inconsistency
+   * (minimax-code history-integrity borrowing). Rows written before the
+   * chain existed (all chain columns NULL) are a legacy segment: they are
+   * skipped without error and verification starts at the first chained
+   * row, whose prev_hash must equal GENESIS_HASH. Soft-deleted (rewound)
+   * rows stay in the chain and are verified like any other row — rewinding
+   * hides rows from reads, it does not rewrite history.
+   */
+  verifyHistory(sessionId: string): HistoryVerification {
+    const rows = this.statement(
+      "verifyHistory",
+      "SELECT id, seq, role, content, prev_hash AS prevHash, hash FROM messages WHERE session_id = ? ORDER BY rowid",
+    ).all(sessionId) as Array<{
+      id: string
+      seq: number | null
+      role: string
+      content: string
+      prevHash: string | null
+      hash: string | null
+    }>
+
+    let prevHash: string | null = null
+    for (const row of rows) {
+      if (row.hash === null) {
+        // Legacy row. A half-chained row (prev without hash) is itself
+        // corruption, not a legacy marker.
+        if (row.prevHash !== null) {
+          return {
+            ok: false,
+            brokenAt: row.id,
+            reason: "legacy row carries prev_hash but no hash",
+          }
+        }
+        continue
+      }
+      const expectedPrev = prevHash ?? GENESIS_HASH
+      if (row.prevHash !== expectedPrev) {
+        return { ok: false, brokenAt: row.id, reason: "prev_hash does not match chain tail" }
+      }
+      if (row.seq === null) {
+        return { ok: false, brokenAt: row.id, reason: "chained row is missing its seq" }
+      }
+      const expected = messageChainHash({
+        seq: row.seq,
+        sessionId,
+        role: row.role,
+        content: row.content,
+        prevHash: row.prevHash,
+      })
+      if (expected !== row.hash) {
+        return { ok: false, brokenAt: row.id, reason: "hash mismatch (content mutated?)" }
+      }
+      prevHash = row.hash
+    }
+    return { ok: true }
   }
 
   /** Append a workspace event; returns the autoincrement row id. */
@@ -722,4 +877,10 @@ export class SessionStore {
 }
 
 export { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.js"
+export {
+  GENESIS_HASH,
+  messageChainHash,
+  serializeChainEntry,
+  type MessageChainEntry,
+} from "./hash-chain.js"
 export { createSessionRuntimeListener, type SessionRuntimeEvent } from "./runtime-listener.js"

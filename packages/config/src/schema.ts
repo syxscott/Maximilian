@@ -174,6 +174,22 @@ export const ConfigSchema = z.object({
   // Sandbox backend (借鉴 Open Interpreter multi-backend)
   // Supported values: local | docker | mac-sandbox-exec | process
   SANDBOX_BACKEND: z.enum(["local", "docker", "mac-sandbox-exec", "process"]).default("local"),
+
+  // Remote approval gate (oh-my-claudecode remote-approval borrowing): when
+  // true, "allow" answers arriving from a non-loopback client are held in a
+  // pending-gate state instead of resolving the parked prompt; only a
+  // loopback caller can release them. Deny answers pass through unchanged —
+  // rejecting remotely can never enable anything. Default true.
+  REMOTE_APPROVAL_GATE: booleanString,
+
+  // Inbound admission queue (openclaw ingress borrowing): API requests are
+  // admitted in three tiers — immediate while in-flight slots are free,
+  // queued (bounded by this capacity) when full, and dead-lettered with a
+  // structured 503 when the queue overflows. INBOUND_MAX_INFLIGHT is the
+  // immediate-tier slot count; both bounds apply to /api/* except health,
+  // readiness and metrics probes.
+  INBOUND_MAX_INFLIGHT: z.coerce.number().int().positive().default(64),
+  INBOUND_QUEUE_CAPACITY: z.coerce.number().int().positive().default(256),
 })
 
 export type Config = z.infer<typeof ConfigSchema>

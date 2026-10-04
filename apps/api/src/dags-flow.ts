@@ -219,7 +219,10 @@ export async function runDagsFlow(
       }
     })
 
-    const final = await runtime.execute(workspace)
+    // Machinery-driven (DAG executor, not a user prompt): mark it so an
+    // explicit stop made moments ago refuses this dispatch instead of
+    // undoing it (stop-suppression window).
+    const final = await runtime.execute(workspace, { autoResume: true })
     // The runtime already saved the final state via the sink. We only
     // need to persist anything that the sink doesn't know about — and
     // for the dags flow, that's nothing extra. Don't write again: it

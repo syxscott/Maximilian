@@ -18,7 +18,7 @@
  */
 
 /** Current schema version. Bump when adding tables/columns. */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 /**
  * The full schema, applied inside one transaction by `migrate()`.

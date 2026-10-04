@@ -61,7 +61,12 @@ import {
   loadProviderCredentialsFromVault,
 } from "@max/core"
 import { Commander } from "@max/commander"
-import { FileWorkspaceStore } from "@max/workspace"
+import {
+  FileWorkspaceStore,
+  AuditLedger,
+  createShadowCommit,
+  ShadowCommitError,
+} from "@max/workspace"
 import { createDefaultAgentFactory } from "@max/agents"
 import {
   EvolutionFacade,
@@ -144,13 +149,25 @@ import {
   listArtifacts,
   getArtifact,
   getWorkspaceEvents,
+  stopWorkspace,
   getWorkspaceRoute,
   listWorkspacesRoute,
   getWorkspaceEventsRoute,
   listArtifactsRoute,
   getArtifactRoute,
   streamWorkspaceRoute,
+  stopWorkspaceRoute,
 } from "./routes/workspace.js"
+import {
+  verifyAudit,
+  listShadow,
+  createShadow,
+  rollbackShadow,
+  verifyAuditRoute,
+  listShadowRoute,
+  createShadowRoute,
+  rollbackShadowRoute,
+} from "./routes/integrity.js"
 import { listProviders } from "./routes/providers.js"
 import {
   listProvidersRoute,
@@ -251,6 +268,15 @@ import {
 } from "./routes/permissions.js"
 import { approvalRoutes, answerApprovalRoute, type ApprovalAnswerPort } from "./routes/approvals.js"
 import {
+  approvalGateRoutes,
+  releaseApprovalGateRoute,
+  listApprovalGateRoute,
+} from "./routes/approval-gate.js"
+import { RemoteApprovalGate } from "./lib/remote-approval-gate.js"
+import { InboundGate } from "./lib/inbound-queue.js"
+import { inboundAdmission } from "./middleware/inbound-queue.js"
+import { inboundRoutes, inboundStatsRoute } from "./routes/inbound.js"
+import {
   createDb,
   closeDb,
   PgWorkspaceStore,
@@ -310,6 +336,19 @@ export type { LoggedEvent }
 
 type AppEnv = { Variables: { requestId: string; userId?: string; userRole?: string } }
 const config = getConfig()
+
+// Remote approval gate (oh-my-claudecode borrowing): "allow" answers from
+// non-loopback clients park in pending-gate until a loopback caller
+// releases them. REMOTE_APPROVAL_GATE=false restores the legacy behaviour.
+const remoteApprovalGate = new RemoteApprovalGate({ enabled: config.REMOTE_APPROVAL_GATE })
+
+// Three-tier inbound admission (openclaw borrowing): immediate while
+// in-flight slots last, bounded queue on saturation, dead-letter 503 on
+// overflow. Probes (/health, /ready, /metrics, openapi/docs) are exempt.
+const inboundGate = new InboundGate({
+  maxInFlight: config.INBOUND_MAX_INFLIGHT,
+  maxQueued: config.INBOUND_QUEUE_CAPACITY,
+})
 
 // Fail fast: production must have a JWT secret. Otherwise the auth middleware
 // silently no-ops and every protected endpoint is open to the world.
@@ -388,6 +427,12 @@ import path from "node:path"
 // can point it at a tmpdir or a fast disk. Defaults to
 // `<WORKSPACE_DIR>/events/` so events live next to workspace state.
 const eventsRootDir = config.EVENTS_DIR ?? path.join(workspaceDir, "events")
+
+// Security audit ledger (hash-chained JSONL): records approval grants,
+// remote-gate releases, workspace stops, and shadow-commit operations.
+// Separate from the runtime event log — this one is for "who authorized
+// what", not "what did the agents do".
+const auditLedger = new AuditLedger(path.join(workspaceDir, "audit", "audit-ledger.jsonl"))
 
 // Durable event-log registry + event bus. The per-workspace append-only
 // JSONL log is what backs the replay-capable SSE endpoint
@@ -1197,6 +1242,10 @@ app.use(
   }),
 )
 
+// Inbound admission (three-tier queue). Registered after rate limiting so
+// abusive clients are dropped before they consume queue slots.
+app.use("/api/*", inboundAdmission({ gate: inboundGate }))
+
 /**
  * Test whether `addr` matches any entry in `TRUSTED_PROXY_LIST`. Supports
  * exact IPs (e.g. "10.0.0.1") and IPv4 CIDR blocks (e.g. "10.0.0.0/8").
@@ -1494,6 +1543,22 @@ if (dagsMode) {
     applyPromotion: async (candidate, record) => {
       const parent = await blueprintStore.get(candidate.parentBlueprintId)
       if (!parent) return
+      // File-store deployments: snapshot the workspace dir BEFORE the live
+      // blueprint is overwritten, so a bad promotion has a one-call
+      // rollback (POST /audit/shadow/rollback). Pg deployments get
+      // transactional history from the database instead — and a missing
+      // git repo is fine (best-effort snapshot, promotion proceeds).
+      if (!db) {
+        try {
+          await createShadowCommit(workspaceDir, `promotion:${candidate.id}`, {
+            audit: auditLedger,
+          })
+        } catch (err) {
+          if (!(err instanceof ShadowCommitError)) {
+            log.warn({ err: (err as Error).message }, "pre-promotion shadow snapshot failed")
+          }
+        }
+      }
       await blueprintStore.save({
         ...parent,
         systemPrompt: candidate.systemPrompt,
@@ -1920,6 +1985,45 @@ api.openapi(
   getWorkspaceEventsRoute,
   requireAuthMiddleware(),
   getWorkspaceEvents(store, eventLogRegistry),
+)
+api.openapi(
+  stopWorkspaceRoute,
+  requireAuthMiddleware(),
+  stopWorkspace({
+    store,
+    runtime,
+    // Cross-process stop signal: BullMQ-driven executions run in the
+    // worker; publish so its subscriber aborts + arms its own suppression
+    // window. Undefined REDIS_URL means no queue mode — local runs only.
+    redisUrl: config.REDIS_URL,
+    audit: auditLedger,
+  }),
+)
+
+// Integrity admin: audit ledger verification + shadow-commit rollback.
+api.openapi(
+  verifyAuditRoute,
+  requireAuthMiddleware(),
+  requireRole("admin"),
+  verifyAudit({ audit: auditLedger }),
+)
+api.openapi(
+  listShadowRoute,
+  requireAuthMiddleware(),
+  requireRole("admin"),
+  listShadow({ repoDir: workspaceDir }),
+)
+api.openapi(
+  createShadowRoute,
+  requireAuthMiddleware(),
+  requireRole("admin"),
+  createShadow({ repoDir: workspaceDir, audit: auditLedger }),
+)
+api.openapi(
+  rollbackShadowRoute,
+  requireAuthMiddleware(),
+  requireRole("admin"),
+  rollbackShadow({ repoDir: workspaceDir, audit: auditLedger }),
 )
 
 // ---------------------------------------------------------------------------
@@ -2589,6 +2693,8 @@ const perm = permissionsRoutes({
     countPermissionAudit: (opts) => runtime.permissionAuditLog.countMatching(opts),
   },
   checkWorkspaceTenant,
+  remoteApprovalGate,
+  audit: auditLedger,
 })
 api.use("/permissions/*", requireAuthMiddleware())
 api.openapi(getPermissionsRoute, perm.get)
@@ -2598,6 +2704,22 @@ api.openapi(testPermissionRoute, perm.test)
 api.openapi(resetPermissionsRoute, perm.reset)
 api.openapi(answerPermissionRoute, perm.answer)
 api.openapi(auditPermissionsRoute, perm.audit)
+
+// Remote approval gate surface (loopback-only release + pending view).
+const approvalGate = approvalGateRoutes({
+  gate: remoteApprovalGate,
+  runtime: {
+    resolvePermission: (requestId, decision) => runtime.resolvePermission(requestId, decision),
+  },
+  audit: auditLedger,
+})
+api.openapi(releaseApprovalGateRoute, approvalGate.release)
+api.openapi(listApprovalGateRoute, approvalGate.pending)
+
+// Inbound admission queue observability.
+api.use("/inbound/*", requireAuthMiddleware())
+const inbound = inboundRoutes({ gate: inboundGate })
+api.openapi(inboundStatsRoute, inbound.stats)
 
 const approvals = approvalRoutes({
   runtime: {
