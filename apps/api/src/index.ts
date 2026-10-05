@@ -105,6 +105,7 @@ import {
   TruthAudit,
   type DiscoverySignal,
   TruthCalibrator,
+  withGoalJudgement,
 } from "@max/meta-system"
 import { postChat, postChatRoute } from "./routes/chat.js"
 import {
@@ -129,6 +130,7 @@ import {
   getMessagesRoute,
   searchMessagesRoute,
   getTimelineRoute,
+  getSessionIntegrityRoute,
 } from "./routes/sessions.js"
 import {
   vaultStatusRoute,
@@ -1095,6 +1097,19 @@ runtime.on(async (event) => {
       await evolution.leaderboard.rebuild(evolution.metrics)
     }
   } else if (event.type === "done") {
+    // Goal-judge (hermes borrowing): grade the user's goal from run outcome
+    // evidence and persist it under workspace.metadata — api-process runs
+    // here; worker-driven runs are judged in the worker processor.
+    try {
+      const judged = await withGoalJudgement(event.workspace)
+      if (judged !== event.workspace) {
+        const tenantId = event.workspace.metadata?.tenantId
+        await store.saveWorkspace(judged, typeof tenantId === "string" ? tenantId : undefined)
+      }
+    } catch (err) {
+      log.warn({ err }, "goal judgement attach failed")
+    }
+
     // Post-run: attach review scores to non-review task metrics,
     // then consider evolution.
     await evolution.attachReviewScores(event.workspace)
@@ -2530,6 +2545,7 @@ const sessions = sessionRoutes({ store: sessionStore?.store })
 api.openapi(listSessionsRoute, requireAuthMiddleware(), sessions.listSessions)
 api.openapi(getMessagesRoute, requireAuthMiddleware(), sessions.getMessages)
 api.openapi(getTimelineRoute, requireAuthMiddleware(), sessions.getTimeline)
+api.openapi(getSessionIntegrityRoute, requireAuthMiddleware(), sessions.getIntegrity)
 api.openapi(searchMessagesRoute, requireAuthMiddleware(), sessions.searchMessages)
 
 // ---------------------------------------------------------------------------

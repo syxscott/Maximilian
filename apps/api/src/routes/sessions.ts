@@ -167,6 +167,34 @@ const getTimelineRoute = createRoute({
   },
 })
 
+const getSessionIntegrityRoute = createRoute({
+  method: "get",
+  path: "/sessions/{id}/integrity",
+  tags: ["sessions"],
+  request: {
+    params: z.object({ id: z.string().min(1) }),
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            sessionId: z.string(),
+            ok: z.boolean(),
+            brokenAt: z.string().optional(),
+            reason: z.string().optional(),
+          }),
+        },
+      },
+      description: "SHA-256 history-chain verification (tamper/truncation evidence)",
+    },
+    503: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Session store disabled",
+    },
+  },
+})
+
 export function sessionRoutes(deps: SessionRouteDeps) {
   const requireStore = (c: Context): SessionStore | undefined => {
     if (!deps.store) {
@@ -232,7 +260,26 @@ export function sessionRoutes(deps: SessionRouteDeps) {
       }))
       return c.json({ sessionId: id, turns })
     },
+
+    getIntegrity: async (c: Context) => {
+      const store = requireStore(c)
+      if (!store) return
+      const { id } = c.req.valid("param" as never) as { id: string }
+      const result = store.verifyHistory(id)
+      return c.json({
+        sessionId: id,
+        ok: result.ok,
+        ...(result.brokenAt !== undefined ? { brokenAt: result.brokenAt } : {}),
+        ...(result.reason !== undefined ? { reason: result.reason } : {}),
+      })
+    },
   }
 }
 
-export { listSessionsRoute, getMessagesRoute, searchMessagesRoute, getTimelineRoute }
+export {
+  listSessionsRoute,
+  getMessagesRoute,
+  searchMessagesRoute,
+  getTimelineRoute,
+  getSessionIntegrityRoute,
+}

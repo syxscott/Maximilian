@@ -35,6 +35,7 @@ import {
   PromotionEngine,
   ReviewIntelligence,
 } from "@max/autonomy"
+import { withGoalJudgement } from "@max/meta-system"
 import { DAGS } from "@max/dags"
 import {
   createDb,
@@ -637,6 +638,16 @@ async function main() {
       final.review = review
       await store.saveWorkspace(final, tenantId)
     }
+    // Goal-judge (hermes borrowing): grade the user's goal from the run's
+    // outcome evidence and persist it under workspace.metadata. Best-effort —
+    // a judgement failure must not fail the job after the work completed.
+    try {
+      const judged = await withGoalJudgement(final)
+      if (judged !== final) await store.saveWorkspace(judged, tenantId)
+    } catch (err) {
+      log.warn({ workspaceId, err }, "goal judgement attach failed")
+    }
+
     log.info({ workspaceId, status: final.status }, "workspace execution complete")
   }
 

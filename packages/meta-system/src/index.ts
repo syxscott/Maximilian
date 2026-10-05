@@ -134,3 +134,13 @@ export {
   type PersonaId,
   type PersonaComposerOptions,
 } from "./persona-composer.js"
+export {
+  GOAL_ACHIEVED_REVIEW_SCORE,
+  GOAL_PARTIAL_REVIEW_SCORE,
+  workspaceGoalEvidence,
+  workspaceOutcomeJudge,
+  judgeWorkspaceGoal,
+  withGoalJudgement,
+  type WorkspaceGoalInput,
+  type StoredGoalJudgement,
+} from "./workspace-goal.js"
