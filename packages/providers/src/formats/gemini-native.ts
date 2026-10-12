@@ -20,6 +20,7 @@
 import { withSpan } from "@max/telemetry"
 import type { ChatChunk, ChatMessage, ChatOptions, ChatResponse, Provider } from "../base.js"
 import { ProviderError } from "../base.js"
+import { wireStopSequences } from "../capability-predicates.js"
 
 export interface GeminiNativeConfig {
   id: string
@@ -108,6 +109,7 @@ export class GeminiNativeProvider implements Provider {
 
   private buildRequest(messages: ChatMessage[], options: ChatOptions): GeminiRequest {
     const { system, contents } = this.splitMessages(messages)
+    const model = options.model ?? this.defaultModel
     const req: GeminiRequest = { contents }
     if (system) {
       req.systemInstruction = { parts: [{ text: system }] }
@@ -117,8 +119,11 @@ export class GeminiNativeProvider implements Provider {
     if (temp !== undefined) cfg.temperature = temp
     const max = options.maxTokens ?? this.defaultMaxTokens
     if (max !== undefined) cfg.maxOutputTokens = max
-    if (options.stopSequences?.length) {
-      cfg.stopSequences = options.stopSequences
+    // Capability gate (crewAI supports_stop_words borrowing): omit the
+    // parameter entirely for model families that reject it.
+    const stop = wireStopSequences(model, options.stopSequences)
+    if (stop?.length) {
+      cfg.stopSequences = stop
     }
     if (Object.keys(cfg).length > 0) req.generationConfig = cfg
     return req

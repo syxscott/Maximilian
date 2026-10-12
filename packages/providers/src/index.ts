@@ -39,3 +39,5 @@ export {
   type ModelCatalogOptions,
 } from "./model-catalog.js"
 export * from "./catalog-sync.js"
+export * from "./stream-watchdog.js"
+export * from "./capability-predicates.js"

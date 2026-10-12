@@ -1,0 +1,29 @@
+{
+  "surfaces": {
+    "architect": {
+      "promptTokens": 173,
+      "toolTokens": 338,
+      "tools": ["glob", "grep", "read"]
+    },
+    "backend": {
+      "promptTokens": 222,
+      "toolTokens": 738,
+      "tools": ["bash", "edit", "glob", "grep", "read", "write"]
+    },
+    "data": {
+      "promptTokens": 145,
+      "toolTokens": 479,
+      "tools": ["bash", "glob", "read", "write"]
+    },
+    "frontend": {
+      "promptTokens": 207,
+      "toolTokens": 738,
+      "tools": ["bash", "edit", "glob", "grep", "read", "write"]
+    },
+    "reviewer": {
+      "promptTokens": 167,
+      "toolTokens": 539,
+      "tools": ["bash", "glob", "grep", "read"]
+    }
+  }
+}

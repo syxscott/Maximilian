@@ -33,7 +33,12 @@
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build -o docs/storybook",
     "architecture:check": "node scripts/architecture-check.mjs",
-    "compat:check": "node scripts/compat-check.mjs"
+    "compat:check": "node scripts/compat-check.mjs",
+    "prompt-surface:check": "tsx scripts/prompt-surface.ts",
+    "prompt-surface:update": "tsx scripts/prompt-surface.ts --update",
+    "docs:drift:check": "tsx scripts/check-docs-drift.ts",
+    "docs:drift:update": "tsx scripts/check-docs-drift.ts --update",
+    "docs:alignment:check": "tsx scripts/check-docs-alignment.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",

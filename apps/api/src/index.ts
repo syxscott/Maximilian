@@ -276,8 +276,9 @@ import {
 } from "./routes/approval-gate.js"
 import { RemoteApprovalGate } from "./lib/remote-approval-gate.js"
 import { InboundGate } from "./lib/inbound-queue.js"
+import { DeadLetterRegistry } from "./lib/inbound-dead-letter.js"
 import { inboundAdmission } from "./middleware/inbound-queue.js"
-import { inboundRoutes, inboundStatsRoute } from "./routes/inbound.js"
+import { inboundRoutes, inboundStatsRoute, inboundDeadLetterRoute } from "./routes/inbound.js"
 import {
   createDb,
   closeDb,
@@ -351,6 +352,16 @@ const inboundGate = new InboundGate({
   maxInFlight: config.INBOUND_MAX_INFLIGHT,
   maxQueued: config.INBOUND_QUEUE_CAPACITY,
 })
+
+// Inbound dead-letter layer (openclaw ingress borrowing): non-retryable
+// failures (structurally invalid request, auth failure) dead-letter
+// immediately; retry-exhausted events dead-letter only past BOTH the
+// attempt and age floors. Retention is bounded and pruned periodically,
+// not per record.
+const inboundDeadLetter = new DeadLetterRegistry()
+// Periodic prune (openclaw borrowing): retention is enforced on a schedule,
+// never by scanning on every record. The timer never holds the process open.
+inboundDeadLetter.startPeriodicPrune(10 * 60_000)
 
 // Fail fast: production must have a JWT secret. Otherwise the auth middleware
 // silently no-ops and every protected endpoint is open to the world.
@@ -1259,7 +1270,10 @@ app.use(
 
 // Inbound admission (three-tier queue). Registered after rate limiting so
 // abusive clients are dropped before they consume queue slots.
-app.use("/api/*", inboundAdmission({ gate: inboundGate }))
+app.use(
+  "/api/*",
+  inboundAdmission({ gate: inboundGate, deadLetter: { registry: inboundDeadLetter } }),
+)
 
 /**
  * Test whether `addr` matches any entry in `TRUSTED_PROXY_LIST`. Supports
@@ -2391,10 +2405,10 @@ import {
   createSubscription,
   listSubscriptions,
   deleteSubscription,
-  registerSseClient,
-  unregisterSseClient,
+  sseFeed,
   publishEvent,
 } from "./routes/subscriptions.js"
+import { encodeEventFrame } from "./lib/event-feed.js"
 
 api.openapi(createSubscriptionRoute, requireAuthMiddleware(), async (c) => {
   const { type, target, events } = c.req.valid("json")
@@ -2421,6 +2435,10 @@ api.openapi(deleteSubscriptionRoute, requireAuthMiddleware(), async (c) => {
 })
 
 // SSE stream for global events (webhook alternative — no setup, no HMAC).
+// Delivery runs through the server-level EventFeed (opencode borrowing):
+// events are encoded once per publish and offered to this connection's
+// bounded dropping queue; overflow kills only this connection. Heartbeats
+// and the connect notice bypass the queue — they never consume budget.
 api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
   const eventsParam = c.req.query("events")
   const events = eventsParam ? eventsParam.split(",").map((s) => s.trim()) : []
@@ -2429,50 +2447,67 @@ api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
   const encoder = new TextEncoder()
   const id = `sse_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   let closed = false
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  let cleanup = () => {}
 
   const stream = new ReadableStream({
     start(controller) {
-      const client = {
-        id,
-        events,
-        tenantId, // auth context — used by publishEvent to scope events per-tenant
-        send: (data: string) => {
-          if (closed) return
-          controller.enqueue(encoder.encode(data))
-        },
-        close: () => {
-          closed = true
-          unregisterSseClient(id)
-          controller.close()
-        },
-      }
-      registerSseClient(client)
-
-      // Heartbeat every 15s so proxies don't drop idle connections.
-      const heartbeat = setInterval(() => {
-        if (closed) return
-        try {
-          controller.enqueue(encoder.encode(`: heartbeat\n\n`))
-        } catch {
-          closed = true
-          unregisterSseClient(id)
-          clearInterval(heartbeat)
-        }
-      }, 15_000)
-
-      controller.enqueue(encoder.encode(`event: ready\ndata: ${JSON.stringify({ id })}\n\n`))
-
-      const cleanup = () => {
+      cleanup = () => {
         if (closed) return
         closed = true
-        clearInterval(heartbeat)
-        unregisterSseClient(id)
+        if (heartbeat) {
+          clearInterval(heartbeat)
+          heartbeat = undefined
+        }
+        sseFeed.unsubscribe(id)
         try {
           controller.close()
         } catch {}
+        try {
+          c.req.raw.signal.removeEventListener("abort", cleanup)
+        } catch {}
+      }
+      const writeDirect = (data: string): boolean => {
+        if (closed) return false
+        try {
+          controller.enqueue(encoder.encode(data))
+          return true
+        } catch {
+          return false
+        }
+      }
+      // Feed transport: only accept frames while the stream still has
+      // positive desiredSize; otherwise they wait in this connection's
+      // bounded queue until the client drains.
+      const writeWhenReadable = (frame: string): boolean => {
+        const desired = controller.desiredSize
+        if (desired !== null && desired <= 0) return false
+        return writeDirect(frame)
       }
 
+      sseFeed.subscribe({
+        id,
+        events,
+        tenantId, // auth context — publishEvent scopes events per-tenant
+        write: writeWhenReadable,
+        onOverflow: () => {
+          // Lag budget exhausted: kill exactly this connection.
+          log.warn({ connectionId: id }, "sse subscriber overflow - disconnecting")
+          cleanup()
+        },
+      })
+
+      // Connect notice + heartbeat: direct writes, outside the queue.
+      writeDirect(encodeEventFrame("ready", { id }))
+      heartbeat = setInterval(() => {
+        if (closed) return
+        if (!writeDirect(": heartbeat\n\n")) cleanup()
+      }, 15_000)
+
       c.req.raw.signal.addEventListener("abort", cleanup)
+    },
+    cancel() {
+      cleanup()
     },
   })
 
@@ -2734,8 +2769,9 @@ api.openapi(listApprovalGateRoute, approvalGate.pending)
 
 // Inbound admission queue observability.
 api.use("/inbound/*", requireAuthMiddleware())
-const inbound = inboundRoutes({ gate: inboundGate })
+const inbound = inboundRoutes({ gate: inboundGate, deadLetter: inboundDeadLetter })
 api.openapi(inboundStatsRoute, inbound.stats)
+api.openapi(inboundDeadLetterRoute, inbound.deadLetter)
 
 const approvals = approvalRoutes({
   runtime: {
@@ -3041,6 +3077,8 @@ function shutdown(signal: string) {
       log.error({ err }, "error closing event-log registry")
     })
     log.info("event-log registry closed")
+    // Stop the dead-letter periodic prune before the process exits.
+    inboundDeadLetter.stopPeriodicPrune()
     // BullMQ's queue.close() also closes its ioredis connection, but if
     // the app owns a separate Redis connection (future), close it here.
     await closeDb().catch((err) => {

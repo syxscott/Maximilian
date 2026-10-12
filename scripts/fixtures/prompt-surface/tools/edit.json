@@ -1,0 +1,26 @@
+{
+  "name": "edit",
+  "description": "Replace a string in a file. The old string must appear exactly once (unless replaceAll is true).",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to the file"
+      },
+      "oldString": {
+        "type": "string",
+        "description": "String to replace"
+      },
+      "newString": {
+        "type": "string",
+        "description": "Replacement string"
+      },
+      "replaceAll": {
+        "type": "boolean",
+        "description": "Replace all occurrences (default: false)"
+      }
+    },
+    "required": ["path", "oldString", "newString"]
+  }
+}

@@ -97,6 +97,20 @@ export function driveGoalFinalReply(
 }
 
 /**
+ * Error-first collection invariant (swarms `agent_answer` borrowing): when a
+ * concurrent unit fails, its collected answer IS the error — `Error: <msg>` —
+ * even when earlier rounds left partial output in memory, because an error is
+ * more honest than a truncated answer. Partial output is presented only when
+ * no error exists.
+ */
+export function errorFirstReply(outcome: { error?: unknown; output?: string | undefined }): string {
+  if (outcome.error !== undefined && outcome.error !== null && outcome.error !== "") {
+    return `Error: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`
+  }
+  return outcome.output ?? ""
+}
+
+/**
  * Fingerprint of one final reply (minimax `fingerprintThreadGoalReply`):
  * CRLF/CR normalized to LF, outer whitespace trimmed, empty → undefined,
  * otherwise sha256 of the semantic text.

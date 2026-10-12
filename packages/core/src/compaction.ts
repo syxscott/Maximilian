@@ -25,6 +25,43 @@ export interface CompactionConfig {
   reservedOutput: number
   preserveRecentTokens?: number
   maxToolOutputChars?: number
+  /**
+   * Hidden reminders appended as a trailing system message after compaction
+   * runs (minimax c460f08 borrowing). When compaction summarizes history
+   * that carried per-run identity (session id, …), a stateless consumer
+   * passes the identity reminder here so the model keeps it; the reminder
+   * text must be findable by `scanAfterLastCompactionBoundary` (reminder.ts)
+   * so the next check counts it and does not inject a second copy.
+   */
+  appendHiddenReminders?: string[]
+}
+
+/** Stable marker carried by every compaction-summary message. */
+export const COMPACTION_SUMMARY_MARKER = "[compaction-summary]"
+
+/**
+ * True when a message is a compaction-summary boundary (the head message
+ * compactMessages inserts). Reminder injection scans history AFTER the last
+ * such boundary, so content summarized away before it is treated as absent.
+ */
+export function isCompactionBoundary(m: { role: string; content: unknown }): boolean {
+  if (m.role !== "system") return false
+  return flattenContent(m.content).includes(COMPACTION_SUMMARY_MARKER)
+}
+
+/** Best-effort text extraction: string content, or {text} parts arrays. */
+function flattenContent(content: unknown): string {
+  if (typeof content === "string") return content
+  if (!Array.isArray(content)) return ""
+  let out = ""
+  for (const part of content) {
+    if (part && typeof part === "object" && "text" in part) {
+      out += String((part as { text?: unknown }).text ?? "")
+    } else if (typeof part === "string") {
+      out += part
+    }
+  }
+  return out
 }
 
 export interface TokenUsage {
@@ -89,14 +126,53 @@ export function compactMessages(
         {
           type: "text" as const,
           text:
-            `[借鉴 opencode Compaction] ${dropped} 条早期消息已被摘要省略;` +
+            `${COMPACTION_SUMMARY_MARKER} ${dropped} 条早期消息已被摘要省略;` +
             `后续为最近 ${tail.length} 条对话。`,
         },
       ],
     } as unknown as Message
-    return [head, ...tail]
+    const base = [head, ...tail]
+    // Hidden reminders (minimax c460f08 borrowing): identity the compacted
+    // history used to carry is re-appended as a trailing system message so
+    // the model keeps it for the rest of the turn. The next injection check
+    // scans past the boundary, finds this message, and does not re-inject.
+    const hidden = cfg.appendHiddenReminders ?? []
+    if (hidden.length === 0) return base
+    const reminder: Message = {
+      role: "system",
+      content: [{ type: "text" as const, text: hidden.join("\n") }],
+    } as unknown as Message
+    return [...base, reminder]
   }
   return tail
+}
+
+/** Sum the per-message token estimates for a whole request. */
+export function estimateMessagesTokens(
+  messages: readonly Message[],
+  estimateTokens: (m: Message) => number,
+): number {
+  let total = 0
+  for (const m of messages) total += estimateTokens(m)
+  return total
+}
+
+/**
+ * Forced compaction for context-overflow recovery (minimax 5b4e0a4
+ * borrowing): the provider just rejected this request as too large, and the
+ * local estimate had admitted it — so compact to a FRACTION of the rejected
+ * request (default: half), regardless of the configured preserve budget.
+ * Pure: returns the replacement messages; persistence is the caller's job.
+ */
+export function forceCompactToFractionOfRequest(
+  messages: readonly Message[],
+  cfg: CompactionConfig,
+  estimateTokens: (m: Message) => number,
+  fraction = 0.5,
+): Message[] {
+  const rejectedTokens = estimateMessagesTokens(messages, estimateTokens)
+  const target = Math.max(0, Math.floor(rejectedTokens * fraction))
+  return compactMessages([...messages], { ...cfg, preserveRecentTokens: target }, estimateTokens)
 }
 
 function truncateToolOutput(m: Message, max: number): Message {

@@ -14,6 +14,7 @@ import {
 import type { Provider, ChatMessage, ChatOptions } from "@max/providers"
 import { mergeAdjacentSameRole } from "@max/providers"
 import type { AgentContext, Agent } from "./agent.js"
+import { isLLMRequestOversized } from "./error-taxonomy.js"
 import type {
   BeforeToolCallContext,
   BeforeToolCallResult,
@@ -491,16 +492,80 @@ export interface ToolLoopOptions {
   afterToolCall?: (
     context: AfterToolCallContext,
   ) => AfterToolCallResult | undefined | Promise<AfterToolCallResult | undefined>
+  /**
+   * Context-overflow recovery hook (minimax 5b4e0a4 borrowing).
+   *
+   * When the provider rejects a request as too large
+   * (`isLLMRequestOversized`: HTTP 413, `request_too_large`, context-window
+   * overflow) BEFORE producing any output, the loop calls this hook once per
+   * `runToolLoop` with the exact messages that were rejected. The hook
+   * force-compacts and PERSISTS the replacement, then the loop resends the
+   * request through the SAME provider.chat call site — the normal before-LLM
+   * pipeline (tool instructions, role merging, per-request transforms) is
+   * therefore reapplied to the resent request, never bypassed. A second
+   * rejection is terminal: the original provider error is rethrown.
+   *
+   * Return undefined (or throw) when the hook cannot change anything — the
+   * loop then surfaces the provider rejection as received. Only compaction
+   * belongs here: reminder/append hooks would run twice (once in the normal
+   * pipeline, once in recovery) — use `SingleOwnerInjectionGate` to keep
+   * single ownership if a reminder must participate.
+   */
+  contextOverflowRecovery?: (rejected: ChatMessage[]) => Promise<ChatMessage[] | undefined>
 }
 
 /** Tools that write files and are subject to ownedFiles gating. */
 const FILE_WRITE_TOOLS = new Set(["write", "edit"])
+
+/**
+ * Structured error for tool calls that were announced by the model but never
+ * executed (opencode failUnsettledTools "uncalled" borrowing): streaming
+ * parse/budget truncation leaves calls without an execution event. They are
+ * settled with this error instead of dangling unanswered into the next
+ * round's context.
+ */
+export const UNCALLED_TOOL_CALL_ERROR =
+  "Tool call arguments were not completed and were not executed. Re-issue the tool call with complete arguments."
+
+/**
+ * Settle every announced-but-never-executed tool call with a structured
+ * error result (opencode INPUT_INCOMPLETE borrowing). The assistant message
+ * already contains the tool-call text, so leaving them unanswered would
+ * dangle into the next round's context; a settled error tells the model to
+ * re-issue the call with complete arguments.
+ */
+function settleUncalledToolCalls(
+  uncalled: readonly ToolCall[],
+  currentMessages: ChatMessage[],
+  options: ChatOptions & ToolLoopOptions,
+  allToolCalls: ToolCall[],
+): void {
+  for (const call of uncalled) {
+    options.emitEvent?.({
+      type: "tool-end",
+      workspaceId: options.workspaceId ?? "",
+      taskId: options.taskId ?? "",
+      toolName: call.name,
+      ok: false,
+      durationMs: 0,
+      error: UNCALLED_TOOL_CALL_ERROR,
+    })
+    options.onToolResult?.(call, { error: UNCALLED_TOOL_CALL_ERROR })
+    currentMessages.push({
+      role: "user",
+      content: `[Tool Result: ${call.name}]\n${JSON.stringify({ error: UNCALLED_TOOL_CALL_ERROR })}`,
+    })
+    allToolCalls.push(call)
+  }
+}
 
 // ── Tool Execution Helpers (借鉴 pi) ──
 
 /**
  * Execute tool calls sequentially (借鉴 pi).
  * Each tool is prepared, executed, and finalized before the next one starts.
+ * Calls that could not be attempted (budget exhausted mid-round) are
+ * returned as unsettled so the loop can settle them with a structured error.
  */
 async function executeToolCallsSequential(
   provider: ToolEnabledProvider,
@@ -510,9 +575,13 @@ async function executeToolCallsSequential(
   round: number,
   allToolCalls: ToolCall[],
   toolBudget: { value: number },
-): Promise<void> {
+): Promise<ToolCall[]> {
+  const unsettled: ToolCall[] = []
   for (const call of toolCalls) {
-    if (toolBudget.value <= 0) break
+    if (toolBudget.value <= 0) {
+      unsettled.push(call)
+      continue
+    }
     toolBudget.value--
     const result = await executeSingleToolCall(provider, call, options, round)
     if (result.skip) continue
@@ -522,13 +591,15 @@ async function executeToolCallsSequential(
     })
     allToolCalls.push(call)
   }
+  return unsettled
 }
 
 /**
  * Execute tool calls in parallel (借鉴 pi).
  * Tools are prepared sequentially, then allowed tools execute concurrently.
  * tool_execution_end is emitted in completion order, but tool-result messages
- * are emitted in assistant source order.
+ * are emitted in assistant source order. Calls beyond the budget slice are
+ * returned as unsettled so the loop can settle them with a structured error.
  */
 async function executeToolCallsParallel(
   provider: ToolEnabledProvider,
@@ -538,17 +609,18 @@ async function executeToolCallsParallel(
   round: number,
   allToolCalls: ToolCall[],
   toolBudget: { value: number },
-): Promise<void> {
+): Promise<ToolCall[]> {
   const results: Array<{ call: ToolCall; output: unknown; skip: boolean }> = []
 
   for (const call of toolCalls) {
     if (toolBudget.value <= 0) break
     toolBudget.value--
   }
+  const admitted = (options.maxToolCalls ?? 30) - toolBudget.value
 
   // Execute all tools concurrently
   const executions = toolCalls
-    .slice(0, (options.maxToolCalls ?? 30) - toolBudget.value)
+    .slice(0, admitted)
     .map((call) => executeSingleToolCall(provider, call, options, round))
   const settled = await Promise.allSettled(executions)
 
@@ -571,6 +643,10 @@ async function executeToolCallsParallel(
     })
     allToolCalls.push(call)
   }
+
+  // Calls beyond the executed slice were never attempted — the caller
+  // settles them with a structured error instead of leaving them dangling.
+  return toolCalls.slice(admitted)
 }
 
 /**
@@ -794,6 +870,41 @@ export async function runToolLoop(
   const toolBudget = { value: maxToolCalls }
   const currentMessages = [...messages]
 
+  // Context-overflow recovery (minimax 5b4e0a4 borrowing): the rejected
+  // request may be force-compacted and resent EXACTLY ONCE per run, through
+  // this same provider.chat call site so every request-level transform in
+  // the normal before-LLM pipeline is reapplied. A second rejection is final.
+  let overflowRecoveryAttempted = false
+  async function chatWithOverflowRecovery(): Promise<ToolEnabledResponse> {
+    try {
+      return await provider.chat(currentMessages, options)
+    } catch (err) {
+      if (
+        !options.contextOverflowRecovery ||
+        overflowRecoveryAttempted ||
+        !isLLMRequestOversized(err)
+      ) {
+        throw err
+      }
+      overflowRecoveryAttempted = true
+      let compacted: ChatMessage[] | undefined
+      try {
+        compacted = await options.contextOverflowRecovery(currentMessages)
+      } catch {
+        // A failing recovery must not mask the provider rejection it tried
+        // to fix — surface the original rejection.
+        throw err
+      }
+      if (!compacted || compacted === currentMessages) throw err
+      // Persist the compaction in the loop's live history (in place, so
+      // every later round and the resend observe it).
+      currentMessages.length = 0
+      currentMessages.push(...compacted)
+      // Resend exactly once — through the same call site (normal pipeline).
+      return provider.chat(currentMessages, options)
+    }
+  }
+
   for (let round = 0; round < maxRounds; round++) {
     // Steering injection (借鉴 openclaw): if external messages are pending,
     // inject them BEFORE the next provider.chat() so the LLM sees them.
@@ -807,11 +918,11 @@ export async function runToolLoop(
     options.prepareNextTurn?.()
     // Explicit stop hook (借鉴 openclaw shouldStopAfterTurn).
     if (options.shouldStopAfterTurn?.()) {
-      const finalResponse = await provider.chat(currentMessages, options)
+      const finalResponse = await chatWithOverflowRecovery()
       return { response: finalResponse, allToolCalls }
     }
 
-    const response = await provider.chat(currentMessages, options)
+    const response = await chatWithOverflowRecovery()
 
     if (response.toolCalls.length === 0) {
       // Follow-up continuation (pi borrowing): on natural exit with queued
@@ -830,11 +941,13 @@ export async function runToolLoop(
     }
 
     // Check budget before executing tool calls
+    const droppedByTruncation: ToolCall[] = []
     if (response.toolCalls.length > toolBudget.value) {
-      // Truncate to remaining budget
-      response.toolCalls.length = toolBudget.value
+      // Truncate to remaining budget; the overflow is settled below.
+      droppedByTruncation.push(...response.toolCalls.splice(Math.max(0, toolBudget.value)))
     }
     if (toolBudget.value <= 0) {
+      settleUncalledToolCalls(droppedByTruncation, currentMessages, options, allToolCalls)
       return { response, allToolCalls }
     }
 
@@ -871,27 +984,35 @@ export async function runToolLoop(
       // Determine execution mode
       const execMode: ToolExecutionMode = options.toolExecution ?? "sequential"
 
-      if (execMode === "parallel") {
-        await executeToolCallsParallel(
-          provider,
-          currentMessages,
-          response.toolCalls,
-          options,
-          round,
-          allToolCalls,
-          toolBudget,
-        )
-      } else {
-        await executeToolCallsSequential(
-          provider,
-          currentMessages,
-          response.toolCalls,
-          options,
-          round,
-          allToolCalls,
-          toolBudget,
-        )
-      }
+      const unsettled =
+        execMode === "parallel"
+          ? await executeToolCallsParallel(
+              provider,
+              currentMessages,
+              response.toolCalls,
+              options,
+              round,
+              allToolCalls,
+              toolBudget,
+            )
+          : await executeToolCallsSequential(
+              provider,
+              currentMessages,
+              response.toolCalls,
+              options,
+              round,
+              allToolCalls,
+              toolBudget,
+            )
+      // Announced but never attempted (budget truncation or mid-round
+      // budget exhaustion): settle with a structured error instead of
+      // dangling into the next round.
+      settleUncalledToolCalls(
+        [...droppedByTruncation, ...unsettled],
+        currentMessages,
+        options,
+        allToolCalls,
+      )
     }
 
     // Refund one tool call if the LLM made progress (hermes-agent pattern)
@@ -915,7 +1036,7 @@ export async function runToolLoop(
   }
 
   // If we exhausted rounds, return the last response
-  const finalResponse = await provider.chat(currentMessages, options)
+  const finalResponse = await chatWithOverflowRecovery()
 
   // Follow-up injection (借鉴 openclaw): if external follow-up messages
   // are pending, do ONE more full turn with them appended. Bounded to a

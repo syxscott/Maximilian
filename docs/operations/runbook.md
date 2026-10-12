@@ -256,7 +256,7 @@ psql "$DATABASE_URL" -c "
 **Symptoms**: Confirmed leak of a secret (env file committed, K8s
 Secret logged, ex-employee access).
 
-**Mitigation** (steps from [SECRETS.md](../../security/SECRETS.md)
+**Mitigation** (steps from [SECRETS.md](../security/SECRETS.md)
 **"What to do when a secret leaks"**):
 
 1. Revoke the leaked credential in the upstream system (rotate the
@@ -268,7 +268,7 @@ Secret logged, ex-employee access).
    rotating `JWT_REFRESH_SECRET`.
 4. Search logs for usage of the leaked value (fingerprint match).
 5. Post-mortem using [post-mortem-template.md](post-mortem-template.md).
-6. Add a row to [THREAT_MODEL.md](../../security/THREAT_MODEL.md) for
+6. Add a row to [THREAT_MODEL.md](../security/THREAT_MODEL.md) for
    the leak path if new.
 
 ## Communication

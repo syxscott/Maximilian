@@ -188,3 +188,16 @@ describe("FileWorkspaceStore — save serialization (write lease)", () => {
     expect(ws?.status).toBe("completed")
   })
 })
+
+describe("FileWorkspaceStore — metadata survival (write path owns the object)", () => {
+  it("survives arbitrary metadata keys through save → load", async () => {
+    await store.saveWorkspace({
+      ...makeWorkspace("survive-1"),
+      metadata: { goalJudgement: { verdict: "achieved" }, jobId: "j1", customAgentKey: [1, 2] },
+    })
+    const ws = await store.loadWorkspace("survive-1")
+    expect(ws?.metadata.goalJudgement).toEqual({ verdict: "achieved" })
+    expect(ws?.metadata.jobId).toBe("j1")
+    expect(ws?.metadata.customAgentKey).toEqual([1, 2])
+  })
+})

@@ -261,6 +261,19 @@ export const EvolutionDecisionSchema = z.object({
   newAvgScore: z.number(),
   triggeredAt: z.string(),
   reason: z.string(),
+  /**
+   * Feature-family ship-gate state at decision time (cbm-mcp 7209ae12
+   * borrowing): a family below its held-out audit bar still produces the
+   * decision, but the row is degraded — the artifact is not promoted to
+   * shipped status. Absent on historical rows (optional, backwards-safe).
+   */
+  shipGate: z
+    .object({
+      family: z.string(),
+      shipped: z.boolean(),
+      degradation: z.object({ code: z.literal("below_bar_tier"), reason: z.string() }).optional(),
+    })
+    .optional(),
 })
 export type EvolutionDecision = z.infer<typeof EvolutionDecisionSchema>
 

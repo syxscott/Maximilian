@@ -370,6 +370,7 @@ export type {
 export {
   canDriveGoalFinalReply,
   driveGoalFinalReply,
+  errorFirstReply,
   normalizeReplyFingerprint,
   GoalFinalReplyMachine,
 } from "./goal-final-reply.js"
@@ -386,7 +387,35 @@ export {
   ERROR_CATEGORIES,
   ERROR_RESET_ACTIONS,
   classifyError,
+  isLLMRequestOversized,
   type ErrorCategory,
   type ErrorResetAction,
   type ClassifiedExecutionError,
 } from "./error-taxonomy.js"
+
+// Text-safety helpers for bounded writes (surrogate-pair-safe truncation).
+export { truncateWithoutSplittingSurrogatePair, endsWithLoneHighSurrogate } from "./text-safe.js"
+
+// Chunked timeout scheduling — delays above Node's 2^31-1 ms timer limit are
+// scheduled as consecutive bounded chunks that preserve the total (minimax
+// borrowing). Consumed by the runtime's execution-budget timers.
+export {
+  MAX_TIMER_DELAY_MS,
+  scheduleTimeoutChunks,
+  abortSignalAfterChunks,
+  realTimerScheduler,
+  type ScheduledTimeout,
+  type TimerScheduler,
+} from "./timeout-chunks.js"
+
+// Per-turn reminder injection — compaction-boundary scan, post-compaction
+// identity restore, and the single-owner gate (minimax + agency-swarm
+// borrowing). Companion to the ReminderCollector above.
+export {
+  SESSION_IDENTITY_REMINDER_PREFIX,
+  sessionIdentityReminder,
+  findLastCompactionBoundary,
+  historyAfterLastCompactionCarries,
+  shouldInjectSessionIdentity,
+  SingleOwnerInjectionGate,
+} from "./reminder.js"

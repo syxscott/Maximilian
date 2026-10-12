@@ -42,11 +42,14 @@ const GateReleaseResponseSchema = z.object({
   gate: z.literal("released"),
 })
 
+const GateEvidenceSchema = z.object({ diffAttached: z.boolean().optional() })
+
 const GatePendingEntrySchema = z.object({
   requestId: z.string(),
   decision: z.literal("allow"),
   requestedAt: z.string(),
   remoteAddress: z.string().optional(),
+  evidence: GateEvidenceSchema.optional(),
   status: z.enum(["pending-gate", "released"]),
 })
 
@@ -74,7 +77,8 @@ export const releaseApprovalGateRoute = createRoute({
     400: { content: { "application/json": { schema: ErrorSchema } }, description: "Invalid body" },
     403: {
       content: { "application/json": { schema: ErrorSchema } },
-      description: "Release from a non-loopback client",
+      description:
+        "Release from a non-loopback client, or the held answer declared diffAttached: false (diff-first gate)",
     },
     404: {
       content: { "application/json": { schema: ErrorSchema } },
@@ -133,6 +137,13 @@ export function approvalGateRoutes(deps: ApprovalGateRoutesDeps) {
         if (result.reason === "remote-release-forbidden") {
           log.warn({ requestId, remoteAddress }, "gate release refused - remote caller")
           return c.json({ error: result.reason, requestId }, 403)
+        }
+        if (result.reason === "diff-not-attached") {
+          // Diff-first gate (oh-my-claudecode borrowing): the held answer
+          // itself declared the diff missing. The entry stays pending so a
+          // later release succeeds once the primary source is attached.
+          log.warn({ requestId }, "gate release refused - diff not attached")
+          return c.json({ error: "diff_not_attached", requestId, criterion: result.criterion }, 403)
         }
         return c.json({ error: result.reason, requestId }, 404)
       }

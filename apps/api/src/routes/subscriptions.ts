@@ -7,6 +7,12 @@
  *   - SSE: long-lived `text/event-stream` connection. Useful for local dev
  *          and admin dashboards.
  *
+ * SSE delivery goes through the server-level EventFeed
+ * (lib/event-feed.ts, opencode borrowing): every event is encoded into a
+ * wire frame exactly ONCE and the same immutable string is offered to each
+ * connection's bounded dropping queue — a lagging connection is killed on
+ * overflow without touching the publisher or its peers.
+ *
  * Storage is in-memory (ProcessScopedBus is the source of truth). For
  * production durability, swap in a `SubscriptionStore` interface backed
  * by Postgres / Redis — the rest of the API is unchanged.
@@ -15,6 +21,7 @@
 import { createHmac, randomUUID } from "node:crypto"
 import { createRoute } from "@hono/zod-openapi"
 import { z } from "zod"
+import { EventFeed } from "../lib/event-feed.js"
 
 export interface Subscription {
   id: string
@@ -30,16 +37,15 @@ export interface Subscription {
   totalFailures: number
 }
 
-interface SseClient {
-  id: string
-  send: (data: string) => void
-  close: () => void
-  events: string[]
-  tenantId?: string // auth context of the connecting client
-}
-
 const subscriptions = new Map<string, Subscription>()
-const sseClients = new Map<string, SseClient>()
+
+/**
+ * Server-level SSE feed: single encoding point + per-connection bounded
+ * queues. Route handlers register connections here (with a transport
+ * `write` that respects stream backpressure); heartbeats and the connect
+ * notice are written directly by the route and never consume queue budget.
+ */
+export const sseFeed = new EventFeed()
 
 export function listSubscriptions(tenantId?: string): Subscription[] {
   const all = [...subscriptions.values()]
@@ -84,14 +90,6 @@ export function deleteSubscription(id: string, tenantId?: string): boolean {
   return subscriptions.delete(id)
 }
 
-export function registerSseClient(client: SseClient): void {
-  sseClients.set(client.id, client)
-}
-
-export function unregisterSseClient(id: string): void {
-  sseClients.delete(id)
-}
-
 /**
  * Publish an event to all subscribers whose filters match.
  * Called by ScopedBus handlers — see api/src/index.ts.
@@ -104,19 +102,13 @@ export async function publishEvent(
   payload: unknown,
   tenantId?: string,
 ): Promise<void> {
-  // SSE first - synchronous send, no network I/O. Subscribers get events
-  // immediately even when webhook deliveries are slow or timing out.
-  for (const client of sseClients.values()) {
-    // Filter by tenant: client with no tenantId (legacy/global) receives all;
-    // client with tenantId only receives events from the same tenant.
-    if (client.tenantId !== undefined && client.tenantId !== tenantId) continue
-    if (client.events.length > 0 && !client.events.includes(eventName)) continue
-    try {
-      client.send(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`)
-    } catch (err) {
-      console.warn(`[sse ${client.id}] send failed:`, (err as Error).message)
-    }
-  }
+  // SSE first — synchronous, encoded ONCE server-side (opencode event-feed
+  // borrowing). Every subscriber connection receives the same immutable
+  // frame string through its independent bounded queue; a lagging
+  // connection is killed by its own overflow without touching the
+  // publisher or peers. Webhook delivery below can therefore never be
+  // blocked or re-encode for slow SSE clients.
+  sseFeed.publish(eventName, payload, tenantId)
 
   // Webhooks - deliver concurrently so one slow endpoint can't block the
   // others. Previously this was a serial for-await loop, which meant a

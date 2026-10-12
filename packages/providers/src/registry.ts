@@ -22,6 +22,8 @@ import type { Provider } from "./base.js"
 import { withRetry } from "./retry.js"
 import { withCircuitBreaker } from "./circuit-breaker.js"
 import { withSseGuard } from "./sse-guard.js"
+import { withLLMStreamTimeouts } from "./stream-watchdog.js"
+import { withClientSideStopSequences } from "./capability-predicates.js"
 import { PROVIDER_PRESETS, type ProviderPreset } from "./presets/index.js"
 import { ModelCatalog } from "./model-catalog.js"
 import { createProviderForFormat } from "./formats/index.js"
@@ -104,7 +106,14 @@ export function createRegistry(
         baseURL: preset.baseUrl,
         defaultModel: modelOverride || preset.defaultModel,
       })
-      resilient.push(withCircuitBreaker(withRetry(withSseGuard(provider))))
+      // Wrap order (innermost first): SSE guard → client-side stop-word
+      // fallback → per-attempt stream watchdogs → retry (each retry attempt
+      // gets fresh watchdogs) → circuit breaker.
+      resilient.push(
+        withCircuitBreaker(
+          withRetry(withLLMStreamTimeouts(withClientSideStopSequences(withSseGuard(provider)))),
+        ),
+      )
       activePresetIds.push(preset.id)
     } catch (err) {
       // Skip providers with invalid config rather than crashing the registry.

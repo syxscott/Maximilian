@@ -195,6 +195,17 @@ export const TestResponseSchema = z.object({
 export const AnswerRequestSchema = z.object({
   requestId: z.string().min(1),
   decision: z.enum(["allow", "deny"]),
+  /**
+   * Optional evidence for the remote approval gate's diff-first criterion
+   * (oh-my-claudecode borrowing): `diffAttached: false` makes the held
+   * answer unreleasable until the primary source (diff / changed-file
+   * list) is attached. Undeclared evidence never tightens the gate.
+   */
+  evidence: z
+    .object({
+      diffAttached: z.boolean().optional(),
+    })
+    .optional(),
 })
 
 export const AnswerResponseSchema = z.object({

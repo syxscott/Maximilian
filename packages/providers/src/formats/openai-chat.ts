@@ -22,6 +22,7 @@ import type {
   Provider,
 } from "../base.js"
 import { ProviderError, classifyProviderError } from "../base.js"
+import { wireStopSequences } from "../capability-predicates.js"
 
 export interface OpenAIChatConfig {
   id: string
@@ -98,7 +99,10 @@ export class OpenAIChatProvider implements Provider {
             })),
             temperature: options.temperature ?? this.defaultTemperature,
             max_tokens: options.maxTokens ?? this.defaultMaxTokens,
-            stop: options.stopSequences,
+            // Capability gate (crewAI supports_stop_words borrowing): model
+            // families that reject `stop` with a 400 (Bedrock openai.*) get
+            // the parameter omitted; the client-side fallback truncates.
+            stop: wireStopSequences(model, options.stopSequences),
             response_format,
             ...(Object.keys(extra).length > 0 ? { extra_body: extra } : {}),
           } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming)

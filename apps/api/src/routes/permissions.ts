@@ -51,7 +51,11 @@ import {
   PermissionAuditQuerySchema,
   PermissionAuditResponseSchema,
 } from "../schemas.js"
-import { type RemoteApprovalGate, requestRemoteAddress } from "../lib/remote-approval-gate.js"
+import {
+  type RemoteApprovalGate,
+  parseGateEvidence,
+  requestRemoteAddress,
+} from "../lib/remote-approval-gate.js"
 
 const log = getLogger("permissions")
 
@@ -472,9 +476,16 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps = {}) {
       // persisted (so no allow-always pattern can leak into
       // permissions.json), and the parked prompt keeps waiting for a
       // loopback release via /permissions/gate/release. Deny passes —
-      // rejecting remotely can never enable anything.
+      // rejecting remotely can never enable anything. Evidence from the
+      // answer body (e.g. diffAttached) travels with the held decision and
+      // grades the later release (diff-first criterion).
       if (remoteApprovalGate?.enabled === true && decision === "allow") {
-        const verdict = remoteApprovalGate.submit(requestId, decision, requestRemoteAddress(c))
+        const verdict = remoteApprovalGate.submit(
+          requestId,
+          decision,
+          requestRemoteAddress(c),
+          parseGateEvidence(b.evidence),
+        )
         if (verdict.action === "hold") {
           log.warn(
             { requestId, remoteAddress: verdict.entry.remoteAddress },

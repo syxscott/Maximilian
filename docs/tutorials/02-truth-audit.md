@@ -30,8 +30,8 @@ TruthAudit, that's a calibration drift — and we can act on it."
 
 ## Shot 2 — How it works (90s)
 
-Diagram (record the screen showing the architecture diagram from
-[architecture/truth-audit-flow.md](../architecture/truth-audit-flow.md)):
+Diagram (record the screen showing the architecture diagram in
+[architecture/evolution-vs-meta-system.md](../architecture/evolution-vs-meta-system.md)):
 
 ```
 Agent predicts ──► TruthAudit records

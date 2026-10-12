@@ -18,6 +18,8 @@ import { OpencodeExecutor } from "./opencode-executor.js"
 
 const log = getLogger("core:runtime")
 import { runToolLoop, type ToolEnabledProvider } from "./tool-integration.js"
+import { abortSignalAfterChunks } from "./timeout-chunks.js"
+import { errorFirstReply } from "./goal-final-reply.js"
 import * as toolExtensions from "./tool-extensions.js"
 import { createRunawayGuard } from "./tool-extensions.js"
 import { classifyTaskError } from "./failover-reason.js"
@@ -2069,11 +2071,14 @@ export class AgentRuntime {
 
       await this.sink.saveWorkspace(updated)
       // A goal declared on this workspace reached its terminal state through
-      // a natural completion — emit its final reply exactly once before the
-      // done event (goal-final-reply.ts). Aborted/failed runs leave the goal
-      // working; the goal is only terminal when the work is.
+      // natural completion OR failure — emit its final reply exactly once
+      // before the done event (goal-final-reply.ts). A failed run's reply is
+      // the error itself, never stale partial output (swarms borrowing).
+      // Aborted/cancelled runs leave the goal working; cancelGoal abandons.
       if (updated.status === "completed") {
         this.autoResolveGoal(updated.id, updated.results)
+      } else if (updated.status === "failed" && updated.error) {
+        this.autoResolveGoal(updated.id, updated.results, updated.error)
       }
       this.emit({ type: "workspace-status", workspaceId: updated.id, status: updated.status })
       this.emit({ type: "done", workspaceId: updated.id, workspace: updated })
@@ -2635,17 +2640,15 @@ export class AgentRuntime {
     // timeout covers the case where the user simply never responds and
     // the workspace isn't explicitly aborted.
     const workspaceSignal = this.runningWorkspaces.get(workspace.id)?.signal
-    // Polyfill AbortSignal.timeout for Node < 18.11
+    // Chunked timeout (minimax c172cf9 borrowing): Node clamps delays above
+    // 2^31-1 ms to 1 ms — for setTimeout AND AbortSignal.timeout alike — so
+    // a large approval window would abort almost immediately. The chunk
+    // chain preserves the requested total delay and is cleared when the
+    // approval wait settles.
     const timeoutSignal = approval.timeoutMs
-      ? "timeout" in AbortSignal
-        ? AbortSignal.timeout(approval.timeoutMs)
-        : (() => {
-            const controller = new AbortController()
-            setTimeout(() => controller.abort(), approval.timeoutMs)
-            return controller.signal
-          })()
+      ? abortSignalAfterChunks(approval.timeoutMs)
       : undefined
-    const signals = [workspaceSignal, timeoutSignal].filter(
+    const signals = [workspaceSignal, timeoutSignal?.signal].filter(
       (s): s is AbortSignal => s !== undefined,
     )
     const response =
@@ -2665,37 +2668,43 @@ export class AgentRuntime {
                     return combined.signal
                   }),
             workspace.id,
-          ).catch((err) => {
-            // Clean up the parked resolver so a late user response doesn't
-            // resolve an already-rejected promise (harmless but noisy).
-            this.approvalResolvers.delete(requestId)
-            // M10-fix: emit an `approval-resolved` event so any UI / SSE
-            // listener waiting for the answer learns the approval
-            // terminated. Previously a timeout or abort would surface as
-            // a thrown error inside `runApprovalTask`, but the
-            // dashboard's parked approval request would never receive a
-            // resolution event — leaving it pinned as "awaiting" until
-            // the user manually closed it. We classify the outcome as
-            // `denied` because the user never explicitly approved, and
-            // include the reason for the dashboard's audit log.
-            const reason = timeoutSignal?.aborted
-              ? `approval timed out after ${approval.timeoutMs}ms`
-              : err instanceof Error
-                ? err.message
-                : "approval aborted"
-            this.emit({
-              type: "approval-resolved",
-              workspaceId: workspace.id,
-              taskId: task.id,
-              requestId,
-              decision: "reject",
-              comment: reason,
+          )
+            .catch((err) => {
+              // Clean up the parked resolver so a late user response doesn't
+              // resolve an already-rejected promise (harmless but noisy).
+              this.approvalResolvers.delete(requestId)
+              // M10-fix: emit an `approval-resolved` event so any UI / SSE
+              // listener waiting for the answer learns the approval
+              // terminated. Previously a timeout or abort would surface as
+              // a thrown error inside `runApprovalTask`, but the
+              // dashboard's parked approval request would never receive a
+              // resolution event — leaving it pinned as "awaiting" until
+              // the user manually closed it. We classify the outcome as
+              // `denied` because the user never explicitly approved, and
+              // include the reason for the dashboard's audit log.
+              const reason = timeoutSignal?.signal.aborted
+                ? `approval timed out after ${approval.timeoutMs}ms`
+                : err instanceof Error
+                  ? err.message
+                  : "approval aborted"
+              this.emit({
+                type: "approval-resolved",
+                workspaceId: workspace.id,
+                taskId: task.id,
+                requestId,
+                decision: "reject",
+                comment: reason,
+              })
+              if (timeoutSignal?.signal.aborted) {
+                throw new Error(`approval timed out after ${approval.timeoutMs}ms`)
+              }
+              throw err
             })
-            if (timeoutSignal?.aborted) {
-              throw new Error(`approval timed out after ${approval.timeoutMs}ms`)
-            }
-            throw err
-          })
+            .finally(() => {
+              // Release the chunk chain once the wait has settled — the
+              // deadline is no longer needed.
+              timeoutSignal?.clear()
+            })
 
     if (response.decision === "reject") {
       throw new Error(
@@ -3043,14 +3052,20 @@ export class AgentRuntime {
   /**
    * Natural completion is the goal's terminal state: when a declared goal is
    * still `working` as the workspace completes, resolve it with the newest
-   * result. Multiple done events / re-executions cannot re-emit — the
-   * machine only fires on the working → final-reply edge.
+   * result. A FAILED run resolves with the error itself instead — error-first
+   * collection (swarms agent_answer borrowing): the error is more honest
+   * than any partial output earlier rounds left in results/memory. Multiple
+   * done events / re-executions cannot re-emit — the machine only fires on
+   * the working → final-reply edge. Aborted runs still leave the goal
+   * working (cancellation is not an outcome; cancelGoal abandons it).
    */
-  private autoResolveGoal(workspaceId: string, results: Result[]): void {
+  private autoResolveGoal(workspaceId: string, results: Result[], failure?: string): void {
     const machine = this.goalMachines.get(workspaceId)
     if (!machine || machine.state !== "working") return
-    const lastResult = results[results.length - 1]
-    this.resolveGoal(workspaceId, lastResult?.output ?? "")
+    this.resolveGoal(
+      workspaceId,
+      errorFirstReply({ error: failure, output: lastOutputOf(results) }),
+    )
   }
 }
 
@@ -3152,6 +3167,11 @@ async function runToolLoopAndSubmit(
 function conditionSatisfied(condition: string, results: Result[]): boolean {
   const lower = condition.toLowerCase()
   return results.some((r) => r.output.toLowerCase().includes(lower))
+}
+
+/** Newest collected output, or undefined when nothing settled. */
+function lastOutputOf(results: Result[]): string | undefined {
+  return results[results.length - 1]?.output
 }
 
 export function newId(prefix: string): string {

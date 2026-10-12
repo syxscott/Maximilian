@@ -81,6 +81,45 @@ d("Real PostgreSQL integration", () => {
     expect(loaded!.status).toBe("pending")
   })
 
+  it("survives arbitrary metadata keys through save → load (oh-my-claudecode be5e87f7d borrowing)", async () => {
+    // The survival contract: fields agents and machinery hang off the
+    // workspace (goalJudgement, recoveryHold, jobId provenance) must come
+    // back through a save→load round-trip. The pre-fix save path whitelisted
+    // columns and silently dropped the whole metadata object.
+    const ws = {
+      id: "ws-it-meta",
+      userRequest: "metadata survival probe",
+      results: [],
+      status: "completed" as const,
+      metadata: {
+        goalJudgement: { verdict: "partially_achieved", reason: "ungraded", confidence: 0.5 },
+        jobId: "job_abc",
+        scheduledBy: "job",
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    await store.saveWorkspace(ws)
+    const loaded = await store.loadWorkspace("ws-it-meta")
+    expect(loaded).toBeDefined()
+    expect(loaded!.metadata.goalJudgement).toEqual(ws.metadata.goalJudgement)
+    expect(loaded!.metadata.jobId).toBe("job_abc")
+    expect(loaded!.metadata.scheduledBy).toBe("job")
+
+    // A second save with different metadata REPLACES it (save owns the
+    // object) — no zombie keys from the earlier write.
+    await store.saveWorkspace({
+      ...ws,
+      status: "failed" as const,
+      metadata: { recoveryHold: { category: "permanent" }, updatedAt2: true },
+    })
+    const reloaded = await store.loadWorkspace("ws-it-meta")
+    expect(reloaded!.metadata.recoveryHold).toEqual({ category: "permanent" })
+    expect(reloaded!.metadata.jobId).toBeUndefined()
+    // Clean up so the test is repeatable.
+    await db.execute(sql`DELETE FROM workspaces WHERE id = ${"ws-it-meta"}`)
+  })
+
   it("returns undefined for unknown workspace id", async () => {
     const loaded = await store.loadWorkspace("nonexistent")
     expect(loaded).toBeUndefined()

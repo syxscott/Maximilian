@@ -1,0 +1,22 @@
+{
+  "name": "glob",
+  "description": "Find files matching a glob pattern. Supports *, **, and ?.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "pattern": {
+        "type": "string",
+        "description": "Glob pattern (e.g. '**/*.ts', 'src/**/*.tsx')"
+      },
+      "path": {
+        "type": "string",
+        "description": "Directory to search in (default: current directory)"
+      },
+      "limit": {
+        "type": "number",
+        "description": "Maximum number of results (default: 100)"
+      }
+    },
+    "required": ["pattern"]
+  }
+}

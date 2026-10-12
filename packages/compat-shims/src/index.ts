@@ -14,7 +14,10 @@
  *   - `ink.ts`      — useInputShim, useAppShim, BoxProps
  *   - `drizzle.ts`  — detectDrizzleCapabilities, driverImportPath, serialColumn
  *   - `hono.ts`     — useHonoApp, toStandardError, StandardErrorBody
- *   - `llm.ts`      — NormalizedChatRequest, toProviderArgs, fromProviderResponse
+ *   - `llm.ts`      — NormalizedChatRequest, toProviderArgs, fromProviderResponse,
+ *                     upstreamAuthHeaders
+ *   - `tool-results.ts` — sanitizeResponsesInput, sanitizeChatMessages,
+ *                     ORPHAN_TOOL_OUTPUT_MARKER
  *
  * Each submodule is also re-exported under its subpath so consumers can
  * tree-shake: `import { useHonoApp } from "@max/compat-shims/hono"`.
@@ -25,3 +28,4 @@ export * from "./ink.js"
 export * from "./drizzle.js"
 export * from "./hono.js"
 export * from "./llm.js"
+export * from "./tool-results.js"

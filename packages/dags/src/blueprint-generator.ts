@@ -17,6 +17,7 @@ import type { AgentBlueprint, Capability, ModelHint } from "./types.js"
 import { emptyStats, defaultPersonality, defaultVoice } from "./types.js"
 import { CapabilityLibrary } from "./capability-library.js"
 import { BlueprintStore, newBlueprintId } from "./blueprint-store.js"
+import { renderPromptTemplate } from "./prompt-template.js"
 
 export interface GeneratorOptions {
   /** Reuse existing blueprint for a role if present; do not create a new version. */
@@ -135,7 +136,10 @@ function composePrompt(caps: Capability[], userRequest: string): string {
   sections.push("")
   for (const c of caps) {
     sections.push(`# ${c.displayName}`)
-    sections.push(c.promptTemplate.replace(/\{\{userRequest\}\}/g, userRequest))
+    // Single-pass `{{placeholder}}` scan (conductor e171f9d8e borrowing):
+    // linear in the template, replacements spliced verbatim (never
+    // re-scanned), an unclosed `{{` hides the tail from resolution.
+    sections.push(renderPromptTemplate(c.promptTemplate, { userRequest }))
     sections.push("")
   }
   sections.push(`# Original user request`)

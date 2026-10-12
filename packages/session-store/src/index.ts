@@ -23,6 +23,14 @@ import path from "node:path"
 import Database from "better-sqlite3"
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.js"
 import { GENESIS_HASH, messageChainHash } from "./hash-chain.js"
+import {
+  DEFAULT_PAIRING_TABLE,
+  sanitizeReplayContent,
+  type HistoryItem,
+  type PairingTable,
+  type SanitizeReport,
+} from "./message-sanitizer.js"
+import { readWithHydrationRetry, HydrationInvalidatedError } from "./hydration-retry.js"
 
 /** Options for constructing a {@link SessionStore}. */
 export interface SessionStoreOptions {
@@ -286,6 +294,29 @@ export class SessionStore {
         "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
       )
       .run(key, value)
+  }
+
+  /**
+   * Version of the underlying database as seen from THIS connection
+   * (SQLite `data_version`: bumps when ANOTHER connection commits — our
+   * own writes do not move it). The probe behind {@link readConsistent}'s
+   * hydration-invalidation detection; exposed for tests and operators.
+   */
+  get dataVersion(): number {
+    return toNumber(this.db.pragma("data_version", { simple: true }) as number)
+  }
+
+  /**
+   * Read a projection under hydration-invalidation detection (openclaw
+   * session-actor borrowing): `fn` may hydrate from several underlying
+   * rows; if another connection commits BETWEEN them, the whole read is
+   * retried ONCE from scratch (so every dependent is revalidated), and a
+   * second invalidation throws {@link HydrationInvalidatedError} instead
+   * of returning a Frankenstein snapshot. Writes from this same
+   * connection never count as invalidation (data_version semantics).
+   */
+  readConsistent<T>(fn: () => T): T {
+    return readWithHydrationRetry(() => this.dataVersion, fn)
   }
 
   /**
@@ -581,6 +612,60 @@ export class SessionStore {
         hash,
       )
     })
+  }
+
+  /**
+   * The history REPLAY EXIT (agency-swarm orphan-pair borrowing). Returns
+   * the messages that are safe to send back to a strict provider after a
+   * rewind: soft-deleted rows excluded, and every row whose content is a
+   * JSON array of typed provider items passed through the orphan-pair
+   * sanitizer (a call stripped of its output, or an output stripped of its
+   * call, would make the whole replay request fail). Rows whose items are
+   * ALL orphaned fragments are dropped entirely; rows with plain-text (or
+   * non-JSON) content pass through untouched. Pass `fromTurnOrdinal` to
+   * consume exactly the surviving history after `rewindFromTurn`; timeline
+   * consumers get the same view with `fromTurnOrdinal` omitted.
+   */
+  replayMessages(
+    sessionId: string,
+    opts: { fromTurnOrdinal?: number; limit?: number; table?: PairingTable } = {},
+  ): Array<MessageRow & { sanitizeReport: SanitizeReport | null }> {
+    const from = opts.fromTurnOrdinal ?? 0
+    const limit = opts.limit ?? 1000
+    const table = opts.table ?? DEFAULT_PAIRING_TABLE
+    const rows = this.statement(
+      "replayMessages",
+      `SELECT id, session_id, role, content, created_at, seq, prev_hash AS prevHash, hash
+       FROM messages
+       WHERE session_id = ? AND deleted_at IS NULL AND COALESCE(turn_ordinal, 0) >= ?
+       ORDER BY created_at, id LIMIT ?`,
+    ).all(sessionId, from, limit) as Array<{
+      id: string
+      session_id: string
+      role: string
+      content: string
+      created_at: string | null
+      seq: number | null
+      prevHash: string | null
+      hash: string | null
+    }>
+    const out: Array<MessageRow & { sanitizeReport: SanitizeReport | null }> = []
+    for (const row of rows) {
+      const sanitized = sanitizeReplayContent(row.content, table)
+      if (sanitized.droppedAll) continue
+      out.push({
+        id: row.id,
+        sessionId: row.session_id,
+        role: row.role,
+        content: sanitized.content,
+        createdAt: row.created_at,
+        seq: row.seq,
+        hash: row.hash,
+        prevHash: row.prevHash,
+        sanitizeReport: sanitized.report,
+      })
+    }
+    return out
   }
 
   /**
@@ -884,3 +969,43 @@ export {
   type MessageChainEntry,
 } from "./hash-chain.js"
 export { createSessionRuntimeListener, type SessionRuntimeEvent } from "./runtime-listener.js"
+export {
+  DEFAULT_PAIRING_TABLE,
+  sanitizeHistoryItems,
+  sanitizeReplayContent,
+  type AdjacentFollowerRule,
+  type CallIdPairingRule,
+  type HistoryItem,
+  type PairingRule,
+  type PairingTable,
+  type RequestResponsePairingRule,
+  type SanitizeReport,
+  type SanitizeResult,
+} from "./message-sanitizer.js"
+export {
+  HydrationInvalidatedError,
+  readWithHydrationRetry,
+  readWithHydrationRetryAsync,
+} from "./hydration-retry.js"
+export {
+  DEFAULT_RETENTION_MS,
+  RetentionCache,
+  normalizeRetentionMs,
+  setDefaultRetentionMs,
+  type RetentionCacheOptions,
+  type RetentionCacheStats,
+} from "./retention-cache.js"
+export {
+  SYSTEM_KIND_PREFIX,
+  admitSubmission,
+  affectsModelContext,
+  hasQueuedReset,
+  isDisplayOnlySubmission,
+  type Admission,
+  type AdmissionDecision,
+  type DisplayPayload,
+  type QueuedSubmission,
+  type QueueState,
+  type SubmissionDraft,
+  type SubmissionType,
+} from "./submission-admission.js"

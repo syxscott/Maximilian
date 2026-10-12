@@ -15,3 +15,4 @@ export {
 } from "./model-assigner.js"
 export { DynamicAgentFactory } from "./dynamic-agent-factory.js"
 export { DAGS, type ComposedTeam } from "./dags.js"
+export { findPlaceholders, renderPromptTemplate } from "./prompt-template.js"

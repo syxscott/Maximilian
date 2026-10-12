@@ -41,6 +41,7 @@ import { validateCandidate, type GateResult } from "./constraint-gates.js"
 import { lintPromptShape, summarizeViolations, type LintViolation } from "./artifact-lint.js"
 import { scrubSecrets, containsSecret } from "./secret-scrub.js"
 import { defaultJudge, toReviewScore, type Judge } from "./llm-judge.js"
+import { resolveFamilyRow, type EvolutionDecisionShipGate } from "./ship-gates.js"
 
 export const SCORE_THRESHOLD = 6.0
 export const ACCEPTANCE_THRESHOLD = 0.5
@@ -190,7 +191,7 @@ export class EvolutionEngine {
         ),
       )
 
-      const decision: EvolutionDecision = {
+      const decision: EvolutionDecision = withShipGate({
         id: `evo-${randomUUID().slice(0, 8)}`,
         agentRole: role,
         fromVersion: current?.id ?? "v0",
@@ -200,7 +201,7 @@ export class EvolutionEngine {
         newAvgScore: 0,
         triggeredAt: new Date().toISOString(),
         reason: rejectReason,
-      }
+      })
       // Also persist a "stub" AgentVersion under the canonical version file
       // so listVersions and consumers can find it. The `reason` carries the
       // gate detail; `stats.avgScore = 0` indicates "not yet evaluated".
@@ -324,7 +325,7 @@ export class EvolutionEngine {
       `Δ ${deltaScore >= 0 ? "+" : ""}${deltaScore.toFixed(2)} (margin ${effectiveMargin.toFixed(2)})`,
     )
 
-    const decision: EvolutionDecision = {
+    const decision: EvolutionDecision = withShipGate({
       id: `evo-${randomUUID().slice(0, 8)}`,
       agentRole: role,
       fromVersion: current?.id ?? "v0",
@@ -336,7 +337,7 @@ export class EvolutionEngine {
       reason: promoted
         ? `Promoted: ${reasonParts.join("; ")}.`
         : `Discarded: ${reasonParts.join("; ")}.`,
-    }
+    })
 
     await this.appendDecision(role, decision)
     return decision
@@ -358,6 +359,22 @@ export class EvolutionEngine {
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+
+/**
+ * Ship-gate stamp for the decision row (cbm-mcp 7209ae12 borrowing):
+ * every decision IS a prompt_rewrite artifact, so the row carries its
+ * family's gate state. A family below its held-out audit bar still yields
+ * the decision — the row is degraded instead.
+ */
+function withShipGate<D extends EvolutionDecision>(decision: D): D {
+  const row = resolveFamilyRow("prompt_rewrite", undefined)
+  const shipGate: EvolutionDecisionShipGate = {
+    family: row.family,
+    shipped: row.shipped,
+    ...(row.degradation ? { degradation: row.degradation } : {}),
+  }
+  return { ...decision, shipGate }
+}
 
 function nextVersionId(versions: string[]): string {
   const nums = versions

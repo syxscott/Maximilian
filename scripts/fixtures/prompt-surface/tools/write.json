@@ -1,0 +1,18 @@
+{
+  "name": "write",
+  "description": "Write content to a file. Creates parent directories if needed.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to the file to write"
+      },
+      "content": {
+        "type": "string",
+        "description": "Content to write"
+      }
+    },
+    "required": ["path", "content"]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "protocol": "docs/audits/capability-family-audit-protocol.md",
+  "audits": [
+    {
+      "family": "prompt_rewrite",
+      "verdict": "passed",
+      "judged": 150,
+      "correct": 150,
+      "auditedAt": "2026-10-10"
+    },
+    {
+      "family": "memory_curation",
+      "verdict": "passed",
+      "judged": 150,
+      "correct": 149,
+      "auditedAt": "2026-10-10"
+    },
+    {
+      "family": "lesson_gating",
+      "verdict": "passed",
+      "judged": 150,
+      "correct": 150,
+      "auditedAt": "2026-10-11"
+    },
+    {
+      "family": "model_selection",
+      "verdict": "passed",
+      "judged": 79,
+      "correct": 79,
+      "auditedAt": "2026-10-11"
+    },
+    {
+      "family": "background_reflection",
+      "verdict": "passed",
+      "judged": 150,
+      "correct": 150,
+      "auditedAt": "2026-10-11"
+    },
+    {
+      "family": "oracle_triad",
+      "verdict": "failed",
+      "judged": 100,
+      "correct": 93,
+      "auditedAt": "2026-10-09"
+    }
+  ]
+}

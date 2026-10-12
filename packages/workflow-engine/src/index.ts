@@ -19,6 +19,8 @@
  * an injected port. Phase markers group steps for progress reporting.
  */
 
+export * from "./step-gate.js"
+
 export interface WorkflowStep {
   /** Stable identity of this step within the workflow. */
   siteId: string
@@ -26,6 +28,14 @@ export interface WorkflowStep {
   phase?: string
   /** Human description. */
   description?: string
+  /**
+   * Tool this step invokes. Required when the workflow runs through a step
+   * gate (see step-gate.ts) — a step that names no tool cannot be checked
+   * and is refused there.
+   */
+  tool?: string
+  /** Arguments for the tool; default: the chained input. */
+  args?: unknown
 }
 
 export interface WorkflowDefinition {
@@ -124,11 +134,13 @@ export class WorkflowEngine {
           : initialInput
       let output: unknown
       let ok = true
+      let failure: unknown
       try {
         output = await this.executor.executeStep(step, input)
       } catch (err) {
         ok = false
-        output = { error: String(err) }
+        failure = err
+        output = { error: err instanceof Error ? err.message : String(err) }
       }
       await this.journal.append(runId, {
         siteId: step.siteId,
@@ -140,7 +152,14 @@ export class WorkflowEngine {
         phase: step.phase,
         recordedAt: new Date().toISOString(),
       })
-      if (!ok) throw new Error(`workflow step ${step.siteId} failed: ${JSON.stringify(output)}`)
+      if (!ok) {
+        // Rethrow the executor's original error so typed refusals (a step
+        // gate's StepGateError, a provider failure) keep their identity —
+        // non-Error throws get the historic wrapper with the site id.
+        throw failure instanceof Error
+          ? failure
+          : new Error(`workflow step ${step.siteId} failed: ${JSON.stringify(output)}`)
+      }
       done.set(step.siteId, output)
     }
 

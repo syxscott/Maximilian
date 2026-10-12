@@ -112,6 +112,53 @@ function buildAnthropicArgs(req: NormalizedChatRequest, system: string): Record<
   return args
 }
 
+// ── Upstream auth selection (cc-switch `6e7811e5` borrowing) ────────────────
+
+/**
+ * Wire protocols an upstream endpoint can speak. The protocol — not the
+ * env variable a credential happened to come from — decides the auth
+ * header: OpenAI Chat / Responses upstreams only ever accept
+ * `Authorization: Bearer`, so a credential resolved from
+ * `ANTHROPIC_API_KEY` must still be sent as Bearer there.
+ */
+export type UpstreamProtocol = "openai_chat" | "openai_responses" | "anthropic"
+
+export interface UpstreamAuthInput {
+  protocol: UpstreamProtocol
+  /** Credential value already resolved from env / vault. */
+  credential: string
+  /**
+   * Env variable name the credential came from. Only read for Anthropic
+   * Messages upstreams, where the name distinguishes the two auth styles
+   * (`ANTHROPIC_AUTH_TOKEN` → Bearer, `ANTHROPIC_API_KEY` → x-api-key);
+   * OpenAI-format upstreams ignore it entirely.
+   */
+  credentialEnvVar?: string
+}
+
+export interface UpstreamAuthHeader {
+  name: string
+  value: string
+}
+
+/**
+ * Headers to send to an LLM upstream. Empty credential → no auth header
+ * (the caller decides whether that is an error). OpenAI Chat and
+ * Responses formats always use `Authorization: Bearer`; Anthropic Messages
+ * keeps the env-var semantics of the credential.
+ */
+export function upstreamAuthHeaders(input: UpstreamAuthInput): UpstreamAuthHeader[] {
+  if (input.credential === "") return []
+  if (input.protocol === "openai_chat" || input.protocol === "openai_responses") {
+    return [{ name: "authorization", value: `Bearer ${input.credential}` }]
+  }
+  if (input.credentialEnvVar?.toUpperCase() === "ANTHROPIC_AUTH_TOKEN") {
+    return [{ name: "authorization", value: `Bearer ${input.credential}` }]
+  }
+  // ANTHROPIC_API_KEY (and an unspecified source) keeps x-api-key semantics.
+  return [{ name: "x-api-key", value: input.credential }]
+}
+
 /**
  * Normalize a raw SDK response into `NormalizedChatResponse`.
  *

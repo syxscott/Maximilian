@@ -22,6 +22,7 @@
  */
 
 import { promises as fs } from "node:fs"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 import path from "node:path"
 import type { AfterToolCallContext, AfterToolCallResult } from "./types.js"
 
@@ -136,15 +137,18 @@ export function createToolOutputBudget(opts: ToolOutputBudgetOptions): {
         })
       } catch {
         // Artifact write failed — degrade to head+tail preview.
-        const head = text.slice(0, 2000)
+        // Surrogate-safe (deepseek dc07e5a50d borrowing): a lone surrogate
+        // at either cut makes strict JSON parsers reject the whole transcript.
+        const head = truncateWithoutSplittingSurrogatePair(text, 2000)
         const tail = text.slice(-1000)
+        const tailSafe = tail.startsWith("\uDC00") ? tail.slice(1) : tail
         return {
           content: [
             {
               type: "text",
               text:
                 `[output truncated — ${text.length} chars exceeded the ${maxChars}-char budget, ` +
-                `artifact write failed]\n${head}\n[…]\n${tail}`,
+                `artifact write failed]\n${head}\n[…]\n${tailSafe}`,
             },
           ],
         }

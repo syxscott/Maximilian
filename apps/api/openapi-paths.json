@@ -23,6 +23,7 @@
   "GET /flags/{name}",
   "GET /gov/pending",
   "GET /health",
+  "GET /inbound/dead-letter",
   "GET /inbound/stats",
   "GET /jobs",
   "GET /jobs/{id}/slots",

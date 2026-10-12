@@ -20,6 +20,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { withSpan } from "@max/telemetry"
 import type { ChatChunk, ChatMessage, ChatOptions, ChatResponse, Provider } from "../base.js"
 import { ProviderError } from "../base.js"
+import { wireStopSequences } from "../capability-predicates.js"
 
 export interface AnthropicMessagesConfig {
   id: string
@@ -93,7 +94,9 @@ export class AnthropicMessagesProvider implements Provider {
             messages: rest,
             temperature: options.temperature ?? this.defaultTemperature,
             max_tokens: options.maxTokens ?? this.defaultMaxTokens,
-            stop_sequences: options.stopSequences,
+            // Capability gate (crewAI supports_stop_words borrowing): omit
+            // the parameter entirely for model families that reject it.
+            stop_sequences: wireStopSequences(model, options.stopSequences),
           })
           const textBlock = response.content.find((b) => b.type === "text")
           const content = textBlock && textBlock.type === "text" ? textBlock.text : ""

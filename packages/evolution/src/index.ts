@@ -16,11 +16,7 @@
 export * from "./types.js"
 export { MetricsStore } from "./metrics-store.js"
 export type { MetricsStoreLike } from "./metrics-store.js"
-export {
-  computeFlipMatrix,
-  summarizeFlipMatrix,
-  type FlipMatrix,
-} from "./flip-matrix.js"
+export { computeFlipMatrix, summarizeFlipMatrix, type FlipMatrix } from "./flip-matrix.js"
 export {
   runOracleTriad,
   OracleLessonsMissingError,
@@ -135,3 +131,26 @@ export {
   type LeaderboardRow,
   type VariantExecutor,
 } from "./variant-runner.js"
+// Feature-family audit ship gate (cbm-mcp borrowing): one registry
+// generates both the family names and their gates; held families degrade
+// produced rows instead of disabling them.
+export {
+  CAPABILITY_FAMILIES,
+  FAMILY_SHIP_GATES,
+  BELOW_BAR_TIER_REASON,
+  WILSON_LOWER_BOUND_MIN,
+  POINT_ESTIMATE_MIN,
+  MIN_HELDOUT_SAMPLE,
+  isCapabilityFamily,
+  wilsonLowerBound,
+  shipGateViolations,
+  resolveFamilyRow,
+  type CapabilityFamily,
+  type FamilyShipGate,
+  type AuditLedger,
+  type AuditRecord,
+  type ShipGateViolation,
+  type Degradation,
+  type EvolutionDecisionShipGate,
+  type FamilyRow,
+} from "./ship-gates.js"

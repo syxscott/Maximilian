@@ -18,6 +18,12 @@ export {
 
 export { reconcile, reconcileArray, type ReconcileOptions } from "./reconcile"
 
+export {
+  createDebouncedPersistence,
+  type DebouncedPersistenceOptions,
+  type DebouncedPersistenceHandle,
+} from "./debounced-persistence"
+
 export { Show, type ShowProps } from "./show"
 export { For, type ForProps } from "./for"
 export { Switch, Match, type SwitchProps, type MatchProps } from "./switch"

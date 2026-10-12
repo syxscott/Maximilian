@@ -23,6 +23,17 @@
 
 import type { SessionStore } from "./index.js"
 
+/**
+ * Surrogate-safe slice (deepseek dc07e5a50d borrowing, local copy — this
+ * package deliberately has no @max/core dependency): drop a trailing lone
+ * high surrogate so a cut never strands half a character in a title.
+ */
+function surrogateSafeSlice(text: string, max: number): string {
+  const cut = text.slice(0, max)
+  const last = cut.charCodeAt(cut.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
+}
+
 /** Structural subset of a runtime event (no @max/core dependency). */
 export interface SessionRuntimeEvent {
   type: string
@@ -63,7 +74,7 @@ export function createSessionRuntimeListener(
       const ask = typeof plan?.userRequest === "string" ? plan.userRequest : undefined
       if (ask && ask.length > 0 && lastUserRequests.get(workspaceId) !== ask) {
         lastUserRequests.set(workspaceId, ask)
-        const sessionId = ensureSession(workspaceId, ask.slice(0, 80))
+        const sessionId = ensureSession(workspaceId, surrogateSafeSlice(ask, 80))
         store.appendMessage({
           id: `msg:${plan?.id ?? "plan"}:user`,
           sessionId,

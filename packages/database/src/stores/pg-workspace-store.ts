@@ -35,6 +35,7 @@ export class PgWorkspaceStore {
       createdAt: string
       updatedAt: string
       error?: string
+      metadata?: Record<string, unknown>
     },
     tenantId?: string,
   ): Promise<void> {
@@ -49,6 +50,7 @@ export class PgWorkspaceStore {
         results: workspace.results ?? [],
         review: workspace.review ?? null,
         error: workspace.error ?? null,
+        metadata: workspace.metadata ?? {},
         createdAt: new Date(workspace.createdAt),
         updatedAt: new Date(workspace.updatedAt),
       })
@@ -69,6 +71,14 @@ export class PgWorkspaceStore {
           results: workspace.results ?? [],
           review: workspace.review ?? null,
           error: workspace.error ?? null,
+          // Survival contract (oh-my-claudecode be5e87f7d borrowing): the
+          // metadata the caller supplies IS the full metadata — a save that
+          // silently dropped unknown keys (goalJudgement, recoveryHold,
+          // jobId provenance) destroyed agent state on every write. The
+          // tenantId column remains the single source for ws.metadata.tenantId
+          // on read; a stale tenantId key inside the JSON is overwritten
+          // there, never here.
+          metadata: workspace.metadata ?? {},
           updatedAt: new Date(workspace.updatedAt),
         },
       })
@@ -111,6 +121,7 @@ export class PgWorkspaceStore {
     const rows = await this.db.select().from(workspaces).where(where).limit(1)
     if (rows.length === 0) return undefined
     const row = rows[0]
+    const storedMetadata = (row.metadata ?? {}) as Record<string, unknown>
     return {
       id: row.id,
       userRequest: row.userRequest,
@@ -121,7 +132,9 @@ export class PgWorkspaceStore {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       error: row.error ?? undefined,
-      metadata: { tenantId: row.tenantId ?? undefined },
+      // Survived metadata first; the tenant column stays authoritative for
+      // ws.metadata.tenantId (uniform contract with FileWorkspaceStore).
+      metadata: { ...storedMetadata, tenantId: row.tenantId ?? undefined },
     }
   }
 

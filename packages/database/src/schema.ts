@@ -33,6 +33,12 @@ export const workspaces = pgTable("workspaces", {
   results: jsonb("results").default([]).notNull(),
   review: jsonb("review"), // ReviewResult or null
   error: text("error"),
+  // Survival contract (oh-my-claudecode be5e87f7d borrowing): everything the
+  // runtime and agents hang off the workspace — goalJudgement, recoveryHold,
+  // jobId provenance — lives here and MUST survive save→load. The save path
+  // persists this column; loadWorkspace merges tenantId back in so callers
+  // can read ws.metadata?.tenantId uniformly across stores.
+  metadata: jsonb("metadata").default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 })

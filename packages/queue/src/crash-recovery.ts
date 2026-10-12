@@ -27,6 +27,8 @@
  * + `Job.retry()` / `Job.updateData()`-style metadata writes in the worker app.
  */
 
+import type { RecoveryBookkeepingIndex } from "./ownership-index.js"
+
 /** Closed category set — mirrors @max/core error-taxonomy's ErrorCategory. */
 export const CRASH_CATEGORIES = [
   "transient",
@@ -150,14 +152,65 @@ export async function recoverStalledJobs(
   classify: (err: unknown) => CrashCategory | null,
   options: StalledRecoveryOptions = {},
 ): Promise<StalledRecoveryReport> {
+  const stalled = await port.listStalledRunning()
+  return sweepStalledCandidates(stalled, port, classify, options)
+}
+
+/**
+ * The same sweep, but fed from a {@link RecoveryBookkeepingIndex} (pi
+ * scheduler-bounds borrowing): the candidate set is the index's RUNNING
+ * tasks only — terminal history is never materialized — so the pass
+ * costs O(live), independent of how many tasks the ledger remembers.
+ *
+ * `countOnly` short-circuits every port verb: category counts still run
+ * (classification is pure), which is what a status/heartbeat surface
+ * needs. Decisions on the normal path are IDENTICAL to
+ * {@link recoverStalledJobs}.
+ */
+export async function recoverStalledJobsFromIndex(
+  index: RecoveryBookkeepingIndex,
+  port: StalledJobPort,
+  classify: (err: unknown) => CrashCategory | null,
+  options: StalledRecoveryOptions & { countOnly?: boolean } = {},
+): Promise<StalledRecoveryReport> {
+  const candidates = index.candidatesForSweep()
+  const report = await sweepStalledCandidates(
+    candidates,
+    port,
+    classify,
+    options,
+    options.countOnly === true,
+  )
+  // Bounded bookkeeping: drain the removal worklist at the END of the
+  // sweep (pi: never mid-operation) so terminal ownership entries whose
+  // last live dependent ended leave the index.
+  index.sweepPending()
+  return report
+}
+
+/** Shared sweep core: one loop, one decision table, three entry shapes.
+ * `port` verbs are skipped entirely when `countOnly` is true. */
+async function sweepStalledCandidates(
+  stalled: readonly StalledJobRecord[],
+  port: StalledJobPort,
+  classify: (err: unknown) => CrashCategory | null,
+  options: StalledRecoveryOptions,
+  countOnly = false,
+): Promise<StalledRecoveryReport> {
   const report = emptyReport()
   const maxResets = options.maxResets ?? DEFAULT_MAX_RESETS
-  const stalled = await port.listStalledRunning()
 
   for (const job of stalled) {
     report.scanned += 1
     const category = classify(job.lastError) ?? "unknown"
     report.byCategory[category] += 1
+
+    if (category === "unknown") {
+      // Conservative: no port verb, in ANY mode — only counted.
+      report.unknownLeft += 1
+      continue
+    }
+    if (countOnly) continue // counting short-circuit: no port verbs at all
 
     try {
       switch (category) {
@@ -177,10 +230,6 @@ export async function recoverStalledJobs(
         case "cancelled":
           await port.holdWithReason(job.id, category)
           report.held += 1
-          break
-        case "unknown":
-          // Conservative: no port call at all — only counted.
-          report.unknownLeft += 1
           break
       }
     } catch (err) {

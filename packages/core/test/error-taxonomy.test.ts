@@ -11,16 +11,18 @@ import {
   classifyError,
   ERROR_CATEGORIES,
   ERROR_RESET_ACTIONS,
+  isLLMRequestOversized,
   type ErrorCategory,
 } from "../src/error-taxonomy.js"
 import { PolicyDeniedError } from "../src/policy-error.js"
 
 describe("taxonomy shape", () => {
-  it("is a closed six-category set", () => {
+  it("is a closed seven-category set (context_limit subdivides into oversized)", () => {
     expect(ERROR_CATEGORIES).toEqual([
       "transient",
       "permanent",
       "context_limit",
+      "oversized",
       "rate_limit",
       "cancelled",
       "unknown",
@@ -38,6 +40,7 @@ describe("taxonomy shape", () => {
     expect(ERROR_RESET_ACTIONS.rate_limit).toBe("reset_retryable")
     expect(ERROR_RESET_ACTIONS.permanent).toBe("hold")
     expect(ERROR_RESET_ACTIONS.context_limit).toBe("hold")
+    expect(ERROR_RESET_ACTIONS.oversized).toBe("hold")
     expect(ERROR_RESET_ACTIONS.cancelled).toBe("hold")
     expect(ERROR_RESET_ACTIONS.unknown).toBe("hold_and_count")
   })
@@ -93,8 +96,8 @@ describe("classifyError: message patterns fold into the closed set", () => {
     expect(c.resetAction).toBe("reset_retryable")
   })
 
-  it("context overflow", () => {
-    const c = classifyError(new Error("maximum context length exceeded"))
+  it("generic token-limit wording stays context_limit (soft overflow signal)", () => {
+    const c = classifyError(new Error("token limit reached for this workspace"))
     expect(c.category).toBe("context_limit")
     // A blind re-run without compaction re-hits the same wall: not
     // retryable as-is, but not a terminal verdict either.
@@ -149,5 +152,75 @@ describe("classifyError: unknown is conservative", () => {
   it("bounds the message at 500 chars", () => {
     const c = classifyError(new Error("x".repeat(10_000)))
     expect(c.message.length).toBe(500)
+  })
+})
+
+describe("isLLMRequestOversized — deterministic size rejections (minimax borrowing)", () => {
+  /** Minimal ProviderError-shaped probe input. */
+  const providerError = (message: string, statusCode?: number): Error & { statusCode?: number } => {
+    const err = new Error(message) as Error & { statusCode?: number }
+    if (statusCode !== undefined) err.statusCode = statusCode
+    return err
+  }
+
+  it("accepts HTTP 413 outright (the size status)", () => {
+    expect(isLLMRequestOversized(providerError("invoice too big", 413))).toBe(true)
+  })
+
+  it.each([
+    ["request_too_large: body exceeds limit", undefined],
+    ["request_too_large: body exceeds limit", 400],
+    ["request_too_large: body exceeds limit", 422],
+    ["payload too large", 400],
+    ["This model's maximum context length is 8192 tokens", undefined],
+    ["context length exceeded", undefined],
+    ["invalid_request_error: request_too_large", 400],
+  ] as Array<[string, number | undefined]>)(
+    "accepts %j (status %j) via the keyword gate",
+    (message, status) => {
+      expect(isLLMRequestOversized(providerError(message, status))).toBe(true)
+    },
+  )
+
+  it.each([
+    ["request_too_large-ish wording", 401],
+    ["request_too_large-ish wording", 403],
+    ["request_too_large-ish wording", 408],
+    ["request_too_large-ish wording", 429],
+    ["context length hint inside a server error", 500],
+    ["context length hint inside a bad gateway", 502],
+  ] as Array<[string, number]>)("rejects %j with status %j", (message, status) => {
+    expect(isLLMRequestOversized(providerError(message, status))).toBe(false)
+  })
+
+  it("excludes whatever also looks transient, regardless of keywords", () => {
+    expect(
+      isLLMRequestOversized(providerError("timeout before request_too_large check", 400)),
+    ).toBe(false)
+    expect(
+      isLLMRequestOversized(providerError("request_too_large after rate limit retry", 400)),
+    ).toBe(false)
+    expect(isLLMRequestOversized(providerError("connection reset (ECONNRESET)", 400))).toBe(false)
+    const aborted = providerError("request_too_large", 413)
+    aborted.name = "AbortError"
+    expect(isLLMRequestOversized(aborted)).toBe(false)
+  })
+
+  it("requires the keyword gate when no status survives", () => {
+    expect(isLLMRequestOversized(providerError("just a bad day"))).toBe(false)
+    expect(isLLMRequestOversized(providerError("request too large for this route"))).toBe(true)
+  })
+
+  it("reads fetch-layer `status` when statusCode is absent", () => {
+    const err = new Error("request too large") as Error & { status?: number }
+    err.status = 413
+    expect(isLLMRequestOversized(err)).toBe(true)
+  })
+
+  it("routes deterministic rejections into the oversized category (never reset)", () => {
+    const c = classifyError(providerError("request_too_large: reduce the request body", 413))
+    expect(c.category).toBe("oversized")
+    expect(c.retryable).toBe(false)
+    expect(c.resetAction).toBe("hold")
   })
 })

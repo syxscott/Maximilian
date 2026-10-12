@@ -33,6 +33,7 @@ export const API_PATHS = [
   "GET /flags/{name}",
   "GET /gov/pending",
   "GET /health",
+  "GET /inbound/dead-letter",
   "GET /inbound/stats",
   "GET /jobs",
   "GET /jobs/{id}/slots",
@@ -136,5 +137,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 123. */
-export const API_PATH_COUNT = 123
+/** Number of routes in the backend contract: 124. */
+export const API_PATH_COUNT = 124

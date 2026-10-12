@@ -21,6 +21,8 @@
  * @see crates/codegen/xai-grok-tools/src/types/tool.rs Reminder
  */
 
+import { isCompactionBoundary } from "./compaction.js"
+
 // ── Reminder Types ─────────────────────────────────────────────────────────────
 
 /**
@@ -453,4 +455,133 @@ export function toReminderInjection(reminders: Reminder[]): ReminderInjection {
   }
 
   return { systemReminders, userReminders }
+}
+
+// ── Per-turn Reminder Injection (minimax 8e93b19/c460f08 + agency-swarm 借鉴) ──
+//
+// Three cooperating mechanisms, all stateless over the visible history:
+//
+//   (a) Injection gate — a per-turn reminder (session id, …) is injected ONLY
+//       when the history AFTER the most recent compaction boundary does not
+//       already carry it (forward scan, stops at the boundary). Content the
+//       boundary summarizes away counts as absent; content still visible
+//       counts as present, so the reminder is never duplicated per turn.
+//   (b) Post-compaction identity restore — when compaction summarizes the
+//       history that carried the identity away, the compaction layer appends
+//       a hidden identity reminder (see CompactionConfig.appendHiddenReminders);
+//       because the scan counts that reminder too, the next turn's check does
+//       not re-inject.
+//   (c) Single owner — across one run's multi-hop model calls, each reminder
+//       key has EXACTLY ONE injector (agency-swarm input-filter borrowing):
+//       the first hook that claims a key owns it and later hooks must not
+//       double-write the same reminder.
+
+/** Prefix of the hidden identity reminder so scans can find it by text. */
+export const SESSION_IDENTITY_REMINDER_PREFIX = "YOUR SESSION ID:"
+
+/** The canonical hidden session-identity reminder text. */
+export function sessionIdentityReminder(sessionId: string): string {
+  return `${SESSION_IDENTITY_REMINDER_PREFIX} ${sessionId}`
+}
+
+/** Tolerant text extraction from ChatMessage- or llm-Message-shaped values. */
+function messageText(m: unknown): string {
+  if (typeof m === "string") return m
+  if (m === null || typeof m !== "object") return ""
+  const content = (m as { content?: unknown }).content
+  if (typeof content === "string") return content
+  if (!Array.isArray(content)) return ""
+  let out = ""
+  for (const part of content) {
+    if (typeof part === "string") out += part
+    else if (part && typeof part === "object" && "text" in part) {
+      out += String((part as { text?: unknown }).text ?? "")
+    }
+  }
+  return out
+}
+
+/**
+ * Index of the most recent compaction-summary boundary in `messages`, or -1
+ * when none exists. Scan-based injection starts right after this index.
+ */
+export function findLastCompactionBoundary(messages: readonly unknown[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as { role?: unknown } | undefined
+    if (m && typeof m === "object" && m.role === "system" && isCompactionBoundary(m as never)) {
+      return i
+    }
+  }
+  return -1
+}
+
+/**
+ * Forward scan (minimax blocks.ts sessionIdInContext/historyCarriesSessionId
+ * borrowing): does any message AFTER the most recent compaction boundary
+ * contain `needle`? The scan stops at the boundary — content summarized away
+ * before it is invisible and counts as absent. With no boundary the whole
+ * history is scanned.
+ */
+export function historyAfterLastCompactionCarries(
+  messages: readonly unknown[],
+  needle: string,
+): boolean {
+  if (needle.length === 0) return false
+  const start = findLastCompactionBoundary(messages) + 1
+  for (let i = start; i < messages.length; i++) {
+    if (messageText(messages[i]).includes(needle)) return true
+  }
+  return false
+}
+
+/**
+ * Injection gate for the session-identity reminder: inject ONLY when no
+ * visible post-boundary message (history, an earlier identity reminder, or a
+ * post-compaction hidden reminder) already carries the session id.
+ */
+export function shouldInjectSessionIdentity(
+  messages: readonly unknown[],
+  sessionId: string,
+): boolean {
+  return sessionId.length > 0 && !historyAfterLastCompactionCarries(messages, sessionId)
+}
+
+/**
+ * Single-owner injection gate (agency-swarm 5e26b7cc borrowing).
+ *
+ * One run makes multiple model calls through multiple hooks (the tool loop's
+ * per-turn reminder hook, the post-compaction identity hook, an overflow
+ * recovery hook). Each reminder key must have EXACTLY ONE injector: the
+ * first hook to claim a key owns it; a different hook claiming the same key
+ * is refused instead of double-writing. The owner may claim again (per-turn
+ * reminders re-inject on every model call — agency-swarm "on every model
+ * call" semantics).
+ */
+export class SingleOwnerInjectionGate {
+  private readonly owners = new Map<string, string>()
+
+  /**
+   * Claim `key` for `owner`. True when `owner` is the (new or existing)
+   * owner; false when another hook already owns the key.
+   */
+  claim(key: string, owner: string): boolean {
+    const existing = this.owners.get(key)
+    if (existing === undefined) {
+      this.owners.set(key, owner)
+      return true
+    }
+    return existing === owner
+  }
+
+  /** Who owns `key`, if anyone. */
+  ownerOf(key: string): string | undefined {
+    return this.owners.get(key)
+  }
+
+  /** Release `key` (run ended). Only the current owner may release. */
+  release(key: string, owner: string): boolean {
+    if (this.owners.get(key) !== owner) return false
+    this.owners.delete(key)
+    return true
+  }
 }

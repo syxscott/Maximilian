@@ -1,0 +1,26 @@
+{
+  "name": "grep",
+  "description": "Search for a pattern in file contents. Returns matching lines with file paths and line numbers.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "pattern": {
+        "type": "string",
+        "description": "Regex pattern to search for"
+      },
+      "path": {
+        "type": "string",
+        "description": "File or directory to search in (default: current directory)"
+      },
+      "include": {
+        "type": "string",
+        "description": "Glob pattern to filter files (e.g. '*.ts')"
+      },
+      "limit": {
+        "type": "number",
+        "description": "Maximum number of results (default: 100)"
+      }
+    },
+    "required": ["pattern"]
+  }
+}

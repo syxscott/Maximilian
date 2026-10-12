@@ -1,0 +1,61 @@
+{
+  "name": "bash",
+  "description": "Execute a shell command and return its output.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "The command to execute"
+      },
+      "workdir": {
+        "type": "string",
+        "description": "Working directory (optional)"
+      },
+      "timeout": {
+        "type": "number",
+        "description": "Timeout in milliseconds (default: 120000)"
+      },
+      "description": {
+        "type": "string",
+        "description": "Description of what the command does"
+      }
+    },
+    "required": ["command"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string"
+      },
+      "cwd": {
+        "type": "string"
+      },
+      "exitCode": {
+        "type": "number"
+      },
+      "output": {
+        "type": "string"
+      },
+      "truncated": {
+        "type": "boolean"
+      },
+      "stdoutTruncated": {
+        "type": "boolean"
+      },
+      "stderrTruncated": {
+        "type": "boolean"
+      },
+      "timedOut": {
+        "type": "boolean"
+      },
+      "warnings": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

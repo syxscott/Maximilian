@@ -48,7 +48,7 @@ describe("Context Compaction (借鉴 opencode)", () => {
     const out = compactMessages(msgs, { ...cfg, preserveRecentTokens: 30 }, () => 10)
     expect(out[0]!.role).toBe("system")
     const headText = JSON.stringify(out[0]!.content)
-    expect(headText).toContain("Compaction")
+    expect(headText).toContain("compaction")
     expect(out.length).toBeLessThan(msgs.length + 1)
   })
 
