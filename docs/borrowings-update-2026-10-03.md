@@ -75,3 +75,80 @@ tool 负结果门、durable omission sink、auto-review、aux 加固、session �
 - 哈希链只保证"检测篡改/截断"，不防持有文件系统写权限的攻击者重写整链。
 - Redis pub/sub 的停止信号是 at-least-once 尽力投递：极端情况下信号丢失，运行会自然跑完（抑制窗与队列预检仍是队列/cron 路径上的正确性兜底）。
 - 写安全协调器是进程内互斥；api 与 worker 两进程对同一文件的并发写不在其防护范围（Pg 部署下工作区状态本就由数据库事务保护）。
+
+---
+
+## 2026-10-13 追加波次（dd0a7bf + 529aad6）：2026-10 上游调研池第一二梯队
+
+21 个有更新参考仓逐仓调研（六份调研报告，每份含"排查过但排除"清单）后的全量落地。
+4 个并行代理 + 主线收尾（代理在收尾阶段撞 5 小时限额，中间态 91 文件由主线验证、补缺、集成）。
+
+### 执行链（minimax / opencode / crewAI / swarms / agency-swarm）
+
+| 项                                                                                     | 落点                                                          |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| oversized 确定性分类 + 单次强制压缩恢复（恢复走 before-LLM 管线内 hook，二次拒绝即终） | `packages/core` error-taxonomy + tool-integration             |
+| reminder 注入判定（压缩边界向前扫描）+ 单一所有者                                      | `packages/core` reminder                                      |
+| uncalled 工具调用终态收口（input-incomplete 引导重发）                                 | `packages/core` tool-integration                              |
+| exec 超时分块（>2^31-1ms 定时器钳制）                                                  | `packages/core` scheduleTimeoutChunks                         |
+| LLM 流看门狗（首事件/空闲，retryable 超时非 abort）                                    | `packages/llm` stream-watchdog（providers 消费）              |
+| 能力谓词关闸 + 客户端 stop-word 兜底                                                   | `packages/providers` capability-predicates（gemini 格式应用） |
+| 错误优先于部分输出残留的采集不变式                                                     | `packages/core` goal-final-reply errorFirstReply              |
+
+### 持久化与调度（pi / hermes / openclaw / deepseek）
+
+| 项                                                 | 落点                                                                  |
+| -------------------------------------------------- | --------------------------------------------------------------------- |
+| 孤儿工具对剥离净化器（可扩展类型表）               | `packages/session-store` message-sanitizer                            |
+| hydration 失效整体重读+重校验                      | `packages/session-store` hydration-retry                              |
+| documentRetention 有界缓存（retention=0 双跑护栏） | `packages/session-store` retention-cache                              |
+| display-only 提交绕过执行队列（reset 例外）        | `packages/session-store` submission-admission                         |
+| 恢复簿记按 live work 有界化                        | `packages/queue` ownership-index + crash-recovery                     |
+| cron 存储降级状态机 + outage 错过补火              | `packages/queue` cron-outage                                          |
+| 瞬态重试 pending 抑制告警；取消≠失败               | `packages/autonomy` cron-notifications                                |
+| 代理对安全截断                                     | `packages/core` text-safe → tool-extensions 预览 + session-store 标题 |
+
+### 客户端面（cc-switch / opencode / OpenHands）
+
+| 项                                                             | 落点                                      |
+| -------------------------------------------------------------- | ----------------------------------------- |
+| 孤儿工具结果降级标记 user 消息（共享 marker + 回合边界 flush） | `packages/compat-shims` tool-results      |
+| 单编码事件流 + 每连接有界队列（溢出只杀该连接）                | `apps/api` event-feed                     |
+| 入站死信层（minAge + 非重试分类器 + 保留上限）                 | `apps/api` inbound-dead-letter            |
+| diff-first 审批门（可选证据只收紧）                            | `apps/api` remote-approval-gate evidence  |
+| 认证头由上游协议决定                                           | `packages/compat-shims` llm               |
+| 防抖持久化卸载语义（清除胜过挂起写）                           | `packages/ui-state` debounced-persistence |
+
+### 自进化安全与 CI 门（agentos / conductor / cbm-mcp / hermes）
+
+| 项                                                                                  | 落点                                                      |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| StepGate：伪造工作流步骤过直调同款闸门（副作用白名单链/STEP_REPLACED/cycle/深度≤8） | `packages/workflow-engine` step-gate                      |
+| 模板表达式线性扫描 + 深度门 32（差分对拍测试）                                      | `packages/workflow-engine` expr（dags/meta-system 消费）  |
+| 能力族注册表：名字与门同源；未审计降级行而非禁用                                    | `packages/evolution` ship-gates + 审计协议文档            |
+| prompt 表面快照门（5 表面 12 fixture）                                              | `scripts/prompt-surface.ts` + `pnpm prompt-surface:check` |
+| docs-drift 棘轮（基线只拦新增）                                                     | `scripts/check-docs-drift.ts` + `pnpm docs:drift:check`   |
+
+### 主线收尾（代理限额中断后）
+
+- **修复真实 survival bug**：`PgWorkspaceStore` 完全没有持久化 metadata——goalJudgement、recoveryHold、jobId 溯源在 Pg 部署下每次保存即毁。schema 加列 + 迁移 0005（幂等 ADD COLUMN IF NOT EXISTS）+ 读写两侧 + 门控集成测试（oh-my-claudecode be5e87f7d 教训的现实案例）。
+- text-safe 消费方接线（tool-extensions head/tail 预览、session 标题推导本地副本）。
+- 两个 store 的 metadata survival 契约测试。
+- docs-alignment 卫兵（`pnpm docs:alignment:check`）——首跑抓到 6 条存量悬空链接并修复。
+- viability 评估 prompt + 绑定决策记录格式（`docs/viability-assessment.md`，Kosmos）。
+- CI 两轮依赖审计修复：@grpc/grpc-js（上轮）与本轮 shell-quote（GHSA-pqg4-j6r4-53mv critical，override ^1.11.0）。
+
+### 剩余池（批 3，低/缓优先级，待后续波次）
+
+dsh timed ask_user 两次结算；token-monitor 子代理 parent-link；agentos 能力中介+QuickJS；agentos guardedFetch SSRF 集；不可信文档 worker 解析；hermes 豁免过期/压缩 per-attempt 遥测/租约刷新三边界/git index.lock 回收/fire 启动门；dsh 子代理本地失败日志偏移；OpenHands goal Resume 判最新；cc-switch 模型拉取 seq guard 与选择对话框；opencode 目录消失归档 sweep；crewAI 前缀 id 校验先行/stop 封闭原因枚举；ZCode run 一世时长推导；grok trace 双测试；wshobson 技能评测/gardener lint；opencode-workspace 退役公告格式；agentos outbox；cbm 最优优先预算准入；minimax TPS 突发剔除。
+
+### 新增配置键
+
+无（本波全部为模块级默认行为或代码内常量，未引入新环境开关）。
+
+### 诚实边界
+
+- StepGate 审批接线复用现有 permission 面，链式副作用白名单默认为空（`Config` 未暴露）——启用即收紧，符合"门只收紧"方向。
+- prompt-surface 快照门当前覆盖 agents 包默认角色面（5 表面）；新角色/工具注册后需 `pnpm prompt-surface:update` 再生。
+- retention-cache 目前由 session-store 投影消费；queue 侧长驻缓存的接入留待批 3。
+- 批 3 池（上表）尚未落地。
