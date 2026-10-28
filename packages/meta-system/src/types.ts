@@ -193,7 +193,7 @@ export const OrganizationEventSchema = z.object({
   id: z.string(),
   type: OrgEventTypeSchema,
   subject: z.string(), // capabilityId or blueprintId
-  payload: z.record(z.unknown()).default({}),
+  payload: z.record(z.string(), z.unknown()).default({}),
   at: z.string(),
 })
 export type OrganizationEvent = z.infer<typeof OrganizationEventSchema>
@@ -285,9 +285,9 @@ export const OrganizationSnapshotSchema = z.object({
   id: z.string(),
   capturedAt: z.string(),
   capabilities: z.array(CapabilityRecordSchema),
-  blueprints: z.array(z.record(z.unknown())),
-  graphs: z.array(z.record(z.unknown())),
-  leaderboards: z.record(z.unknown()),
+  blueprints: z.array(z.record(z.string(), z.unknown())),
+  graphs: z.array(z.record(z.string(), z.unknown())),
+  leaderboards: z.record(z.string(), z.unknown()),
 })
 export type OrganizationSnapshot = z.infer<typeof OrganizationSnapshotSchema>
 
@@ -330,7 +330,7 @@ export const ProposalSchema = z.object({
   subject: z.string(),
   target: z.string().optional(),
   rationale: z.string(),
-  payload: z.record(z.unknown()).default({}),
+  payload: z.record(z.string(), z.unknown()).default({}),
   status: ProposalStatusSchema.default("draft"),
   source: ProposalSourceEnumSchema,
   createdAt: z.string(),

@@ -73,7 +73,7 @@ export type MemoryMime = (typeof MemoryMime)[keyof typeof MemoryMime]
 export const MemoryEntrySchema = z.object({
   mime: z.string().default(MemoryMime.TextPlain),
   content: z.string(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })
 export type MemoryEntry = z.infer<typeof MemoryEntrySchema>
 
@@ -124,7 +124,7 @@ export const AgentMemorySchema = z.object({
    * here for audit. They are never re-injected into prompts, but they are
    * also never silently destroyed.
    */
-  archived: z.record(z.array(MemoryEntrySchema)).optional(),
+  archived: z.record(z.string(), z.array(MemoryEntrySchema)).optional(),
   /**
    * Per-bucket lesson efficacy ledger (C2C borrowing: injection is
    * SELECTIVE — enriching what already works helps, enriching what
@@ -133,7 +133,10 @@ export const AgentMemorySchema = z.object({
    * the bucket; gating uses mean = deltaSum / injectedCount.
    */
   efficacy: z
-    .record(z.object({ injectedCount: z.number().int().nonnegative(), deltaSum: z.number() }))
+    .record(
+      z.string(),
+      z.object({ injectedCount: z.number().int().nonnegative(), deltaSum: z.number() }),
+    )
     .optional(),
   totalEntries: z.number().int().nonnegative().default(0),
   compressedAt: z.string().optional(),
@@ -169,7 +172,7 @@ export const AgentProfileSchema = z.object({
   preferredModel: z.string().optional(), // provider:model
   strengths: z.array(z.string()).default([]),
   weaknesses: z.array(z.string()).default([]),
-  memory: AgentMemorySchema.default({}),
+  memory: AgentMemorySchema.prefault({}),
   curatorState: CuratorStateSchema.optional(),
   currentVersion: z.string().default("v1"),
   versions: z.array(z.string()).default(["v1"]),

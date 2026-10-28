@@ -165,7 +165,7 @@ export const ConfigSchema = z.object({
   // In queue mode set SESSION_STORE_PATH to a path shared with the API
   // container so both sides read the same store. Disable to run without
   // the native better-sqlite3 dependency.
-  SESSION_STORE_ENABLED: booleanString.default("true"),
+  SESSION_STORE_ENABLED: booleanString.prefault("true"),
   SESSION_STORE_PATH: z.string().optional(),
 
   // Logging

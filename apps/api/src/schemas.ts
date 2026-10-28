@@ -166,13 +166,13 @@ export const ToolNameSchema = z.enum(["bash", "read", "write", "edit", "glob", "
 export const PermissionActionSchema = z.enum(["allow", "ask", "deny"])
 
 export const PermissionsConfigSchema = z.object({
-  defaults: z.record(PermissionActionSchema),
-  patterns: z.record(z.record(PermissionActionSchema)),
+  defaults: z.record(z.string(), PermissionActionSchema),
+  patterns: z.record(z.string(), z.record(z.string(), PermissionActionSchema)),
 })
 
 export const ResolveRequestSchema = z.object({
   tool: ToolNameSchema,
-  input: z.record(z.unknown()).default({}),
+  input: z.record(z.string(), z.unknown()).default({}),
 })
 
 export const ResolveResponseSchema = z.object({

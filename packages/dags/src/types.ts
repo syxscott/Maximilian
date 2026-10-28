@@ -59,7 +59,7 @@ export type Capability = z.infer<typeof CapabilitySchema>
 export const ToolSpecSchema = z.object({
   name: z.string(),
   description: z.string(),
-  parameters: z.record(z.unknown()).optional(),
+  parameters: z.record(z.string(), z.unknown()).optional(),
   resourceBudget: z
     .object({
       vramMb: z.number().int().positive().optional(),
@@ -116,14 +116,14 @@ export const AgentBlueprintSchema = z.object({
   capabilities: z.array(z.string()).default([]),
   tools: z.array(ToolSpecSchema).default([]),
   preferredModels: z.array(ModelHintSchema).default([]),
-  personality: PersonalitySchema.default({}),
+  personality: PersonalitySchema.prefault({}),
   voice: z
     .object({
       enabled: z.boolean().default(false),
       model: z.string().optional(),
       speed: z.number().min(0.5).max(2).optional(),
     })
-    .default({}),
+    .prefault({}),
   constraints: z
     .object({
       outputFormat: z.enum(["code", "json", "markdown", "free"]).default("free"),
@@ -146,7 +146,7 @@ export const AgentBlueprintSchema = z.object({
       lastUsedAt: z.string().optional(),
     })
     .default({ totalTasks: 0, totalSuccesses: 0, avgScore: 0, avgExecutionTimeMs: 0 }),
-  metadata: z.record(z.unknown()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
 })
 export type AgentBlueprint = z.infer<typeof AgentBlueprintSchema>
 

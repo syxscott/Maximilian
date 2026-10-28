@@ -15,7 +15,7 @@
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "@hono/swagger-ui": "^0.6.1",
-    "@hono/zod-openapi": "0.18.0",
+    "@hono/zod-openapi": "^1.6.3",
     "@max/agents": "workspace:*",
     "@max/autonomy": "workspace:*",
     "@max/commander": "workspace:*",
@@ -40,7 +40,7 @@
     "hono": "^4.6.10",
     "hono-rate-limiter": "^0.5.3",
     "jose": "^6.2.3",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
