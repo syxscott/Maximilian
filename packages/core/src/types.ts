@@ -70,7 +70,7 @@ export const TaskSchema = z.object({
   error: z.string().optional(),
   startedAt: z.string().optional(),
   completedAt: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })
 export type Task = z.infer<typeof TaskSchema>
 
@@ -84,7 +84,7 @@ export const ResultSchema = z.object({
   agentRole: AgentRole,
   agentId: z.string(),
   output: z.string(),
-  metadata: z.record(z.unknown()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
   createdAt: z.string(),
   durationMs: z.number().optional(),
 })
@@ -143,7 +143,7 @@ export const WorkspaceSchema = z.object({
    * route into the runtime sink without expanding the RuntimeSink
    * interface. NOT a substitute for typed fields — keep keys documented.
    */
-  metadata: z.record(z.unknown()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
 })
 export type Workspace = z.infer<typeof WorkspaceSchema>
 

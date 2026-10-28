@@ -407,7 +407,7 @@ const MEMORY_IMPORT_BUCKET_CAP = 500
 const MemoryEntryInputSchema = z.object({
   content: z.string().min(1),
   mime: z.string().min(1),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
 const MemoryBucketsInputSchema = z
@@ -422,6 +422,7 @@ const MemoryBucketsInputSchema = z
   })
 
 const MemoryEfficacyInputSchema = z.record(
+  z.string(),
   z.object({
     injectedCount: z.number().int().nonnegative(),
     deltaSum: z.number(),
@@ -434,7 +435,7 @@ const MemoryImportBodySchema = z
     /** Optional ledger restore; omitted → the role keeps its current ledger. */
     efficacy: MemoryEfficacyInputSchema.optional(),
     /** Curator quarantine restore; omitted → the role keeps its archive. */
-    archived: z.record(z.array(MemoryEntryInputSchema)).optional(),
+    archived: z.record(z.string(), z.array(MemoryEntryInputSchema)).optional(),
   })
   .passthrough()
 

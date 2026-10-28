@@ -22,7 +22,9 @@ export type BenchmarkDifficulty = z.infer<typeof BenchmarkDifficultySchema>
 export const DatabaseTaskContextSchema = z.object({
   ddl: z.string().describe("CREATE TABLE + INSERT statements to initialize the sandbox DB"),
   goldQuery: z.string().describe("Reference SQL that produces the correct result"),
-  goldResult: z.array(z.record(z.unknown())).describe("Expected rows from executing goldQuery"),
+  goldResult: z
+    .array(z.record(z.string(), z.unknown()))
+    .describe("Expected rows from executing goldQuery"),
 })
 export type DatabaseTaskContext = z.infer<typeof DatabaseTaskContextSchema>
 
@@ -32,7 +34,7 @@ export type DatabaseTaskContext = z.infer<typeof DatabaseTaskContextSchema>
  */
 export const DevOpsTaskContextSchema = z.object({
   initialFiles: z
-    .record(z.string())
+    .record(z.string(), z.string())
     .describe("Map of relative path → content to pre-populate the sandbox"),
   assertions: z
     .array(
@@ -74,8 +76,13 @@ export const BenchmarkTaskSchema = z.object({
   domain: BenchmarkDomainSchema,
   difficulty: BenchmarkDifficultySchema,
   input: z.string().describe("The user prompt / requirement given to the agent"),
-  context: z.record(z.unknown()).describe("Domain-specific data (e.g. DatabaseTaskContext)"),
-  expectedOutputAssertion: z.function().args(z.string()).returns(z.promise(z.boolean())),
+  context: z
+    .record(z.string(), z.unknown())
+    .describe("Domain-specific data (e.g. DatabaseTaskContext)"),
+  expectedOutputAssertion: z.function({
+    input: [z.string()],
+    output: z.promise(z.boolean()),
+  }),
 })
 export type BenchmarkTask = z.infer<typeof BenchmarkTaskSchema>
 
