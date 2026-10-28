@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
         with:
@@ -41,7 +41,7 @@ jobs:
       # Cache puppeteer / chrome download — without this mermaid-cli
       # pulls ~150 MB on every run.
       - name: Cache puppeteer chrome
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/puppeteer
