@@ -53,7 +53,7 @@ jobs:
     steps:
       # fetch-depth: 0 — the upgrade report diffs pnpm-lock.yaml against
       # origin/main; a depth-1 clone has no origin/main ref to diff against.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -131,7 +131,7 @@ jobs:
     if: github.actor == 'dependabot[bot]'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
