@@ -41,9 +41,13 @@ export const DEFAULT_PERMISSIONS: Permissions = {
 
 const permSchema = z
   .object({
-    defaults: z.record(z.union([z.literal("allow"), z.literal("ask"), z.literal("deny")])),
+    defaults: z.record(
+      z.string(),
+      z.union([z.literal("allow"), z.literal("ask"), z.literal("deny")]),
+    ),
     patterns: z.record(
-      z.record(z.union([z.literal("allow"), z.literal("ask"), z.literal("deny")])),
+      z.string(),
+      z.record(z.string(), z.union([z.literal("allow"), z.literal("ask"), z.literal("deny")])),
     ),
   })
   .passthrough()

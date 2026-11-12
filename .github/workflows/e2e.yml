@@ -68,9 +68,10 @@ jobs:
         run: pnpm --filter @max/dashboard build
 
       - name: Run e2e tests
+        # No E2E_NO_SERVER here: the config's webServer (dashboard Vite
+        # dev server on :5173) must start — the specs page.route() the
+        # API surface but still need the app itself to be served.
         run: pnpm e2e
-        env:
-          E2E_NO_SERVER: "true" # preview server handled in config
 
       - name: Upload diff on failure
         if: failure()

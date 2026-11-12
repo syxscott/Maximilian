@@ -84,7 +84,7 @@ export const getWorkspaceEventsRoute = createRoute({
         "application/json": {
           schema: z.object({
             workspaceId: z.string(),
-            events: z.array(z.record(z.unknown())),
+            events: z.array(z.record(z.string(), z.unknown())),
           }),
         },
       },

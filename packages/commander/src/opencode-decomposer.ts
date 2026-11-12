@@ -152,7 +152,7 @@ export const OpencodePlannerOutputSchema = z.object({
       ownedFiles: z.array(z.string()).optional(),
       condition: z.string().optional(),
       /** Cached preflight output (sessionId, executor, outputPreview, durationMs). */
-      metadata: z.record(z.unknown()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     }),
   ),
   tracks: z

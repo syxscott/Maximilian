@@ -16,7 +16,7 @@
     "@max/telemetry": "workspace:*",
     "@max/dags": "workspace:*",
     "@max/evolution": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
