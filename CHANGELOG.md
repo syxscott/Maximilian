@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Per-phase detail lives under `docs/changelogs/` — this file is the high-level summary.
 
+## [1.2.0](https://github.com/syxscott/Maximilian/compare/v1.1.0...v1.2.0) (2026-11-12)
+
+
+### Features
+
+* **deps:** migrate to zod 4 to clear GHSA-mrhx-c7xc-m3w5 ([#20](https://github.com/syxscott/Maximilian/issues/20)) ([066a2a5](https://github.com/syxscott/Maximilian/commit/066a2a5f99e438fcdee2ec1f724818c67e84356a))
+
+
+### Bug Fixes
+
+* **deps:** override systeminformation to patched ^5.33.16 ([45db576](https://github.com/syxscott/Maximilian/commit/45db576faca427042d6239974a074f75e32a504f))
+* **deps:** patch undici and vitest security advisories ([#19](https://github.com/syxscott/Maximilian/issues/19)) ([9f403ed](https://github.com/syxscott/Maximilian/commit/9f403ed35639075538e6e7e6bed504497dfd80a9))
+* **e2e:** wire root playwright to e2e config, start dev server ([b9a1010](https://github.com/syxscott/Maximilian/commit/b9a1010aee7166dcaf89eaba11f8b718a1406160))
+
 ## [1.1.0](https://github.com/syxscott/Maximilian/compare/v1.0.0...v1.1.0) (2026-10-28)
 
 
