@@ -115,8 +115,8 @@ importers:
         specifier: ^0.6.1
         version: 0.6.1(hono@4.13.12)
       '@hono/zod-openapi':
-        specifier: 0.18.0
-        version: 0.18.0(hono@4.13.12)(zod@3.25.76)
+        specifier: ^1.6.3
+        version: 1.6.3(hono@4.13.12)(zod@4.6.7)
       '@max/agents':
         specifier: workspace:*
         version: link:../../packages/agents
@@ -190,8 +190,8 @@ importers:
         specifier: ^6.2.3
         version: 6.2.3
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -305,8 +305,8 @@ importers:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@4.3.1)
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
       zustand:
         specifier: ^5.0.12
         version: 5.0.14(@types/react@19.2.17)(react@19.2.7)
@@ -525,8 +525,8 @@ importers:
         specifier: workspace:*
         version: link:../providers
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -553,8 +553,8 @@ importers:
         specifier: ^12.11.1
         version: 12.11.1
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.12
@@ -584,8 +584,8 @@ importers:
         specifier: workspace:*
         version: link:../telemetry
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -628,8 +628,8 @@ importers:
         specifier: ^16.4.5
         version: 16.6.1
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -659,8 +659,8 @@ importers:
         specifier: workspace:*
         version: link:../tools
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -718,8 +718,8 @@ importers:
         specifier: workspace:*
         version: link:../telemetry
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -777,8 +777,8 @@ importers:
         specifier: workspace:*
         version: link:../telemetry
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -832,8 +832,8 @@ importers:
   packages/llm:
     dependencies:
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -866,8 +866,8 @@ importers:
         specifier: workspace:*
         version: link:../telemetry
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -894,8 +894,8 @@ importers:
         specifier: workspace:*
         version: link:../telemetry
       openai:
-        specifier: ^4.71.1
-        version: 4.104.0(ws@8.21.0)(zod@3.25.76)
+        specifier: ^6.49.0
+        version: 6.49.0(ws@8.21.0)(zod@4.6.7)
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -984,8 +984,8 @@ importers:
         specifier: ^15.1.3
         version: 15.1.3
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -1249,10 +1249,10 @@ packages:
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
 
-  '@asteasolutions/zod-to-openapi@7.3.4':
-    resolution: {integrity: sha512-/2rThQ5zPi9OzVwes6U7lK1+Yvug0iXu25olp7S0XsYmOqnyMfxH7gdSQjn/+DSOHRg7wnotwGJSyL+fBKdnEA==}
+  '@asteasolutions/zod-to-openapi@9.1.0':
+    resolution: {integrity: sha512-pLMeRgRYS7/vZIgAAkOe2P6+XGTifR1MT9pqDoxZ11EmcJJ+DPmdPqLN8ZZF4U8R9KHCCQCS9c2wtuE8wSrfkw==}
     peerDependencies:
-      zod: ^3.20.2
+      zod: ^4.0.0
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -2400,18 +2400,18 @@ packages:
     peerDependencies:
       hono: ^4.12.34
 
-  '@hono/zod-openapi@0.18.0':
-    resolution: {integrity: sha512-MNdFSbACkEq1txteKsBrVB0Mnil0zd5urOrP8eti6kUDI95CKVws+vjHQWNddRqmqlBHa5kFAcVXSInHFmcYGQ==}
+  '@hono/zod-openapi@1.6.3':
+    resolution: {integrity: sha512-VYR82Y60plu8g3pN60OUXMVKpmxh3R04Qs++3DY9vtwZ9/sA/BRY0PcRIR+Z37/3itWtM7pYwT9bKiH9JhqV6Q==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
       hono: ^4.12.34
-      zod: 3.*
+      zod: ^4.0.0
 
-  '@hono/zod-validator@0.4.3':
-    resolution: {integrity: sha512-xIgMYXDyJ4Hj6ekm9T9Y27s080Nl9NXHcJkOvkXPhubOLj8hZkOL8pDnnXfvCf5xEE8Q4oMFenQUZZREUY2gqQ==}
+  '@hono/zod-validator@0.9.1':
+    resolution: {integrity: sha512-iiv6w0qrIc0arfvCtUqBWsvl4fXjzaTcQcCJTTtCnkawF9HHGE+KjEl0ox3gQJ6rKZEgE3mLExlQCF72M+mNuw==}
     peerDependencies:
       hono: ^4.12.34
-      zod: ^3.19.1
+      zod: ^3.25.0 || ^4.0.0
 
   '@hookform/resolvers@5.4.0':
     resolution: {integrity: sha512-EIsqr/t/qbinPIhGjMdtvutIN1Kk4uwbROE9/UQ93CAVGR7GkA7Y92+fX80OzXi/OB67jVFYwKGO1WzkxmkFZw==}
@@ -7148,13 +7148,21 @@ packages:
     resolution: {integrity: sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ==}
     engines: {node: '>=12'}
 
-  openai@4.104.0:
-    resolution: {integrity: sha512-p99EFNsA/yX6UhVO93f5kJsDRLAg+CTA2RBqdHK4RtK8u5IJw32Hyb2dTGKbnnFmnuoBv5r7Z2CURI9sGZpSuA==}
-    hasBin: true
+  openai@6.49.0:
+    resolution: {integrity: sha512-aYCc0C6L864eR6WSYIwQGyXriw/nIyZx0ObvhzOEVuk0zoBDpynjSbrionWI7q65B5H8jJX0DXR9snEzM6bfPg==}
     peerDependencies:
+      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
+      '@smithy/hash-node': '>=4.3.0 <5'
+      '@smithy/signature-v4': '>=5.4.0 <6'
       ws: ^8.18.0
-      zod: ^3.23.8
+      zod: ^3.25 || ^4.0
     peerDependenciesMeta:
+      '@aws-sdk/credential-provider-node':
+        optional: true
+      '@smithy/hash-node':
+        optional: true
+      '@smithy/signature-v4':
+        optional: true
       ws:
         optional: true
       zod:
@@ -8726,6 +8734,9 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
   zustand@5.0.14:
     resolution: {integrity: sha512-/8tAspM5LMPr28b3fwLYrtdj77ECpfZviaP75CMTnwO8ISyaE4GDIG/9rDDYq/cH9D2Xw2A2RXglLInmVBQB/g==}
     engines: {node: '>=12.20.0'}
@@ -8805,10 +8816,10 @@ snapshots:
   '@asamuzakjp/nwsapi@2.3.9':
     optional: true
 
-  '@asteasolutions/zod-to-openapi@7.3.4(zod@3.25.76)':
+  '@asteasolutions/zod-to-openapi@9.1.0(zod@4.6.7)':
     dependencies:
       openapi3-ts: 4.6.0
-      zod: 3.25.76
+      zod: 4.6.7
 
   '@babel/code-frame@7.29.7':
     dependencies:
@@ -9722,17 +9733,18 @@ snapshots:
     dependencies:
       hono: 4.13.12
 
-  '@hono/zod-openapi@0.18.0(hono@4.13.12)(zod@3.25.76)':
+  '@hono/zod-openapi@1.6.3(hono@4.13.12)(zod@4.6.7)':
     dependencies:
-      '@asteasolutions/zod-to-openapi': 7.3.4(zod@3.25.76)
-      '@hono/zod-validator': 0.4.3(hono@4.13.12)(zod@3.25.76)
+      '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.6.7)
+      '@hono/zod-validator': 0.9.1(hono@4.13.12)(zod@4.6.7)
       hono: 4.13.12
-      zod: 3.25.76
+      openapi3-ts: 4.6.0
+      zod: 4.6.7
 
-  '@hono/zod-validator@0.4.3(hono@4.13.12)(zod@3.25.76)':
+  '@hono/zod-validator@0.9.1(hono@4.13.12)(zod@4.6.7)':
     dependencies:
       hono: 4.13.12
-      zod: 3.25.76
+      zod: 4.6.7
 
   '@hookform/resolvers@5.4.0(react-hook-form@7.80.0(react@19.2.7))':
     dependencies:
@@ -14955,20 +14967,10 @@ snapshots:
       is-docker: 2.2.1
       is-wsl: 2.2.0
 
-  openai@4.104.0(ws@8.21.0)(zod@3.25.76):
-    dependencies:
-      '@types/node': 18.19.130
-      '@types/node-fetch': 2.6.13
-      abort-controller: 3.0.0
-      agentkeepalive: 4.6.0
-      form-data-encoder: 1.7.2
-      formdata-node: 4.4.1
-      node-fetch: 2.7.0
+  openai@6.49.0(ws@8.21.0)(zod@4.6.7):
     optionalDependencies:
       ws: 8.21.0
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - encoding
+      zod: 4.6.7
 
   openapi3-ts@4.6.0:
     dependencies:
@@ -16704,6 +16706,8 @@ snapshots:
   yoga-layout@3.2.1: {}
 
   zod@3.25.76: {}
+
+  zod@4.6.7: {}
 
   zustand@5.0.14(@types/react@19.2.17)(react@19.2.7):
     optionalDependencies:

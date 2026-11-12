@@ -57,6 +57,7 @@ const SimulateRequestSchema = z.object({
   orgName: z.string(),
   graph: z.unknown(),
   profiles: z.record(
+    z.string(),
     z.object({
       costPerCall: z.number(),
       latencyMs: z.number(),
