@@ -91,6 +91,10 @@ export async function* guardSse<T>(
   const chunkTimeoutMs = opts.chunkTimeoutMs ?? 300_000
   const iterator = stream[Symbol.asyncIterator]()
   let phase: "headers" | "chunk" = "headers"
+  // Set once the timeout path has kicked off the upstream abort; the outer
+  // finally then skips its own awaited close (it would re-block on the same
+  // stall the abort is trying to escape).
+  let abortKicked = false
 
   try {
     while (true) {
@@ -106,13 +110,16 @@ export async function* guardSse<T>(
       try {
         result = await Promise.race([iterator.next(), timeoutPromise])
       } catch (err) {
-        // Timeout fired (or upstream failed) — abort the upstream body and
-        // rethrow the original error.
-        try {
-          await iterator.return?.(undefined as never)
-        } catch {
+        // Timeout fired (or upstream failed) — kick off the upstream abort
+        // and rethrow the original error immediately. Do NOT await
+        // return(): an async generator suspended in an uninterruptible
+        // await settles return() only after that await resolves, so
+        // awaiting it would block the rejection on the very stall we are
+        // failing fast from (regression-tested in retry-sse.test.ts).
+        abortKicked = true
+        void Promise.resolve(iterator.return?.(undefined as never)).catch(() => {
           // the original error wins over a close-time rejection
-        }
+        })
         throw err
       } finally {
         clearTimeout(timer)
@@ -124,11 +131,15 @@ export async function* guardSse<T>(
     }
   } finally {
     // Consumer broke out early (or we returned) — make sure the upstream
-    // connection is closed rather than left hanging.
-    try {
-      await iterator.return?.(undefined as never)
-    } catch {
-      // nothing to propagate on a clean consumer exit
+    // connection is closed rather than left hanging. On the clean paths the
+    // generator sits at a yield, so return() settles promptly and the await
+    // is safe here; the timeout path already kicked off its own close.
+    if (!abortKicked) {
+      try {
+        await iterator.return?.(undefined as never)
+      } catch {
+        // nothing to propagate on a clean consumer exit
+      }
     }
   }
 }

@@ -5,13 +5,14 @@
  * core data path: Supervisor spawn + ready detection + SDK + SessionPool.
  *
  * Run with: `npx vitest run test/live-smoke.test.ts` from packages/core-thin-sdk.
- * Skipped automatically if `bun` is not on PATH.
+ * Skipped automatically if `bun` is not on PATH or the sibling opencode
+ * checkout (OPENCODE_PKG below) is missing.
  *
  * This is the WS7 PoC verification — must pass before Phase 2 begins.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { execSync } from "node:child_process"
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -33,68 +34,80 @@ const OPENCODE_PKG = "/home/user/shenyaxuan/Maximilian/opencode/packages/opencod
 const PORT = 14096 + Math.floor(Math.random() * 1000)
 const TMPDIR = mkdtempSync(join(tmpdir(), "max-live-"))
 
-describe.skipIf(!HAS_BUN)("live smoke: real opencode serve via bun", () => {
-  let supervisor: Supervisor
-  let baseUrl: string
-  let client: OpencodeHttpClient
-  let pool: SessionPool
+// bun alone is not enough: without the checkout the beforeAll would spawn
+// `bun run src/index.ts` in a missing cwd and fail the suite on machines
+// that have bun installed but not the sibling opencode clone (CI has
+// neither and skips cleanly either way).
+const HAS_OPENCODE_CHECKOUT = existsSync(join(OPENCODE_PKG, "src", "index.ts"))
 
-  beforeAll(async () => {
-    writeFileSync(join(TMPDIR, "opencode.json"), JSON.stringify({ theme: "system", provider: {} }))
+describe.skipIf(!HAS_BUN || !HAS_OPENCODE_CHECKOUT)(
+  "live smoke: real opencode serve via bun",
+  () => {
+    let supervisor: Supervisor
+    let baseUrl: string
+    let client: OpencodeHttpClient
+    let pool: SessionPool
 
-    supervisor = new Supervisor({
-      command: ["bun"],
-      args: ["run", "src/index.ts", "serve", "--port", String(PORT), "--hostname", "127.0.0.1"],
-      cwd: OPENCODE_PKG,
-      env: {
-        ...process.env,
-        PATH: `${process.env.HOME}/.npm-global/bin:${process.env.PATH ?? ""}`,
-        XDG_CONFIG_HOME: TMPDIR,
-        OPENCODE_CONFIG_DIR: TMPDIR,
-      },
-      port: PORT,
-      healthCheckMs: 500,
-      restartOnCrash: false,
-      maxRestarts: 0,
+    beforeAll(async () => {
+      writeFileSync(
+        join(TMPDIR, "opencode.json"),
+        JSON.stringify({ theme: "system", provider: {} }),
+      )
+
+      supervisor = new Supervisor({
+        command: ["bun"],
+        args: ["run", "src/index.ts", "serve", "--port", String(PORT), "--hostname", "127.0.0.1"],
+        cwd: OPENCODE_PKG,
+        env: {
+          ...process.env,
+          PATH: `${process.env.HOME}/.npm-global/bin:${process.env.PATH ?? ""}`,
+          XDG_CONFIG_HOME: TMPDIR,
+          OPENCODE_CONFIG_DIR: TMPDIR,
+        },
+        port: PORT,
+        healthCheckMs: 500,
+        restartOnCrash: false,
+        maxRestarts: 0,
+      })
+
+      await supervisor.start()
+      baseUrl = await supervisor.baseUrl
+      expect(supervisor.running).toBe(true)
+
+      client = new OpencodeHttpClient({ baseUrl })
+      pool = new SessionPool(client)
+    }, 60_000)
+
+    afterAll(async () => {
+      if (supervisor) await supervisor.stop(3000)
+      if (pool) await pool.shutdown()
+      try {
+        rmSync(TMPDIR, { recursive: true, force: true })
+      } catch {
+        // ignore
+      }
+    }, 30_000)
+
+    it("health endpoint returns healthy=true", async () => {
+      const res = await OpencodeSdk.health(client)
+      expect(res.healthy).toBe(true)
     })
 
-    await supervisor.start()
-    baseUrl = await supervisor.baseUrl
-    expect(supervisor.running).toBe(true)
+    it("creates a session via SDK and pools the result", async () => {
+      const entry = await pool.getOrCreate("ws-live")
+      expect(entry.session.id).toMatch(/^ses/)
+      expect(pool.size()).toBe(1)
 
-    client = new OpencodeHttpClient({ baseUrl })
-    pool = new SessionPool(client)
-  }, 60_000)
+      // Cache hit
+      const entry2 = await pool.getOrCreate("ws-live")
+      expect(entry2.session.id).toBe(entry.session.id)
+      expect(pool.size()).toBe(1)
+    })
 
-  afterAll(async () => {
-    if (supervisor) await supervisor.stop(3000)
-    if (pool) await pool.shutdown()
-    try {
-      rmSync(TMPDIR, { recursive: true, force: true })
-    } catch {
-      // ignore
-    }
-  }, 30_000)
-
-  it("health endpoint returns healthy=true", async () => {
-    const res = await OpencodeSdk.health(client)
-    expect(res.healthy).toBe(true)
-  })
-
-  it("creates a session via SDK and pools the result", async () => {
-    const entry = await pool.getOrCreate("ws-live")
-    expect(entry.session.id).toMatch(/^ses/)
-    expect(pool.size()).toBe(1)
-
-    // Cache hit
-    const entry2 = await pool.getOrCreate("ws-live")
-    expect(entry2.session.id).toBe(entry.session.id)
-    expect(pool.size()).toBe(1)
-  })
-
-  it("lists sessions", async () => {
-    await pool.getOrCreate("ws-list")
-    const sessions = await OpencodeSdk.listSessions(client)
-    expect(sessions.length).toBeGreaterThan(0)
-  })
-})
+    it("lists sessions", async () => {
+      await pool.getOrCreate("ws-list")
+      const sessions = await OpencodeSdk.listSessions(client)
+      expect(sessions.length).toBeGreaterThan(0)
+    })
+  },
+)
