@@ -152,3 +152,55 @@ dsh timed ask_user 两次结算；token-monitor 子代理 parent-link；agentos 
 - prompt-surface 快照门当前覆盖 agents 包默认角色面（5 表面）；新角色/工具注册后需 `pnpm prompt-surface:update` 再生。
 - retention-cache 目前由 session-store 投影消费；queue 侧长驻缓存的接入留待批 3。
 - 批 3 池（上表）尚未落地。
+
+---
+
+## 2026-11-13 波次：deepseek-ai/chat-demo（官方，387⭐，MIT，~14.6k 行）
+
+来源侦察：用户点名仓库；克隆至 `../chat-demo`（只读参考）。纯前端静态聊天应用
+（浏览器直连 DeepSeek API，Anthropic 兼容协议 + IndexedDB + ZIP 档案），客户端
+会话编排层工程密度极高。移植 ~1.3k 行进 5 个包，提交 52d5cfa，CI 绿。
+
+### 条目与落点
+
+| 上游机制                                                                | 移植落点                                                                                    | 消费者                                                                       | 测试                                    |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------- |
+| branches.ts 消息树（normalize/可见路径/挂分支/切版本/版本列表引用稳定） | session-store `message-tree.ts` + 迁移 v3→v4（parent_id/selected_child_id）                 | api sessions 路由 + dashboard SessionsPanel 版本切换                         | 13（树不变量/软删除兼容/迁移幂等）      |
+| history/ 档案协议（manifest 首条目+版本门、fail-fast、串行队列）        | session-store `backup.ts`（fflate STORE；单 BEGIN IMMEDIATE 替代 IndexedDB 暂存——事务更强） | GET /sessions/backup + POST /sessions/restore + SessionsPanel 导入导出       | 12（roundtrip/版本拒收/原子替换）       |
+| sse.ts WHATWG 解码器                                                    | llm `sse-decoder.ts`（逐行）                                                                | gemini-native stream() + dashboard openWorkspaceStream                       | 24 差分（281 切分点）+ 4 providers 回归 |
+| reply.ts refusal 结算 + 续写资格                                        | core `refusal.ts` + providers 三格式 finishReason 映射                                      | runToolLoop 终态、Result.metadata.refused、task-complete、review bundle 标注 | 44（映射/循环终止/落盘/标注）           |
+| latestReminder + appendReminder 去重                                    | core `context-anchor.ts`（五项环境快照，可注入）                                            | runToolLoop 每轮变更才注入                                                   | 13（去重语义/注入次数）                 |
+| store.ts rAF 合帧 + visibilitychange/pagehide flush                     | ui-react `streaming-flush.ts`                                                               | App.tsx 流路径（控制事件同步、delta 合帧、token 过滤）                       | 14（jsdom rAF/hidden flush）            |
+| sessionGroups.ts 时间分组                                               | ui-react `session-groups.ts`                                                                | SessionsPanel 分组标题 + sessions.*.json locale                              | 6                                       |
+
+### 主线集成发现（比借鉴本身更大）
+
+**zod-openapi 3-arg 注册 bug（生产级，2026-09-07 e39ebf9 起存量）**：
+`openapi(route, handler, hook)` 只有两个 handler 位——第三个位置参数是校验**失败**
+hook。99 处 `api.openapi(route, requireAuthMiddleware(), handler)` 把 auth 塞进
+handler 槽、真 handler 塞进 hook 槽：带校验的路由真 handler 从未执行（unauth 500
+而非 401）。0.18 与 1.6.3 签名相同，与 zod 4 迁移无关；两个月未被发现是因为所有
+测试都用 2-arg 注册、e2e 全 mock。修复 = `withMiddleware()` 把 auth 放
+route.middleware（执行序先于 validators），实测 unauth 401 / admin 200。
+
+其他集成结论：
+
+- node_modules 陈旧 peer 符号链接（zod 4 迁移前建的 resolvers 链接存活）会让
+  dashboard tsc 假红；`pnpm install --frozen-lockfile --force` 重链即愈，非代码问题。
+- `useThrottledMarkdown` 移植后无消费面（dashboard 无流式 markdown 组件），按
+  死代码纪律删除；机制记录在案，未来有消费面时从 chat-demo 重取。
+
+### 诚实边界（机制无宿主面，勿重开）
+
+- **删除竞态防护（removeSession/settle 复活、deletionTasks、waitForIdle）**：
+  workspace 无删除路由、store 无删除方法——竞态不存在。
+- **historyEpoch**：无可失效的进程内会话缓存（store 每请求直读）；restore 的
+  原子性由 SQLite 单事务承担。
+- **describe.ts notice 分类 + i18n key 持久化**：core `ERROR_CATALOG` 已有
+  remediation/retryable 分类层，整块移植会成为第二套重叠分类法。
+- **parseEvent 未识别事件丢弃**：message-sanitizer（存量）+ 新 decoder 字段校验
+  已覆盖。
+- **附件 file_id 失效自愈**：无附件管线（同 planImageEviction 降级）。
+
+量级：上游 14.6k 行 vs 移植 ~1.3k 行（≈11:1；缺口=宿主 UI 面、IndexedDB→SQLite
+事务替代、语音/搜索 UI 无对应物）。
