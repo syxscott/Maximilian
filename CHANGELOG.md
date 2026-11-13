@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Per-phase detail lives under `docs/changelogs/` — this file is the high-level summary.
 
+## [1.3.0](https://github.com/syxscott/Maximilian/compare/v1.2.0...v1.3.0) (2026-11-13)
+
+
+### Features
+
+* deepseek chat-demo borrowing wave across five packages ([52d5cfa](https://github.com/syxscott/Maximilian/commit/52d5cfafbe2c9847d00b3ed396514533604ea0b0))
+
 ## [1.2.0](https://github.com/syxscott/Maximilian/compare/v1.1.0...v1.2.0) (2026-11-12)
 
 
