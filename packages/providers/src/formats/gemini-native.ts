@@ -17,6 +17,7 @@
  *   - Body:   { contents: [...], systemInstruction?: {...}, generationConfig: {...} }
  */
 
+import { readServerSentEvents } from "@max/llm"
 import { withSpan } from "@max/telemetry"
 import type { ChatChunk, ChatMessage, ChatOptions, ChatResponse, Provider } from "../base.js"
 import { ProviderError } from "../base.js"
@@ -217,39 +218,24 @@ export class GeminiNativeProvider implements Provider {
     if (!response.ok || !response.body) {
       throw new ProviderError(this.id, response.status, `Gemini stream HTTP ${response.status}`)
     }
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let pending = "" // SSE text accumulated from the wire, CRLF normalized
-    try {
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        // Gemini ships SSE with CRLF line endings; normalize on the way in
-        // so a frame ending in `\r` doesn't get stuck behind the trailing
-        // bytes after we slice it off.
-        pending += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n")
-        let frameEnd: number
-        while ((frameEnd = pending.indexOf("\n\n")) !== -1) {
-          const frame = pending.slice(0, frameEnd)
-          pending = pending.slice(frameEnd + 2)
-          // Each frame may have multiple "data: " lines; we only care about the payload
-          for (const line of frame.split("\n")) {
-            if (!line.startsWith("data:")) continue
-            const json = line.slice(5).trim()
-            if (!json) continue
-            try {
-              const obj = JSON.parse(json) as GeminiResponse
-              const text = obj.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ?? ""
-              if (text) yield { delta: text, done: false, raw: obj }
-            } catch {
-              // Malformed SSE chunk — skip
-            }
-          }
-        }
+    // Gemini ships SSE with CRLF line endings, and a network chunk boundary
+    // can fall inside a CRLF pair (chunk ends with `\r`, next starts with
+    // `\n`). The WHATWG decoder buffers that ambiguity instead of scanning
+    // for `\n\n`, which the previous hand-rolled parser did — a split CRLF
+    // kept its frames stuck in the buffer and glued consecutive frames
+    // together (deepseek chat-demo sse.ts borrowing). Cancelling mid-stream
+    // releases the connection through the generator's own cleanup.
+    for await (const event of readServerSentEvents(response.body)) {
+      const json = event.data.trim()
+      if (!json) continue
+      try {
+        const obj = JSON.parse(json) as GeminiResponse
+        const text = obj.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ?? ""
+        if (text) yield { delta: text, done: false, raw: obj }
+      } catch {
+        // Malformed SSE chunk — skip
       }
-      yield { delta: "", done: true }
-    } finally {
-      reader.releaseLock()
     }
+    yield { delta: "", done: true }
   }
 }

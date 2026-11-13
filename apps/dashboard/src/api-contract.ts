@@ -67,6 +67,7 @@ export const API_PATHS = [
   "GET /providers",
   "GET /ready",
   "GET /sessions",
+  "GET /sessions/backup",
   "GET /sessions/search",
   "GET /sessions/{id}/integrity",
   "GET /sessions/{id}/messages",
@@ -118,6 +119,8 @@ export const API_PATHS = [
   "POST /permissions/reset",
   "POST /permissions/resolve",
   "POST /permissions/test",
+  "POST /sessions/restore",
+  "POST /sessions/{id}/messages/{messageId}/select",
   "POST /subscriptions",
   "POST /system/failover/queue/add",
   "POST /system/failover/queue/remove",
@@ -137,5 +140,5 @@ export const API_PATHS = [
 
 export type ApiContractEntry = (typeof API_PATHS)[number]
 
-/** Number of routes in the backend contract: 124. */
-export const API_PATH_COUNT = 124
+/** Number of routes in the backend contract: 127. */
+export const API_PATH_COUNT = 127

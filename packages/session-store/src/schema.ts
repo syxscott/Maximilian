@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Maximilian contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * SQLite schema for the session store — lean history side-store.
  *
@@ -15,14 +18,24 @@
  * (`schema_version`). `migrate()` is idempotent: CREATE TABLE IF NOT
  * EXISTS statements are safe to re-run, and a database written by a
  * NEWER schema version refuses to open (no downgrades).
+ *
+ * Message tree (deepseek chat-demo borrowing, v4): `parent_id` and
+ * `selected_child_id` turn the linear transcript into a versioned tree.
+ * Rows written before v4 keep both columns NULL — they are the linear
+ * legacy segment, linked in memory by (created_at, id) order exactly
+ * like the reference implementation's normalizeSession.
  */
 
 /** Current schema version. Bump when adding tables/columns. */
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 /**
  * The full schema, applied inside one transaction by `migrate()`.
  * Every statement is idempotent so re-running the migration is a no-op.
+ *
+ * NOTE: this reflects the CURRENT (v4) shape of every table, so a fresh
+ * database is born with all columns; the migration edges below only
+ * patch databases written by older versions.
  */
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -43,7 +56,14 @@ CREATE TABLE IF NOT EXISTS messages (
   session_id TEXT,
   role TEXT,
   content TEXT,
-  created_at TEXT
+  created_at TEXT,
+  deleted_at TEXT,
+  turn_ordinal INTEGER,
+  seq INTEGER,
+  prev_hash TEXT,
+  hash TEXT,
+  parent_id TEXT,
+  selected_child_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS turns (
@@ -100,5 +120,6 @@ CREATE TABLE IF NOT EXISTS audit (
 
 CREATE INDEX IF NOT EXISTS idx_events_workspace_at ON events (workspace_id, at);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages (session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_session_parent ON messages (session_id, parent_id);
 CREATE INDEX IF NOT EXISTS idx_usage_workspace_at ON usage (workspace_id, at);
 `

@@ -4,6 +4,7 @@
  * Responses are validated at runtime with Zod schemas.
  */
 
+import { readServerSentEvents } from "@max/llm"
 import { z } from "zod"
 
 export const BASE = "/api"
@@ -67,6 +68,14 @@ export interface WorkspaceStreamHandle {
  *   data: <json>
  *   <blank line>
  * Heartbeat comments (`: ping`) are ignored.
+ *
+ * Frame parsing is delegated to the WHATWG SSE decoder from `@max/llm`
+ * (deepseek chat-demo sse.ts borrowing): CRLF/LF/CR line endings, a network
+ * chunk boundary splitting a CRLF pair, multi-line `data`, BOM stripping and
+ * multi-byte UTF-8 across chunks are all handled there. The previous
+ * hand-rolled `\n\n` frame scan mishandled all of those. Aborting
+ * `controller` makes the decoder cancel the underlying reader, replacing the
+ * old manual `reader.cancel()` cleanup.
  */
 export function openWorkspaceStream(
   workspaceId: string,
@@ -79,11 +88,8 @@ export function openWorkspaceStream(
   options?: { lastEventId?: string; signal?: AbortSignal },
 ): WorkspaceStreamHandle {
   const url = `${BASE}/workspaces/${encodeURIComponent(workspaceId)}/stream`
-  const decoder = new TextDecoder()
-  let buffer = ""
   let lastEventId: string | undefined = options?.lastEventId
   let closed = false
-  let cleanup: () => void = () => {}
 
   const headers: Record<string, string> = {
     Accept: "text/event-stream",
@@ -101,7 +107,6 @@ export function openWorkspaceStream(
   const finalize = () => {
     if (closed) return
     closed = true
-    cleanup()
     handlers.onClose?.()
   }
 
@@ -116,47 +121,16 @@ export function openWorkspaceStream(
         return
       }
       handlers.onOpen?.()
-      const reader = res.body.getReader()
-      cleanup = () => {
-        try {
-          reader.cancel().catch(() => {})
-        } catch {}
-      }
       try {
-        for (;;) {
-          const { value, done } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          // SSE frames are separated by a blank line. Walk the buffer
-          // and emit each complete frame as we find the `\n\n` boundary.
-          let frameEnd: number
-          while ((frameEnd = buffer.indexOf("\n\n")) !== -1) {
-            const rawFrame = buffer.slice(0, frameEnd)
-            buffer = buffer.slice(frameEnd + 2)
-            const lines = rawFrame.split("\n")
-            let data: string | undefined
-            for (const line of lines) {
-              // Lines starting with `:` are SSE comments (heartbeats);
-              // ignore them entirely.
-              if (line.startsWith(":")) continue
-              if (line.startsWith("id:")) {
-                const v = line.length > 3 ? line.slice(3).replace(/^ /, "") : ""
-                if (v) lastEventId = v
-              } else if (line.startsWith("data:")) {
-                // Per the SSE spec, multiple `data:` lines concatenate
-                // with `\n` between them; for our wire format there's
-                // exactly one per frame so simple append is fine.
-                const piece = line.length > 5 ? line.slice(5).replace(/^ /, "") : ""
-                data = data === undefined ? piece : data + "\n" + piece
-              }
-            }
-            if (data === undefined) continue
-            try {
-              const parsed = JSON.parse(data) as Record<string, unknown>
-              handlers.onMessage(parsed, lastEventId)
-            } catch (err) {
-              console.error("[api] SSE parse error", err)
-            }
+        for await (const event of readServerSentEvents(res.body, controller.signal)) {
+          // The decoder keeps the last `id` seen (empty frames don't reset
+          // it), matching the previous manual tracking of `id:` lines.
+          if (event.lastEventId) lastEventId = event.lastEventId
+          try {
+            const parsed = JSON.parse(event.data) as Record<string, unknown>
+            handlers.onMessage(parsed, lastEventId)
+          } catch (err) {
+            console.error("[api] SSE parse error", err)
           }
         }
       } catch (err) {

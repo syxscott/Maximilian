@@ -15,6 +15,8 @@ import type { Provider, ChatMessage, ChatOptions } from "@max/providers"
 import { mergeAdjacentSameRole } from "@max/providers"
 import type { AgentContext, Agent } from "./agent.js"
 import { isLLMRequestOversized } from "./error-taxonomy.js"
+import { isRefusalFinish, settleRefusal, canContinueAsPrefix } from "./refusal.js"
+import { shouldInjectAnchor, formatAnchorMessage } from "./context-anchor.js"
 import type {
   BeforeToolCallContext,
   BeforeToolCallResult,
@@ -56,6 +58,13 @@ export interface ToolEnabledResponse {
   model: string
   /** Why the model stopped generating. "length" means output was truncated (借鉴 pi). */
   stopReason?: string
+  /**
+   * Safety-refusal settlement flag (deepseek chat-demo reply.ts borrowing).
+   * Set when the provider reported finishReason "refusal": the turn is
+   * terminal and its partial body is protocol-untrusted — downstream
+   * consumers must treat it as having no valid content.
+   */
+  refused?: boolean
   usage?: {
     promptTokens: number
     completionTokens: number
@@ -187,6 +196,12 @@ export class ToolEnabledProvider {
       content: response.content,
       toolCalls,
       model: response.model,
+      // Propagate the provider finishReason (previously dropped on the
+      // floor): the tool loop gates truncated tool calls on "length" and
+      // refusal termination on "refusal" (deepseek chat-demo reply.ts
+      // borrowing).
+      stopReason: response.finishReason,
+      ...(isRefusalFinish(response.finishReason) ? { refused: true } : {}),
       usage: response.usage,
     }
   }
@@ -512,6 +527,21 @@ export interface ToolLoopOptions {
    * single ownership if a reminder must participate.
    */
   contextOverflowRecovery?: (rejected: ChatMessage[]) => Promise<ChatMessage[] | undefined>
+  /**
+   * Environment snapshot provider (deepseek chat-demo latestReminder
+   * borrowing — env-anchor injection).
+   *
+   * Recomputed before each LLM call. The returned snapshot is dedup-gated:
+   * an anchor message is pushed into the live conversation ONLY when the
+   * snapshot first appears or its content changed (see
+   * `shouldInjectAnchor` in context-anchor.ts) — long loops that cross a
+   * day boundary or switch models refresh their anchor automatically,
+   * short loops pay nothing after the first round.
+   *
+   * When omitted (default) no anchor is injected. The runtime wires
+   * `defaultEnvSnapshotProvider` from context-anchor.ts.
+   */
+  envSnapshot?: () => string
 }
 
 /** Tools that write files and are subject to ownedFiles gating. */
@@ -905,6 +935,28 @@ export async function runToolLoop(
     }
   }
 
+  // Env-anchor injection (deepseek chat-demo latestReminder borrowing):
+  // recomputed before EVERY LLM call; the snapshot is dedup-gated
+  // (shouldInjectAnchor — chat-demo appendReminder semantics) so an
+  // unchanged snapshot is never re-sent. A loop that crosses a day
+  // boundary or switches models gets exactly one fresh anchor message;
+  // without an envSnapshot provider nothing is injected.
+  let lastEnvSnapshot: string | undefined
+  const injectEnvAnchor = (): void => {
+    if (!options.envSnapshot) return
+    const snapshot = options.envSnapshot()
+    if (!shouldInjectAnchor(lastEnvSnapshot, snapshot)) return
+    lastEnvSnapshot = snapshot
+    currentMessages.push({ role: "user", content: formatAnchorMessage(snapshot) })
+  }
+
+  // Refusal settlement for the exit-path responses (explicit-stop call and
+  // the post-rounds final call) — those bypass the per-round refusal gate
+  // below, so settle them here the same way (deepseek chat-demo reply.ts
+  // settleReply borrowing).
+  const settleIfRefused = (response: ToolEnabledResponse): ToolEnabledResponse =>
+    isRefusalFinish(response.stopReason) ? settleRefusal(response) : response
+
   for (let round = 0; round < maxRounds; round++) {
     // Steering injection (借鉴 openclaw): if external messages are pending,
     // inject them BEFORE the next provider.chat() so the LLM sees them.
@@ -918,11 +970,23 @@ export async function runToolLoop(
     options.prepareNextTurn?.()
     // Explicit stop hook (借鉴 openclaw shouldStopAfterTurn).
     if (options.shouldStopAfterTurn?.()) {
+      injectEnvAnchor()
       const finalResponse = await chatWithOverflowRecovery()
-      return { response: finalResponse, allToolCalls }
+      return { response: settleIfRefused(finalResponse), allToolCalls }
     }
 
+    injectEnvAnchor()
     const response = await chatWithOverflowRecovery()
+
+    // Refusal settlement (deepseek chat-demo reply.ts settleReply borrowing):
+    // a refusal is TERMINAL — the partially streamed body is protocol-
+    // untrusted, so the loop ends right here: no further tool round, no
+    // follow-up injection, no reminder (canContinueAfterRefusal() is false
+    // by protocol). The settled response carries refused: true with parsed
+    // tool calls cleared; the raw body is preserved for audit.
+    if (isRefusalFinish(response.stopReason)) {
+      return { response: settleRefusal(response), allToolCalls }
+    }
 
     if (response.toolCalls.length === 0) {
       // Follow-up continuation (pi borrowing): on natural exit with queued
@@ -1036,7 +1100,15 @@ export async function runToolLoop(
   }
 
   // If we exhausted rounds, return the last response
+  injectEnvAnchor()
   const finalResponse = await chatWithOverflowRecovery()
+
+  // Refusal settlement (deepseek chat-demo reply.ts borrowing): a refused
+  // post-rounds response is terminal — settle it and return without any
+  // follow-up injection (canContinueAfterRefusal() is false by protocol).
+  if (isRefusalFinish(finalResponse.stopReason)) {
+    return { response: settleRefusal(finalResponse), allToolCalls }
+  }
 
   // Follow-up injection (借鉴 openclaw): if external follow-up messages
   // are pending, do ONE more full turn with them appended. Bounded to a
@@ -1045,11 +1117,23 @@ export async function runToolLoop(
   if (options.getFollowUpMessages) {
     const followUps = options.getFollowUpMessages()
     if (followUps && followUps.length > 0) {
-      const followUpMessages = [
-        ...currentMessages,
-        { role: "assistant" as const, content: finalResponse.content },
-        ...followUps,
-      ]
+      // Continuation gate (deepseek chat-demo reply.ts canContinueReply
+      // borrowing): the previous turn becomes the assistant prefix of the
+      // follow-up request. A turn whose tool calls were announced but never
+      // executed (rounds budget exhausted) is disqualified — exactly like
+      // chat-demo's tool_use replies — and an empty body has nothing to
+      // append (isUsableReply borrowing).
+      const followUpMessages: ChatMessage[] = [...currentMessages]
+      if (
+        canContinueAsPrefix({
+          stopReason: finalResponse.stopReason,
+          unsettledToolCalls: finalResponse.toolCalls.length,
+          content: finalResponse.content,
+        })
+      ) {
+        followUpMessages.push({ role: "assistant", content: finalResponse.content })
+      }
+      followUpMessages.push(...followUps)
       const followUpResponse = await provider.chat(followUpMessages, options)
       return { response: followUpResponse, allToolCalls }
     }

@@ -11,6 +11,7 @@ import {
   type AgentContext,
   renderHandoffBundle,
   defaultHandoffBudgetTokens,
+  annotateRefusalMarker,
 } from "@max/core"
 import type { AgentManifest, Result, Task } from "@max/core"
 import type { Provider } from "@max/providers"
@@ -58,10 +59,16 @@ export class ReviewAgent extends Agent {
     // directly becomes review cost (and past a threshold, a quality
     // negative). Code-level truncation with a self-report, never a prompt
     // request to "be brief".
+    //
+    // Refusal settlement (deepseek chat-demo reply.ts isUsableReply
+    // borrowing): a refused turn's partial body is protocol-untrusted —
+    // annotate it the same way the runtime marks failureDetector-flagged
+    // drafts. Idempotent, so results already marked by the runtime's
+    // priorResults assembly are not double-annotated.
     const bundle = renderHandoffBundle(
       ctx.priorResults.map((r) => ({
         title: `${r.agentRole.toUpperCase()} (resultId=${r.id})`,
-        body: r.output,
+        body: annotateRefusalMarker(r).output,
       })),
       defaultHandoffBudgetTokens(),
       { role: "review", kind: "review-bundle" },

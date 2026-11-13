@@ -419,3 +419,31 @@ export {
   shouldInjectSessionIdentity,
   SingleOwnerInjectionGate,
 } from "./reminder.js"
+
+// Refusal settlement — terminal-state semantics for safety-refused LLM
+// turns (deepseek chat-demo reply.ts settleReply / canContinueReply /
+// isUsableReply borrowing). Consumed by the tool loop, the runtime's
+// Result metadata + task-complete events, and downstream context assembly.
+export {
+  REFUSAL_FINISH_REASON,
+  REFUSED_RESULT_MARKER,
+  isRefusalFinish,
+  settleRefusal,
+  canContinueAfterRefusal,
+  canContinueAsPrefix,
+  isRefusedMetadata,
+  annotateRefusalMarker,
+} from "./refusal.js"
+export type { ContinuationCandidate, RefusalSettleable } from "./refusal.js"
+
+// Env-anchor snapshots with change-dedup injection (deepseek chat-demo
+// latestReminder.ts + appendReminder borrowing). Consumed by the tool loop
+// via the `envSnapshot` option; the runtime wires defaultEnvSnapshotProvider.
+export {
+  DEFAULT_ENV_ANCHOR_FORMATTERS,
+  createEnvSnapshot,
+  shouldInjectAnchor,
+  formatAnchorMessage,
+  defaultEnvSnapshotProvider,
+} from "./context-anchor.js"
+export type { EnvAnchorContext, EnvAnchorFormatters } from "./context-anchor.js"

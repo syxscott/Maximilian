@@ -1,0 +1,30 @@
+{
+  "sessions": {
+    "group": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last7days": "Last 7 days",
+      "last30days": "Last 30 days",
+      "earlier": "Earlier"
+    },
+    "versions": {
+      "previous": "Previous version",
+      "next": "Next version"
+    },
+    "export": "Export sessions",
+    "exporting": "Exporting…",
+    "import": "Import sessions",
+    "importing": "Importing…",
+    "restore": {
+      "confirm": "Importing this archive REPLACES every existing session with its contents. Continue?"
+    },
+    "notify": {
+      "backupDone": "Session backup downloaded",
+      "backupFailed": "Session backup failed: {message}",
+      "restoreDone": "Imported {count} sessions from the archive",
+      "restoreFailed": "Session import failed: {message}",
+      "versionRejected": "The server rejected this version switch",
+      "versionSwitchFailed": "Version switch failed: {message}"
+    }
+  }
+}

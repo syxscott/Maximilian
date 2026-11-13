@@ -110,6 +110,16 @@ export class OpenAIChatProvider implements Provider {
           if (!choice) {
             throw new ProviderError(this.id, 200, "No completion choice returned")
           }
+          // Refusal mapping (deepseek chat-demo reply.ts settleReply
+          // borrowing): OpenAI surfaces a safety refusal as a non-empty
+          // assistant `refusal` field while `finish_reason` stays "stop" —
+          // normalize it to finishReason "refusal" so downstream settles the
+          // turn as refused. Other finishReasons pass through unchanged.
+          const refusal = choice.message?.refusal
+          const finishReason =
+            typeof refusal === "string" && refusal !== ""
+              ? "refusal"
+              : (choice.finish_reason ?? undefined)
           if (response.usage) {
             span?.setAttribute("llm.promptTokens", response.usage.prompt_tokens)
             span?.setAttribute("llm.completionTokens", response.usage.completion_tokens)
@@ -147,7 +157,7 @@ export class OpenAIChatProvider implements Provider {
                   reasoningTokens: reasoningTokens ?? 0,
                 }
               : undefined,
-            finishReason: choice.finish_reason ?? undefined,
+            finishReason,
             raw: response,
           }
         } catch (err) {
@@ -222,13 +232,22 @@ export class OpenAIChatProvider implements Provider {
       } as OpenAI.Chat.ChatCompletionCreateParamsStreaming)
 
       let finishReason: string | undefined
+      let refusalSeen = false
       let usage: ChatChunk["usage"] | undefined
 
       for await (const chunk of stream) {
         armIdleTimeout() // Reset idle timer on each chunk
         const choice = chunk.choices[0]
         const delta = choice?.delta?.content ?? ""
-        finishReason = choice?.finish_reason ?? finishReason
+        // Refusal mapping (deepseek chat-demo reply.ts settleReply
+        // borrowing): streamed refusals arrive as non-empty
+        // `delta.refusal` text while finish_reason stays "stop" — once a
+        // refusal delta is seen it wins over any later finish_reason.
+        const refusalDelta = choice?.delta?.refusal
+        if (typeof refusalDelta === "string" && refusalDelta !== "") {
+          refusalSeen = true
+        }
+        finishReason = refusalSeen ? "refusal" : (choice?.finish_reason ?? finishReason)
         if (chunk.usage) {
           const reasoningTokens = (
             chunk.usage as {

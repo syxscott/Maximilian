@@ -18,6 +18,8 @@ import { OpencodeExecutor } from "./opencode-executor.js"
 
 const log = getLogger("core:runtime")
 import { runToolLoop, type ToolEnabledProvider } from "./tool-integration.js"
+import { isRefusedMetadata, annotateRefusalMarker } from "./refusal.js"
+import { defaultEnvSnapshotProvider } from "./context-anchor.js"
 import { abortSignalAfterChunks } from "./timeout-chunks.js"
 import { errorFirstReply } from "./goal-final-reply.js"
 import * as toolExtensions from "./tool-extensions.js"
@@ -187,7 +189,20 @@ export type PermissionDecision = "allow" | "deny" | "allow-always"
 export type RuntimeEvent =
   | { type: "plan"; workspaceId: string; plan: Plan }
   | { type: "task-start"; workspaceId: string; taskId: string; agentRole: AgentRole }
-  | { type: "task-complete"; workspaceId: string; taskId: string; result: Result }
+  | {
+      type: "task-complete"
+      workspaceId: string
+      taskId: string
+      result: Result
+      /**
+       * Safety-refusal settlement flag (deepseek chat-demo reply.ts
+       * borrowing). True when the result came from a refused LLM turn
+       * (mirrors `result.metadata.refused`) — lets listeners react without
+       * digging through metadata. The turn is terminal: its partial body
+       * must not be relied on.
+       */
+      refused?: boolean
+    }
   | { type: "task-failed"; workspaceId: string; taskId: string; error: string }
   | { type: "task-skipped"; workspaceId: string; taskId: string; reason: string }
   | { type: "tool-start"; workspaceId: string; taskId: string; toolName: string; input?: unknown }
@@ -2241,13 +2256,19 @@ export class AgentRuntime {
             )
             .map((r) => r.id),
         )
+        // Refusal settlement (deepseek chat-demo reply.ts isUsableReply
+        // borrowing): refused turns do not re-enter the context as trusted
+        // assistant turns. Their partial body stays visible for audit but
+        // is annotated exactly like a flagged draft.
         const priorResults: AgentContext["priorResults"] = workspace.results.map((r) =>
-          flagged.has(r.id)
-            ? {
-                ...r,
-                output: `[unverified draft — the failure detector flagged this output; verify before relying on it]\n${r.output}`,
-              }
-            : r,
+          annotateRefusalMarker(
+            flagged.has(r.id)
+              ? {
+                  ...r,
+                  output: `[unverified draft — the failure detector flagged this output; verify before relying on it]\n${r.output}`,
+                }
+              : r,
+          ),
         )
 
         const ctx: AgentContext = {
@@ -2495,6 +2516,10 @@ export class AgentRuntime {
             workspaceId: workspace.id,
             taskId: task.id,
             result: final,
+            // Refusal observability (deepseek chat-demo reply.ts borrowing):
+            // surface the settlement flag on the event so listeners (SSE,
+            // bus, dashboards) see a refused turn without parsing metadata.
+            ...(isRefusedMetadata(final.metadata) ? { refused: true } : {}),
           })
 
           // Append a Magentic-One observation to the ledger.
@@ -3116,6 +3141,13 @@ async function runToolLoopAndSubmit(
     getSteeringMessages,
     getFollowUpMessages,
     ownedFiles: task.metadata?.ownedFiles as string[] | undefined,
+    // Env-anchor injection (deepseek chat-demo latestReminder borrowing):
+    // host-clock snapshot over the loop's workspace + model context —
+    // injected on the first round and refreshed only when it changes.
+    envSnapshot: defaultEnvSnapshotProvider({
+      workspaceId,
+      modelId: toolProvider.defaultModel,
+    }),
     // 借鉴 pi
     toolExecution,
     beforeToolCall,
@@ -3131,6 +3163,11 @@ async function runToolLoopAndSubmit(
     output: response.content,
     metadata: {
       model: response.model,
+      // Refusal settlement (deepseek chat-demo reply.ts borrowing): a
+      // refused turn is terminal and its partial body is untrusted — the
+      // marker flows into Result.metadata so context assembly (and the
+      // task-complete event below) can gate on it downstream.
+      ...(response.refused ? { refused: true } : {}),
       usage: response.usage
         ? {
             input: response.usage.promptTokens,

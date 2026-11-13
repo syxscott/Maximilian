@@ -158,16 +158,27 @@ describe("ConversationTimeline streaming cursor", () => {
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   messages: vi.fn(),
+  fetchJson: vi.fn(),
   vaultStatus: vi.fn(),
   oracleLessons: vi.fn(),
   useSessionStoreStatus: vi.fn(),
   useMigrationCandidates: vi.fn(),
 }))
 
-vi.mock("@/api", () => ({
-  sessionsApi: { list: mocks.list, messages: mocks.messages },
-  systemApi: { vaultStatus: mocks.vaultStatus, oracleLessons: mocks.oracleLessons },
-}))
+// The factory carries api.ts's shared plumbing too: SessionsPanel now also
+// imports api-sessions.ts, which builds zod schemas from `z` at module
+// scope and reads BASE/authHeaders/fetchJson at query time.
+vi.mock("@/api", async () => {
+  const { z } = await import("zod")
+  return {
+    z,
+    BASE: "/api",
+    authHeaders: () => ({}),
+    fetchJson: mocks.fetchJson,
+    sessionsApi: { list: mocks.list, messages: mocks.messages },
+    systemApi: { vaultStatus: mocks.vaultStatus, oracleLessons: mocks.oracleLessons },
+  }
+})
 
 vi.mock("@/hooks/useSettingsQueries", () => ({
   ORACLE_LESSONS_QUERY_KEY: ["settings", "oracle-lessons"],

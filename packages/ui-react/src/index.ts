@@ -224,3 +224,17 @@ export {
 // Feedback / status
 export { SpinnerRing, type SpinnerRingProps } from "./components/spinner-ring.js"
 export { EmptyState, type EmptyStateProps } from "./components/empty-state.js"
+
+// Streaming / session helpers (deepseek chat-demo borrowing)
+export { createStreamFlusher, useStreamFlusher, type StreamFlusher } from "./streaming-flush.js"
+export {
+  buildMessageVersions,
+  type MessageVersions,
+  type VersionedMessageRow,
+} from "./message-versions.js"
+export {
+  groupSessions,
+  type SessionGroup,
+  type SessionGroupItem,
+  type SessionGroupLabelKey,
+} from "./session-groups.js"

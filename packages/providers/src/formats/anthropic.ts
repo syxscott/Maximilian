@@ -133,6 +133,11 @@ export class AnthropicMessagesProvider implements Provider {
               cacheReadTokens,
               cacheCreationTokens,
             },
+            // stop_reason passthrough — includes safety refusals
+            // (`stop_reason: "refusal"`, deepseek chat-demo reply.ts
+            // settleReply borrowing). Newer API versions emit it even though
+            // this SDK version's typed union predates the value; the runtime
+            // string flows through untouched.
             finishReason: response.stop_reason ?? undefined,
             raw: response,
           }
@@ -160,12 +165,20 @@ export class AnthropicMessagesProvider implements Provider {
         max_tokens: options.maxTokens ?? this.defaultMaxTokens,
         stream: true,
       })
+      // stop_reason passthrough (deepseek chat-demo reply.ts borrowing): the
+      // terminal reason — including safety refusals — arrives on the
+      // message_delta event and must reach finishReason like the
+      // non-streaming path does.
+      let stopReason: string | undefined
       for await (const event of stream) {
+        if (event.type === "message_delta") {
+          stopReason = event.delta.stop_reason ?? undefined
+        }
         if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-          yield { delta: event.delta.text, done: false, raw: event }
+          yield { delta: event.delta.text, done: false, finishReason: stopReason, raw: event }
         }
       }
-      yield { delta: "", done: true }
+      yield { delta: "", done: true, finishReason: stopReason }
     } catch (err) {
       throw new ProviderError(
         this.id,

@@ -92,6 +92,7 @@ export class OpenAIResponsesProvider implements Provider {
                   content?: Array<{
                     type?: string
                     text?: string
+                    refusal?: string
                   }>
                 }>
                 usage?: {
@@ -109,10 +110,26 @@ export class OpenAIResponsesProvider implements Provider {
           })
           // Walk output[*].content[*].text — the first text part wins.
           let text = ""
+          // Refusal mapping (deepseek chat-demo reply.ts settleReply
+          // borrowing): the Responses API surfaces a safety refusal as an
+          // output item / content part of type "refusal" (with the refusal
+          // text in `refusal`) — map it to finishReason "refusal" the same
+          // way the chat-completions format maps the assistant `refusal`
+          // field. Other finish reasons stay as they were (undefined here).
+          let refused = false
           for (const item of response.output ?? []) {
+            if (item.type === "refusal") {
+              refused = true
+            }
             for (const part of item.content ?? []) {
               if (part.type === "output_text" && part.text) {
                 text += part.text
+              }
+              if (
+                part.type === "refusal" ||
+                (typeof part.refusal === "string" && part.refusal !== "")
+              ) {
+                refused = true
               }
             }
           }
@@ -138,7 +155,7 @@ export class OpenAIResponsesProvider implements Provider {
                   cacheCreationTokens: 0,
                 }
               : undefined,
-            finishReason: undefined,
+            finishReason: refused ? "refusal" : undefined,
             raw: response,
           }
         } catch (err) {
@@ -173,13 +190,20 @@ export class OpenAIResponsesProvider implements Provider {
         max_output_tokens: options.maxTokens ?? this.defaultMaxTokens,
         stream: true,
       })
+      // Refusal mapping (deepseek chat-demo reply.ts settleReply borrowing):
+      // refusal stream events (`response.refusal.delta` / `.done`) mark the
+      // turn as refused — carry finishReason "refusal" on the terminal chunk.
+      let refused = false
       for await (const event of stream) {
+        if (typeof event.type === "string" && event.type.startsWith("response.refusal")) {
+          refused = true
+        }
         // Responses stream events vary by SDK version; we accept both
         // `{delta: "..."}` and `{text: "..."}` shapes.
         const delta = (event as { delta?: string }).delta ?? (event as { text?: string }).text ?? ""
         if (delta) yield { delta, done: false, raw: event }
       }
-      yield { delta: "", done: true }
+      yield { delta: "", done: true, finishReason: refused ? "refusal" : undefined }
     } catch (err) {
       throw new ProviderError(
         this.id,

@@ -1,0 +1,30 @@
+{
+  "sessions": {
+    "group": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "last7days": "7 天内",
+      "last30days": "30 天内",
+      "earlier": "更早"
+    },
+    "versions": {
+      "previous": "上一个版本",
+      "next": "下一个版本"
+    },
+    "export": "导出会话",
+    "exporting": "导出中…",
+    "import": "导入会话",
+    "importing": "导入中…",
+    "restore": {
+      "confirm": "导入该归档会替换全部现有会话，确定继续吗？"
+    },
+    "notify": {
+      "backupDone": "会话备份已下载",
+      "backupFailed": "会话备份失败：{message}",
+      "restoreDone": "已从归档导入 {count} 个会话",
+      "restoreFailed": "会话导入失败：{message}",
+      "versionRejected": "服务端拒绝了本次版本切换",
+      "versionSwitchFailed": "版本切换失败：{message}"
+    }
+  }
+}

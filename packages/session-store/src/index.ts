@@ -20,6 +20,7 @@
 
 import fs from "node:fs"
 import path from "node:path"
+import { randomUUID } from "node:crypto"
 import Database from "better-sqlite3"
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.js"
 import { GENESIS_HASH, messageChainHash } from "./hash-chain.js"
@@ -31,6 +32,13 @@ import {
   type SanitizeReport,
 } from "./message-sanitizer.js"
 import { readWithHydrationRetry, HydrationInvalidatedError } from "./hydration-retry.js"
+import {
+  getVisibleMessages,
+  normalizeMessageTree,
+  treeBoundaryMetaKey,
+  treeRootMetaKey,
+  type MessageTreeRow,
+} from "./message-tree.js"
 
 /** Options for constructing a {@link SessionStore}. */
 export interface SessionStoreOptions {
@@ -64,6 +72,18 @@ export interface MessageRow {
   hash: string | null
   /** Hash of the previous chain entry (null for legacy rows). */
   prevHash: string | null
+  /**
+   * Explicit tree parent (deepseek chat-demo borrowing, v4). NULL on
+   * rows of sessions that never grew a branch — those read as a linear
+   * legacy segment linked in memory by (created_at, id) order.
+   */
+  parentId: string | null
+  /** Explicitly selected child branch tip (null = unset / linear row). */
+  selectedChildId: string | null
+  /** User-turn ordinal (rewind input; null never occurs for appended rows). */
+  turnOrdinal: number | null
+  /** Soft-delete timestamp set by rewindFromTurn (null = visible row). */
+  deletedAt: string | null
 }
 
 /** Result of {@link SessionStore.verifyHistory}. */
@@ -116,6 +136,22 @@ export interface AppendMessageInput {
   createdAt?: string
   /** User-turn ordinal — rewind operates on this (hermes state_rewind). */
   turnOrdinal?: number
+  /**
+   * Explicit tree parent (deepseek chat-demo borrowing). Omitted/NULL
+   * keeps the row in the linear legacy segment; a re-append that omits
+   * the field preserves the stored value instead of clearing it.
+   */
+  parentId?: string | null
+  /** Explicitly selected child branch tip. Omitted re-appends preserve the stored value. */
+  selectedChildId?: string | null
+}
+
+/** One message to attach under a parent branch via {@link SessionStore.appendBranch}. */
+export interface AppendBranchMessage {
+  role: string
+  content: string
+  /** User-turn ordinal for rewind support; defaults to 0 like appendMessage. */
+  turnOrdinal?: number
 }
 
 /** Input for {@link SessionStore.appendEvent}. */
@@ -124,6 +160,36 @@ export interface AppendEventInput {
   type: string
   payload?: unknown
   at?: string
+}
+
+/** Verbatim session row for {@link SessionStore.replaceSessions} (backup restore path). */
+export interface ReplaceSessionRow {
+  id: string
+  workspaceId: string | null
+  title: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+/** Verbatim message row for {@link SessionStore.replaceSessions} (backup restore path). */
+export interface ReplaceMessageRow {
+  id: string
+  sessionId: string
+  role: string
+  content: string
+  createdAt: string | null
+  turnOrdinal: number | null
+  deletedAt: string | null
+  parentId: string | null
+  selectedChildId: string | null
+}
+
+/** Per-session tree meta restored with {@link SessionStore.replaceSessions}. */
+export interface ReplaceTreeMarker {
+  /** Selected root branch head (written when non-null). */
+  rootId?: string | null
+  /** Last pre-tree linear-era row (written when non-null). */
+  boundaryId?: string | null
 }
 
 /** Input for {@link SessionStore.recordUsage}. */
@@ -162,6 +228,46 @@ function toNumber(value: number | bigint): number {
 function nowIso(): string {
   return new Date().toISOString()
 }
+
+/** Raw snake_case/aliased projection of one `messages` row. */
+interface RawMessageRow {
+  id: string
+  session_id: string
+  role: string
+  content: string
+  created_at: string | null
+  seq: number | null
+  prevHash: string | null
+  hash: string | null
+  parentId: string | null
+  selectedChildId: string | null
+  turnOrdinal: number | null
+  deletedAt: string | null
+}
+
+/** Shared row mapper so every read path returns the exact same MessageRow shape. */
+function toMessageRow(row: RawMessageRow): MessageRow {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at,
+    seq: row.seq,
+    hash: row.hash,
+    prevHash: row.prevHash,
+    parentId: row.parentId,
+    selectedChildId: row.selectedChildId,
+    turnOrdinal: row.turnOrdinal,
+    deletedAt: row.deletedAt,
+  }
+}
+
+/** SELECT projection matching {@link RawMessageRow} for the row mapper. */
+const MESSAGE_ROW_SELECT =
+  "id, session_id, role, content, created_at, seq, prev_hash AS prevHash, hash, " +
+  "parent_id AS parentId, selected_child_id AS selectedChildId, " +
+  "turn_ordinal AS turnOrdinal, deleted_at AS deletedAt"
 
 /**
  * Serialize a payload column value. `undefined` becomes NULL; anything
@@ -232,7 +338,21 @@ export class SessionStore {
       {
         to: 1,
         up: () => {
-          this.db.exec(SCHEMA_SQL)
+          // SCHEMA_SQL is the authoritative CURRENT-shape schema (v4,
+          // including the (session_id, parent_id) index). It must only run
+          // when the store is actually empty: an OLD database already has
+          // the v1-shaped tables, and re-executing would trip the parent
+          // index before the v4 edge adds the column. The previous
+          // always-exec behavior double-served as a "repair missing
+          // tables" pass, but a v1 stamp is only ever written in the same
+          // transaction as that exec, so the repair scenario cannot occur
+          // for databases this code produced.
+          const messagesExists = this.db
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
+            .get()
+          if (!messagesExists) {
+            this.db.exec(SCHEMA_SQL)
+          }
           this.setMetaRaw("schema_version", "1")
         },
       },
@@ -274,6 +394,32 @@ export class SessionStore {
             this.db.exec("ALTER TABLE messages ADD COLUMN hash TEXT")
           }
           this.setMetaRaw("schema_version", "3")
+        },
+      },
+      {
+        // v3 -> v4 (deepseek chat-demo message-tree borrowing): parent_id +
+        // selected_child_id on messages turn the linear transcript into a
+        // versioned tree. Existing rows keep both NULL — they are the
+        // linear legacy segment, linked in memory by (created_at, id)
+        // order (see message-tree.ts) instead of being rewritten in
+        // place. The parent lookup index is created by SCHEMA_SQL on
+        // fresh databases and patched here for databases that predate
+        // the column.
+        to: 4,
+        up: () => {
+          const cols = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{
+            name: string
+          }>
+          if (!cols.some((c) => c.name === "parent_id")) {
+            this.db.exec("ALTER TABLE messages ADD COLUMN parent_id TEXT")
+          }
+          if (!cols.some((c) => c.name === "selected_child_id")) {
+            this.db.exec("ALTER TABLE messages ADD COLUMN selected_child_id TEXT")
+          }
+          this.db.exec(
+            "CREATE INDEX IF NOT EXISTS idx_messages_session_parent ON messages (session_id, parent_id)",
+          )
+          this.setMetaRaw("schema_version", "4")
         },
       },
     ]
@@ -331,6 +477,188 @@ export class SessionStore {
       )
       .run(new Date().toISOString(), sessionId, turnOrdinal)
     return info.changes
+  }
+
+  /**
+   * Raw tree input rows for one session — every row (soft-deleted ones
+   * included, the walk needs to see them to stop), in the stable
+   * (created_at, id) order the tree derivation relies on.
+   */
+  private loadTreeRows(sessionId: string): MessageTreeRow[] {
+    const rows = this.statement(
+      "loadTreeRows",
+      `SELECT id, parent_id AS parentId, selected_child_id AS selectedChildId, created_at AS createdAt, deleted_at AS deletedAt
+       FROM messages WHERE session_id = ?`,
+    ).all(sessionId) as Array<{
+      id: string
+      parentId: string | null
+      selectedChildId: string | null
+      createdAt: string | null
+      deletedAt: string | null
+    }>
+    return rows.map((row) => ({
+      id: row.id,
+      parentId: row.parentId,
+      selectedChildId: row.selectedChildId,
+      createdAt: row.createdAt,
+      deleted: row.deletedAt !== null,
+    }))
+  }
+
+  /** Stored tree state for a session (see {@link treeRootMetaKey}). */
+  private getTreeRoot(sessionId: string): string | undefined {
+    const value = this.getMeta(treeRootMetaKey(sessionId))
+    return value === null ? undefined : value
+  }
+
+  private getTreeBoundary(sessionId: string): string | undefined {
+    const value = this.getMeta(treeBoundaryMetaKey(sessionId))
+    return value === null ? undefined : value
+  }
+
+  /**
+   * Append a new branch under `parentId` (deepseek chat-demo
+   * appendBranch borrowing). The first message of `messages` becomes the
+   * parent's selected child; the rest chain among themselves, so the
+   * previous branch below the parent stays intact and switchable via
+   * {@link selectMessageVersion}. `parentId = null` starts a new
+   * top-level branch and selects it (chat-demo:
+   * `rootMessageId = first.id`).
+   *
+   * Linear legacy sessions are normalized IN MEMORY
+   * (normalizeMessageTree) and only the NEW rows are written tree-shaped
+   * — stored rows are never rewritten, except the single
+   * `selected_child_id` pointer on the parent row, which is the branch
+   * selection itself. New rows go through {@link appendMessage}, so the
+   * hash-chain columns follow the exact same rules as any other append.
+   *
+   * Throws when `parentId` is set but not part of the session, or points
+   * at a soft-deleted row: both would write a subtree that no walk can
+   * ever reach (the visible-path walk stops at deleted rows), which is a
+   * caller bug, not a storage condition.
+   */
+  appendBranch(
+    sessionId: string,
+    parentId: string | null,
+    messages: AppendBranchMessage[],
+  ): MessageRow[] {
+    if (messages.length === 0) return []
+    return this.transaction(() => {
+      const storedRoot = this.getTreeRoot(sessionId)
+      const rows = this.loadTreeRows(sessionId)
+      const tree = normalizeMessageTree(rows, {
+        rootId: storedRoot,
+        boundaryId: this.getTreeBoundary(sessionId),
+      })
+      const parent = parentId !== null ? tree.messages.find((m) => m.id === parentId) : undefined
+      if (parentId !== null && (parent === undefined || parent.deleted)) {
+        throw new Error(
+          `session-store: cannot append a branch under ${parent === undefined ? "unknown" : "soft-deleted"} message ${parentId} in session ${sessionId}`,
+        )
+      }
+
+      const ids = messages.map(() => randomUUID())
+      if (parentId !== null) {
+        // The branch selection pointer (chat-demo: the parent message's
+        // selectedChildId is rewritten to the new head; its old subtree
+        // remains reachable by switching versions back).
+        this.statement(
+          "appendBranchSelectHead",
+          "UPDATE messages SET selected_child_id = ? WHERE id = ?",
+        ).run(ids[0], parentId)
+      }
+
+      // (createdAt, id) is the tree's stable order, so the branch rows get
+      // strictly increasing stamps placed strictly AFTER everything the
+      // session already contains: equal millisecond stamps (fast loops,
+      // tests) would fall back to id ordering, and UUIDs do not sort after
+      // runtime ids — the chain order would scramble.
+      const stamps = rows.map((row) => (row.createdAt ? Date.parse(row.createdAt) : Number.NaN))
+      const base = Math.max(Date.now(), ...stamps.filter((ms) => Number.isFinite(ms)))
+
+      for (const [index, message] of messages.entries()) {
+        this.appendMessage({
+          id: ids[index],
+          sessionId,
+          role: message.role,
+          content: message.content,
+          createdAt: new Date(base + 1 + index).toISOString(),
+          turnOrdinal: message.turnOrdinal,
+          parentId: index === 0 ? parentId : ids[index - 1],
+          selectedChildId: ids[index + 1] ?? null,
+        })
+      }
+
+      if (storedRoot === undefined) {
+        // First tree write for this session: freeze the pre-tree linear
+        // era (normalizeSession derives its links once and persists them;
+        // we persist the BOUNDARY instead and keep deriving in memory —
+        // stored rows stay untouched).
+        if (tree.messages.length > 0) {
+          this.setMeta(treeBoundaryMetaKey(sessionId), tree.messages[tree.messages.length - 1].id)
+        }
+      }
+
+      // Root selection (chat-demo session.rootMessageId): a null parent
+      // switches the root to the new branch head; otherwise the root
+      // stays at the session's legacy head (normalizeSession default) or
+      // wherever it was already parked.
+      const rootId = parentId === null ? ids[0] : (tree.rootId ?? ids[0])
+      this.setMeta(treeRootMetaKey(sessionId), rootId)
+
+      return ids.map((id) => this.getMessageRow(id))
+    })
+  }
+
+  /**
+   * Switch the selected sibling version at `messageId`'s position
+   * (deepseek chat-demo selectVersion borrowing). Only allowed when
+   * `messageId` is a sibling of — or itself on — the CURRENT visible
+   * path: the user can only change direction from where they are
+   * looking, never silently re-root the conversation to an unreachable
+   * branch. Switching updates exactly one pointer (the parent row's
+   * selected_child_id, or the stored root marker for top-level
+   * branches); the switched-to node keeps its own selected_child_id, so
+   * going back restores the whole subtree as it was. Returns false for
+   * linear sessions (nothing to switch), unknown messages, and
+   * unreachable targets — never throws for those. Soft-deleted rows are
+   * not resurrected: the walk in {@link getVisibleMessages} stops at
+   * them regardless of any pointer change.
+   */
+  selectMessageVersion(sessionId: string, messageId: string): boolean {
+    const storedRoot = this.getTreeRoot(sessionId)
+    if (storedRoot === undefined) return false
+    return this.transaction(() => {
+      const tree = normalizeMessageTree(this.loadTreeRows(sessionId), {
+        rootId: storedRoot,
+        boundaryId: this.getTreeBoundary(sessionId),
+      })
+      const target = tree.messages.find((m) => m.id === messageId)
+      if (!target) return false
+      const path = getVisibleMessages(tree)
+      if (!path.some((p) => p.parentId === target.parentId)) return false
+      if (target.parentId === null) {
+        this.setMeta(treeRootMetaKey(sessionId), target.id)
+      } else {
+        this.statement(
+          "selectMessageVersion",
+          "UPDATE messages SET selected_child_id = ? WHERE id = ?",
+        ).run(target.id, target.parentId)
+      }
+      return true
+    })
+  }
+
+  /** Fetch one message row by id (throws when absent — internal read-back helper). */
+  private getMessageRow(id: string): MessageRow {
+    const row = this.statement(
+      "getMessageRow",
+      `SELECT ${MESSAGE_ROW_SELECT} FROM messages WHERE id = ?`,
+    ).get(id) as RawMessageRow | undefined
+    if (!row) {
+      throw new Error(`session-store: message ${id} disappeared during write`)
+    }
+    return toMessageRow(row)
   }
 
   /** Bounded timeline index (hermes state_timeline borrowing), oldest last, soft-deleted rows flagged. */
@@ -442,27 +770,9 @@ export class SessionStore {
   listMessages(sessionId: string, limit = 1000): MessageRow[] {
     const rows = this.statement(
       "listMessages",
-      "SELECT id, session_id, role, content, created_at, seq, prev_hash AS prevHash, hash FROM messages WHERE session_id = ? ORDER BY created_at, id LIMIT ?",
-    ).all(sessionId, limit) as Array<{
-      id: string
-      session_id: string
-      role: string
-      content: string
-      created_at: string | null
-      seq: number | null
-      prevHash: string | null
-      hash: string | null
-    }>
-    return rows.map((row) => ({
-      id: row.id,
-      sessionId: row.session_id,
-      role: row.role,
-      content: row.content,
-      createdAt: row.created_at,
-      seq: row.seq,
-      hash: row.hash,
-      prevHash: row.prevHash,
-    }))
+      `SELECT ${MESSAGE_ROW_SELECT} FROM messages WHERE session_id = ? ORDER BY created_at, id LIMIT ?`,
+    ).all(sessionId, limit) as RawMessageRow[]
+    return rows.map(toMessageRow)
   }
 
   /**
@@ -552,6 +862,12 @@ export class SessionStore {
    * rehashes with the new content: an identical retry is a no-op for the
    * chain, while a content mutation intentionally breaks every link after
    * it (that is the tamper evidence verifyHistory reports).
+   *
+   * Tree columns (deepseek chat-demo borrowing): `parentId` /
+   * `selectedChildId` are written when provided and PRESERVED on a
+   * re-append that omits them (COALESCE with the stored value) — the
+   * runtime's dual-write retries must not be able to silently detach
+   * branch links that appendBranch established.
    */
   appendMessage(input: AppendMessageInput): void {
     this.transaction(() => {
@@ -589,8 +905,8 @@ export class SessionStore {
 
       this.statement(
         "appendMessage",
-        `INSERT INTO messages (id, session_id, role, content, created_at, turn_ordinal, seq, prev_hash, hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO messages (id, session_id, role, content, created_at, turn_ordinal, seq, prev_hash, hash, parent_id, selected_child_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
            session_id = excluded.session_id,
            role = excluded.role,
@@ -599,7 +915,9 @@ export class SessionStore {
            turn_ordinal = excluded.turn_ordinal,
            seq = excluded.seq,
            prev_hash = excluded.prev_hash,
-           hash = excluded.hash`,
+           hash = excluded.hash,
+           parent_id = COALESCE(excluded.parent_id, messages.parent_id),
+           selected_child_id = COALESCE(excluded.selected_child_id, messages.selected_child_id)`,
       ).run(
         input.id,
         input.sessionId,
@@ -610,6 +928,8 @@ export class SessionStore {
         seq,
         prevHash,
         hash,
+        input.parentId ?? null,
+        input.selectedChildId ?? null,
       )
     })
   }
@@ -635,33 +955,18 @@ export class SessionStore {
     const table = opts.table ?? DEFAULT_PAIRING_TABLE
     const rows = this.statement(
       "replayMessages",
-      `SELECT id, session_id, role, content, created_at, seq, prev_hash AS prevHash, hash
+      `SELECT ${MESSAGE_ROW_SELECT}
        FROM messages
        WHERE session_id = ? AND deleted_at IS NULL AND COALESCE(turn_ordinal, 0) >= ?
        ORDER BY created_at, id LIMIT ?`,
-    ).all(sessionId, from, limit) as Array<{
-      id: string
-      session_id: string
-      role: string
-      content: string
-      created_at: string | null
-      seq: number | null
-      prevHash: string | null
-      hash: string | null
-    }>
+    ).all(sessionId, from, limit) as RawMessageRow[]
     const out: Array<MessageRow & { sanitizeReport: SanitizeReport | null }> = []
     for (const row of rows) {
       const sanitized = sanitizeReplayContent(row.content, table)
       if (sanitized.droppedAll) continue
       out.push({
-        id: row.id,
-        sessionId: row.session_id,
-        role: row.role,
+        ...toMessageRow(row),
         content: sanitized.content,
-        createdAt: row.created_at,
-        seq: row.seq,
-        hash: row.hash,
-        prevHash: row.prevHash,
         sanitizeReport: sanitized.report,
       })
     }
@@ -940,6 +1245,96 @@ export class SessionStore {
     return this.db.transaction(fn)()
   }
 
+  /**
+   * BEGIN IMMEDIATE variant of {@link transaction} for whole-store
+   * replacements (backup restore / clear, chat-demo "replace in one
+   * transaction" borrowing): the write lock is taken up front so the
+   * delete-everything + reinsert pass can never interleave with a
+   * concurrent writer between the DELETEs and the INSERTs.
+   */
+  transactionImmediate<T>(fn: () => T): T {
+    if (!this.migrated) this.migrate()
+    return this.db.transaction(fn).immediate()
+  }
+
+  /**
+   * Replace the ENTIRE sessions/messages content atomically (chat-demo
+   * replaceHistory borrowing — validate fully first, then swap; used by
+   * the backup module for restore AND for "clear all" via empty input).
+   * Rows are inserted VERBATIM with all three hash-chain columns NULL:
+   * restored rows become a legacy segment for {@link verifyHistory},
+   * exactly like rows that predate the v3 migration — the archive
+   * deliberately does not carry chain hashes, so trust must be
+   * re-established from the restored content onward. Per-session tree
+   * markers (selected root / linear-era boundary) are reset from
+   * `treeMarkers`; markers of sessions not in the replacement are
+   * dropped, while unrelated meta rows (e.g. the legacy_seq event-
+   * migration bookkeeping) survive.
+   */
+  replaceSessions(
+    sessions: ReplaceSessionRow[],
+    messages: ReplaceMessageRow[],
+    treeMarkers: ReadonlyMap<string, ReplaceTreeMarker>,
+  ): void {
+    this.transactionImmediate(() => {
+      // Tree markers of every session about to be replaced must go first;
+      // the imported files re-establish their own below.
+      const setTreeMeta = this.statement(
+        "replaceSessionsSetMeta",
+        "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      )
+      for (const prefix of [treeRootMetaKey(""), treeBoundaryMetaKey("")]) {
+        const escaped = prefix.replace(/[\\%_]/g, (ch) => `\\${ch}`)
+        this.statement(
+          "replaceSessionsDropTreeMeta",
+          "DELETE FROM meta WHERE key LIKE ? ESCAPE '\\'",
+        ).run(`${escaped}%`)
+      }
+      this.statement("replaceSessionsDropMessages", "DELETE FROM messages").run()
+      this.statement("replaceSessionsDropSessions", "DELETE FROM sessions").run()
+
+      const insertSession = this.statement(
+        "replaceSessionsInsertSession",
+        "INSERT INTO sessions (id, workspace_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      for (const session of sessions) {
+        insertSession.run(
+          session.id,
+          session.workspaceId,
+          session.title,
+          session.createdAt,
+          session.updatedAt,
+        )
+      }
+
+      const insertMessage = this.statement(
+        "replaceSessionsInsertMessage",
+        `INSERT INTO messages (id, session_id, role, content, created_at, turn_ordinal, deleted_at, parent_id, selected_child_id, seq, prev_hash, hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+      )
+      for (const message of messages) {
+        insertMessage.run(
+          message.id,
+          message.sessionId,
+          message.role,
+          message.content,
+          message.createdAt,
+          message.turnOrdinal,
+          message.deletedAt,
+          message.parentId,
+          message.selectedChildId,
+        )
+      }
+
+      for (const [sessionId, marker] of treeMarkers) {
+        if (marker.rootId != null) setTreeMeta.run(treeRootMetaKey(sessionId), marker.rootId)
+        if (marker.boundaryId != null) {
+          setTreeMeta.run(treeBoundaryMetaKey(sessionId), marker.boundaryId)
+        }
+      }
+    })
+  }
+
   /** Close the database. Idempotent; the store is unusable afterwards. */
   close(): void {
     this.db.close()
@@ -962,6 +1357,30 @@ export class SessionStore {
 }
 
 export { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.js"
+export {
+  buildMessageVersions,
+  getVisibleMessages,
+  normalizeMessageTree,
+  treeBoundaryMetaKey,
+  treeRootMetaKey,
+  type MessageTree,
+  type MessageTreeRow,
+  type MessageVersions,
+  type NormalizedTreeMessage,
+  type NormalizeTreeOptions,
+} from "./message-tree.js"
+export {
+  clearSessionsBackup,
+  exportSessionsBackup,
+  importSessionsBackup,
+  BackupError,
+  BACKUP_FORMAT_VERSION,
+  type BackupArchive,
+  type BackupManifest,
+  type ArchiveMessage,
+  type SessionBackupFile,
+  type SessionIndexEntry,
+} from "./backup.js"
 export {
   GENESIS_HASH,
   messageChainHash,

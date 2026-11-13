@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Toaster } from "@/components/ui/sonner"
 import { useHealth, useWorkspaces } from "@/lib/api/hooks"
 import { useLocale, t } from "@max/i18n"
+import { useStreamFlusher } from "@max/ui-react"
 import { chatApi, openWorkspaceStream } from "./api"
 import type { Workspace, RuntimeEvent, WorkspaceStreamHandle, Health } from "./api"
 import {
@@ -44,6 +45,21 @@ import { notifySteeringApplied } from "./stores/runtimeNotifications"
 
 /** Prefs key for shell-level state before any workspace is active. */
 const SHELL_PREFS_KEY = "__app__"
+
+/**
+ * Stream event types that must apply synchronously (deepseek chat-demo
+ * borrowing): they drive interactive UI — the permission/approval dialogs
+ * and steering notifications — so they never wait for the next animation
+ * frame. Every other event type is append-only stream data and joins the
+ * rAF commit batch.
+ */
+const STREAM_CONTROL_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "permission-request",
+  "permission-resolved",
+  "approval-request",
+  "approval-resolved",
+  "steering-applied",
+])
 
 // ── Connection store plumbing (single writer: the App layer) ────────────────
 
@@ -223,6 +239,34 @@ export function App() {
   //     the Send button disabled until the next interaction.
   const tokenRef = useRef(0)
 
+  // ── Stream commit coalescer (deepseek chat-demo borrowing) ───────────────
+  // High-frequency stream frames — full workspace snapshots and delta-class
+  // runtime events — buffer in refs and commit ONCE per animation frame
+  // (rAF coalescing); control/terminal frames (permission/approval/steering
+  // prompts, `done`) apply synchronously. When the tab hides or unloads the
+  // browser pauses rAF, so the flusher commits pending deltas synchronously
+  // on visibilitychange→hidden / pagehide — otherwise anything accumulated
+  // in that window would never paint. Each buffer entry carries the submit
+  // token that produced it, so a batch buffered by a stale stream is
+  // dropped at commit time instead of leaking into the newer submission.
+  const pendingEventsRef = useRef<{ token: number; ev: RuntimeEvent }[]>([])
+  const pendingWorkspaceRef = useRef<{ token: number; workspace: Workspace } | null>(null)
+  const commitStreamBatch = useCallback(() => {
+    const activeToken = tokenRef.current
+    const batch = pendingEventsRef.current
+    pendingEventsRef.current = []
+    const fresh = batch.filter((entry) => entry.token === activeToken)
+    if (fresh.length > 0) {
+      setEvents((prev) => [...prev, ...fresh.map((entry) => entry.ev)])
+    }
+    const snapshot = pendingWorkspaceRef.current
+    pendingWorkspaceRef.current = null
+    if (snapshot && snapshot.token === activeToken) {
+      setWorkspace(snapshot.workspace)
+    }
+  }, [])
+  const streamFlusher = useStreamFlusher(commitStreamBatch)
+
   // @mention suggestions (ZCode prompt-editor borrowing): the agent roles
   // in play for this workspace, falling back to the built-in quartet.
   const mentionSuggestions = useMemo(() => {
@@ -265,6 +309,9 @@ export function App() {
   // a follow-up — it would call `runtime.interrupt(workspaceId, ...)`
   // to surface a `RuntimeInterrupt` to the executing task loop.
   const abortSubmission = useCallback(() => {
+    // Commit deltas buffered by the dying stream first (chat-demo settle
+    // semantics): after the token bump below, a commit would drop them.
+    streamFlusher.flushNow()
     abortRef.current?.abort()
     stopStream()
     // Bump the token so any pending stream `onMessage` / `onError`
@@ -345,10 +392,26 @@ export function App() {
         sseErrorCount.current = 0
         try {
           if (data.type === "workspace") {
-            setWorkspace(data.workspace as Workspace)
+            // Snapshot frame: full workspace state, so only the latest one
+            // per animation frame matters — buffer and coalesce (deepseek
+            // chat-demo borrowing) instead of re-rendering per frame.
+            pendingWorkspaceRef.current = { token: myToken, workspace: data.workspace as Workspace }
+            streamFlusher.schedule()
           } else if (data.type === "event") {
             const ev = data.event as { type?: string } & Record<string, unknown>
-            setEvents((prev) => [...prev, ev as RuntimeEvent])
+            // Event classification (deepseek chat-demo borrowing): prompts
+            // and stream-lifecycle signals must land synchronously (they
+            // drive the permission dialog / notifications); every other
+            // event is append-only stream data and joins the rAF batch.
+            if (typeof ev.type === "string" && STREAM_CONTROL_EVENT_TYPES.has(ev.type)) {
+              // Commit buffered deltas first so the timeline keeps stream
+              // order, then apply this frame synchronously.
+              streamFlusher.flushNow()
+              setEvents((prev) => [...prev, ev as RuntimeEvent])
+            } else {
+              pendingEventsRef.current.push({ token: myToken, ev: ev as RuntimeEvent })
+              streamFlusher.schedule()
+            }
             // Pull fields via narrow validators so a malformed envelope can't
             // shove `undefined` into a field that downstream code treats as a
             // string. Previously a `permission-request` with `requestId: null`
@@ -418,6 +481,9 @@ export function App() {
               notifySteeringApplied(ev.taskIds ?? ev.taskId)
             }
           } else if (data.type === "done") {
+            // Terminal frame: commit whatever deltas are still buffered so
+            // the tail of the stream paints before the teardown below.
+            streamFlusher.flushNow()
             // Tear the stream down. The fetch+ReadableStream impl does
             // not auto-reconnect like EventSource did, so the retry
             // counter is driven from `onError` and we reopen manually
@@ -436,6 +502,9 @@ export function App() {
       const handleError = (err: unknown) => {
         // Ignore errors from a stale stream.
         if (tokenRef.current !== myToken) return
+        // Surface any deltas buffered before the failure so nothing the
+        // user should see sits in the batch across the reconnect.
+        streamFlusher.flushNow()
         // The fetch+ReadableStream impl does NOT auto-reconnect like
         // EventSource did. We manually re-open up to SSE_MAX_RETRIES
         // transient failures before giving up; beyond that we close

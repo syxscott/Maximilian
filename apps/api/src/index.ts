@@ -128,9 +128,12 @@ import {
   sessionRoutes,
   listSessionsRoute,
   getMessagesRoute,
+  selectMessageRoute,
   searchMessagesRoute,
   getTimelineRoute,
   getSessionIntegrityRoute,
+  backupSessionsRoute,
+  restoreSessionsRoute,
 } from "./routes/sessions.js"
 import {
   vaultStatusRoute,
@@ -1320,6 +1323,23 @@ function ipv4ToInt(ip: string): number | null {
 // Auth middleware for sensitive endpoints.
 // Priority: JWT_SECRET (JWT auth) > ADMIN_TOKEN (simple bearer) > no auth (dev mode).
 const ADMIN_TOKEN = config.ADMIN_TOKEN
+/**
+ * Attach route-level middleware (zod-openapi 1.x borrowing, deepseek
+ * chat-demo session-group fix generalized): `openapi(route, handler, hook)`
+ * takes exactly two positional handlers — the third slot is the validator
+ * FAILURE hook, not a middleware chain. Auth passed positionally landed in
+ * that hook (never invoked on valid requests) while the auth middleware
+ * itself sat in the handler slot, so the real handler never executed and
+ * authenticated calls 500'd on every validated route. Middleware must
+ * travel on the route's `middleware` field, which the openapi() chain runs
+ * BEFORE the zod validators.
+ */
+function withMiddleware<T extends { middleware?: unknown }>(route: T, ...mw: Array<unknown>): T {
+  const existing = route.middleware
+  const list = Array.isArray(existing) ? existing : existing ? [existing] : []
+  return { ...route, middleware: [...list, ...mw] }
+}
+
 function requireAuthMiddleware() {
   // Path 1: JWT auth when JWT_SECRET is configured
   if (config.JWT_SECRET) {
@@ -1712,7 +1732,7 @@ import {
   __setFeatureFlagsForTests,
 } from "./routes/feature-flags.js"
 
-api.openapi(listFlagsRoute, requireAuthMiddleware(), (c) => {
+api.openapi(withMiddleware(listFlagsRoute, requireAuthMiddleware()), (c) => {
   const flags = getFlags()
   const definitions = flags.listFlagNames()
   const list = definitions.map((name) => {
@@ -1728,7 +1748,7 @@ api.openapi(listFlagsRoute, requireAuthMiddleware(), (c) => {
   return c.json({ flags: list })
 })
 
-api.openapi(getFlagRoute, requireAuthMiddleware(), (c) => {
+api.openapi(withMiddleware(getFlagRoute, requireAuthMiddleware()), (c) => {
   const { name } = c.req.valid("param")
   const flags = getFlags()
   const def = flags.getFlagDefinition(name)
@@ -1742,34 +1762,40 @@ api.openapi(getFlagRoute, requireAuthMiddleware(), (c) => {
   })
 })
 
-api.openapi(setOverrideRoute, requireAuthMiddleware(), requireRole("admin"), (c) => {
-  const { name } = c.req.valid("param")
-  const { value, reason } = c.req.valid("json")
-  const flags = getFlags()
-  if (!flags.getFlagDefinition(name)) {
-    return c.json({ error: `Unknown flag: ${name}` }, 404)
-  }
-  flags.override(name, value)
-  const auth = c.get("auth" as never) as { userId?: string } | undefined
-  return c.json({
-    flagName: name,
-    value,
-    overriddenBy: auth?.userId,
-    overriddenAt: new Date().toISOString(),
-  })
-})
+api.openapi(
+  withMiddleware(setOverrideRoute, requireAuthMiddleware(), requireRole("admin")),
+  (c) => {
+    const { name } = c.req.valid("param")
+    const { value, reason } = c.req.valid("json")
+    const flags = getFlags()
+    if (!flags.getFlagDefinition(name)) {
+      return c.json({ error: `Unknown flag: ${name}` }, 404)
+    }
+    flags.override(name, value)
+    const auth = c.get("auth" as never) as { userId?: string } | undefined
+    return c.json({
+      flagName: name,
+      value,
+      overriddenBy: auth?.userId,
+      overriddenAt: new Date().toISOString(),
+    })
+  },
+)
 
-api.openapi(clearOverrideRoute, requireAuthMiddleware(), requireRole("admin"), (c) => {
-  const { name } = c.req.valid("param")
-  const flags = getFlags()
-  if (!flags.getFlagDefinition(name)) {
-    return c.json({ error: `Unknown flag: ${name}` }, 404)
-  }
-  flags.clearOverride(name)
-  return c.body(null, 204)
-})
+api.openapi(
+  withMiddleware(clearOverrideRoute, requireAuthMiddleware(), requireRole("admin")),
+  (c) => {
+    const { name } = c.req.valid("param")
+    const flags = getFlags()
+    if (!flags.getFlagDefinition(name)) {
+      return c.json({ error: `Unknown flag: ${name}` }, 404)
+    }
+    flags.clearOverride(name)
+    return c.body(null, 204)
+  },
+)
 
-api.openapi(evaluateRoute, requireAuthMiddleware(), (c) => {
+api.openapi(withMiddleware(evaluateRoute, requireAuthMiddleware()), (c) => {
   const { flagNames, userId } = c.req.valid("json")
   // Re-create with the requested userId for proper targeting.
   const scoped = createFeatureFlags({ userId })
@@ -1798,7 +1824,7 @@ for (const p of FLAG_AUTH_PATHS) {
 void __setFeatureFlagsForTests
 
 // Dynamic provider configuration — requires auth
-api.openapi(setDefaultProviderRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(setDefaultProviderRoute, requireAuthMiddleware()), async (c) => {
   const { providerId } = c.req.valid("json" as never) as { providerId: string }
   const found = registry.get(providerId)
   if (!found) {
@@ -1820,7 +1846,7 @@ api.openapi(setDefaultProviderRoute, requireAuthMiddleware(), async (c) => {
   return c.json({ ok: true, providerId })
 })
 
-api.openapi(setProviderModelRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(setProviderModelRoute, requireAuthMiddleware()), async (c) => {
   const id = c.req.param("id")
   const { model } = c.req.valid("json" as never) as { model: string }
   const found = registry.get(id)
@@ -1869,7 +1895,7 @@ api.openapi(setProviderModelRoute, requireAuthMiddleware(), async (c) => {
 const failoverQueue = new Map<string, { priority: number; addedAt: number }>()
 let autoFailoverEnabled = false
 
-api.openapi(providerHealthRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(providerHealthRoute, requireAuthMiddleware()), async (c) => {
   const id = c.req.param("id")
   const provider = registry.get(id)
   if (!provider) {
@@ -1895,7 +1921,7 @@ api.openapi(providerHealthRoute, requireAuthMiddleware(), async (c) => {
   })
 })
 
-api.openapi(circuitBreakerStatsRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(circuitBreakerStatsRoute, requireAuthMiddleware()), async (c) => {
   const id = c.req.param("id")
   const provider = registry.get(id)
   if (!provider) {
@@ -1909,7 +1935,7 @@ api.openapi(circuitBreakerStatsRoute, requireAuthMiddleware(), async (c) => {
   return c.json(stats)
 })
 
-api.openapi(circuitBreakerResetRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(circuitBreakerResetRoute, requireAuthMiddleware()), async (c) => {
   const id = c.req.param("id")
   const provider = registry.get(id)
   if (!provider) {
@@ -1922,14 +1948,14 @@ api.openapi(circuitBreakerResetRoute, requireAuthMiddleware(), async (c) => {
 
 // ── Failover Queue ─────────────────────────────────────────────────────────
 
-api.openapi(failoverQueueRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(failoverQueueRoute, requireAuthMiddleware()), async (c) => {
   const queue = [...failoverQueue.entries()]
     .map(([providerId, entry]) => ({ providerId, ...entry }))
     .sort((a, b) => a.priority - b.priority)
   return c.json({ queue })
 })
 
-api.openapi(failoverQueueAddRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(failoverQueueAddRoute, requireAuthMiddleware()), async (c) => {
   const { providerId, priority = 99 } = c.req.valid("json" as never) as {
     providerId: string
     priority?: number
@@ -1942,17 +1968,17 @@ api.openapi(failoverQueueAddRoute, requireAuthMiddleware(), async (c) => {
   return c.json({ ok: true, providerId })
 })
 
-api.openapi(failoverQueueRemoveRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(failoverQueueRemoveRoute, requireAuthMiddleware()), async (c) => {
   const { providerId } = c.req.valid("json" as never) as { providerId: string }
   failoverQueue.delete(providerId)
   return c.json({ ok: true, providerId })
 })
 
-api.openapi(autoFailoverRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(autoFailoverRoute, requireAuthMiddleware()), async (c) => {
   return c.json({ enabled: autoFailoverEnabled })
 })
 
-api.openapi(setAutoFailoverRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(setAutoFailoverRoute, requireAuthMiddleware()), async (c) => {
   const { enabled } = c.req.valid("json" as never) as { enabled: boolean }
   autoFailoverEnabled = enabled
   return c.json({ ok: true, enabled: autoFailoverEnabled })
@@ -1970,28 +1996,42 @@ if (db && config.JWT_SECRET) {
   api.openapi(authRegisterRoute, auth.register)
   api.openapi(authLoginRoute, auth.login)
   api.openapi(authRefreshRoute, auth.refresh)
-  api.openapi(authLogoutRoute, requireAuthMiddleware(), auth.logout)
+  api.openapi(withMiddleware(authLogoutRoute, requireAuthMiddleware()), auth.logout)
   log.info("auth routes: ON")
 
   // Tenant management (admin only)
   const tenants = tenantRoutes({ db })
-  api.openapi(tenantCreateRoute, requireAuthMiddleware(), requireRole("admin"), tenants.create)
-  api.openapi(tenantListRoute, requireAuthMiddleware(), requireRole("admin"), tenants.list)
-  api.openapi(tenantGetRoute, requireAuthMiddleware(), requireRole("admin"), tenants.get)
-  api.openapi(tenantUpdateRoute, requireAuthMiddleware(), requireRole("admin"), tenants.update)
-  api.openapi(tenantDeleteRoute, requireAuthMiddleware(), requireRole("admin"), tenants.remove)
+  api.openapi(
+    withMiddleware(tenantCreateRoute, requireAuthMiddleware(), requireRole("admin")),
+    tenants.create,
+  )
+  api.openapi(
+    withMiddleware(tenantListRoute, requireAuthMiddleware(), requireRole("admin")),
+    tenants.list,
+  )
+  api.openapi(
+    withMiddleware(tenantGetRoute, requireAuthMiddleware(), requireRole("admin")),
+    tenants.get,
+  )
+  api.openapi(
+    withMiddleware(tenantUpdateRoute, requireAuthMiddleware(), requireRole("admin")),
+    tenants.update,
+  )
+  api.openapi(
+    withMiddleware(tenantDeleteRoute, requireAuthMiddleware(), requireRole("admin")),
+    tenants.remove,
+  )
   log.info("tenant routes: ON")
 }
 
 const workflowHandlers = workflowRoutes({ getDefaultProvider })
 
-api.openapi(workflowListRoute, requireAuthMiddleware(), workflowHandlers.list)
-api.openapi(workflowRunRoute, requireAuthMiddleware(), workflowHandlers.run)
-api.openapi(workflowGetRoute, requireAuthMiddleware(), workflowHandlers.get)
+api.openapi(withMiddleware(workflowListRoute, requireAuthMiddleware()), workflowHandlers.list)
+api.openapi(withMiddleware(workflowRunRoute, requireAuthMiddleware()), workflowHandlers.run)
+api.openapi(withMiddleware(workflowGetRoute, requireAuthMiddleware()), workflowHandlers.get)
 
 api.openapi(
-  postChatRoute,
-  requireAuthMiddleware(),
+  withMiddleware(postChatRoute, requireAuthMiddleware()),
   postChat({
     commander,
     runtime,
@@ -2008,16 +2048,14 @@ api.openapi(
   }),
 )
 
-api.openapi(listWorkspacesRoute, requireAuthMiddleware(), listWorkspaces(store))
-api.openapi(getWorkspaceRoute, requireAuthMiddleware(), getWorkspace(store))
+api.openapi(withMiddleware(listWorkspacesRoute, requireAuthMiddleware()), listWorkspaces(store))
+api.openapi(withMiddleware(getWorkspaceRoute, requireAuthMiddleware()), getWorkspace(store))
 api.openapi(
-  getWorkspaceEventsRoute,
-  requireAuthMiddleware(),
+  withMiddleware(getWorkspaceEventsRoute, requireAuthMiddleware()),
   getWorkspaceEvents(store, eventLogRegistry),
 )
 api.openapi(
-  stopWorkspaceRoute,
-  requireAuthMiddleware(),
+  withMiddleware(stopWorkspaceRoute, requireAuthMiddleware()),
   stopWorkspace({
     store,
     runtime,
@@ -2031,27 +2069,19 @@ api.openapi(
 
 // Integrity admin: audit ledger verification + shadow-commit rollback.
 api.openapi(
-  verifyAuditRoute,
-  requireAuthMiddleware(),
-  requireRole("admin"),
+  withMiddleware(verifyAuditRoute, requireAuthMiddleware(), requireRole("admin")),
   verifyAudit({ audit: auditLedger }),
 )
 api.openapi(
-  listShadowRoute,
-  requireAuthMiddleware(),
-  requireRole("admin"),
+  withMiddleware(listShadowRoute, requireAuthMiddleware(), requireRole("admin")),
   listShadow({ repoDir: workspaceDir }),
 )
 api.openapi(
-  createShadowRoute,
-  requireAuthMiddleware(),
-  requireRole("admin"),
+  withMiddleware(createShadowRoute, requireAuthMiddleware(), requireRole("admin")),
   createShadow({ repoDir: workspaceDir, audit: auditLedger }),
 )
 api.openapi(
-  rollbackShadowRoute,
-  requireAuthMiddleware(),
-  requireRole("admin"),
+  withMiddleware(rollbackShadowRoute, requireAuthMiddleware(), requireRole("admin")),
   rollbackShadow({ repoDir: workspaceDir, audit: auditLedger }),
 )
 
@@ -2208,7 +2238,7 @@ api.get("/events/bus", requireAuthMiddleware(), async (c) => {
 // Workspace snapshots and the terminal `done` marker are ephemeral — they
 // are sent on every (re)connect but never buffered, so the buffer holds
 // only the high-signal runtime events the client might have missed.
-api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
+api.openapi(withMiddleware(streamWorkspaceRoute, requireAuthMiddleware()), async (c: any) => {
   const id = c.req.param("id")
   // tenantId may be set by auth middleware; cast since AppEnv doesn't declare it
   const tenantId = (c as any).get("tenantId") as string | undefined
@@ -2357,8 +2387,8 @@ api.openapi(streamWorkspaceRoute, requireAuthMiddleware(), async (c: any) => {
   })
 })
 
-api.openapi(listArtifactsRoute, requireAuthMiddleware(), listArtifacts(store))
-api.openapi(getArtifactRoute, requireAuthMiddleware(), getArtifact(store))
+api.openapi(withMiddleware(listArtifactsRoute, requireAuthMiddleware()), listArtifacts(store))
+api.openapi(withMiddleware(getArtifactRoute, requireAuthMiddleware()), getArtifact(store))
 
 // ---------------------------------------------------------------------------
 // Durable replay SSE endpoint — same wire format as the in-memory
@@ -2410,7 +2440,7 @@ import {
 } from "./routes/subscriptions.js"
 import { encodeEventFrame } from "./lib/event-feed.js"
 
-api.openapi(createSubscriptionRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(createSubscriptionRoute, requireAuthMiddleware()), async (c) => {
   const { type, target, events } = c.req.valid("json")
   const auth = c.get("auth" as never) as { userId?: string } | undefined
   const tenantId = c.get("tenantId" as never) as string | undefined
@@ -2418,7 +2448,7 @@ api.openapi(createSubscriptionRoute, requireAuthMiddleware(), async (c) => {
   return c.json(sub, 201)
 })
 
-api.openapi(listSubscriptionsRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(listSubscriptionsRoute, requireAuthMiddleware()), async (c) => {
   const tenantId = c.get("tenantId" as never) as string | undefined
   // Strip the signing secret from list responses. The secret is only
   // returned once at creation time; exposing it here would let tenant A
@@ -2427,7 +2457,7 @@ api.openapi(listSubscriptionsRoute, requireAuthMiddleware(), async (c) => {
   return c.json({ subscriptions: subs })
 })
 
-api.openapi(deleteSubscriptionRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(deleteSubscriptionRoute, requireAuthMiddleware()), async (c) => {
   const { id } = c.req.valid("param")
   const tenantId = c.get("tenantId" as never) as string | undefined
   const ok = deleteSubscription(id, tenantId)
@@ -2439,7 +2469,7 @@ api.openapi(deleteSubscriptionRoute, requireAuthMiddleware(), async (c) => {
 // events are encoded once per publish and offered to this connection's
 // bounded dropping queue; overflow kills only this connection. Heartbeats
 // and the connect notice bypass the queue — they never consume budget.
-api.openapi(streamEventsRoute, requireAuthMiddleware(), async (c) => {
+api.openapi(withMiddleware(streamEventsRoute, requireAuthMiddleware()), async (c) => {
   const eventsParam = c.req.query("events")
   const events = eventsParam ? eventsParam.split(",").map((s) => s.trim()) : []
   const tenantId = c.get("tenantId" as never) as string | undefined
@@ -2542,46 +2572,67 @@ if (evolution) {
       : {}),
   }
   const evo = evolutionRoutes(evoDeps)
-  api.openapi(listMetricsRoute, requireAuthMiddleware(), evo.listMetrics)
-  api.openapi(getMetricRoute, requireAuthMiddleware(), evo.getMetric)
-  api.openapi(listAgentsRoute, requireAuthMiddleware(), evo.listAgents)
-  api.openapi(getAgentRoute, requireAuthMiddleware(), evo.getAgent)
-  api.openapi(leaderboardRoute, requireAuthMiddleware(), evo.leaderboard)
-  api.openapi(leaderboardForRoleRoute, requireAuthMiddleware(), evo.leaderboardForRole)
-  api.openapi(listVersionsRoute, requireAuthMiddleware(), evo.listVersions)
-  api.openapi(listDecisionsRoute, requireAuthMiddleware(), evo.listDecisions)
-  api.openapi(recordFeedbackRoute, requireAuthMiddleware(), evo.recordFeedback)
-  api.openapi(oracleTriadRoute, requireAuthMiddleware(), oracleTriadHandler(evoDeps))
-  api.openapi(triggerEvolveRoute, requireAuthMiddleware(), evo.triggerEvolve)
+  api.openapi(withMiddleware(listMetricsRoute, requireAuthMiddleware()), evo.listMetrics)
+  api.openapi(withMiddleware(getMetricRoute, requireAuthMiddleware()), evo.getMetric)
+  api.openapi(withMiddleware(listAgentsRoute, requireAuthMiddleware()), evo.listAgents)
+  api.openapi(withMiddleware(getAgentRoute, requireAuthMiddleware()), evo.getAgent)
+  api.openapi(withMiddleware(leaderboardRoute, requireAuthMiddleware()), evo.leaderboard)
   api.openapi(
-    memoryImportRoute,
-    requireAuthMiddleware(),
+    withMiddleware(leaderboardForRoleRoute, requireAuthMiddleware()),
+    evo.leaderboardForRole,
+  )
+  api.openapi(withMiddleware(listVersionsRoute, requireAuthMiddleware()), evo.listVersions)
+  api.openapi(withMiddleware(listDecisionsRoute, requireAuthMiddleware()), evo.listDecisions)
+  api.openapi(withMiddleware(recordFeedbackRoute, requireAuthMiddleware()), evo.recordFeedback)
+  api.openapi(
+    withMiddleware(oracleTriadRoute, requireAuthMiddleware()),
+    oracleTriadHandler(evoDeps),
+  )
+  api.openapi(withMiddleware(triggerEvolveRoute, requireAuthMiddleware()), evo.triggerEvolve)
+  api.openapi(
+    withMiddleware(memoryImportRoute, requireAuthMiddleware()),
     memoryImportHandler({ facade: evolution }),
   )
 }
 
 // Settings-center deep domains (providers catalog / model tester / store status).
-api.openapi(providerPresetsRoute, requireAuthMiddleware(), providerPresetsHandler())
-api.openapi(providerTestChatRoute, requireAuthMiddleware(), providerTestChatHandler({ registry }))
+api.openapi(withMiddleware(providerPresetsRoute, requireAuthMiddleware()), providerPresetsHandler())
 api.openapi(
-  sessionStoreStatusRoute,
-  requireAuthMiddleware(),
+  withMiddleware(providerTestChatRoute, requireAuthMiddleware()),
+  providerTestChatHandler({ registry }),
+)
+api.openapi(
+  withMiddleware(sessionStoreStatusRoute, requireAuthMiddleware()),
   sessionStoreStatusHandler({ store: sessionStore?.store }),
 )
 api.openapi(
-  migrationsStatusRoute,
-  requireAuthMiddleware(),
+  withMiddleware(migrationsStatusRoute, requireAuthMiddleware()),
   migrationsStatusHandler({ store: sessionStore?.store }),
 )
-api.openapi(oracleLessonSaveRoute, requireAuthMiddleware(), oracleLessonSaveHandler())
+api.openapi(
+  withMiddleware(oracleLessonSaveRoute, requireAuthMiddleware()),
+  oracleLessonSaveHandler(),
+)
 
 // Session history (SQLite side store, read side of the double-write).
+// NOTE: auth travels on the ROUTE's `middleware` field (zod-openapi 1.x:
+// openapi(route, handler, hook) — the old 3-arg positional pattern put
+// the real handler into the validator-hook slot, where it received the
+// hook payload instead of a Context and 500'd on every request).
 const sessions = sessionRoutes({ store: sessionStore?.store })
-api.openapi(listSessionsRoute, requireAuthMiddleware(), sessions.listSessions)
-api.openapi(getMessagesRoute, requireAuthMiddleware(), sessions.getMessages)
-api.openapi(getTimelineRoute, requireAuthMiddleware(), sessions.getTimeline)
-api.openapi(getSessionIntegrityRoute, requireAuthMiddleware(), sessions.getIntegrity)
-api.openapi(searchMessagesRoute, requireAuthMiddleware(), sessions.searchMessages)
+api.openapi(withMiddleware(listSessionsRoute, requireAuthMiddleware()), sessions.listSessions)
+api.openapi(withMiddleware(getMessagesRoute, requireAuthMiddleware()), sessions.getMessages)
+api.openapi(withMiddleware(selectMessageRoute, requireAuthMiddleware()), sessions.selectMessage)
+api.openapi(withMiddleware(getTimelineRoute, requireAuthMiddleware()), sessions.getTimeline)
+api.openapi(
+  withMiddleware(getSessionIntegrityRoute, requireAuthMiddleware()),
+  sessions.getIntegrity,
+)
+api.openapi(withMiddleware(searchMessagesRoute, requireAuthMiddleware()), sessions.searchMessages)
+// Backup/restore (deepseek chat-demo history borrowing): ZIP download and
+// multipart replace of the whole side-store session content.
+api.openapi(withMiddleware(backupSessionsRoute, requireAuthMiddleware()), sessions.backupSessions)
+api.openapi(withMiddleware(restoreSessionsRoute, requireAuthMiddleware()), sessions.restoreSessions)
 
 // ---------------------------------------------------------------------------
 // Jobs domain — PendingSlotManager host (in-process scheduler). Real
@@ -2598,37 +2649,52 @@ const jobsRegistry = createJobsRegistry({
     : undefined,
 })
 const jobs = jobsRoutes({ registry: jobsRegistry })
-api.openapi(jobCreateRoute, requireAuthMiddleware(), jobs.create)
-api.openapi(jobListRoute, requireAuthMiddleware(), jobs.list)
-api.openapi(jobDeleteRoute, requireAuthMiddleware(), jobs.remove)
-api.openapi(jobTriggerRoute, requireAuthMiddleware(), jobs.trigger)
-api.openapi(jobSlotsRoute, requireAuthMiddleware(), jobs.slots)
+api.openapi(withMiddleware(jobCreateRoute, requireAuthMiddleware()), jobs.create)
+api.openapi(withMiddleware(jobListRoute, requireAuthMiddleware()), jobs.list)
+api.openapi(withMiddleware(jobDeleteRoute, requireAuthMiddleware()), jobs.remove)
+api.openapi(withMiddleware(jobTriggerRoute, requireAuthMiddleware()), jobs.trigger)
+api.openapi(withMiddleware(jobSlotsRoute, requireAuthMiddleware()), jobs.slots)
 // Startup: recover orphan pending slots exactly once, then auto-fire due
 // jobs (real BullMQ dispatch for kind=workspace payloads). Stop the
 // scheduler on shutdown.
 await jobsRegistry.recoverOrphans()
 jobsRegistry.startScheduler()
-api.openapi(vaultStatusRoute, requireAuthMiddleware(), vaultStatusHandler())
-api.openapi(oracleLessonsRoute, requireAuthMiddleware(), oracleLessonsHandler())
+api.openapi(withMiddleware(vaultStatusRoute, requireAuthMiddleware()), vaultStatusHandler())
+api.openapi(withMiddleware(oracleLessonsRoute, requireAuthMiddleware()), oracleLessonsHandler())
 
 // Phase 5.7 — Learning Dashboard
 if (learningApi) {
   const lr = learningRoutes({ api: learningApi })
-  api.openapi(learningStatusRoute, requireAuthMiddleware(), lr.status)
-  api.openapi(learningAgentsRoute, requireAuthMiddleware(), lr.agents)
-  api.openapi(learningEvolutionHistoryRoute, requireAuthMiddleware(), lr.evolutionHistory)
-  api.openapi(learningFailurePatternsRoute, requireAuthMiddleware(), lr.failurePatterns)
-  api.openapi(learningMineFailurePatternsRoute, requireAuthMiddleware(), lr.mineFailurePatterns)
+  api.openapi(withMiddleware(learningStatusRoute, requireAuthMiddleware()), lr.status)
+  api.openapi(withMiddleware(learningAgentsRoute, requireAuthMiddleware()), lr.agents)
+  api.openapi(
+    withMiddleware(learningEvolutionHistoryRoute, requireAuthMiddleware()),
+    lr.evolutionHistory,
+  )
+  api.openapi(
+    withMiddleware(learningFailurePatternsRoute, requireAuthMiddleware()),
+    lr.failurePatterns,
+  )
+  api.openapi(
+    withMiddleware(learningMineFailurePatternsRoute, requireAuthMiddleware()),
+    lr.mineFailurePatterns,
+  )
 }
 
 // Phase 5.1 — Execution History
 if (executionStore) {
   const er = executionRoutes({ store: executionStore })
-  api.openapi(listExecutionsRoute, requireAuthMiddleware(), er.listAll)
-  api.openapi(listExecutionsForWorkspaceRoute, requireAuthMiddleware(), er.listForWorkspace)
-  api.openapi(listExecutionsForRoleRoute, requireAuthMiddleware(), er.listForRole)
-  api.openapi(getExecutionRoute, requireAuthMiddleware(), er.get)
-  api.openapi(appendExecutionFeedbackRoute, requireAuthMiddleware(), er.appendFeedback)
+  api.openapi(withMiddleware(listExecutionsRoute, requireAuthMiddleware()), er.listAll)
+  api.openapi(
+    withMiddleware(listExecutionsForWorkspaceRoute, requireAuthMiddleware()),
+    er.listForWorkspace,
+  )
+  api.openapi(withMiddleware(listExecutionsForRoleRoute, requireAuthMiddleware()), er.listForRole)
+  api.openapi(withMiddleware(getExecutionRoute, requireAuthMiddleware()), er.get)
+  api.openapi(
+    withMiddleware(appendExecutionFeedbackRoute, requireAuthMiddleware()),
+    er.appendFeedback,
+  )
 }
 
 // Phase 6 — Meta-System routes
@@ -2642,26 +2708,30 @@ if (metaOrchestrator && metaGovernance && metaOrgMemory && metaSimulation) {
     registry: metaRegistry!,
     discovery: metaDiscovery!,
   })
-  api.openapi(listCapabilitiesRoute, requireAuthMiddleware(), mr.listCapabilities)
-  api.openapi(getCapabilityRoute, requireAuthMiddleware(), mr.getCapability)
-  api.openapi(listProposalsRoute, requireAuthMiddleware(), mr.listProposals)
-  api.openapi(runCycleRoute, requireAuthMiddleware(), mr.runCycle)
-  api.openapi(truthReportRoute, requireAuthMiddleware(), async (c) => {
+  api.openapi(withMiddleware(listCapabilitiesRoute, requireAuthMiddleware()), mr.listCapabilities)
+  api.openapi(withMiddleware(getCapabilityRoute, requireAuthMiddleware()), mr.getCapability)
+  api.openapi(withMiddleware(listProposalsRoute, requireAuthMiddleware()), mr.listProposals)
+  api.openapi(withMiddleware(runCycleRoute, requireAuthMiddleware()), mr.runCycle)
+  api.openapi(withMiddleware(truthReportRoute, requireAuthMiddleware()), async (c) => {
     if (!metaOrchestrator) return c.json({ error: "meta agent disabled" }, 503)
     const report = await metaOrchestrator.truthReport()
     if (!report) return c.json({ error: "truth audit not wired" }, 503)
     return c.json(report as Record<string, unknown>)
   })
-  api.openapi(listEventsRoute, requireAuthMiddleware(), mr.listEvents)
-  api.openapi(countEventsRoute, requireAuthMiddleware(), mr.countEvents)
-  api.openapi(checkGovernanceRoute, requireAuthMiddleware(), mr.checkGovernance)
-  api.openapi(simulateRoute, requireAuthMiddleware(), mr.simulate)
-  api.openapi(compareSimulationsRoute, requireAuthMiddleware(), mr.compareSimulations)
-  api.openapi(getGovernanceConfigRoute, requireAuthMiddleware(), mr.getGovernanceConfig)
+  api.openapi(withMiddleware(listEventsRoute, requireAuthMiddleware()), mr.listEvents)
+  api.openapi(withMiddleware(countEventsRoute, requireAuthMiddleware()), mr.countEvents)
+  api.openapi(withMiddleware(checkGovernanceRoute, requireAuthMiddleware()), mr.checkGovernance)
+  api.openapi(withMiddleware(simulateRoute, requireAuthMiddleware()), mr.simulate)
   api.openapi(
-    putGovernanceConfigRoute,
-    requireAuthMiddleware(),
-    requireRole("admin"),
+    withMiddleware(compareSimulationsRoute, requireAuthMiddleware()),
+    mr.compareSimulations,
+  )
+  api.openapi(
+    withMiddleware(getGovernanceConfigRoute, requireAuthMiddleware()),
+    mr.getGovernanceConfig,
+  )
+  api.openapi(
+    withMiddleware(putGovernanceConfigRoute, requireAuthMiddleware(), requireRole("admin")),
     mr.putGovernanceConfig,
   )
 }
@@ -2669,18 +2739,18 @@ if (metaOrchestrator && metaGovernance && metaOrgMemory && metaSimulation) {
 // Phase 10 — Observability routes
 if (telemetry) {
   const or = obsRoutes({ telemetry })
-  api.openapi(listObsExecutionsRoute, requireAuthMiddleware(), or.listExecutions)
-  api.openapi(listObsEvolutionsRoute, requireAuthMiddleware(), or.listEvolutions)
-  api.openapi(lineageByRoleRoute, requireAuthMiddleware(), or.lineageByRole)
+  api.openapi(withMiddleware(listObsExecutionsRoute, requireAuthMiddleware()), or.listExecutions)
+  api.openapi(withMiddleware(listObsEvolutionsRoute, requireAuthMiddleware()), or.listEvolutions)
+  api.openapi(withMiddleware(lineageByRoleRoute, requireAuthMiddleware()), or.lineageByRole)
 }
 
 // Usage aggregation routes — depend on evolution.metrics. When evolution is
 // disabled we return 503 so the frontend can detect "metrics off" cleanly.
 const ur = usageRoutes({ evolution })
-api.openapi(usageSummaryRoute, requireAuthMiddleware(), ur.summary)
-api.openapi(usageDailyRoute, requireAuthMiddleware(), ur.daily)
-api.openapi(usageLatencyRoute, requireAuthMiddleware(), ur.latency)
-api.openapi(usageWindowsRoute, requireAuthMiddleware(), ur.windows)
+api.openapi(withMiddleware(usageSummaryRoute, requireAuthMiddleware()), ur.summary)
+api.openapi(withMiddleware(usageDailyRoute, requireAuthMiddleware()), ur.daily)
+api.openapi(withMiddleware(usageLatencyRoute, requireAuthMiddleware()), ur.latency)
+api.openapi(withMiddleware(usageWindowsRoute, requireAuthMiddleware()), ur.windows)
 
 // Phase 11 — Visualizer adapter endpoints
 if (telemetry) {
@@ -2688,12 +2758,12 @@ if (telemetry) {
     () => telemetry.listExecutions(),
     () => telemetry.listEvolutions(),
   )
-  api.openapi(obsGraphRoute, requireAuthMiddleware(), async (c) => {
+  api.openapi(withMiddleware(obsGraphRoute, requireAuthMiddleware()), async (c) => {
     const graph = visualizer.getUIReadyGraph(c.req.param("executionId"))
     if (!graph) return c.json({ error: "not_found" }, 404)
     return c.json(graph)
   })
-  api.openapi(obsTimelineRoute, requireAuthMiddleware(), async (c) => {
+  api.openapi(withMiddleware(obsTimelineRoute, requireAuthMiddleware()), async (c) => {
     return c.json(visualizer.getEvolutionTimeline())
   })
 }
@@ -2851,10 +2921,16 @@ export function __registerOpencodeBridge(bridge: EventBridge | undefined): void 
   }
 }
 
-api.openapi(listOpencodeSessionsRoute, requireAuthMiddleware(), opencodeRouter.listSessions)
-api.openapi(getOpencodeSessionRoute, requireAuthMiddleware(), opencodeRouter.getSession)
-api.openapi(opencodeHealthRoute, requireAuthMiddleware(), opencodeRouter.health)
-api.openapi(opencodeEventsRoute, requireAuthMiddleware(), opencodeRouter.events)
+api.openapi(
+  withMiddleware(listOpencodeSessionsRoute, requireAuthMiddleware()),
+  opencodeRouter.listSessions,
+)
+api.openapi(
+  withMiddleware(getOpencodeSessionRoute, requireAuthMiddleware()),
+  opencodeRouter.getSession,
+)
+api.openapi(withMiddleware(opencodeHealthRoute, requireAuthMiddleware()), opencodeRouter.health)
+api.openapi(withMiddleware(opencodeEventsRoute, requireAuthMiddleware()), opencodeRouter.events)
 
 // Mount the API routes under both /api/ and /api/v1/
 // Full machine-readable OpenAPI document (opencode httpapi borrowing,

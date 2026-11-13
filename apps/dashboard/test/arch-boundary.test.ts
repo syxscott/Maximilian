@@ -21,8 +21,13 @@ import { join, relative, sep } from "node:path"
 
 const SRC_ROOT = join(__dirname, "..", "src")
 
-/** Files allowed to touch the network directly. */
-const ALLOWED_PREFIXES = ["api.ts", "api-generated.ts", "hooks/"]
+/**
+ * Files allowed to touch the network directly. `api-sessions.ts` is the
+ * session-tree + backup/restore client (deepseek chat-demo borrowing): it
+ * reuses api.ts's shared plumbing but owns the blob/multipart endpoints
+ * that fetchJson's JSON pipeline does not shape.
+ */
+const ALLOWED_PREFIXES = ["api.ts", "api-generated.ts", "api-sessions.ts", "hooks/"]
 
 function collectTsFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
