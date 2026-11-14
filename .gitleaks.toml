@@ -18,4 +18,7 @@ regexes = [
   '''sk-proj-abc123def456ghi789jkl012mno345pqr678''',
   # evolution/test/borrowed-patterns.test.ts — fake ghp_ PAT shape
   '''ghp_abc123def456ghi789jkl012mno345pqr678''',
+  # apps/api/test/outbound-redaction.test.ts — outbound-redaction fixture
+  # (fake sk- key fed to the redaction sink to prove it gets masked)
+  '''sk-test-secret-0123456789''',
 ]
