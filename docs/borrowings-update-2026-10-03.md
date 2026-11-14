@@ -349,3 +349,22 @@ API）；contenteditable chip composer（工程量大单列）；附件真实上
 对 5000 随机文档 fuzz 零误报、幂等中间件顺序、SSE 重查定时器清理、redact 长度降序、
 format-capabilities 声明与四格式实际能力逐项吻合、live tool scopes 的 finally 清理、
 forceFraction 交错算法全形状、backup/restore 链续接（GENESIS 续链+接缝验证）。
+
+### 2026-11-15 Agent Bot（fc3327b，release 1.6.0）
+
+用户选择"Maximilian 自主代理定时轮"：新增 `.github/workflows/agent-bot.yml` +
+`scripts/agent-bot/{audit-round,agent-round,journal}.mjs`。**首轮已手动 dispatch 并
+成功**（journal issue #27 自动创建）。
+
+- **audit 轮**（每日 06:00 UTC = 14:00 北京，零外部依赖）：脚本化健康巡检——全包
+  type-check、GitHub 状态（PR/issue/最近 CI/release）、repo vitals——写入滚动 issue
+  `🤖 Agent Bot Journal`（create-or-comment upsert）。
+- **agent 轮**（手动 dispatch 或改 schedule）：in-process 模式起 runtime（无 Redis），
+  POST /api/chat 提交有界目标 → 轮询 workspace 至完成 → 代理自己的报告进 journal。
+  **需要真实 provider key**（repo secrets 配 `OPENAI_API_KEY`）；未配置时输出诚实的
+  跳过通知——绝不伪造报告。
+- 护栏：40 分钟 job 上限、单并发不重叠、runtime 进程拿不到 GITHUB_TOKEN、代理的写
+  入只留在 runner（artifact 保存，绝不 push）、报告超长截断+artifact 全文。
+
+启用 agent 轮：Settings → Secrets → Actions 加 `OPENAI_API_KEY`，然后
+Actions → Agent Bot → Run workflow → round=agent（goal 可自定义）。
