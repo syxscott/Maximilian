@@ -12,7 +12,7 @@
  * without data (no draft, no events) — an empty state has zero occupancy
  * worth displaying.
  */
-import { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
 import { useLocale, t, formatTokens } from "@max/i18n"
 import { cn } from "@/lib/utils"
 import type { RuntimeEvent } from "@/api"
@@ -35,7 +35,12 @@ export function ContextMeter({
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLSpanElement | null>(null)
   const panelId = useId()
-  const occupancy = contextOccupancyModel(draftText.length, sessionCharsFromEvents(events))
+  // Session volume is recomputed only when the EVENT LIST changes — the
+  // meter re-renders on every composer keystroke (draftText), and
+  // sessionCharsFromEvents JSON-stringifies the whole stream; without
+  // this memo a long session pays an O(session) stringify per keystroke.
+  const sessionChars = useMemo(() => sessionCharsFromEvents(events), [events])
+  const occupancy = contextOccupancyModel(draftText.length, sessionChars)
 
   useEffect(() => {
     if (!open) return

@@ -99,6 +99,19 @@ export interface PendingUplinksApi {
  * FNV-1a 32-bit, hex-encoded — the digest format ZCode's registry uses for
  * sensitive command payloads. Deterministic and collision-unfriendly
  * enough for ledger correlation; never used as a security primitive.
+ *
+ * NOT recovery-resistant: 32 bits of output over a low-entropy input is
+ * trivially reversible by dictionary (every short guess — "allow",
+ * "deny", a one-word answer — hashes in microseconds; even a full
+ * enumeration of short ASCII strings fits a laptop's memory). Anyone who
+ * can read localStorage learns at most "the payload hashed to X" for the
+ * payloads recorded here — which today is always `JSON.stringify(null)`
+ * because sensitive uplinks carry no payload (App registers
+ * `{ kind, sensitive: true }` with none), so the digest is a constant
+ * and leaks nothing. If a future caller ever passes a SHORT sensitive
+ * payload, this digest must be upgraded (SHA-256, or a salted digest)
+ * before it ships — or simply drop the digest, since the ledger
+ * correlates by entry id alone.
  */
 export function fnv1aHex(input: string): string {
   let hash = 0x811c9dc5

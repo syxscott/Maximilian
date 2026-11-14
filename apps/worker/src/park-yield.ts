@@ -169,5 +169,26 @@ export async function executeUntilPark(input: ExecuteUntilParkInput): Promise<Pa
   return { outcome: "parked", detached }
 }
 
+/**
+ * Whether a completed BullMQ job's completion notification must be
+ * deferred to its detached run's real completion (see the "completed"
+ * handler in index.ts): a job that returned at park time "completes"
+ * while its run is still parked in the waiting registry. Scheduled fires
+ * complete under the `ws-sched-…` placeholder id while the detached run
+ * is tracked in the registry under the REAL materialized workspace id —
+ * so the materialized id must be checked too, or the parked scheduled
+ * fire notifies "completed" immediately and AGAIN on real completion.
+ */
+export function shouldDeferCompletionNotification(
+  parkYieldEnabled: boolean,
+  jobWorkspaceId: string | undefined,
+  ranWorkspaceId: string | undefined,
+  registry: DetachedRunRegistry,
+): boolean {
+  if (!parkYieldEnabled) return false
+  if (jobWorkspaceId !== undefined && registry.has(jobWorkspaceId)) return true
+  return ranWorkspaceId !== undefined && registry.has(ranWorkspaceId)
+}
+
 /** Port of AgentRuntime used by the park-yield helpers (mock-friendly). */
 export type ParkYieldRuntime = Pick<AgentRuntime, "execute">

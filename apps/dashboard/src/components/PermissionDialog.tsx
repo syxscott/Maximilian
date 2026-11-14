@@ -107,6 +107,22 @@ export function PermissionDialog({
         // response is not proof of non-delivery) and the dialog surfaces
         // the reason — the previous approval flow did the same.
         pendingUplinks.settle(id, "failed")
+        // Release the submitted-id guard: the guard exists so a second
+        // press cannot dispatch WHILE the first answer is in flight
+        // (`submitting` covers that window). Once the send failed, the
+        // decision provably did not complete — leaving the id recorded
+        // would brick the prompt (every further press short-circuits
+        // while the buttons render enabled), contradicting App's
+        // "leave the dialog open so the user can retry" contract. The
+        // retried answer lands on the same id; if the first attempt DID
+        // reach the server after all, its permission-resolved event
+        // still closes the dialog idempotently.
+        setSubmittedIds((prev) => {
+          if (!prev.has(id)) return prev
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
         setError(err instanceof Error ? err.message : String(err))
       })
       .finally(() => setSubmitting(false))

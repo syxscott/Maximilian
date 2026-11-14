@@ -76,6 +76,7 @@ import {
   DetachedRunRegistry,
   ParkSignal,
   executeUntilPark,
+  shouldDeferCompletionNotification,
   type ParkStateInfo,
   type ParkYieldOutcome,
 } from "./park-yield.js"
@@ -972,10 +973,22 @@ async function main() {
     )
     // Park-yield: a job that returned at park time "completes" while its
     // run is still parked in the waiting registry — defer the notification
-    // to the detached run's real completion (onDetachedComplete).
-    if (parkYieldEnabled && detachedRuns.has(job.data.workspaceId)) {
+    // to the detached run's real completion (onDetachedComplete). A parked
+    // scheduled fire completes under the placeholder id while the detached
+    // run is tracked under the REAL materialized id — check both.
+    if (
+      shouldDeferCompletionNotification(
+        parkYieldEnabled,
+        job.data.workspaceId,
+        ranWorkspaceId,
+        detachedRuns,
+      )
+    ) {
       log.info(
-        { jobId: job.id, workspaceId: job.data.workspaceId },
+        {
+          jobId: job.id,
+          workspaceId: ranWorkspaceId ?? job.data.workspaceId,
+        },
         "job returned at park time - completion notification deferred to the detached run",
       )
       return

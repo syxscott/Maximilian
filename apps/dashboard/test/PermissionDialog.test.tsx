@@ -361,4 +361,39 @@ describe("PermissionDialog — decision shortcuts", () => {
       expect(screen.getByTestId("perm-dialog-error").textContent).toContain("network dropped"),
     )
   })
+
+  it("a failed answer can be retried (the submitted-id guard is released on failure)", async () => {
+    // First attempt fails (transport error), second succeeds.
+    const onAnswer = vi
+      .fn<(decision: "allow" | "deny") => Promise<void>>()
+      .mockRejectedValueOnce(new Error("network dropped"))
+      .mockResolvedValueOnce(undefined)
+    render(<PermissionDialog pending={makePending()} onAnswer={onAnswer} />)
+
+    fireEvent.click(screen.getByTestId("perm-dialog-allow"))
+    await waitFor(() =>
+      expect(screen.getByTestId("perm-dialog-error").textContent).toContain("network dropped"),
+    )
+    // Regression: the failed attempt must not keep the prompt bricked —
+    // the guard only exists for the in-flight window (submitting), so
+    // after the failure a second press reaches the transport again.
+    fireEvent.click(screen.getByTestId("perm-dialog-allow"))
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledTimes(2))
+    expect(onAnswer).toHaveBeenNthCalledWith(2, "allow")
+  })
+
+  it("the keyboard shortcut re-arms after a failed answer", async () => {
+    const onAnswer = vi
+      .fn<(decision: "allow" | "deny") => Promise<void>>()
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce(undefined)
+    render(<PermissionDialog pending={makePending()} onAnswer={onAnswer} />)
+
+    fireEvent.keyDown(document, { key: "Enter", ctrlKey: true })
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledTimes(1))
+    // The listener stands down while the id is submitted (hasSubmitted
+    // unsubscribed it); the failure must re-arm it.
+    fireEvent.keyDown(document, { key: "Enter", ctrlKey: true })
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledTimes(2))
+  })
 })

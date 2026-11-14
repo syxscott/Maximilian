@@ -124,8 +124,20 @@ export function VirtualTurnWindow<T>({
   // and the effect must not resubscribe per render.
   const markProgrammaticRef = useRef(markProgrammaticScroll)
   markProgrammaticRef.current = markProgrammaticScroll
+  // The jump fires when the anchor TARGET changes — not on every
+  // heights/units identity bump. The host's height list re-issues its
+  // array whenever a row measurement lands (the jump itself triggers
+  // band changes whose first-time measurements bump it): re-running the
+  // write on those frames would yank a reader who has since scrolled
+  // away back to the anchored row on every newly measured row.
+  const lastAnchorRef = useRef<number | undefined>(undefined)
   useEffect(() => {
-    if (anchorIndex === undefined) return
+    if (anchorIndex === undefined) {
+      lastAnchorRef.current = undefined
+      return
+    }
+    if (lastAnchorRef.current === anchorIndex) return
+    lastAnchorRef.current = anchorIndex
     const el = elRef.current
     if (!el) return
     const target = scrollOffsetForUnit(units, heights, anchorIndex)

@@ -20,6 +20,7 @@ import {
   DetachedRunRegistry,
   ParkSignal,
   executeUntilPark,
+  shouldDeferCompletionNotification,
   type ParkStateInfo,
 } from "../src/park-yield.js"
 import type { Workspace } from "@max/core"
@@ -289,5 +290,45 @@ describe("park-yield (borrowing; OAC worker.go:277)", () => {
     expect(failures).toEqual([])
     expect(completed).toEqual([])
     expect(registry.list()).toEqual([])
+  })
+})
+
+describe("shouldDeferCompletionNotification (park-yield completed handler)", () => {
+  it("defers when the job's own workspace has a detached run (normal dispatch)", () => {
+    const registry = new DetachedRunRegistry()
+    registry.track("ws-1", Promise.resolve())
+    expect(shouldDeferCompletionNotification(true, "ws-1", undefined, registry)).toBe(true)
+  })
+
+  it("defers for a parked scheduled fire: the job id is the placeholder, the detached run the REAL id", () => {
+    const registry = new DetachedRunRegistry()
+    registry.track("ws-real-1", Promise.resolve())
+    // Regression: the completed handler only checked job.data.workspaceId
+    // (the ws-sched-… placeholder), so a parked scheduled fire notified
+    // "completed" immediately AND again on the detached run's real
+    // completion.
+    expect(shouldDeferCompletionNotification(true, "ws-sched-job_1-1", "ws-real-1", registry)).toBe(
+      true,
+    )
+    // Placeholder alone (not tracked) defers only via the materialized id.
+    expect(shouldDeferCompletionNotification(true, "ws-sched-job_1-1", "ws-other", registry)).toBe(
+      false,
+    )
+    expect(shouldDeferCompletionNotification(true, "ws-sched-job_1-1", undefined, registry)).toBe(
+      false,
+    )
+  })
+
+  it("does not defer a genuinely completed job", () => {
+    // A clean completion leaves the registry empty (entries delete-on-settle).
+    const registry = new DetachedRunRegistry()
+    expect(shouldDeferCompletionNotification(true, "ws-1", "ws-1", registry)).toBe(false)
+    expect(shouldDeferCompletionNotification(true, "ws-2", undefined, registry)).toBe(false)
+  })
+
+  it("never defers when park-yield is disabled", () => {
+    const registry = new DetachedRunRegistry()
+    registry.track("ws-1", Promise.resolve())
+    expect(shouldDeferCompletionNotification(false, "ws-1", "ws-1", registry)).toBe(false)
   })
 })

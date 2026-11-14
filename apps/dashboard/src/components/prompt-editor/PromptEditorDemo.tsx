@@ -93,7 +93,11 @@ export function PromptEditorDemo({
   const runCommandRef = useRef(runCommand)
   runCommandRef.current = runCommand
 
-  // Slash QuickPick items mirror the inline popup's model.
+  // Slash QuickPick items mirror the inline popup's model. The memo keys
+  // on the items themselves: keying on `slashPickOpen` (a render-time
+  // bookkeeping flag) froze the mapped list at whatever `slash.items`
+  // happened to be when the flag last flipped, so a later query change
+  // inside the open dialog would keep serving the stale mapping.
   const slashPickItems = useMemo<QuickPickItem[]>(
     () =>
       slash.items.map((v) => ({
@@ -101,7 +105,7 @@ export function PromptEditorDemo({
         label: v.title,
         description: slashKindLabel(v.kind),
       })),
-    [slashPickOpen],
+    [slash.items],
   )
 
   const insertMention = () => {

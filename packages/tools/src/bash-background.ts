@@ -10,7 +10,9 @@
 //
 // Retention rule: a shell record survives process exit (status flips to
 // "completed"/"failed") so the remaining buffered lines stay readable;
-// it is evicted only by the retention cap or an explicit kill+evict.
+// it is evicted by the retention cap, by a start that needs its slot
+// while the registry is at cap (dead records never wedge the tool), or
+// by an explicit remove.
 
 import { spawn, type ChildProcess } from "node:child_process"
 import { randomUUID } from "node:crypto"
@@ -152,16 +154,23 @@ export class BackgroundShellRegistry {
    * spawning anything (a leak guard, not a queue).
    */
   start(command: string, cwd: string): StartSuccess | StartFailure {
+    // Passive retention first (overflow beyond maxRetainedExited).
+    this.evictOldExited()
+    // A registry at cap must never stay wedged by DEAD records: the leak
+    // guard protects running shells' slots, not exited ones. bash_kill on
+    // an exited record retains it (output stays readable), so without this
+    // force-evict a registry full of exited shells would refuse every
+    // future start forever — the retention cap only ever evicted DOWN TO
+    // maxRetainedExited, which defaults ABOVE maxShells and can therefore
+    // never free a slot by itself. Oldest exited records (start order)
+    // yield first; the refusal below then only fires when every record is
+    // still live.
     if (this.shells.size >= this.maxShells) {
-      return {
-        ok: false,
-        error:
-          `background shell registry is full (${this.shells.size}/${this.maxShells}) — ` +
-          "read or bash_kill existing shells before starting new ones",
+      for (const [id, record] of this.shells) {
+        if (this.shells.size < this.maxShells) break
+        if (record.status !== "running") this.shells.delete(id)
       }
     }
-    this.evictOldExited()
-    // Second guard after eviction (eviction may have freed nothing).
     if (this.shells.size >= this.maxShells) {
       return {
         ok: false,

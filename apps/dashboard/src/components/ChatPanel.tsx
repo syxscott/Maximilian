@@ -561,6 +561,13 @@ export function ChatPanel({
                 }
               }}
               onKeyDown={(e) => {
+                // Keys during an IME composition belong to the IME
+                // (candidate navigation, the confirm Enter): recalling a
+                // history entry mid-composition would clobber the marked
+                // text — an empty committed value makes the ↑-recall fire
+                // on plain candidate navigation. keyCode 229 covers
+                // engines whose events arrive without isComposing.
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
                 if (mention.onKeyDown(e)) return
                 // Send-history recall (opencode borrowing): ↑ from an
                 // EMPTY composer recalls the most recent send; while

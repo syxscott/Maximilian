@@ -189,6 +189,45 @@ describe("BackgroundShellRegistry — cap", () => {
     expect(registry.size).toBe(2)
     expect(registry.ids().sort()).toEqual([a.ok ? a.bashId : "", b.ok ? b.bashId : ""].sort())
   })
+
+  it("a registry full of EXITED records frees slots for new starts (no deadlock)", async () => {
+    // Regression: bash_kill retains exited records and evictOldExited only
+    // evicts DOWN TO maxRetainedExited (32 by default — above maxShells),
+    // so once maxShells dead records accumulated every future start was
+    // refused forever ("registry is full" with nothing running and no way
+    // to free a slot through the tool surface).
+    const registry = makeRegistry({ maxShells: 3, maxRetainedExited: 32 })
+    const ids: string[] = []
+    for (let i = 0; i < 3; i++) {
+      const started = registry.start(`echo batch-${i}`, process.cwd())
+      expect(started.ok).toBe(true)
+      if (started.ok) ids.push(started.bashId)
+    }
+    for (const id of ids) {
+      await waitFor(() => registry.snapshot(id)?.status !== "running")
+      expect(registry.snapshot(id)?.status).toBe("completed")
+    }
+    expect(registry.size).toBe(3)
+
+    // All three records are terminal and nothing is running: the fourth
+    // start must succeed by evicting the OLDEST exited record, not refuse.
+    const fourth = registry.start("echo alive", process.cwd())
+    expect(fourth.ok).toBe(true)
+    if (!fourth.ok) return
+    expect(registry.size).toBe(3)
+    expect(registry.ids()).not.toContain(ids[0]) // oldest exited evicted
+    expect(registry.ids()).toContain(ids[1]) // newer retained records stay
+    expect(registry.ids()).toContain(ids[2])
+    expect(registry.ids()).toContain(fourth.bashId)
+
+    // And the new shell actually runs to completion.
+    await waitFor(() => registry.snapshot(fourth.bashId)?.status !== "running")
+    expect(registry.snapshot(fourth.bashId)?.status).toBe("completed")
+    const read = registry.read(fourth.bashId)
+    expect(read.ok).toBe(true)
+    if (!read.ok) return
+    expect(read.lines).toContain("alive")
+  })
 })
 
 describe("bash tool trio over the registry", () => {

@@ -216,4 +216,28 @@ describe("ChatPanel history integration", () => {
     fireEvent.keyDown(textarea2, { key: "ArrowUp" })
     expect(textarea2).toHaveValue("other ws message")
   })
+
+  it("↑/↓ during an IME composition never recall (candidate navigation is not recall)", () => {
+    act(() => {
+      useComposerDraftStore.getState().pushHistory("ws-1", "remembered")
+    })
+    render(<ChatPanel onSubmit={() => {}} submitting={false} workspace={ws} />)
+    const textarea = screen.getByPlaceholderText(/enter your request/i)
+    // IME composition in flight: the committed value is empty (the first
+    // word is still marked) and the ↑ keydown carries isComposing —
+    // it belongs to the IME's candidate list, not the history recall.
+    fireEvent.keyDown(textarea, { key: "ArrowUp", isComposing: true })
+    expect(textarea).toHaveValue("")
+    // keyCode 229 (engines whose composing keydowns carry it instead).
+    fireEvent.keyDown(textarea, { key: "ArrowUp", keyCode: 229 })
+    expect(textarea).toHaveValue("")
+    // A clean keydown still recalls — the gate is composition-scoped.
+    fireEvent.keyDown(textarea, { key: "ArrowUp" })
+    expect(textarea).toHaveValue("remembered")
+    // While recalling, a composing ↓ is likewise swallowed.
+    fireEvent.keyDown(textarea, { key: "ArrowDown", isComposing: true })
+    expect(textarea).toHaveValue("remembered")
+    fireEvent.keyDown(textarea, { key: "ArrowDown" })
+    expect(textarea).toHaveValue("")
+  })
 })

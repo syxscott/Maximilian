@@ -2371,6 +2371,53 @@ describe("VirtualTurnWindow rendering", () => {
     )
   })
 
+  it("does not re-jump when heights re-issue while the anchor is unchanged (no yank)", () => {
+    const turns = turnsOf(10)
+    const { rerender } = render(
+      <VirtualTurnWindow
+        units={turns}
+        heights={hs28(10)}
+        viewportHeight={112}
+        overscan={0}
+        anchorIndex={4}
+        renderUnit={rowRender}
+      />,
+    )
+    expect(screen.getByTestId("virtual-turn-window").scrollTop).toBe(112)
+    // The reader scrolls away from the anchored row…
+    const el = screen.getByTestId("virtual-turn-window")
+    el.scrollTop = 0
+    fireEvent.scroll(el)
+    expect(el.scrollTop).toBe(0)
+    // …then a row measurement re-issues the height array (same values,
+    // new identity, anchor index unchanged). The anchor jump is a
+    // navigation act, not a geometry subscription — it must not fire
+    // again and drag the reader back.
+    rerender(
+      <VirtualTurnWindow
+        units={turns}
+        heights={hs28(10)}
+        viewportHeight={112}
+        overscan={0}
+        anchorIndex={4}
+        renderUnit={rowRender}
+      />,
+    )
+    expect(el.scrollTop).toBe(0)
+    // A genuine anchor change still jumps.
+    rerender(
+      <VirtualTurnWindow
+        units={turns}
+        heights={hs28(10)}
+        viewportHeight={112}
+        overscan={0}
+        anchorIndex={2}
+        renderUnit={rowRender}
+      />,
+    )
+    expect(el.scrollTop).toBe(56)
+  })
+
   it("renders the empty node for an empty stream", () => {
     render(
       <VirtualTurnWindow
