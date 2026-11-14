@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Per-phase detail lives under `docs/changelogs/` — this file is the high-level summary.
 
+## [1.4.0](https://github.com/syxscott/Maximilian/compare/v1.3.0...v1.4.0) (2026-11-14)
+
+
+### Features
+
+* minimax-org borrowing wave across eight packages ([67c0bfb](https://github.com/syxscott/Maximilian/commit/67c0bfb701939a4a804936238b161ab8e9657443))
+
 ## [1.3.0](https://github.com/syxscott/Maximilian/compare/v1.2.0...v1.3.0) (2026-11-13)
 
 
