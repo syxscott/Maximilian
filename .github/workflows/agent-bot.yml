@@ -1,0 +1,135 @@
+name: Agent Bot
+
+# Maximilian 自主代理定时轮 — the agent OS runs ITSELF on a schedule.
+#
+# Two round types:
+#   audit (default, zero external deps): scripted health sweep — type-check
+#     across the monorepo, repo/CI/PR state, releases — journalled to a
+#     dedicated issue. No LLM required, always runs.
+#   agent: boots the full runtime (in-process queue mode, no Redis) and
+#     submits a bounded goal through POST /api/chat, polls the workspace to
+#     completion and journals the agent's own report. Requires a real LLM
+#     key in repo secrets (OPENAI_API_KEY); without one the round degrades
+#     to an honest skip notice — it never fakes a run.
+#
+# Guardrails: 40-minute job cap, single-concurrency (no overlapping rounds),
+# the runtime process never receives GITHUB_TOKEN (the journal step uses gh
+# separately), agent writes stay on the runner (nothing is pushed) and are
+# preserved via artifacts.
+#
+# Manual dispatch: Actions → Agent Bot → Run workflow (pick round type,
+# optionally override the agent goal).
+
+on:
+  schedule:
+    # 06:00 UTC daily (14:00 北京时间) — clear of load (02:30) and
+    # mutation (05:17) windows.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      round:
+        description: "Round type"
+        default: "audit"
+        type: choice
+        options:
+          - audit
+          - agent
+      goal:
+        description: "Agent round goal override (agent round only)"
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: agent-bot
+  cancel-in-progress: false
+
+jobs:
+  round:
+    name: Autonomous round (${{ inputs.round || 'audit' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maximilian
+          POSTGRES_PASSWORD: maximilian
+          POSTGRES_DB: maximilian_bot
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maximilian"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://maximilian:maximilian@localhost:5432/maximilian_bot
+      JWT_SECRET: agent-bot-jwt-secret
+      # Provider for the agent round. Absent secret → the agent round
+      # degrades to an honest skip notice in the journal (never faked).
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: gpt-4o-mini
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build database migrator
+        run: pnpm --filter @max/database build
+
+      - name: Run migrations against the bot DB
+        run: node scripts/migrate.mjs
+
+      - name: Audit round (scripted health sweep)
+        if: ${{ inputs.round != 'agent' }}
+        run: node scripts/agent-bot/audit-round.mjs > agent-bot-report.md
+
+      - name: Agent round (boot runtime, submit goal, await result)
+        if: ${{ inputs.round == 'agent' }}
+        run: node scripts/agent-bot/agent-round.mjs > agent-bot-report.md
+        env:
+          BOT_GOAL: ${{ inputs.goal }}
+
+      - name: Upload round report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-bot-round
+          path: |
+            agent-bot-report.md
+            api.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Journal the round
+        if: always()
+        run: |
+          if [ ! -s agent-bot-report.md ]; then
+            echo "## Round ended without a report (job failed before the round step)" > agent-bot-report.md
+            echo "" >> agent-bot-report.md
+            echo "Check the workflow logs and \`api.log\` artifact." >> agent-bot-report.md
+          fi
+          node scripts/agent-bot/journal.mjs \
+            --round "${{ inputs.round || 'audit' }}" \
+            --status "${{ job.status }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --report-file agent-bot-report.md
