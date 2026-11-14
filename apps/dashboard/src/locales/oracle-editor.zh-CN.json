@@ -1,0 +1,12 @@
+{
+  "settingsDeep": {
+    "oracleEditor": {
+      "guard": {
+        "title": "有未保存的修改",
+        "message": "该课程的编辑尚未保存。现在离开将丢弃这些修改——它们不会写入服务器。",
+        "keepEditing": "继续编辑",
+        "discard": "放弃修改"
+      }
+    }
+  }
+}

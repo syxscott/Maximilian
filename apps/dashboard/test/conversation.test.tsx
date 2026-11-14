@@ -56,6 +56,7 @@ import {
   type ConversationUnit,
   type ExtractedTextUnit,
   type RetryUnit,
+  type TurnModel,
 } from "../src/components/conversation/model"
 import { tokenUsageModel } from "../src/components/ai-elements/model"
 import { TurnGroup } from "../src/components/conversation/TurnGroup"
@@ -2420,9 +2421,12 @@ describe("ConversationTimeline virtualized mode", () => {
         viewportHeight={500}
       />,
     )
+    // Live-tail split (round-5): the LAST turn renders in normal flow —
+    // the spacer's total covers the virtual band only (user 28 + t1 56);
+    // t2's real height is the browser's own reflow, no backfill lag.
     expect(screen.getByTestId("conversation-timeline-spacer")).toHaveAttribute(
       "data-total-height",
-      "140", // 28 + 56 + 56
+      "84", // 28 + 56 (t2 renders as the normal-flow tail row)
     )
     expect(screen.getAllByTestId("turn-group")).toHaveLength(3) // user + t1 + t2
     expect(screen.queryByTestId("conversation-window")).not.toBeInTheDocument()
@@ -2466,11 +2470,14 @@ describe("ConversationTimeline virtualized mode", () => {
     )
     expect(screen.getByText("note 0")).toBeInTheDocument()
     const el = screen.getByTestId("conversation-timeline")
-    el.scrollTop = 1680 // clamp → scroll 1480 → band [48, 60) w/ overscan 4
+    // The band is the 59-turn prefix (the last turn renders as the
+    // normal-flow tail row): total 1652 → scroll clamps to 1452 →
+    // band [47, 59) w/ overscan 4.
+    el.scrollTop = 1680
     fireEvent.scroll(el)
     expect(screen.getByTestId("conversation-timeline-spacer")).toHaveAttribute(
       "data-window-start",
-      "48",
+      "47",
     )
     expect(screen.getByText("note 59")).toBeInTheDocument()
     expect(screen.queryByText("note 0")).not.toBeInTheDocument()
@@ -3116,5 +3123,415 @@ describe("ConversationTimeline ai-elements density", () => {
     )
     const failed = screen.getByTestId("turn-failed")
     expect(within(failed).getByRole("alert")).toHaveTextContent("workspace exploded")
+  })
+})
+
+// ── scroll authority (round-5, ZCode v4 timelineScrollAnchor borrowing) ─────
+
+describe("ConversationTimeline scroll authority", () => {
+  /** user turn (28px) + two completed task turns — the virtualized fixture. */
+  const twoTasks = (): RuntimeEvent[] => [
+    taskStart("t1", "backend", 1000),
+    taskComplete("t1", 2000),
+    taskStart("t2", "frontend", 3000),
+    taskComplete("t2", 4000),
+  ]
+
+  it("a wheel-up inside a streaming commit does not yank the reader to the bottom", () => {
+    const { rerender } = render(
+      <ConversationTimeline events={msgTurnEvents(2)} workspace={null} live={true} />,
+    )
+    const el = screen.getByTestId("conversation-timeline")
+    pinScrollMetrics(el, 2000, 500)
+    el.scrollTop = 600
+    expect(screen.getByTestId("timeline-streaming-cursor")).toBeInTheDocument()
+
+    // The reader wheels up — the authority detaches IMMEDIATELY (the
+    // echo scroll event has not landed yet, but the reader has spoken).
+    fireEvent.wheel(el, { deltaY: -120 })
+    expect(screen.queryByTestId("timeline-streaming-cursor")).not.toBeInTheDocument()
+
+    // A streaming commit lands inside the dispatch window: the old code
+    // stuck with the stale following=true and dragged the reader back.
+    // Now the commit reconciles and yields — scrollTop untouched.
+    rerender(<ConversationTimeline events={msgTurnEvents(3)} workspace={null} live={true} />)
+    expect(el.scrollTop).toBe(600)
+    expect(screen.queryByTestId("timeline-streaming-cursor")).not.toBeInTheDocument()
+
+    // Recovery: scroll back to the bottom — attached again, and the next
+    // commit sticks exactly as before.
+    el.scrollTop = 1500 // 2000 − 1500 − 500 < 48 → attached
+    fireEvent.scroll(el)
+    expect(screen.getByTestId("timeline-streaming-cursor")).toBeInTheDocument()
+    rerender(<ConversationTimeline events={msgTurnEvents(4)} workspace={null} live={true} />)
+    expect(el.scrollTop).toBe(2000) // the programmatic stick wrote the bottom
+  })
+
+  it("scroll keys detach; keys over an editable target do not", () => {
+    render(<ConversationTimeline events={msgTurnEvents(2)} workspace={null} live={true} />)
+    const el = screen.getByTestId("conversation-timeline")
+    pinScrollMetrics(el, 2000, 500)
+    // The find input lives inside the container: its caret keys move the
+    // caret, not the timeline.
+    fireEvent.click(screen.getByRole("button", { name: /find/i }))
+    fireEvent.keyDown(screen.getByTestId("timeline-find"), { key: "ArrowUp" })
+    expect(screen.getByTestId("timeline-streaming-cursor")).toBeInTheDocument()
+    // A scroll key over the container itself is a real gesture.
+    fireEvent.keyDown(el, { key: "ArrowUp" })
+    expect(screen.queryByTestId("timeline-streaming-cursor")).not.toBeInTheDocument()
+  })
+
+  it("an anchor navigation's programmatic echo never reads as a detach", () => {
+    render(
+      <ConversationTimeline
+        events={twoTasks()}
+        workspace={ws()}
+        live={true}
+        virtualized
+        viewportHeight={500}
+      />,
+    )
+    const el = screen.getByTestId("conversation-timeline")
+    pinScrollMetrics(el, 10000, 500)
+    expect(screen.getByTestId("timeline-streaming-cursor")).toBeInTheDocument()
+    // Navigate: the window writes scrollTop itself (28 = the user turn's
+    // band height) and ANNOUNCES the write — its echo must ledger only.
+    fireEvent.click(screen.getByRole("button", { name: "next task" }))
+    expect(el.scrollTop).toBe(28)
+    fireEvent.scroll(el) // the echo of the programmatic write
+    expect(screen.getByTestId("timeline-streaming-cursor")).toBeInTheDocument()
+    // A genuine user scroll away still detaches exactly as before.
+    el.scrollTop = 4000 // 10000 − 4000 − 500 ≥ 48 → detached
+    fireEvent.scroll(el)
+    expect(screen.queryByTestId("timeline-streaming-cursor")).not.toBeInTheDocument()
+  })
+})
+
+// ── live-tail split rendering (round-5, ZCode v4 borrowing) ─────────────────
+
+describe("VirtualTurnWindow live-tail split rendering", () => {
+  const bandTurns = (n: number) => groupUnitsByTurn(buildTurnFlowItems(msgTurnEvents(n), null))
+  const hs28 = (n: number): number[] => Array.from({ length: n }, () => 28)
+  const rowRender = (unit: { turnId: string }, index: number): ReactNode => (
+    <div data-testid="virtual-row">{`${unit.turnId}:${index}`}</div>
+  )
+
+  it("the tail row renders in normal flow — no absolute positioning, no translateY", () => {
+    const { container } = render(
+      <VirtualTurnWindow
+        units={bandTurns(2)}
+        heights={hs28(2)}
+        tailUnits={bandTurns(3).slice(2)}
+        getKey={(turn) => turn.turnId}
+        viewportHeight={112}
+        overscan={0}
+        renderUnit={rowRender}
+      />,
+    )
+    const bandRow = container.querySelector('[data-virtual-key="msg-0"]')
+    expect(bandRow).not.toBeNull()
+    expect(bandRow).toHaveStyle({ position: "absolute" })
+    expect(bandRow).toHaveStyle({ transform: "translateY(0px)" })
+    const tailRow = container.querySelector('[data-virtual-key="msg-2"]')
+    expect(tailRow).not.toBeNull()
+    // The split's whole point: the streaming tail grows its DOM natively
+    // (browser reflow), never inside a positioned virtual row.
+    expect(tailRow?.getAttribute("style")).toBeNull()
+    expect(tailRow).toHaveAttribute("data-virtual-index", "2")
+    // The spacer's total covers the band only.
+    expect(screen.getByTestId("virtual-turn-window-spacer")).toHaveAttribute(
+      "data-total-height",
+      "56",
+    )
+  })
+
+  it("a lone tail turn renders even with an empty virtual band", () => {
+    render(
+      <VirtualTurnWindow
+        units={[]}
+        heights={[]}
+        tailUnits={bandTurns(1)}
+        getKey={(turn) => turn.turnId}
+        viewportHeight={112}
+        renderUnit={rowRender}
+        empty={<p data-testid="virtual-empty">nothing</p>}
+      />,
+    )
+    expect(screen.queryByTestId("virtual-empty")).not.toBeInTheDocument()
+    expect(screen.getByTestId("virtual-turn-window-spacer")).toHaveAttribute(
+      "data-total-height",
+      "0",
+    )
+    expect(screen.getByTestId("virtual-row")).toHaveTextContent("msg-0:0")
+  })
+})
+
+// ── row measurement wiring (round-5, ZCode v4 timelineRowHeightCache) ───────
+
+/** ResizeObserver stub: jsdom has none; tests fire entries by hand. */
+class ResizeObserverStub {
+  static instances: ResizeObserverStub[] = []
+  observed: Element[] = []
+  private callback: ResizeObserverCallback
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback
+    ResizeObserverStub.instances.push(this)
+  }
+  observe(el: Element): void {
+    this.observed.push(el)
+  }
+  unobserve(el: Element): void {
+    this.observed = this.observed.filter((other) => other !== el)
+  }
+  disconnect(): void {
+    this.observed = []
+  }
+  fire(
+    entries: Array<{
+      target: Element
+      borderBoxSize?: Array<{ blockSize: number; inlineSize: number }>
+    }>,
+  ): void {
+    this.callback(entries as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver)
+  }
+}
+
+describe("VirtualTurnWindow row measurement", () => {
+  /** user turn (28px) + two completed task turns — the virtualized fixture. */
+  const twoTasks = (): RuntimeEvent[] => [
+    taskStart("t1", "backend", 1000),
+    taskComplete("t1", 2000),
+    taskStart("t2", "frontend", 3000),
+    taskComplete("t2", 4000),
+  ]
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    ResizeObserverStub.instances = []
+  })
+
+  it("reports real heights per stable key through ResizeObserver", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    const onMeasure = vi.fn()
+    const { container } = render(
+      <VirtualTurnWindow
+        units={groupUnitsByTurn(buildTurnFlowItems(msgTurnEvents(3), null))}
+        heights={[28, 28, 28]}
+        getKey={(turn) => turn.turnId}
+        viewportHeight={112}
+        renderUnit={(unit) => <div data-testid="virtual-row">{unit.turnId}</div>}
+        onMeasure={onMeasure}
+      />,
+    )
+    // Every mounted row attached to the observer.
+    const observer = ResizeObserverStub.instances.at(-1)
+    expect(observer?.observed).toHaveLength(3)
+    // A real box lands → the report carries the stable key + box.
+    const row = container.querySelector('[data-virtual-key="msg-1"]')
+    act(() => {
+      observer?.fire([{ target: row!, borderBoxSize: [{ blockSize: 44, inlineSize: 300 }] }])
+    })
+    expect(onMeasure).toHaveBeenCalledWith("msg-1", 44, 300)
+  })
+
+  it("measured heights replace estimates in the timeline's virtual band", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    const { container } = render(
+      <ConversationTimeline
+        events={twoTasks()}
+        workspace={ws()}
+        live={false}
+        virtualized
+        viewportHeight={500}
+      />,
+    )
+    // Estimates first: band = user 28 + t1 56 = 84 (t2 is the tail row).
+    expect(screen.getByTestId("conversation-timeline-spacer")).toHaveAttribute(
+      "data-total-height",
+      "84",
+    )
+    // A real measurement for t1 arrives (its content is taller than the
+    // estimate) → the band's total converges to the rendered truth.
+    const observer = ResizeObserverStub.instances.at(-1)
+    const row = container.querySelector('[data-virtual-key="task-t1"]')
+    act(() => {
+      observer?.fire([{ target: row!, borderBoxSize: [{ blockSize: 120, inlineSize: 300 }] }])
+    })
+    expect(screen.getByTestId("conversation-timeline-spacer")).toHaveAttribute(
+      "data-total-height",
+      "148", // 28 + 120
+    )
+    // A tail-row measurement feeds the cache for when it joins the band,
+    // but the band total (and the scrollbar) stays untouched by it.
+    const tailRow = container.querySelector('[data-virtual-key="task-t2"]')
+    act(() => {
+      observer?.fire([{ target: tailRow!, borderBoxSize: [{ blockSize: 999, inlineSize: 300 }] }])
+    })
+    expect(screen.getByTestId("conversation-timeline-spacer")).toHaveAttribute(
+      "data-total-height",
+      "148",
+    )
+  })
+})
+
+// ── retry-wave expansion registry (round-5, OpenHands messages borrowing) ───
+
+describe("RetryWaveGroup expansion registry", () => {
+  const retryUnit: RetryUnit = {
+    kind: "retry",
+    key: "retry-3",
+    turnId: "task-t1",
+    role: "assistant",
+    index: 3,
+    phase: "waiting",
+    attempts: 2,
+    totalDelayMs: 3000,
+    firstAt: 1000,
+    lastAt: 3000,
+    providerId: "p1",
+    attempt: 2,
+    maxAttempts: 5,
+    reason: "rate limited",
+    entries: [
+      { phase: "waiting", attempt: 1, delayMs: 1000, reason: "rate limited" },
+      { phase: "waiting", attempt: 2, delayMs: 2000, reason: "still limited" },
+    ],
+  }
+
+  it("the host registry keeps a wave open across a forced remount", () => {
+    const onToggle = vi.fn()
+    const open = new Set<string>()
+    const registryTurn = (): TurnModel => ({
+      turnId: "task-t1",
+      role: "assistant",
+      status: "running",
+      depth: 1,
+      units: [retryUnit],
+    })
+    const { rerender, unmount } = render(
+      <TurnGroup turn={registryTurn()} expandedRetries={open} onToggleRetry={onToggle} />,
+    )
+    expect(screen.queryByTestId("retry-attempts")).not.toBeInTheDocument()
+    // The reader expands the wave — the host registry receives the toggle.
+    fireEvent.click(screen.getByRole("button"))
+    expect(onToggle).toHaveBeenCalledWith("retry-3", true)
+    // The host folds it into its set and re-renders: open, from the list.
+    open.add("retry-3")
+    rerender(
+      <TurnGroup turn={registryTurn()} expandedRetries={new Set(open)} onToggleRetry={onToggle} />,
+    )
+    expect(screen.getByTestId("retry-attempts")).toBeInTheDocument()
+    // A forced remount (virtual band unmount, find filter) restores the
+    // expansion from the registry instead of collapsing it.
+    unmount()
+    render(
+      <TurnGroup turn={registryTurn()} expandedRetries={new Set(open)} onToggleRetry={onToggle} />,
+    )
+    expect(screen.getByTestId("retry-attempts")).toBeInTheDocument()
+    // Toggling again reports the close.
+    fireEvent.click(screen.getByRole("button"))
+    expect(onToggle).toHaveBeenCalledWith("retry-3", false)
+  })
+
+  it("without a registry the wave keeps its own state (direct usages)", () => {
+    render(<RetryWaveGroup unit={retryUnit} />)
+    fireEvent.click(screen.getByRole("button"))
+    expect(screen.getByTestId("retry-attempts")).toBeInTheDocument()
+  })
+})
+
+// ── turn-phase header affordances (round-5, opencode borrowing) ─────────────
+
+describe("TurnGroup turn-phase header affordances", () => {
+  const phaseTurn = (events: RuntimeEvent[]): TurnModel => {
+    const [turn] = groupUnitsByTurn(buildTurnFlowItems(events, null))
+    if (!turn) throw new Error("expected a turn")
+    return turn
+  }
+
+  it("a RETRYING turn shows the attempt→next chip and locks Copy", () => {
+    // The retry wave is the turn's LATEST fact — the machine's retrying
+    // phase; a step AFTER the wave would honestly fold back to working.
+    render(<TurnGroup turn={phaseTurn([taskStart("t1"), retryEv("waiting", 2, 1000)])} />)
+    const group = screen.getByTestId("turn-group")
+    expect(group).toHaveAttribute("data-phase", "retrying")
+    expect(group).toHaveAttribute("data-copy-locked", "true")
+    expect(screen.getByTestId("turn-phase-retry")).toHaveTextContent("attempt 2")
+    expect(screen.getByTestId("turn-phase-retry")).toHaveTextContent("next 3")
+  })
+
+  it("work resuming after a retry wave folds the phase back to working", () => {
+    render(
+      <TurnGroup
+        turn={phaseTurn([taskStart("t1"), retryEv("waiting", 2, 1000), toolStart("t1", "bash")])}
+      />,
+    )
+    expect(screen.getByTestId("turn-group")).toHaveAttribute("data-phase", "working")
+    expect(screen.queryByTestId("turn-phase-retry")).not.toBeInTheDocument()
+  })
+
+  it("settled turns carry no phase chip and keep Copy unlocked", () => {
+    render(
+      <TurnGroup
+        turn={phaseTurn([taskStart("t1"), retryEv("waiting", 1, 500), taskComplete("t1")])}
+      />,
+    )
+    const group = screen.getByTestId("turn-group")
+    expect(group).toHaveAttribute("data-phase", "idle")
+    expect(group.getAttribute("data-copy-locked")).toBeNull()
+    expect(screen.queryByTestId("turn-phase-retry")).not.toBeInTheDocument()
+  })
+
+  it("a failed turn settles through the failed phase", () => {
+    render(
+      <TurnGroup
+        turn={phaseTurn([taskStart("t1"), toolStart("t1", "bash"), taskFailed("t1", "boom")])}
+      />,
+    )
+    const group = screen.getByTestId("turn-group")
+    expect(group).toHaveAttribute("data-phase", "failed")
+    expect(group.getAttribute("data-copy-locked")).toBeNull()
+  })
+})
+
+// ── TextUnitBlock markdown body wiring (round-5, cross-agent contract) ──────
+
+describe("TextUnitBlock streaming markdown body", () => {
+  const unit = (over: Partial<ExtractedTextUnit>): ExtractedTextUnit => ({
+    key: "k",
+    turnId: "user",
+    role: "user",
+    source: "user",
+    text: "body **text**",
+    index: 0,
+    ...over,
+  })
+
+  it("the body renders through the StreamingMarkdown binding (real renderer)", () => {
+    render(<TextUnitBlock unit={unit()} />)
+    const body = screen.getByTestId("text-unit-body")
+    expect(body).toHaveAttribute("data-streaming-body", "true")
+    // The delivered incremental renderer (@max/ui-react/markdown-v2)
+    // renders markdown: the `**` markers are consumed into a bold span —
+    // proof it is no longer the pending plain-text pass-through.
+    expect(body.querySelector("[data-markdown-fallback]")).toBeNull()
+    expect(body.querySelector("strong")).not.toBeNull()
+    expect(body).toHaveTextContent("body text")
+  })
+
+  it("a streaming segment carries settled=false to the binding", () => {
+    render(<TextUnitBlock unit={unit()} settled={false} />)
+    expect(screen.getByTestId("text-unit-body")).toHaveAttribute("data-streaming-body", "true")
+  })
+
+  it("the find-highlight override keeps the plain-text body", () => {
+    render(
+      <TextUnitBlock unit={unit()}>
+        <mark>text</mark>
+      </TextUnitBlock>,
+    )
+    const body = screen.getByTestId("text-unit-body")
+    expect(body.getAttribute("data-streaming-body")).toBeNull()
+    expect(body.querySelector("mark")).not.toBeNull()
   })
 })

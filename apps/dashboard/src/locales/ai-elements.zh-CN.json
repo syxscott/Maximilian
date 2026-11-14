@@ -34,7 +34,8 @@
     "citation": {
       "ordinal": "[{n}]",
       "ariaSource": "引用来源",
-      "untitled": "（无标题）"
+      "untitled": "（无标题）",
+      "previewAria": "来源预览"
     },
     "keyValue": {
       "empty": "暂无元数据"

@@ -9,6 +9,13 @@
  * descriptions, and steering injections each read differently, so a
  * deep-dive view can tell who wrote a segment at a glance.
  *
+ * The body renders through StreamingMarkdown (cross-agent contract with
+ * packages/ui-react): AI output is markdown — code fences, tables — and
+ * `settled` carries the streaming verdict (false while the segment is
+ * still being produced). The find-highlight path keeps the plain-text
+ * body: marks wrap character ranges the markdown renderer does not
+ * position yet.
+ *
  * Steering injections additionally flash ON ENTRY: a purple overlay
  * flares at full strength when the block first renders, then fades back
  * out over a 2s tailwind transition — exactly once (a mount-time timer
@@ -22,6 +29,7 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { useLocale, t } from "@max/i18n"
 import type { ExtractedTextUnit } from "./model"
+import { StreamingMarkdown } from "./streaming-markdown"
 
 /** How long the full-strength highlight holds before the fade starts. */
 export const STEERING_FLASH_HOLD_MS = 100
@@ -57,14 +65,21 @@ export function TextUnitBlock({
   children,
   flash = false,
   fresh = true,
+  settled = true,
 }: {
   unit: TextUnitBlockModel
   /** Body override — lets the caller keep find highlights working
-   *  inside the block. Defaults to the segment's plain text. */
+   *  inside the block. Defaults to the segment's markdown body. */
   children?: ReactNode
   /** One-shot entry highlight (steering injections): the overlay flares
    *  on mount, holds briefly, then fades out over 2s via transition. */
   flash?: boolean
+  /**
+   * Streaming verdict for the markdown body: false while this segment
+   * is still being produced (the last text unit of a running turn).
+   * Settled bodies render their final text.
+   */
+  settled?: boolean
   /**
    * The flash-once registry's verdict for this unit (markFirstSeen):
    * has this steering segment never been rendered before? A unit seen
@@ -116,9 +131,25 @@ export function TextUnitBlock({
           <span className="truncate font-mono normal-case">{unit.taskId}</span>
         )}
       </div>
-      <p className="whitespace-pre-wrap text-sm text-foreground" data-testid="text-unit-body">
-        {children ?? unit.text}
-      </p>
+      {children !== undefined ? (
+        // Find-highlight path: marks wrap character ranges — a plain,
+        // pre-wrapped body keeps them positioned.
+        <p className="whitespace-pre-wrap text-sm text-foreground" data-testid="text-unit-body">
+          {children}
+        </p>
+      ) : (
+        // Markdown body (the AI output's first real rendering). The
+        // wrapper carries the body testid and inherits the text styles;
+        // whitespace-pre-wrap inherits down to the pending plain-text
+        // fallback (the real renderer swaps it for block elements).
+        <div
+          className="whitespace-pre-wrap text-sm text-foreground"
+          data-testid="text-unit-body"
+          data-streaming-body="true"
+        >
+          <StreamingMarkdown text={unit.text} settled={settled} />
+        </div>
+      )}
     </div>
   )
 }

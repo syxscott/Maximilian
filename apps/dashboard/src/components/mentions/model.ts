@@ -134,9 +134,41 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+/** Anything that is not a letter, a number or whitespace (ASCII + unicode punctuation). */
+const PUNCTUATION_RE = /[^\p{L}\p{N}\s]/u
+/** A URL scheme colon at the end of a string: "https:", "mailto:", "C:" … */
+const URL_SCHEME_COLON_RE = /[a-zA-Z][a-zA-Z0-9+.-]*:$/
+
+/**
+ * Boundary gate for the "/" trigger (deepseek-harness ui-input-trigger
+ * detect.ts borrowing). Unlike "@" / "#", a slash only opens completion
+ * at a word boundary — line start, after whitespace or after
+ * punctuation — and even then two URL shapes stay inert so typing or
+ * pasting an address never pops the layer:
+ *   - the second slash of a "//" pair ("a//b", "https://"), and
+ *   - the slash completing a scheme colon ("https:" + "/").
+ *
+ * `text` is everything before the caret and `triggerIndex` is the
+ * position of the candidate "/" inside it.
+ */
+export function slashTriggerOpen(text: string, triggerIndex: number): boolean {
+  const charBefore = triggerIndex > 0 ? text[triggerIndex - 1] : undefined
+  // The second slash of a "//" pair never triggers.
+  if (charBefore === "/") return false
+  // Line start or whitespace boundary always opens.
+  if (charBefore === undefined || /\s/.test(charBefore)) return true
+  if (PUNCTUATION_RE.test(charBefore)) {
+    // Punctuation boundary — except the slash that completes a URL scheme.
+    return !URL_SCHEME_COLON_RE.test(text.slice(0, triggerIndex))
+  }
+  // Word character: mid-word slashes are plain text, not a trigger.
+  return false
+}
+
 /**
  * Find the trigger+token ending exactly at `caret` — generalized version
- * of useMention's "@"-only scanner for the multi-prefix router.
+ * of useMention's "@"-only scanner for the multi-prefix router. The "/"
+ * trigger is additionally boundary-gated (see {@link slashTriggerOpen}).
  */
 export function activeTrigger(
   text: string,
@@ -146,7 +178,12 @@ export function activeTrigger(
   const before = text.slice(0, caret)
   for (const trigger of triggers) {
     const match = new RegExp(`${escapeRegExp(trigger)}([a-zA-Z0-9_-]*)$`).exec(before)
-    if (match) return { trigger, token: match[1] ?? "" }
+    if (!match) continue
+    // "/" is boundary-gated with URL exceptions; other triggers keep the
+    // historical anywhere-at-caret behavior. A gated-out "/" still lets
+    // later triggers in the list match.
+    if (trigger === "/" && !slashTriggerOpen(before, match.index)) continue
+    return { trigger, token: match[1] ?? "" }
   }
   return null
 }

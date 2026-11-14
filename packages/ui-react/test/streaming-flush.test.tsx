@@ -95,9 +95,14 @@ describe("createStreamFlusher", () => {
     runFrame()
     expect(flush).toHaveBeenCalledTimes(1)
 
-    // The next frame commits again — scheduling never latches off.
+    // The next frame commits again — scheduling never latches off. The
+    // adaptive floor (min 33ms, stretched to the measured commit cost ×3)
+    // defers the commit to the first frame at/after the floor, so with a
+    // 16ms frame cadence it lands three frames after the schedule.
     flusher.schedule()
-    runFrame()
+    runFrame() // cost meter for the first commit lands → floor 16×3 = 48
+    runFrame() // elapsed 32 < 48 — deferred
+    runFrame() // elapsed 48 ≥ 48 — commits
     expect(flush).toHaveBeenCalledTimes(2)
   })
 
@@ -168,6 +173,146 @@ describe("createStreamFlusher", () => {
     window.dispatchEvent(new Event("pagehide"))
     runFrame()
     expect(flush).not.toHaveBeenCalled()
+  })
+})
+
+// ── adaptive floor (hermes use-message-stream borrowing) ───────────────────
+//
+// A manual frame clock for floor tests: frames are queued at
+// `now + delay` and fire with the CURRENT now as their frame-start stamp,
+// so a test can stretch the distance to the next frame to simulate
+// main-thread contention (the cost meter measures exactly that distance).
+
+function installManualClock() {
+  let seq = 0
+  let now = 0
+  const pending = new Map<number, { cb: FrameRequestCallback; at: number }>()
+  const clock = {
+    get now() {
+      return now
+    },
+    delay: 16,
+    set(t: number) {
+      now = t
+    },
+    /** Fire every pending frame due at or before `now`, in due order. */
+    fireFrames() {
+      const due = [...pending.entries()]
+        .filter(([, entry]) => entry.at <= now)
+        .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])
+      for (const [id, entry] of due) {
+        pending.delete(id)
+        entry.cb(now)
+      }
+    },
+    pending: () => pending.size,
+  }
+  vi.stubGlobal("performance", { now: () => now })
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback): number => {
+    const id = ++seq
+    pending.set(id, { cb, at: now + clock.delay })
+    return id
+  })
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+    pending.delete(id)
+  })
+  return clock
+}
+
+describe("createStreamFlusher adaptive floor", () => {
+  it("keeps scheduled commits at least 33ms apart", () => {
+    // 8ms frames: measured cost 8 → cost×3=24 under the 33ms minimum, so
+    // the plain floor governs.
+    const clock = installManualClock()
+    clock.delay = 8
+    const stamps: number[] = []
+    const flusher = makeFlusher(() => stamps.push(clock.now))
+
+    flusher.schedule()
+    clock.set(8)
+    clock.fireFrames()
+    expect(stamps).toEqual([8])
+
+    // The meter (cost 8) lands, floor = max(33, 24) = 33; the commit
+    // defers frame by frame until 33ms have passed since the first one.
+    flusher.schedule()
+    for (let t = 16; stamps.length < 2; t += 8) {
+      clock.set(t)
+      clock.fireFrames()
+    }
+    expect(stamps[1]! - stamps[0]!).toBeGreaterThanOrEqual(33)
+    // One-frame granularity: the first frame past the deadline commits.
+    expect(stamps[1]! - stamps[0]!).toBeLessThanOrEqual(33 + 8)
+  })
+
+  it("stretches the floor to the measured commit cost ×3 under contention", () => {
+    const clock = installManualClock()
+    const stamps: number[] = []
+    const flusher = makeFlusher(() => stamps.push(clock.now))
+
+    flusher.schedule()
+    clock.set(16)
+    clock.fireFrames()
+    expect(stamps).toEqual([16])
+
+    // The cost meter for the first commit measures a 16ms frame distance
+    // → floor = 16×3 = 48 (above the 33ms minimum).
+    flusher.schedule()
+    for (let t = 32; stamps.length < 2; t += 16) {
+      clock.set(t)
+      clock.fireFrames()
+    }
+    expect(stamps[1]! - stamps[0]!).toBe(48)
+  })
+
+  it("caps the stretched floor at 250ms (≥4 commits/sec)", () => {
+    const clock = installManualClock()
+    const stamps: number[] = []
+    const flusher = makeFlusher(() => stamps.push(clock.now))
+
+    flusher.schedule()
+    clock.set(16)
+    clock.fireFrames()
+    expect(stamps).toEqual([16])
+
+    // Congested next frame: the cost meter fires 90ms after the commit →
+    // 90×3 = 270, capped at 250.
+    clock.set(106)
+    clock.fireFrames()
+    expect(clock.pending()).toBe(0)
+
+    // Back to a normal cadence: the commit waits out the capped floor.
+    flusher.schedule()
+    for (let t = 122; stamps.length < 2; t += 16) {
+      clock.set(t)
+      clock.fireFrames()
+    }
+    expect(stamps[1]! - stamps[0]!).toBe(250)
+  })
+
+  it("flushNow bypasses the floor", () => {
+    const clock = installManualClock()
+    const stamps: number[] = []
+    const flusher = makeFlusher(() => stamps.push(clock.now))
+
+    flusher.schedule()
+    clock.set(16)
+    clock.fireFrames()
+    expect(stamps).toEqual([16])
+
+    // 4ms after the commit — far inside the floor — and it still commits.
+    clock.set(20)
+    flusher.flushNow()
+    expect(stamps).toEqual([16, 20])
+
+    // The scheduled cadence resumes against the last scheduled commit,
+    // still floored (the flushNow stamp does not reset the meter).
+    flusher.schedule()
+    for (let t = 32; stamps.length < 3; t += 16) {
+      clock.set(t)
+      clock.fireFrames()
+    }
+    expect(stamps[2]! - stamps[0]!).toBeGreaterThanOrEqual(48)
   })
 })
 

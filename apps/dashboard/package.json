@@ -13,6 +13,7 @@
     "contract:gen": "node scripts/generate-api-contract.mjs"
   },
   "dependencies": {
+    "@datasert/cronjs-matcher": "^1.4.0",
     "@hookform/resolvers": "^5.4.0",
     "@max/i18n": "workspace:*",
     "@max/llm": "workspace:*",
@@ -35,6 +36,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "cronstrue": "^3.39.0",
     "flexsearch": "^0.8.212",
     "framer-motion": "^12.42.0",
     "lucide-react": "^1.21.0",

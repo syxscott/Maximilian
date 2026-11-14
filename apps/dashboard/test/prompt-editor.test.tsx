@@ -51,11 +51,13 @@ afterEach(() => {
 })
 
 describe("parseSlashQuery", () => {
-  it("accepts the leading slash token only", () => {
+  it("accepts the slash token at a word boundary", () => {
     expect(parseSlashQuery("/nav", 4)).toBe("nav")
     expect(parseSlashQuery("/", 1)).toBe("")
     expect(parseSlashQuery("/nav workspace", 14)).toBeNull()
-    expect(parseSlashQuery("hello /nav", 10)).toBeNull()
+    // Mid-text activation after a whitespace boundary (deepseek-harness
+    // ui-input-trigger borrowing).
+    expect(parseSlashQuery("hello /nav", 10)).toBe("nav")
     expect(parseSlashQuery("plain", 5)).toBeNull()
   })
 

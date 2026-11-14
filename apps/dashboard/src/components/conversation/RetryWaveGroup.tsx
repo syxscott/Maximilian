@@ -8,6 +8,12 @@
  * borrowing). Collapsed: phase × attempts · total wait · last reason.
  * Expanded: the per-attempt trail the model kept while folding the
  * consecutive same-phase events.
+ *
+ * Expansion state is CONTROLLABLE (OpenHands messages.tsx borrowing):
+ * when the host passes `open`/`onToggle` the state lives in the host's
+ * list-level registry, so a forced remount (virtual band unmount, find
+ * filter) restores the reader's expansion instead of collapsing it.
+ * Without the props the component keeps its own state (direct usages).
  */
 
 import { useState } from "react"
@@ -15,9 +21,27 @@ import { useLocale, t } from "@max/i18n"
 import type { RetryUnit } from "./model"
 import { formatDuration } from "./model"
 
-export function RetryWaveGroup({ unit }: { unit: RetryUnit }) {
+export function RetryWaveGroup({
+  unit,
+  open,
+  onToggle,
+}: {
+  unit: RetryUnit
+  /** Host-controlled expansion (list-level registry); undefined = self-owned. */
+  open?: boolean
+  /** Host toggle sink — (unit key, next open state). */
+  onToggle?: (key: string, open: boolean) => void
+}) {
   useLocale()
-  const [open, setOpen] = useState(false)
+  const [selfOpen, setSelfOpen] = useState(false)
+  const controlled = open !== undefined
+  const expanded = controlled ? open : selfOpen
+
+  const setOpen = (next: boolean) => {
+    if (!controlled) setSelfOpen(next)
+    onToggle?.(unit.key, next)
+  }
+
   const exhausted = unit.phase === "exhausted"
 
   return (
@@ -31,8 +55,8 @@ export function RetryWaveGroup({ unit }: { unit: RetryUnit }) {
       <button
         type="button"
         className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
+        onClick={() => setOpen(!expanded)}
+        aria-expanded={expanded}
       >
         <span className="w-4 shrink-0 text-center text-amber-500">↻</span>
         <span className="shrink-0 font-medium" data-testid="retry-summary">
@@ -56,7 +80,7 @@ export function RetryWaveGroup({ unit }: { unit: RetryUnit }) {
           </span>
         )}
       </button>
-      {open && unit.entries.length > 0 && (
+      {expanded && unit.entries.length > 0 && (
         <ul className="border-t border-amber-500/30 px-2 py-1.5" data-testid="retry-attempts">
           {unit.entries.map((entry, i) => (
             <li key={i} className="flex items-center gap-2 text-xs text-muted-foreground">

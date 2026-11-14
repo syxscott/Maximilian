@@ -13,11 +13,13 @@
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactElement } from "react"
 import { getDictionary, registerLocale, setLocale } from "@max/i18n"
 
 import settingsDeepEn from "../src/locales/settings-deep.en-US.json"
+import oracleEditorEn from "../src/locales/oracle-editor.en-US.json"
 import {
   ORACLE_ROLE_MAX_LENGTH,
   emptyCorpusView,
@@ -48,7 +50,12 @@ function flatten(
 
 beforeAll(() => {
   const existing = getDictionary("en-US") ?? {}
-  registerLocale("en-US", { ...existing, ...flatten(settingsDeepEn as Record<string, unknown>) })
+  registerLocale("en-US", {
+    ...existing,
+    ...flatten(settingsDeepEn as Record<string, unknown>),
+    // The dirty-guard dialog strings live in their own domain pair.
+    ...flatten(oracleEditorEn as Record<string, unknown>),
+  })
   setLocale("en-US")
 })
 
@@ -252,5 +259,109 @@ describe("OracleLessonsEditor: render smoke", () => {
     expect(line.textContent).toContain("Save failed — no lessons directory configured.")
     expect(line.textContent).toContain("Oracle lessons directory not configured")
     expect(screen.queryByTestId("oracle-saved-planner")).toBeNull()
+  })
+})
+
+// ── Dirty guard (useDirtyGuard borrowing): unsaved content must not be
+// ── dropped by a role switch or editor close without confirmation. ──────────
+
+describe("OracleLessonsEditor: dirty guard", () => {
+  const twoLessonPayload = {
+    configured: true,
+    dir: "/srv/oracle-lessons",
+    lessons: [
+      { role: "planner", content: "# planner rules", bytes: 15 },
+      { role: "judge", content: "# judge rules", bytes: 13 },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.mutateAsync.mockResolvedValue({ ok: true, role: "planner", bytes: 5 })
+    mocks.oracleLessons.mockResolvedValue(twoLessonPayload)
+  })
+
+  const typeInto = (testid: string, value: string) => {
+    // The edit editor's testid wraps a div around the textarea; the create
+    // editor's testid sits on the textarea element itself.
+    const host = screen.getByTestId(testid)
+    const textarea = (
+      host.tagName === "TEXTAREA" ? host : host.querySelector("textarea")
+    ) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value } })
+    return textarea
+  }
+
+  it("prompts before dropping dirty content when switching roles, then discards on confirm", async () => {
+    renderWithQuery(<OracleLessonsEditor />)
+    await screen.findByTestId("oracle-edit-planner")
+
+    fireEvent.click(screen.getByTestId("oracle-edit-planner"))
+    typeInto("oracle-editor-planner", "# planner rules — draft")
+
+    // Switching to the other role with a dirty textarea must park behind
+    // the confirm dialog, not silently replace the draft.
+    fireEvent.click(screen.getByTestId("oracle-edit-judge"))
+    expect(screen.getByTestId("oracle-dirty-dialog")).toBeTruthy()
+    expect(mocks.mutateAsync).not.toHaveBeenCalled()
+    expect(screen.getByTestId("oracle-editor-planner")).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId("oracle-dirty-discard"))
+    // The parked switch now runs: the judge editor replaces the planner's.
+    expect(screen.getByTestId("oracle-editor-judge")).toBeTruthy()
+    expect(screen.queryByTestId("oracle-editor-planner")).toBeNull()
+    expect(screen.queryByTestId("oracle-dirty-dialog")).toBeNull()
+  })
+
+  it("lets a reverted editor switch roles straight through", async () => {
+    renderWithQuery(<OracleLessonsEditor />)
+    await screen.findByTestId("oracle-edit-planner")
+
+    fireEvent.click(screen.getByTestId("oracle-edit-planner"))
+    // Type then revert to the exact baseline through real keystrokes —
+    // (two fireEvent.change calls on one element get deduped by React's
+    // value tracker, so the revert goes through userEvent typing instead).
+    const textarea = screen.getByTestId("oracle-editor-planner").querySelector("textarea")!
+    fireEvent.change(textarea, { target: { value: "# planner rules — draft" } })
+    await userEvent.clear(textarea)
+    await userEvent.type(textarea, "# planner rules")
+
+    fireEvent.click(screen.getByTestId("oracle-edit-judge"))
+    expect(screen.queryByTestId("oracle-dirty-dialog")).toBeNull()
+    expect(screen.getByTestId("oracle-editor-judge")).toBeTruthy()
+  })
+
+  it("keeps the draft alive when the user cancels the confirm dialog", async () => {
+    renderWithQuery(<OracleLessonsEditor />)
+    await screen.findByTestId("oracle-edit-planner")
+
+    fireEvent.click(screen.getByTestId("oracle-edit-planner"))
+    typeInto("oracle-editor-planner", "# planner rules — draft")
+
+    // The editor's Cancel button goes through the guard too.
+    fireEvent.click(screen.getByText("Cancel"))
+    expect(screen.getByTestId("oracle-dirty-dialog")).toBeTruthy()
+    expect(screen.getByTestId("oracle-editor-planner")).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId("oracle-dirty-keep"))
+    expect(screen.queryByTestId("oracle-dirty-dialog")).toBeNull()
+    const textarea = screen.getByTestId("oracle-editor-planner").querySelector("textarea")!
+    expect((textarea as HTMLTextAreaElement).value).toBe("# planner rules — draft")
+  })
+
+  it("guards the create editor against losing a fresh draft", async () => {
+    renderWithQuery(<OracleLessonsEditor />)
+    await screen.findByTestId("oracle-create")
+
+    fireEvent.change(screen.getByTestId("oracle-new-role-input"), { target: { value: "fresher" } })
+    fireEvent.click(screen.getByText("New lesson"))
+    typeInto("oracle-create-textarea", "# brand new lesson")
+
+    // Cancelling the create editor with content must confirm first; the
+    // parked close runs once the user confirms the discard.
+    fireEvent.click(screen.getByText("Cancel"))
+    expect(screen.getByTestId("oracle-dirty-dialog")).toBeTruthy()
+    fireEvent.click(screen.getByTestId("oracle-dirty-discard"))
+    expect(screen.queryByTestId("oracle-create-textarea")).toBeNull()
   })
 })

@@ -1,0 +1,35 @@
+{
+  "composer": {
+    "drop": {
+      "title": "拖放文件以添加附件",
+      "hint": "文件仅在本地暂存——上传通道接入前不会真正上传",
+      "directories": "暂不支持文件夹：{names}"
+    },
+    "attach": {
+      "railAria": "已暂存的附件",
+      "remove": "移除附件",
+      "sendBlocked": "附件仅保存在本地：dashboard 尚无文件上传通道，这条消息无法携带文件。请先移除附件（或把内容粘贴进正文）再发送。",
+      "clear": "丢弃全部暂存附件"
+    },
+    "voice": {
+      "start": "开始语音输入",
+      "stop": "停止并转写",
+      "cancel": "取消转写",
+      "timer": "录音中 {seconds} 秒",
+      "requiresHttps": "语音输入需要 HTTPS 安全上下文",
+      "permissionDenied": "麦克风权限被拒绝——请在浏览器中允许麦克风访问",
+      "noDevice": "未找到麦克风设备",
+      "failed": "语音输入失败",
+      "empty": "转写结果为空",
+      "limitReached": "录音已达 120 秒上限，自动停止"
+    },
+    "context": {
+      "aria": "上下文占用 {percent}%",
+      "title": "上下文占用（本地估算：字符数 ÷ 4）",
+      "draft": "输入草稿",
+      "session": "会话事件",
+      "limit": "总预算 {limit} tokens",
+      "warn": "已超 80%——进入压缩区间"
+    }
+  }
+}

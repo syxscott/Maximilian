@@ -443,7 +443,9 @@ describe("CodeBlock (smoke)", () => {
   it("renders the language label and code body", () => {
     render(<CodeBlock code={"const a = 1"} language="ts" />)
     expect(screen.getByText("ts")).toBeInTheDocument()
-    expect(screen.getByText("const a = 1")).toBeInTheDocument()
+    // The body renders through the shiki-backed CodeBlockV2, which splits the
+    // source into token spans; assert on the rendered text instead of a node.
+    expect(screen.getByRole("figure").querySelector("pre")?.textContent).toBe("const a = 1")
   })
 
   it("hides the copy button when the clipboard API is unavailable", () => {
@@ -467,9 +469,10 @@ describe("CodeBlock (smoke)", () => {
     const user = userEvent.setup()
     const code = Array.from({ length: 30 }, (_, i) => `line-${i}`).join("\n")
     render(<CodeBlock code={code} />)
-    expect(screen.queryByText("line-29")).not.toBeInTheDocument()
+    const bodyText = () => screen.getByRole("figure").querySelector("pre")?.textContent ?? ""
+    expect(bodyText()).not.toContain("line-29")
     await user.click(screen.getByText("Show 6 more lines"))
-    expect(screen.getByText("line-29")).toBeInTheDocument()
+    expect(bodyText()).toContain("line-29")
   })
 
   it("renders optional line numbers", () => {

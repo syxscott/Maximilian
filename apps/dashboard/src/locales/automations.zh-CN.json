@@ -72,14 +72,17 @@
       "scheduleHint": "cron 表达式（5 段）或 intervalMs 毫秒数（≥ 1000）。",
       "description": "描述（可选）",
       "cancel": "取消",
-      "submit": "创建"
+      "submit": "创建",
+      "templateLabel": "从模板开始",
+      "templatePlaceholder": "选择一个模板…"
     },
     "errors": {
       "nameRequired": "名称不能为空",
       "nameTooLong": "名称过长（含 automation: 前缀不能超过 120 字符）",
       "scheduleRequired": "调度不能为空",
       "intervalTooShort": "intervalMs 必须是不小于 1000 的整数",
-      "cronFields": "cron 表达式必须恰好 5 段（分 时 日 月 周）"
+      "cronFields": "cron 表达式必须恰好 5 段（分 时 日 月 周）",
+      "cronInvalid": "不是有效的 cron 表达式"
     },
     "notify": {
       "toggleFailed": "自动化 “{name}” 切换失败",
@@ -87,6 +90,36 @@
     },
     "search.label": "搜索自动化",
     "slots.hint": "调度槽位读取自底层作业的 PendingSlot，时间为服务端的计划/更新时间",
-    "history.hint": "最近的触发记录，可按类型筛选，也可在任意行立即手动触发"
+    "history.hint": "最近的触发记录，可按类型筛选，也可在任意行立即手动触发",
+    "cron": {
+      "fieldHelpLabel": "Cron 字段说明",
+      "field": {
+        "minute": "分钟 (0-59)",
+        "hour": "小时 (0-23)",
+        "dom": "日 (1-31)",
+        "mon": "月 (1-12, JAN-DEC)",
+        "dow": "星期 (0-6, SUN-SAT)"
+      },
+      "template": {
+        "every5": "每 5 分钟",
+        "hourly": "每小时",
+        "weekdayMorning": "工作日早晨",
+        "monthlyFirst": "每月 1 日 08:30",
+        "sundayMidnight": "每周日午夜"
+      }
+    },
+    "preview": {
+      "title": "接下来 {count} 次运行",
+      "noRuns": "没有找到即将发生的运行——表达式可能永不匹配（如 2 月 30 日）。",
+      "tzUtc": "调度时区 (UTC)",
+      "tzLocal": "浏览器本地"
+    },
+    "softIssues": {
+      "title": "请确认以下问题",
+      "hint": "计划已通过校验，但请注意以下事项。你仍可以保存。",
+      "saveAnyway": "仍要保存",
+      "chattyInterval": "触发频率高于每分钟一次（每 {seconds} 秒一次）——除非有意为之，否则会很吵。",
+      "domDowBoth": "日与星期同时受限：标准 cron 对两者取或，任务可能比预期触发得更频繁。"
+    }
   }
 }

@@ -70,16 +70,49 @@
       "namePlaceholder": "e.g. nightly-report",
       "schedule": "Schedule",
       "scheduleHint": "A cron expression (5 fields) or intervalMs in milliseconds (>= 1000).",
+      "templateLabel": "Start from a template",
+      "templatePlaceholder": "Choose a template…",
       "description": "Description (optional)",
       "cancel": "Cancel",
       "submit": "Create"
+    },
+    "cron": {
+      "fieldHelpLabel": "Cron field guide",
+      "field": {
+        "minute": "Minute (0-59)",
+        "hour": "Hour (0-23)",
+        "dom": "Day of month (1-31)",
+        "mon": "Month (1-12, JAN-DEC)",
+        "dow": "Day of week (0-6, SUN-SAT)"
+      },
+      "template": {
+        "every5": "Every 5 minutes",
+        "hourly": "Hourly",
+        "weekdayMorning": "Weekdays morning",
+        "monthlyFirst": "Monthly, 1st 08:30",
+        "sundayMidnight": "Weekly, Sunday midnight"
+      }
+    },
+    "preview": {
+      "title": "Next {count} runs",
+      "noRuns": "No upcoming runs found — the expression may never match (e.g. Feb 30).",
+      "tzUtc": "Scheduler (UTC)",
+      "tzLocal": "Browser local"
+    },
+    "softIssues": {
+      "title": "Review these warnings",
+      "hint": "The schedule passed validation, but note the following. You can still save.",
+      "saveAnyway": "Save anyway",
+      "chattyInterval": "Fires more than once a minute (every {seconds} s) — noisy unless intentional.",
+      "domDowBoth": "Both day-of-month and day-of-week are restricted: standard cron ORs them, so the job may fire more often than you expect."
     },
     "errors": {
       "nameRequired": "Name is required",
       "nameTooLong": "Name is too long (120 chars max including the automation: prefix)",
       "scheduleRequired": "Schedule is required",
       "intervalTooShort": "intervalMs must be an integer of at least 1000",
-      "cronFields": "A cron expression needs exactly 5 fields (minute hour dom month dow)"
+      "cronFields": "A cron expression needs exactly 5 fields (minute hour dom month dow)",
+      "cronInvalid": "Not a valid cron expression"
     },
     "notify": {
       "toggleFailed": "Failed to toggle \"{name}\"",

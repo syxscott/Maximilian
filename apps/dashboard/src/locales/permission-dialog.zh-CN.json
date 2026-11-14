@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "uplinkBlocked": "无法在本地记录该决定——答案未发送。请检查存储权限后重试。",
+    "shortcutApprove": "快捷键：Ctrl/Cmd + Enter",
+    "shortcutReject": "快捷键：Shift + Ctrl/Cmd + Backspace"
+  },
+  "approvals": {
+    "uplinkBlocked": "无法在本地记录该决定——答案未发送。请检查存储权限后重试。"
+  }
+}

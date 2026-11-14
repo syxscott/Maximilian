@@ -46,6 +46,30 @@
  *     estimates), with turn/find anchors mapping to scroll offsets via
  *     scrollOffsetForUnit; live-tail keeps driving the same container.
  *
+ * Scroll authority (round-5, ZCode v4 timelineScrollAnchor borrowing):
+ * `following` is the reader's scroll authority — only real user input
+ * (wheel/touch/keyboard intent events) takes or grants it; the programmatic
+ * stick-to-bottom and anchor-jump writes only advance the geometry ledger
+ * through their echoes; and every bottom-sticking commit RECONCILES first,
+ * so a wheel-up inside the event-dispatch window detaches instead of being
+ * yanked back. selectionPinsTail keeps the highest priority (a drag-selection's
+ * auto-scroll is never a detach), and liveTailState keeps its frozen-count
+ * semantics on top of the authority's attached/detached verdict.
+ *
+ * Height memory (round-5, ZCode v4 timelineRowHeightCache + pi
+ * row-estimate borrowing): real row heights are cached per stable turnId
+ * outside the virtualizer (resets and remounts keep them), and the
+ * estimator learns height ~ text/width per row kind from the measurements
+ * that land — a row's first estimate is pinned (same row + width never
+ * moves) so rows below the reader do not shift.
+ *
+ * Live-tail split (round-5, ZCode v4 conversationTimelineLiveTail
+ * borrowing): in virtualized mode the stream's LAST turn renders in
+ * normal flow after the spacer (splitLiveTail) — decided by position,
+ * never by a running flag — so a streaming tail grows natively instead of
+ * waiting a frame for the virtualizer's totalSize backfill, and the
+ * history band keeps its array identity across streaming frames.
+ *
  * ai-elements density surfaces, all real-data driven:
  *   - stats row: four StatCards (turns/tools/retries/failed) from the
  *     model's statsSummary over the compiled stream;
@@ -62,7 +86,15 @@
  * jump-to-latest affordance when detached.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type KeyboardEvent,
+} from "react"
 import { Input } from "@/components/ui/input"
 import { adjacentAnchor, turnAnchors } from "@/lib/timeline-view"
 import {
@@ -73,7 +105,6 @@ import {
   liveTailState,
   markFirstSeen,
   stepNavigationCursor,
-  turnHeight,
   VIRTUAL_HEIGHT_THRESHOLD,
   type NavigationCursors,
 } from "@/components/conversation/model"
@@ -93,6 +124,62 @@ import {
 import { ConversationWindow } from "@/components/conversation/ConversationWindow"
 import { VirtualTurnWindow } from "@/components/conversation/VirtualTurnWindow"
 import { TurnGroup } from "@/components/conversation/TurnGroup"
+import {
+  applyScrollEvent,
+  initialScrollAuthority,
+  isAtBottom,
+  isOverflowing,
+  keyboardScrollIntent,
+  recordGestureIntent,
+  reattachToTail,
+  reconcileForStickyCommit,
+  touchScrollIntent,
+  wheelScrollIntent,
+  type ScrollAuthorityState,
+  type ScrollMetrics,
+  type UserScrollIntent,
+} from "@/components/conversation/scroll-authority"
+import {
+  createTurnHeightModel,
+  recordTurnMeasurement,
+  resolveTurnHeight,
+  safeRowHeightStore,
+  type TurnHeightModel,
+} from "@/components/conversation/row-height-cache"
+import {
+  partitionLiveTail,
+  splitLiveTail,
+  type TurnPartition,
+} from "@/components/conversation/live-tail-split"
+
+/**
+ * Shared EMPTY verdict for the steering flash-once set: steering is rare,
+ * so renders that have nothing fresh return this ONE instance and the
+ * TurnGroup memo comparator stays identity-stable across frames.
+ */
+const EMPTY_FRESH_STEERING: ReadonlySet<string> = new Set()
+
+/** A programmatic write's echo window: the scroll event lands within a frame. */
+const PROGRAMMATIC_ECHO_WINDOW_MS = 80
+
+/** localStorage access that never throws (private mode, disabled storage). */
+function safeLocalStorage(): Storage | null {
+  try {
+    if (typeof window === "undefined") return null
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+/** Live scroll geometry of the container, captured at read time. */
+function readScrollMetrics(el: HTMLElement): ScrollMetrics {
+  return {
+    scrollTop: el.scrollTop,
+    viewportHeight: el.clientHeight,
+    contentHeight: el.scrollHeight,
+  }
+}
 
 /** Unit-key → matched ranges inside the unit's text (find highlight). */
 function textHighlightMap(matches: ReturnType<typeof buildConversationFindIndex>) {
@@ -109,6 +196,24 @@ function textHighlightMap(matches: ReturnType<typeof buildConversationFindIndex>
 }
 
 const findActive = (query: string): boolean => query.trim().length > 0
+
+/**
+ * True while an in-container text selection is in progress (hermes
+ * assistant-ui thread-list borrowing): a non-collapsed selection whose
+ * anchor and focus both live inside `container` means the user is
+ * dragging across text. The auto-scroll that drag produces fires scroll
+ * events that look exactly like a detach, so while such a selection is
+ * live the tail yields (stays attached) instead of detaching.
+ */
+export function selectionPinsTail(selection: Selection | null, container: Element | null): boolean {
+  if (!selection || !container) return false
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = selection
+  if (anchorNode === null || focusNode === null) return false
+  // Spec-equivalent of Selection.collapsed (absent from this repo's DOM
+  // lib): a selection is collapsed exactly when its endpoints coincide.
+  if (anchorNode === focusNode && anchorOffset === focusOffset) return false
+  return container.contains(anchorNode) && container.contains(focusNode)
+}
 
 /** The turns that contain at least one find match. */
 function matchedTurnIdSet(
@@ -158,7 +263,16 @@ export function ConversationTimeline({
   const turnDepth = useMemo(() => estimateTurnDepth(units), [units])
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [detached, setDetached] = useState(false)
+  /**
+   * The reader's scroll authority (following ⇔ attached). ONLY user
+   * input changes `following`; our own programmatic writes ledger
+   * through their echoes; commits reconcile before sticking.
+   */
+  const [authority, setAuthority] = useState<ScrollAuthorityState>(initialScrollAuthority)
+  const detached = !authority.following
+  // The freeze point of the CURRENT detach episode (liveTailState's
+  // frozen-count origin). Declared early: gesture handlers freeze it.
+  const [frozenAt, setFrozenAt] = useState<number | null>(null)
   const [query, setQuery] = useState("")
   const [anchorTurnId, setAnchorTurnId] = useState<string | null>(null)
   // Workspace id (stream identity) — the live-tail reset, the steering
@@ -213,20 +327,32 @@ export function ConversationTimeline({
   // mount with the overlay retired. StrictMode's double render is safe
   // too (the registry only grows inside effects), and a prop flip on a
   // still-mounted block cannot re-light it (TextUnitBlock reads `fresh`
-  // once at mount).
+  // once at mount). The verdict set is the shared EMPTY instance unless
+  // something is actually fresh — the TurnGroup memo comparator relies
+  // on that identity stability.
   const seenSteeringRef = useRef<Map<string, number>>(new Map())
-  const steeringKeys = displayedUnits
-    .filter(
-      (u): u is Extract<ConversationUnit, { kind: "text" }> =>
-        u.kind === "text" && u.source === "steering",
-    )
-    .map((u) => u.key)
-  const steeringScope = workspaceId ?? "\u0000stream"
-  const freshSteeringKeys = new Set<string>(
-    markFirstSeen(steeringKeys, seenSteeringRef.current, 0, steeringScope)
-      .marks.filter((mark) => mark.fresh)
-      .map((mark) => mark.key),
+  const steeringKeys = useMemo(
+    () =>
+      displayedUnits
+        .filter(
+          (u): u is Extract<ConversationUnit, { kind: "text" }> =>
+            u.kind === "text" && u.source === "steering",
+        )
+        .map((u) => u.key),
+    [displayedUnits],
   )
+  const steeringScope = workspaceId ?? "\u0000stream"
+  // Re-read on EVERY render (not memoized): the registry is written by
+  // the post-commit effect below, and a virtual-band row remounting
+  // after a scroll must see its key already recorded — a memoized
+  // verdict would re-flash it. Identity: the shared EMPTY instance
+  // unless something is actually fresh (the TurnGroup memo comparator
+  // relies on that stability).
+  const steeringMarks = markFirstSeen(steeringKeys, seenSteeringRef.current, 0, steeringScope).marks
+  const freshSteeringKeys = (() => {
+    const fresh = steeringMarks.filter((mark) => mark.fresh).map((mark) => mark.key)
+    return fresh.length === 0 ? EMPTY_FRESH_STEERING : new Set(fresh)
+  })()
   useEffect(() => {
     seenSteeringRef.current = markFirstSeen(
       steeringKeys,
@@ -236,20 +362,145 @@ export function ConversationTimeline({
     ).seen
   }, [steeringKeys, steeringScope])
 
-  // Virtualization inputs (virtualized mode): per-turn estimated heights
-  // and the anchored turn's index in the displayed stream. The anchor
-  // jump's OFFSET itself is computed by the model (scrollOffsetForUnit)
-  // inside VirtualTurnWindow, so navigation, find and live-tail share
-  // one scroll container with the same arithmetic.
-  const turnHeightList = useMemo(
-    () => (virtualized ? displayedTurns.map((turn) => turnHeight(turn)) : []),
-    [virtualized, displayedTurns],
+  // Live-tail split (round-5): the LAST displayed turn renders in normal
+  // flow, the prefix stays in the virtual band — and the prefix keeps its
+  // ARRAY IDENTITY across streaming frames (partitionLiveTail re-uses the
+  // previous history when its content is unchanged), so the virtualizer
+  // and the height list do not rebuild per token.
+  const partitionRef = useRef<TurnPartition | null>(null)
+  const partition = partitionLiveTail(displayedTurns, partitionRef.current)
+  partitionRef.current = partition
+  const split = useMemo(() => splitLiveTail(partition), [partition])
+
+  // Height memory (round-5): one cache+estimator model per stream scope,
+  // created lazily and swapped when the workspace id changes. Turn ids
+  // are only unique within a stream, so the swap IS the reset.
+  const heightScope = workspaceId ?? "\u0000stream"
+  const heightModelRef = useRef<TurnHeightModel | null>(null)
+  if (heightModelRef.current === null || heightModelRef.current.scope !== heightScope) {
+    const storage = safeRowHeightStore(safeLocalStorage())
+    heightModelRef.current = createTurnHeightModel(heightScope, { storage })
+  }
+  const heightModel = heightModelRef.current
+  /** Bumped when a real row measurement changes a known height. */
+  const [heightsVersion, setHeightsVersion] = useState(0)
+
+  // Mirrors for handlers/effect bodies that must see the latest values
+  // without resubscribing (the native gesture listeners attach once).
+  const authorityRef = useRef(authority)
+  authorityRef.current = authority
+  const unitsCountRef = useRef(units.length)
+  unitsCountRef.current = units.length
+  const displayedTurnsRef = useRef(displayedTurns)
+  displayedTurnsRef.current = displayedTurns
+
+  // Programmatic-write ledger: our own scrollTop writes announce
+  // themselves (target + echo window); the matching echo scroll event
+  // classifies as programmatic and only advances the geometry ledger —
+  // it never reads as a user detach ("only the reader takes the
+  // authority"). The expected-top match (not the window alone) keeps a
+  // USER scroll inside the window from being swallowed.
+  const programmaticEchoRef = useRef<{ top: number; until: number } | null>(null)
+  const markProgrammaticWrite = useCallback((top: number, el: HTMLElement) => {
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+    programmaticEchoRef.current = {
+      top: Math.min(top, maxScrollTop),
+      until: Date.now() + PROGRAMMATIC_ECHO_WINDOW_MS,
+    }
+  }, [])
+  const markProgrammaticScroll = useCallback(
+    (top: number) => {
+      const el = scrollRef.current
+      if (el) markProgrammaticWrite(top, el)
+    },
+    [markProgrammaticWrite],
+  )
+  const consumeProgrammaticEcho = useCallback((scrollTop: number): boolean => {
+    const marker = programmaticEchoRef.current
+    if (marker === null || Date.now() > marker.until) return false
+    if (Math.abs(scrollTop - marker.top) >= 1) return false
+    programmaticEchoRef.current = null
+    return true
+  }, [])
+  const writeScrollTopProgrammatically = useCallback(
+    (el: HTMLDivElement, top: number) => {
+      markProgrammaticWrite(top, el)
+      el.scrollTop = top
+    },
+    [markProgrammaticWrite],
+  )
+
+  // A real user gesture (wheel delta, touch drag, scroll key): an
+  // away-from-bottom intent takes the authority IMMEDIATELY (the echo
+  // scroll event has not landed yet, but the reader has spoken) and
+  // records the freeze point for the jump affordance.
+  const handleUserGesture = useCallback((intent: UserScrollIntent) => {
+    if (intent === "none") return
+    const el = scrollRef.current
+    if (!el) return
+    const overflowing = isOverflowing(readScrollMetrics(el))
+    setAuthority((prev) => recordGestureIntent(prev, intent, overflowing))
+    if (intent === "awayFromBottom" && overflowing) {
+      setFrozenAt((prev) => (prev === null ? unitsCountRef.current : prev))
+    }
+  }, [])
+  const handleUserGestureRef = useRef(handleUserGesture)
+  handleUserGestureRef.current = handleUserGesture
+
+  // Native gesture listeners on the shared container (both modes) —
+  // passive: we observe intent, never block scrolling.
+  const touchYRef = useRef<number | null>(null)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (event: WheelEvent) => {
+      handleUserGestureRef.current(wheelScrollIntent(event.deltaY))
+    }
+    const onTouchStart = (event: TouchEvent) => {
+      touchYRef.current = event.touches[0]?.clientY ?? null
+    }
+    const onTouchMove = (event: TouchEvent) => {
+      const nextY = event.touches[0]?.clientY
+      const prevY = touchYRef.current
+      if (nextY !== undefined && prevY !== null) {
+        handleUserGestureRef.current(touchScrollIntent(prevY, nextY))
+      }
+      if (nextY !== undefined) touchYRef.current = nextY
+    }
+    el.addEventListener("wheel", onWheel, { passive: true })
+    el.addEventListener("touchstart", onTouchStart, { passive: true })
+    el.addEventListener("touchmove", onTouchMove, { passive: true })
+    return () => {
+      el.removeEventListener("wheel", onWheel)
+      el.removeEventListener("touchstart", onTouchStart)
+      el.removeEventListener("touchmove", onTouchMove)
+    }
+  }, [virtualized])
+
+  // Virtualization inputs (virtualized mode): per-turn heights through
+  // the three levels — measured (cache) → learned estimate (pinned) →
+  // static model estimate — over the split's VIRTUAL band only; the
+  // normal-flow tail sizes itself. The anchored turn's index in the
+  // displayed stream: the band is a prefix, so the index maps 1:1 (a
+  // tail anchor clamps to the band total — its top edge).
+  const virtualHeights = useMemo(
+    () => (virtualized ? split.virtual.map((turn) => resolveTurnHeight(turn, heightModel)) : []),
+    [virtualized, split.virtual, heightModel, heightsVersion],
   )
   const virtualAnchorIndex = useMemo(() => {
     if (!virtualized || anchorTurnId === null) return undefined
     const at = displayedTurns.findIndex((turn) => turn.turnId === anchorTurnId)
     return at >= 0 ? at : undefined
   }, [virtualized, anchorTurnId, displayedTurns])
+
+  /** Row measurement sink (VirtualTurnWindow ResizeObserver reports). */
+  const handleRowMeasure = useCallback((key: string, heightPx: number, widthPx: number) => {
+    const model = heightModelRef.current
+    if (!model) return
+    const turn = displayedTurnsRef.current.find((candidate) => candidate.turnId === key)
+    if (!turn) return
+    if (recordTurnMeasurement(turn, model, heightPx, widthPx)) setHeightsVersion((v) => v + 1)
+  }, [])
 
   // Virtual-height budget: the estimated pixel height of the render
   // area, surfaced once it crosses the threshold — a hint on the
@@ -262,10 +513,10 @@ export function ConversationTimeline({
     if (!overHeightBudget) return undefined
     const map = new Map<string, number>()
     for (const turn of displayedTurns) {
-      map.set(turn.turnId, turnHeight(turn))
+      map.set(turn.turnId, resolveTurnHeight(turn, heightModel))
     }
     return map
-  }, [overHeightBudget, displayedTurns])
+  }, [overHeightBudget, displayedTurns, heightModel, heightsVersion])
 
   // Turn navigation IS anchor setting: the adjacent task anchor becomes
   // the window anchor, so ConversationWindow pins its head there and
@@ -310,8 +561,8 @@ export function ConversationTimeline({
 
   // Auto-tail via the liveTailState model (round-4 borrowing): while live
   // and attached the view follows the tail; detaching freezes the window
-  // and counts what arrives until the user jumps back.
-  const [frozenAt, setFrozenAt] = useState<number | null>(null)
+  // and counts what arrives until the user jumps back. Detachment is the
+  // scroll authority's verdict (round-5): user input only.
   const tail = useMemo(
     () => liveTailState(units, detached && live, { frozenAt: frozenAt ?? undefined }),
     [units, detached, live, frozenAt],
@@ -325,42 +576,87 @@ export function ConversationTimeline({
   // or an anchored dive keeps the viewport exactly where it is.
   const [windowExpansions, setWindowExpansions] = useState(0)
 
-  // A workspace switch drops the tail state: a freeze point recorded as
-  // a unit COUNT is meaningless against another stream.
+  // Retry-wave expansion registry (OpenHands list-level borrowing): the
+  // open state of every wave lives HERE so a forced remount (virtual
+  // band unmount, find filter) restores the reader's expansion.
+  const [expandedRetries, setExpandedRetries] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleRetry = useCallback((key: string, open: boolean) => {
+    setExpandedRetries((prev) => {
+      const next = new Set(prev)
+      if (open) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }, [])
+
+  // A workspace switch drops the tail state and the height memory scope:
+  // a freeze point recorded as a unit COUNT is meaningless against
+  // another stream, and turnId height keys are stream-scoped too. The
+  // guard keeps the MOUNT from re-rendering (fresh state identities would
+  // defeat the bailout the previous detached/frozen reset relied on).
+  const prevWorkspaceRef = useRef(workspaceId)
   useEffect(() => {
-    setDetached(false)
+    if (prevWorkspaceRef.current === workspaceId) return
+    prevWorkspaceRef.current = workspaceId
+    setAuthority(initialScrollAuthority())
     setFrozenAt(null)
+    setExpandedRetries(new Set())
   }, [workspaceId])
 
+  // The stick-to-bottom commit — RECONCILED (round-5, ZCode v4
+  // reconcileFollowingForContentAnchor borrowing): before writing, the
+  // commit checks the reader's pending gesture intent and the live
+  // geometry against the ledger. A wheel-up inside the dispatch window or
+  // an unobserved upscroll takes the authority; the commit yields
+  // (detach + freeze) instead of dragging the reader back to the tail.
+  // The write itself is programmatic — its echo only advances the ledger.
   useEffect(() => {
     const el = scrollRef.current
-    // An anchored window scrolls to ITS anchor — never fight it with the
-    // tail snap.
     if (!el || !expansionKeepsTail(live, detached, anchorTurnId !== null)) return
-    el.scrollTop = el.scrollHeight
-  }, [units.length, live, detached, anchorTurnId, windowExpansions])
+    const verdict = reconcileForStickyCommit(authorityRef.current, readScrollMetrics(el))
+    if (!verdict.stick) {
+      setAuthority(verdict.state)
+      setFrozenAt((prev) => (prev === null ? unitsCountRef.current : prev))
+      return
+    }
+    writeScrollTopProgrammatically(el, el.scrollHeight)
+  }, [units.length, live, detached, anchorTurnId, windowExpansions, writeScrollTopProgrammatically])
 
   const onScroll = () => {
     const el = scrollRef.current
     if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
-    setDetached(!atBottom)
-    if (atBottom) {
-      // Released — drop the freeze point so the NEXT detach records a
-      // fresh one; a count never spans two detached episodes.
-      setFrozenAt(null)
-    } else {
-      // Functional update: a fast scroll can fire twice between renders —
-      // only the FIRST event (prev === null) records the freeze point, so
-      // later arrivals accumulate against it instead of resetting it.
-      setFrozenAt((prev) => (prev === null ? units.length : prev))
+    // Selection pinning (hermes thread-list borrowing) keeps the highest
+    // priority: an in-flight text selection auto-scrolls this container
+    // while the user drags upward — that scroll is part of the selection
+    // gesture, not a detach. Yield: keep the authority untouched until
+    // the selection collapses (mouse release) and a later scroll
+    // re-evaluates.
+    if (selectionPinsTail(document.getSelection?.() ?? null, el)) return
+    const metrics = readScrollMetrics(el)
+    const programmatic = consumeProgrammaticEcho(metrics.scrollTop)
+    // User scroll: the landing point decides (at bottom ⇔ follow).
+    // Programmatic echo: ledger only — the authority is untouched.
+    setAuthority((prev) => applyScrollEvent(prev, metrics, programmatic ? "programmatic" : "user"))
+    if (!programmatic) {
+      if (isAtBottom(metrics)) {
+        // Released — drop the freeze point so the NEXT detach records a
+        // fresh one; a count never spans two detached episodes.
+        setFrozenAt(null)
+      } else {
+        // Functional update: a fast scroll can fire twice between renders
+        // — only the FIRST event (prev === null) records the freeze
+        // point, so later arrivals accumulate against it.
+        setFrozenAt((prev) => (prev === null ? unitsCountRef.current : prev))
+      }
     }
   }
 
   // In-scope find hotkey: React's synthetic keydown fires only when the
   // focus already lives inside this container, so Cmd/Ctrl+F here never
   // hijacks the browser's own find elsewhere on the page. Esc leaves
-  // find mode entirely (box closed, query cleared, cursor reset).
+  // find mode entirely (box closed, query cleared, cursor reset). Scroll
+  // keys classify as user gestures — except over an editable target,
+  // where they move the caret, not the timeline.
   const onContainerKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
       e.preventDefault()
@@ -374,7 +670,18 @@ export function ConversationTimeline({
       // Leaving find retires the find cursor only — a turn-navigation
       // position (if the navigator stepped last) stays put.
       setCursors((c) => ({ ...c, findCursor: -1 }))
+      return
     }
+    const target = e.target
+    const editable =
+      target instanceof HTMLElement &&
+      (target.isContentEditable ||
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT")
+    handleUserGesture(
+      keyboardScrollIntent({ key: e.key, shiftKey: e.shiftKey, editableTarget: editable }),
+    )
   }
 
   // Opening find hands the focus to the input.
@@ -385,8 +692,9 @@ export function ConversationTimeline({
 
   // The streaming tail (ai-elements StreamingCursor): while the run is
   // live and the reader is attached, a blinking caret rides after the
-  // last displayed turn — pure affordance, no data of its own. Detaching
-  // (or a dead run) retires it; it comes back on re-attach.
+  // last displayed turn — the normal-flow tail row in virtualized mode —
+  // pure affordance, no data of its own. Detaching (or a dead run)
+  // retires it; it comes back on re-attach.
   const showStreamCursor = live && !detached && turns.length > 0
 
   return (
@@ -501,11 +809,14 @@ export function ConversationTimeline({
           testId="conversation-timeline"
           containerRef={scrollRef}
           onScroll={onScroll}
-          units={displayedTurns}
-          heights={turnHeightList}
+          units={split.virtual}
+          heights={virtualHeights}
+          tailUnits={split.tailRows.length > 0 ? split.tailRows : undefined}
           viewportHeight={viewportHeight}
           anchorIndex={virtualAnchorIndex}
           getKey={(turn) => turn.turnId}
+          onMeasure={handleRowMeasure}
+          markProgrammaticScroll={markProgrammaticScroll}
           renderUnit={(turn) => (
             <>
               <TurnGroup
@@ -514,13 +825,14 @@ export function ConversationTimeline({
                 textHighlights={findActiveQuery ? highlights : undefined}
                 currentUnitKey={currentMatch?.key}
                 freshSteeringKeys={freshSteeringKeys}
+                expandedRetries={expandedRetries}
+                onToggleRetry={toggleRetry}
               />
-              {showStreamCursor &&
-                turn.turnId === displayedTurns[displayedTurns.length - 1]?.turnId && (
-                  <div className="mt-1" data-testid="timeline-streaming-cursor">
-                    <StreamingCursor />
-                  </div>
-                )}
+              {showStreamCursor && turn.turnId === split.tailRows[0]?.turnId && (
+                <div className="mt-1" data-testid="timeline-streaming-cursor">
+                  <StreamingCursor />
+                </div>
+              )}
             </>
           )}
           empty={
@@ -553,6 +865,8 @@ export function ConversationTimeline({
               textHighlights={findActiveQuery ? highlights : undefined}
               currentUnitKey={currentMatch?.key}
               freshSteeringKeys={freshSteeringKeys}
+              expandedRetries={expandedRetries}
+              onToggleRetry={toggleRetry}
               turnHeights={turnHeights}
               loadEarlierHint={
                 overHeightBudget
@@ -587,11 +901,11 @@ export function ConversationTimeline({
           variant="secondary"
           className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-md"
           onClick={() => {
-            setDetached(false)
+            setAuthority((prev) => reattachToTail(prev))
             setAnchorTurnId(null)
             setFrozenAt(null)
             const el = scrollRef.current
-            if (el) el.scrollTop = el.scrollHeight
+            if (el) writeScrollTopProgrammatically(el, el.scrollHeight)
           }}
           data-testid="jump-to-latest"
         >

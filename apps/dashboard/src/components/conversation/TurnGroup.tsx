@@ -5,10 +5,11 @@
 
 /**
  * TurnGroup — one conversation turn: header (role badge + status +
- * result stats + duration) over its compiled render units. Tool units
- * render through the shared ToolCallBlock registry — the single
- * rendering path for any tool call on this surface. The turn's depth
- * drives the left indent (subagent turns nest under their open parent).
+ * result stats + duration + turn-phase affordances) over its compiled
+ * render units. Tool units render through the shared ToolCallBlock
+ * registry — the single rendering path for any tool call on this
+ * surface. The turn's depth drives the left indent (subagent turns nest
+ * under their open parent).
  *
  * Live status: a RUNNING turn's header duration ticks every 5s
  * (LiveTurnDuration) and its running tools carry a spinning Loader2
@@ -16,6 +17,20 @@
  * units flash once on entry (2s fade); a FAILED turn's failing tool
  * calls default to the expanded error view (turnDefaultExpanded per
  * status) so the error detail needs no click.
+ *
+ * Render economy (OpenHands messages.tsx borrowing): the component is
+ * memoized with a CONTENT comparator (sameTurnRender — the compile
+ * re-issues every unit object per frame, so reference equality would
+ * never hold) and only stable derived inputs, so a streaming append to
+ * the LAST turn re-renders that turn alone and every historical turn
+ * skips. Retry-wave expansion lives in the host's list-level registry
+ * (expandedRetries/onToggleRetry) so a forced remount keeps the
+ * reader's expansion.
+ *
+ * Turn phase (opencode turn-phase-machine borrowing): the header
+ * derives the phase (turnPhaseOfTurn) and its affordances
+ * (viewTurnPhase) — a retrying phase renders its attempt/next chip and
+ * a live phase carries data-copy-locked for copy affordances.
  *
  * ai-elements density: a completed task's result surfaces in the header
  * — TokenUsageBadge for `result.metadata.usage` and a LatencyMeter
@@ -25,7 +40,7 @@
  * (name + message, embedded stacks folded) instead of raw text rows.
  */
 
-import { useState, type ReactNode } from "react"
+import { memo, useState, type ReactNode } from "react"
 import { Loader2 } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import { Badge } from "@/components/ui/badge"
@@ -36,9 +51,11 @@ import {
   elapsedSeconds,
   errorDetailOf,
   formatDuration,
+  sameTurnRender,
   turnDefaultExpanded,
   turnResultStats,
 } from "./model"
+import { turnPhaseOfTurn, viewTurnPhase } from "./turn-phase"
 import { RetryWaveGroup } from "./RetryWaveGroup"
 import { TextUnitBlock } from "./TextUnitBlock"
 import { RUNNING_TOOL_TICK_MS, TURN_ELAPSED_TICK_MS, useNow } from "./useNow"
@@ -218,6 +235,9 @@ function TurnUnitView({
   currentUnitKey,
   defaultExpanded = false,
   freshSteeringKeys,
+  settled = true,
+  retryOpen,
+  onToggleRetry,
 }: {
   unit: ConversationUnit
   textHighlights?: Map<string, FindHit[]>
@@ -229,7 +249,13 @@ function TurnUnitView({
    */
   defaultExpanded?: boolean
   /** Steering flash-once verdict (see TurnGroup's prop of the same name). */
-  freshSteeringKeys?: Set<string>
+  freshSteeringKeys?: ReadonlySet<string>
+  /** Streaming verdict for markdown bodies (last unit of a running turn streams). */
+  settled?: boolean
+  /** Host registry state for a retry wave's expansion (see RetryWaveGroup). */
+  retryOpen?: boolean
+  /** Host toggle sink for a retry wave's expansion. */
+  onToggleRetry?: (key: string, open: boolean) => void
 }) {
   switch (unit.kind) {
     case "task":
@@ -241,13 +267,17 @@ function TurnUnitView({
       // styling (purple for steering) with the find highlights kept
       // working inside the block. Steering additionally flashes once —
       // on its FIRST render only (the flash-once registry's fresh set;
-      // replays and remounts mount with the overlay retired).
+      // replays and remounts mount with the overlay retired). Bodies
+      // render markdown (streaming until the turn settles — the LAST
+      // unit of a RUNNING turn is still being produced); the
+      // find-highlight override keeps the plain-text body instead.
       if (unit.source !== undefined) {
         return (
           <TextUnitBlock
             unit={{ source: unit.source, text: unit.text, taskId: unit.taskId }}
             flash={unit.source === "steering"}
             fresh={freshSteeringKeys?.has(unit.key) ?? true}
+            settled={settled}
           >
             <HighlightedText
               text={unit.text}
@@ -290,7 +320,7 @@ function TurnUnitView({
         </div>
       )
     case "retry":
-      return <RetryWaveGroup unit={unit} />
+      return <RetryWaveGroup unit={unit} open={retryOpen} onToggle={onToggleRetry} />
     case "permission":
       return <PermissionLine unit={unit} />
     case "task-status":
@@ -322,13 +352,7 @@ function TurnUnitView({
   }
 }
 
-export function TurnGroup({
-  turn,
-  highlighted = false,
-  textHighlights,
-  currentUnitKey,
-  freshSteeringKeys,
-}: {
+export interface TurnGroupProps {
   turn: TurnModel
   /** Find-active marker — amber border on turns that contain a match. */
   highlighted?: boolean
@@ -346,8 +370,50 @@ export function TurnGroup({
    * re-flashes. undefined = every steering unit counts as fresh (direct
    * usages and tests keep the mount flash).
    */
-  freshSteeringKeys?: Set<string>
-}) {
+  freshSteeringKeys?: ReadonlySet<string>
+  /**
+   * Retry-wave expansion registry (OpenHands list-level borrowing): the
+   * host keeps open-state per retry unit key so a forced remount
+   * (virtual band unmount, find filter) restores the expansion.
+   */
+  expandedRetries?: ReadonlySet<string>
+  /** Toggle sink for the registry above. */
+  onToggleRetry?: (key: string, open: boolean) => void
+}
+
+/**
+ * Memo comparator over CONTENT, not references: the compile re-issues
+ * every TurnModel/unit object per frame, so the OpenHands-style "only
+ * stable keys" rule runs through sameTurnRender (header fields +
+ * per-unit content). Everything else the render reads arrives as
+ * identity-stable props from the timeline (memoized derived maps, the
+ * EMPTY steering set, a useState-backed retry registry).
+ */
+/**
+ * Exported for the render-stability test suite (it must spy THROUGH the
+ * real comparator, not a re-implementation).
+ */
+export function turnGroupPropsEqual(prev: TurnGroupProps, next: TurnGroupProps): boolean {
+  return (
+    prev.highlighted === next.highlighted &&
+    prev.currentUnitKey === next.currentUnitKey &&
+    prev.textHighlights === next.textHighlights &&
+    prev.freshSteeringKeys === next.freshSteeringKeys &&
+    prev.expandedRetries === next.expandedRetries &&
+    prev.onToggleRetry === next.onToggleRetry &&
+    sameTurnRender(prev.turn, next.turn)
+  )
+}
+
+export const TurnGroup = memo(function TurnGroup({
+  turn,
+  highlighted = false,
+  textHighlights,
+  currentUnitKey,
+  freshSteeringKeys,
+  expandedRetries,
+  onToggleRetry,
+}: TurnGroupProps) {
   useLocale()
   const hostsCurrentMatch =
     currentUnitKey !== undefined && turn.units.some((unit) => unit.key === currentUnitKey)
@@ -357,6 +423,16 @@ export function TurnGroup({
   // The turn's completed-task result: usage for the token badge and the
   // latency the meter rates — both absent for running/failed turns.
   const result = turnResultStats(turn)
+  // Turn phase (opencode borrowing): the header's affordances derive
+  // from the machine, not from ad-hoc status checks.
+  const phase = turnPhaseOfTurn(turn)
+  const phaseView = viewTurnPhase(phase)
+  // The turn's last unit is the one still streaming when the turn runs —
+  // every earlier body is settled markdown.
+  const streamingUnitKey =
+    turn.status === "running" && turn.units.length > 0
+      ? turn.units[turn.units.length - 1]?.key
+      : undefined
   return (
     <section
       className={`rounded-lg border bg-card/60 p-3 ${
@@ -371,6 +447,8 @@ export function TurnGroup({
       data-turn-id={turn.turnId}
       data-turn-depth={turn.depth}
       data-current-turn={hostsCurrentMatch ? "true" : undefined}
+      data-phase={phase.status}
+      data-copy-locked={phaseView.hideCopy ? "true" : undefined}
     >
       <header className="flex items-center gap-2">
         <span
@@ -383,6 +461,21 @@ export function TurnGroup({
         {/* Lifecycle badges only exist for task turns — message turns
             (user request, narration, review) have no running state. */}
         {turn.turnId.startsWith("task-") && <StatusBadge status={turn.status} />}
+        {/* Turn-phase affordance (opencode borrowing): a RETRYING phase
+            shows its attempt → next chip; live phases lock Copy (the
+            data attribute), settled phases keep their last text. */}
+        {phaseView.retry !== undefined && (
+          <Badge
+            variant="outline"
+            className="h-4 shrink-0 px-1 text-[10px] text-amber-600"
+            data-testid="turn-phase-retry"
+          >
+            {t("conversation.phase.retrying", {
+              attempt: String(phaseView.retry.attempt),
+              next: String(phaseView.retry.next),
+            })}
+          </Badge>
+        )}
         {/* Result stats (ai-elements density): token usage + rated
             latency of the completed task, straight from the task-complete
             payload; absent payloads render nothing. */}
@@ -421,10 +514,15 @@ export function TurnGroup({
               currentUnitKey={currentUnitKey}
               defaultExpanded={defaultExpanded}
               freshSteeringKeys={freshSteeringKeys}
+              settled={unit.key !== streamingUnitKey}
+              retryOpen={expandedRetries?.has(unit.key)}
+              onToggleRetry={onToggleRetry}
             />
           ))}
         </div>
       )}
     </section>
   )
-}
+}, turnGroupPropsEqual)
+
+TurnGroup.displayName = "TurnGroup"

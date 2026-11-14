@@ -1,0 +1,35 @@
+{
+  "composer": {
+    "drop": {
+      "title": "Drop files to attach",
+      "hint": "Files are staged locally — nothing uploads until the send channel exists",
+      "directories": "Folders can't be attached: {names}"
+    },
+    "attach": {
+      "railAria": "Staged attachments",
+      "remove": "Remove attachment",
+      "sendBlocked": "Attachments stay local: the dashboard has no file-upload channel yet, so this message can't carry files. Remove them (or move the content into the text) to send.",
+      "clear": "Discard all staged attachments"
+    },
+    "voice": {
+      "start": "Start voice input",
+      "stop": "Stop and transcribe",
+      "cancel": "Cancel transcription",
+      "timer": "Recording {seconds}s",
+      "requiresHttps": "Voice input needs a secure (HTTPS) context",
+      "permissionDenied": "Microphone permission denied — allow mic access in the browser",
+      "noDevice": "No microphone found",
+      "failed": "Voice input failed",
+      "empty": "Transcription came back empty",
+      "limitReached": "Recording stopped at the 120s limit"
+    },
+    "context": {
+      "aria": "Context occupancy {percent}%",
+      "title": "Context occupancy (local estimate: characters ÷ 4)",
+      "draft": "Composer draft",
+      "session": "Session events",
+      "limit": "of {limit} token budget",
+      "warn": "Past 80% — compaction territory"
+    }
+  }
+}

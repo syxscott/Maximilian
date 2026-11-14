@@ -1,0 +1,12 @@
+{
+  "settingsDeep": {
+    "oracleEditor": {
+      "guard": {
+        "title": "Unsaved changes",
+        "message": "This lesson has unsaved edits. Leaving now discards them — they are not written to the server.",
+        "keepEditing": "Keep editing",
+        "discard": "Discard changes"
+      }
+    }
+  }
+}

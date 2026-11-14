@@ -230,9 +230,20 @@ export interface CitationModel {
   index: number
   title: string
   url?: string
+  /** Passthrough preview fields for the hover card (all optional). */
+  snippet?: string
+  siteName?: string
+  siteIcon?: string
+  /** ISO date / timestamp string of the source's publish time. */
+  publishedAt?: string
 }
 
-/** Extract a citation (ordinal + source title + optional URL). */
+/** Public hostname helper for display surfaces (defensive, "" on garbage). */
+export function hostnameOfUrl(url: string): string {
+  return hostnameOf(url)
+}
+
+/** Extract a citation (ordinal + source title + optional URL + preview fields). */
 export function citationModel(input: unknown): CitationModel {
   const o = input !== null && typeof input === "object" ? (input as Record<string, unknown>) : {}
   const index = asNumber(o.index) ?? asNumber(o.n) ?? asNumber(o.num) ?? 0
@@ -240,7 +251,16 @@ export function citationModel(input: unknown): CitationModel {
   let url = asString(o.url, 2048) ?? asString(o.href, 2048) ?? asString(o.link, 2048)
   // Only http(s) is a safe external link; anything else renders as plain text.
   if (url && !/^https?:\/\//i.test(url)) url = undefined
-  return { index: Math.max(0, Math.floor(index)), title, url }
+  return {
+    index: Math.max(0, Math.floor(index)),
+    title,
+    url,
+    snippet: asString(o.snippet, 400) ?? asString(o.description, 400),
+    siteName: asString(o.siteName, 120) ?? asString(o.site, 120),
+    siteIcon: asString(o.siteIcon, 2048) ?? asString(o.favicon, 2048),
+    publishedAt:
+      asString(o.publishedAt, 40) ?? asString(o.published_at, 40) ?? asString(o.date, 40),
+  }
 }
 
 // ── KeyValueCard ────────────────────────────────────────────────────────────

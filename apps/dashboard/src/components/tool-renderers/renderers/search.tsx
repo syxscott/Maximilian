@@ -8,7 +8,8 @@
  * allow/deny domain lists and the hit count as rows, with the first
  * results rendered as a citation-style list of ai-elements CitationBlock
  * ordinals (web.model.ts extractSearch); JSON fallback when the payload
- * is opaque.
+ * is opaque. Hits that carry an http(s) URL render the hover-preview
+ * citation variant; URL-less hits keep the static chip.
  */
 
 import { useLocale, t } from "@max/i18n"
@@ -28,7 +29,7 @@ export function SearchBody(props: ToolCallProps) {
       input={props.input}
       extra={
         vm.isEmpty || vm.topResults.length === 0 ? undefined : (
-          <SearchCitations titles={vm.topResults.map((r) => r.title)} />
+          <SearchCitations hits={vm.topResults} />
         )
       }
     />
@@ -36,15 +37,15 @@ export function SearchBody(props: ToolCallProps) {
 }
 
 /** Numbered citation chips for the first hits, in result order. */
-function SearchCitations({ titles }: { titles: string[] }) {
+function SearchCitations({ hits }: { hits: Array<{ title: string; url?: string }> }) {
   useLocale()
   return (
     <div className="mb-1 flex flex-wrap items-center gap-1" data-testid="search-citations">
       <span className="text-[10px] uppercase text-muted-foreground">
         {t("toolRenderers.search.topResults")}
       </span>
-      {titles.map((title, i) => (
-        <CitationBlock key={i} citation={{ index: i + 1, title }} />
+      {hits.map((hit, i) => (
+        <CitationBlock key={i} citation={{ index: i + 1, title: hit.title, url: hit.url }} />
       ))}
     </div>
   )

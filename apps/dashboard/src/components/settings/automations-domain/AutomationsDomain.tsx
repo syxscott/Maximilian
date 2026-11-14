@@ -16,8 +16,11 @@
  * "trigger now" button with a full feedback loop: optimistic spinner →
  * inline success/failure note (auto-dismisses) → slots/lastTriggeredAt
  * refresh via the mutation's query invalidations. The create dialog
- * forces the `automation:` prefix with basic schedule checks (intervalMs
- * or 5-field cron) plus verbatim server error echo.
+ * forces the `automation:` prefix and embeds the cron editing suite
+ * (CronScheduleField borrowing): template dropdown with cronstrue
+ * subtitles, cursor-linked field help, a memoized next-runs preview with
+ * a dual timezone readout, hard schedule validation, and a soft-issue
+ * confirm ("save anyway") for business-level concerns.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -53,6 +56,7 @@ import {
   automationName,
   automationSummary,
   automationTimelineInput,
+  collectScheduleSoftIssues,
   filterAutomations,
   filterJobEvents,
   planToggle,
@@ -66,7 +70,9 @@ import {
   type AutomationSlotRow,
   type AutomationView,
   type JobEventKindFilter,
+  type ScheduleSoftIssue,
 } from "./model"
+import { CronScheduleField } from "./CronScheduleField"
 
 /** Inline trigger feedback: null = nothing to show. */
 interface TriggerFeedback {
@@ -259,6 +265,10 @@ export function AutomationsDomain() {
   const [createOpen, setCreateOpen] = useState(false)
   const [draft, setDraft] = useState<AutomationDraft>(EMPTY_AUTOMATION_DRAFT)
   const [draftError, setDraftError] = useState<string | null>(null)
+  /** Soft-validation confirm (cc-switch ProviderForm borrowing): the draft
+   *  passed hard validation but carries business-level concerns — the user
+   *  confirms before the create goes out. Null = nothing pending. */
+  const [softIssues, setSoftIssues] = useState<ScheduleSoftIssue[] | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
 
   const automations = useMemo(() => toAutomationViews(qc.data), [qc.data])
@@ -376,12 +386,10 @@ export function AutomationsDomain() {
     })
   }
 
-  const submitDraft = () => {
-    const error = validateAutomationDraft(draft)
-    if (error !== null) {
-      setDraftError(t(error.key))
-      return
-    }
+  /** The actual create call, shared by the plain path and the soft-issue
+   *  confirm path (which must not re-run validation — it would re-open the
+   *  dialog forever). */
+  const doCreate = () => {
     createJob.mutate(
       {
         name: automationName(draft.name),
@@ -393,11 +401,28 @@ export function AutomationsDomain() {
         onSuccess: () => {
           setDraft(EMPTY_AUTOMATION_DRAFT)
           setDraftError(null)
+          setSoftIssues(null)
           setCreateOpen(false)
         },
         onError: (err) => setDraftError(err.message),
       },
     )
+  }
+
+  const submitDraft = () => {
+    const error = validateAutomationDraft(draft)
+    if (error !== null) {
+      setDraftError(t(error.key))
+      return
+    }
+    // Hard validation passed — surface business-level concerns for a
+    // confirm ("save anyway"), never silently.
+    const issues = collectScheduleSoftIssues(draft.schedule)
+    if (issues.length > 0) {
+      setSoftIssues(issues)
+      return
+    }
+    doCreate()
   }
 
   const createDisabled = createJob.isPending || deleteJob.isPending
@@ -535,21 +560,13 @@ export function AutomationsDomain() {
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 placeholder={t("automations.form.namePlaceholder")}
                 className="h-8 text-xs"
+                data-testid="automations-draft-name"
               />
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="automations-draft-schedule">{t("automations.form.schedule")}</Label>
-              <Input
-                id="automations-draft-schedule"
-                value={draft.schedule}
-                onChange={(e) => setDraft({ ...draft, schedule: e.target.value })}
-                placeholder="*/5 * * * *  |  30000"
-                className="h-8 font-mono text-xs"
-              />
-              <p className="text-[10px] text-muted-foreground">
-                {t("automations.form.scheduleHint")}
-              </p>
-            </div>
+            <CronScheduleField
+              value={draft.schedule}
+              onChange={(next) => setDraft({ ...draft, schedule: next })}
+            />
             <div className="space-y-1">
               <Label htmlFor="automations-draft-description">
                 {t("automations.form.description")}
@@ -578,6 +595,52 @@ export function AutomationsDomain() {
               data-testid="automations-create-submit"
             >
               {t("automations.form.submit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Soft-issue confirm dialog (cc-switch ProviderForm borrowing): the
+          draft passed hard validation but has business-level concerns.
+          "Save anyway" proceeds with the create; cancel returns to the
+          form with the draft intact. */}
+      <Dialog
+        open={softIssues !== null}
+        onOpenChange={(open) => {
+          if (!open) setSoftIssues(null)
+        }}
+      >
+        <DialogContent data-testid="automations-soft-issues-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("automations.softIssues.title")}</DialogTitle>
+            <DialogDescription>{t("automations.softIssues.hint")}</DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc space-y-1 pl-5 text-xs" data-testid="automations-soft-issues">
+            {(softIssues ?? []).map((issue) => (
+              <li key={issue.key}>
+                {t(issue.key, issue.params as Record<string, string | number> | undefined)}
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSoftIssues(null)}
+              data-testid="automations-soft-cancel"
+            >
+              {t("automations.form.cancel")}
+            </Button>
+            <Button
+              size="sm"
+              disabled={createJob.isPending}
+              onClick={() => {
+                setSoftIssues(null)
+                doCreate()
+              }}
+              data-testid="automations-soft-save-anyway"
+            >
+              {t("automations.softIssues.saveAnyway")}
             </Button>
           </DialogFooter>
         </DialogContent>

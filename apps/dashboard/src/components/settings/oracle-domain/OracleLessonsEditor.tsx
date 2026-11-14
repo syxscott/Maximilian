@@ -11,6 +11,10 @@
  * role file. Role names are validated locally with the same whitelist the
  * server enforces; save outcomes surface as an inline line per role —
  * success in muted text, failure with the server's reason.
+ *
+ * Unsaved work is protected (useDirtyGuard borrowing): switching roles or
+ * closing the inline editor while the textarea differs from its baseline
+ * opens a confirm dialog — discard drops the draft, cancel keeps editing.
  */
 
 import { useState } from "react"
@@ -19,6 +23,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { useLocale, t } from "@max/i18n"
 import { systemApi } from "@/api"
 import { ORACLE_LESSONS_QUERY_KEY, useSaveOracleLesson } from "@/hooks/useSettingsQueries"
@@ -29,12 +41,14 @@ import {
   type OracleLessonView,
   type OracleRoleError,
 } from "./model"
+import { useDirtyGuard } from "./useDirtyGuard"
 
-/** Which lesson editor is open (at most one at a time). */
+/** Which lesson editor is open (at most one at a time). `baseline` is the
+ *  pristine content the textarea started from — the dirty-check anchor. */
 type EditorState =
   | { kind: "closed" }
-  | { kind: "edit"; role: string; content: string }
-  | { kind: "create"; role: string; content: string }
+  | { kind: "edit"; role: string; content: string; baseline: string }
+  | { kind: "create"; role: string; content: string; baseline: string }
 
 /** Inline save outcome shown under the edited lesson. */
 type SaveState =
@@ -57,18 +71,45 @@ export function OracleLessonsEditor() {
   const [newRole, setNewRole] = useState("")
   const [newRoleError, setNewRoleError] = useState<OracleRoleError | null>(null)
 
+  // Unsaved-work gate: the editor's live textarea value vs the baseline it
+  // was opened with (create starts from ""). When dirty, startEdit /
+  // startCreate / closeEditor park behind a confirm dialog instead of
+  // silently dropping the draft.
+  const dirtyGuard = useDirtyGuard({
+    baseline: editor.kind === "closed" ? "" : editor.baseline,
+    current: editor.kind === "closed" ? "" : editor.content,
+  })
+
   const startEdit = (lesson: OracleLessonView) => {
-    setSaveState({ kind: "idle" })
-    setEditor({ kind: "edit", role: lesson.role, content: lesson.content })
+    dirtyGuard.guard(() => {
+      setSaveState({ kind: "idle" })
+      setEditor({
+        kind: "edit",
+        role: lesson.role,
+        content: lesson.content,
+        baseline: lesson.content,
+      })
+    })
   }
 
   const startCreate = () => {
     const error = validateOracleRoleName(newRole)
     setNewRoleError(error)
     if (error !== null) return
-    setSaveState({ kind: "idle" })
-    setEditor({ kind: "create", role: newRole, content: "" })
-    setNewRole("")
+    dirtyGuard.guard(() => {
+      setSaveState({ kind: "idle" })
+      setEditor({ kind: "create", role: newRole, content: "", baseline: "" })
+      setNewRole("")
+    })
+  }
+
+  /** Close the inline editor without saving — always guarded: it drops
+   *  whatever the textarea holds. */
+  const closeEditor = () => {
+    dirtyGuard.guard(() => {
+      setEditor({ kind: "closed" })
+      setSaveState({ kind: "idle" })
+    })
   }
 
   const save = async () => {
@@ -147,7 +188,12 @@ export function OracleLessonsEditor() {
                       <Textarea
                         value={editing.content}
                         onChange={(e) =>
-                          setEditor({ kind: "edit", role: editing.role, content: e.target.value })
+                          setEditor({
+                            kind: "edit",
+                            role: editing.role,
+                            content: e.target.value,
+                            baseline: editing.baseline,
+                          })
                         }
                         className="min-h-[120px] font-mono text-xs"
                         aria-label={t("settingsDeep.oracleEditor.editorLabel", {
@@ -165,14 +211,7 @@ export function OracleLessonsEditor() {
                             ? t("settingsDeep.oracleEditor.saving")
                             : t("settingsDeep.oracleEditor.save")}
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setEditor({ kind: "closed" })
-                            setSaveState({ kind: "idle" })
-                          }}
-                        >
+                        <Button size="sm" variant="outline" onClick={closeEditor}>
                           {t("settingsDeep.oracleEditor.cancel")}
                         </Button>
                       </div>
@@ -198,7 +237,12 @@ export function OracleLessonsEditor() {
                     <Textarea
                       value={editor.content}
                       onChange={(e) =>
-                        setEditor({ kind: "create", role: editor.role, content: e.target.value })
+                        setEditor({
+                          kind: "create",
+                          role: editor.role,
+                          content: e.target.value,
+                          baseline: editor.baseline,
+                        })
                       }
                       className="min-h-[120px] font-mono text-xs"
                       placeholder={t("settingsDeep.oracleEditor.newContentPlaceholder")}
@@ -216,14 +260,7 @@ export function OracleLessonsEditor() {
                           ? t("settingsDeep.oracleEditor.saving")
                           : t("settingsDeep.oracleEditor.save")}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditor({ kind: "closed" })
-                          setSaveState({ kind: "idle" })
-                        }}
-                      >
+                      <Button size="sm" variant="outline" onClick={closeEditor}>
                         {t("settingsDeep.oracleEditor.cancel")}
                       </Button>
                     </div>
@@ -259,6 +296,42 @@ export function OracleLessonsEditor() {
           </>
         )}
       </CardContent>
+
+      {/* Dirty-guard confirmation (conductor SaveProtectionPrompt borrowing):
+          shown when a guarded transition fires while the textarea holds
+          unsaved content. Discard runs the parked transition; cancel keeps
+          the draft alive. */}
+      <Dialog
+        open={dirtyGuard.confirmOpen}
+        onOpenChange={(open) => {
+          if (!open) dirtyGuard.keepEditing()
+        }}
+      >
+        <DialogContent data-testid="oracle-dirty-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("settingsDeep.oracleEditor.guard.title")}</DialogTitle>
+            <DialogDescription>{t("settingsDeep.oracleEditor.guard.message")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={dirtyGuard.keepEditing}
+              data-testid="oracle-dirty-keep"
+            >
+              {t("settingsDeep.oracleEditor.guard.keepEditing")}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={dirtyGuard.discard}
+              data-testid="oracle-dirty-discard"
+            >
+              {t("settingsDeep.oracleEditor.guard.discard")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

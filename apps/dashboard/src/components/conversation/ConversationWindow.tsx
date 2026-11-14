@@ -36,6 +36,8 @@ export function ConversationWindow({
   loadEarlierHint,
   onExpand,
   freshSteeringKeys,
+  expandedRetries,
+  onToggleRetry,
 }: {
   units: ConversationUnit[]
   /** Initial window size in turns (default 30). */
@@ -71,7 +73,11 @@ export function ConversationWindow({
   loadEarlierHint?: string
   /** Steering flash-once verdict — unit keys on their FIRST render (see
    *  TurnGroup's prop of the same name). */
-  freshSteeringKeys?: Set<string>
+  freshSteeringKeys?: ReadonlySet<string>
+  /** Retry-wave expansion registry (list-level; see TurnGroup). */
+  expandedRetries?: ReadonlySet<string>
+  /** Toggle sink for the registry above. */
+  onToggleRetry?: (key: string, open: boolean) => void
 }) {
   useLocale()
   const [extra, setExtra] = useState(0)
@@ -147,6 +153,8 @@ export function ConversationWindow({
               textHighlights={textHighlights}
               currentUnitKey={currentUnitKey}
               freshSteeringKeys={freshSteeringKeys}
+              expandedRetries={expandedRetries}
+              onToggleRetry={onToggleRetry}
             />
             {spacer !== undefined && (
               <div

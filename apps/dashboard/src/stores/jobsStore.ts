@@ -14,6 +14,7 @@
  */
 import { create } from "zustand"
 import { useShallow } from "zustand/react/shallow"
+import { stabilizeList } from "@max/ui-react"
 import { useNotificationStore } from "@/stores/notificationStore"
 
 export type JobKind = "scheduled" | "background"
@@ -162,11 +163,18 @@ export const useJobsStore = create<JobsState>((set, get) => ({
   sortAsc: true,
   filter: "all",
   setJobs: (payload) => {
-    const next = parseJobs(payload)
+    const parsed = parseJobs(payload)
+    // Snapshot stabilization (ZCode taskListItemStabilization borrowing):
+    // injected payloads are freshly parsed JSON — structurally-equal rows
+    // keep the previous object reference and an all-equal snapshot keeps
+    // the previous ARRAY reference, so reference-keyed subscribers bail
+    // out instead of re-rendering the whole task panel per injection.
+    const next = stabilizeList(get().jobs, parsed, (j) => j.id)
     // Real trigger-completion notifications: diff the snapshot against
     // the previous one and push through notificationStore (ToastHost
     // + durable list) when a known job finished a run. Done outside the
-    // set() updater so the notification store write never nests.
+    // set() updater so the notification store write never nests. Runs on
+    // the stabilized list, so a reused row can never re-notify.
     const prevById = new Map(get().jobs.map((j) => [j.id, j]))
     for (const job of next) {
       if (!jobRunFinished(prevById.get(job.id), job)) continue

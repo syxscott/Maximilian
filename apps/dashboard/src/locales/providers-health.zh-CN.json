@@ -1,0 +1,12 @@
+{
+  "settings": {
+    "providersHealth": {
+      "operational": "运行正常",
+      "degraded": "降级（{failures} 次失败）",
+      "circuitOpen": "熔断打开",
+      "reset": "重置熔断",
+      "resetting": "重置中…",
+      "resetFailed": "重置失败："
+    }
+  }
+}

@@ -9,11 +9,37 @@
  * and the @testing-library/jest-dom matchers (test/setup.ts).
  */
 
-import { describe, it, expect, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { getDictionary, registerLocale, setLocale } from "@max/i18n"
 import { PermissionDialog } from "../src/components/PermissionDialog"
 import type { PendingPermission } from "../src/lib/permissions"
+import { pendingUplinks, PENDING_UPLINKS_STORAGE_KEY } from "../src/lib/pending-uplinks.js"
+import permissionDialogEn from "../src/locales/permission-dialog.en-US.json"
+
+/** Domain JSONs are nested; t() looks up flat dotted keys — flatten first. */
+function flatten(tree: Record<string, unknown>, prefix = ""): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(tree)) {
+    const dotted = prefix ? `${prefix}.${key}` : key
+    if (value !== null && typeof value === "object") {
+      Object.assign(out, flatten(value as Record<string, unknown>, dotted))
+    } else {
+      out[dotted] = String(value)
+    }
+  }
+  return out
+}
+
+beforeAll(() => {
+  const existing = getDictionary("en-US") ?? {}
+  registerLocale("en-US", {
+    ...existing,
+    ...flatten(permissionDialogEn as unknown as Record<string, unknown>),
+  })
+  setLocale("en-US")
+})
 
 function makePending(overrides?: Partial<PendingPermission>): PendingPermission {
   return {
@@ -221,5 +247,118 @@ describe("PermissionDialog — embedded diff", () => {
       />,
     )
     expect(screen.queryByTestId("diff-preview")).toBeNull()
+  })
+})
+
+// ── Keyboard shortcuts + duplicate-submit guard (OpenHands borrowing) ───────
+
+describe("PermissionDialog — decision shortcuts", () => {
+  function makeApproval(overrides?: Partial<PendingPermission>): PendingPermission {
+    return {
+      kind: "approval",
+      requestId: "apv-1",
+      workspaceId: "ws-42",
+      taskId: "task-7",
+      prompt: "Review generated feature outputs before final review continues.",
+      ...overrides,
+    }
+  }
+
+  beforeEach(() => {
+    // The durable uplink ledger persists across tests through localStorage.
+    localStorage.removeItem(PENDING_UPLINKS_STORAGE_KEY)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    localStorage.removeItem(PENDING_UPLINKS_STORAGE_KEY)
+  })
+
+  it("approves via Cmd/Ctrl+Enter (approval path)", () => {
+    const onApprovalAnswer = vi.fn().mockResolvedValue(undefined)
+    render(
+      <PermissionDialog
+        pending={makeApproval({ requireComment: false })}
+        onAnswer={vi.fn()}
+        onApprovalAnswer={onApprovalAnswer}
+      />,
+    )
+    fireEvent.keyDown(document, { key: "Enter", ctrlKey: true })
+    expect(onApprovalAnswer).toHaveBeenCalledTimes(1)
+    expect(onApprovalAnswer).toHaveBeenCalledWith("approve", undefined)
+  })
+
+  it("denies via Shift+Ctrl/Cmd+Backspace (tool permission path)", () => {
+    const onAnswer = vi.fn().mockResolvedValue(undefined)
+    render(<PermissionDialog pending={makePending()} onAnswer={onAnswer} />)
+    fireEvent.keyDown(document, { key: "Backspace", shiftKey: true, metaKey: true })
+    expect(onAnswer).toHaveBeenCalledTimes(1)
+    expect(onAnswer).toHaveBeenCalledWith("deny")
+  })
+
+  it("drops auto-repeat keydowns outright", () => {
+    const onAnswer = vi.fn().mockResolvedValue(undefined)
+    render(<PermissionDialog pending={makePending()} onAnswer={onAnswer} />)
+    fireEvent.keyDown(document, { key: "Enter", ctrlKey: true, repeat: true })
+    expect(onAnswer).not.toHaveBeenCalled()
+    // A clean event still works afterwards.
+    fireEvent.keyDown(document, { key: "Enter", ctrlKey: true })
+    expect(onAnswer).toHaveBeenCalledTimes(1)
+  })
+
+  it("never sends a second (or opposite) answer before the server confirms", () => {
+    // A pending uplink: the first answer is in flight and never resolves.
+    const onAnswer = vi.fn().mockImplementation(() => new Promise<void>(() => {}))
+    render(<PermissionDialog pending={makePending()} onAnswer={onAnswer} />)
+
+    fireEvent.keyDown(document, { key: "Enter", ctrlKey: true })
+    expect(onAnswer).toHaveBeenCalledTimes(1)
+
+    // Second Enter and the opposite Shift+Backspace are both swallowed.
+    fireEvent.keyDown(document, { key: "Enter", ctrlKey: true })
+    fireEvent.keyDown(document, { key: "Backspace", shiftKey: true, ctrlKey: true })
+    fireEvent.click(screen.getByTestId("perm-dialog-allow"))
+    fireEvent.click(screen.getByTestId("perm-dialog-deny"))
+    expect(onAnswer).toHaveBeenCalledTimes(1)
+    expect(onAnswer).toHaveBeenCalledWith("allow")
+  })
+
+  it("records the durable clue before the uplink and settles it on the ACK", async () => {
+    const onAnswer = vi.fn().mockResolvedValue(undefined)
+    const register = vi.spyOn(pendingUplinks, "register")
+    const settle = vi.spyOn(pendingUplinks, "settle")
+    render(<PermissionDialog pending={makePending()} onAnswer={onAnswer} />)
+
+    fireEvent.click(screen.getByTestId("perm-dialog-allow"))
+    await waitFor(() => expect(settle).toHaveBeenCalledWith("req-1", "accepted"))
+    expect(register).toHaveBeenCalledWith("req-1", { kind: "permission", sensitive: true })
+    expect(onAnswer).toHaveBeenCalledTimes(1)
+  })
+
+  it("refuses the uplink when the ledger cannot persist, with a notice", () => {
+    const onAnswer = vi.fn().mockResolvedValue(undefined)
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded")
+    })
+    render(<PermissionDialog pending={makePending()} onAnswer={onAnswer} />)
+
+    fireEvent.click(screen.getByTestId("perm-dialog-allow"))
+    expect(onAnswer).not.toHaveBeenCalled()
+    // The refusal notice renders in the tool-permission body.
+    expect(screen.getByTestId("perm-dialog-error").textContent).toContain("NOT sent")
+    // Nothing was marked answered — a retried send stays possible.
+    expect(screen.getByTestId("perm-dialog-allow")).not.toBeDisabled()
+  })
+
+  it("marks a failed answer in the ledger and surfaces the reason", async () => {
+    const onAnswer = vi.fn().mockRejectedValue(new Error("network dropped"))
+    const settle = vi.spyOn(pendingUplinks, "settle")
+    render(<PermissionDialog pending={makePending()} onAnswer={onAnswer} />)
+
+    fireEvent.click(screen.getByTestId("perm-dialog-allow"))
+    await waitFor(() => expect(settle).toHaveBeenCalledWith("req-1", "failed"))
+    await waitFor(() =>
+      expect(screen.getByTestId("perm-dialog-error").textContent).toContain("network dropped"),
+    )
   })
 })

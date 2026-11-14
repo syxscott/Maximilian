@@ -10,6 +10,7 @@
  */
 
 import { COMMANDS, type CommandDef } from "@/lib/commands"
+import { slashTriggerOpen } from "@/components/mentions/model"
 
 // ---------------------------------------------------------------------------
 // Attachments
@@ -104,13 +105,20 @@ export interface SlashCommandView {
 }
 
 /**
- * The active slash query: text up to the caret must be "/" plus a token
- * with no whitespace yet ("/nav" → "nav"; "/nav foo" → null).
+ * The active slash query: the "/" plus non-whitespace token ending at
+ * the caret ("/nav" → "nav"; "/nav foo" → null). Detection is
+ * boundary-aware (mentions/model slashTriggerOpen borrowing): the slash
+ * must sit at a word boundary — line start, whitespace or punctuation —
+ * and the two URL exceptions (the second slash of "//", the slash that
+ * completes a scheme colon) keep "https://x/y" and "a//b" inert, so
+ * typing an address mid-text never pops the command layer.
  */
 export function parseSlashQuery(text: string, caret: number): string | null {
   const before = text.slice(0, caret)
-  const match = /^\/(\S*)$/.exec(before)
-  return match ? (match[1] ?? "") : null
+  const match = /\/(\S*)$/.exec(before)
+  if (!match) return null
+  if (!slashTriggerOpen(before, match.index)) return null
+  return match[1] ?? ""
 }
 
 /**

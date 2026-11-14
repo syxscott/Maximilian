@@ -1,0 +1,12 @@
+{
+  "settings": {
+    "providersHealth": {
+      "operational": "operational",
+      "degraded": "degraded ({failures} failures)",
+      "circuitOpen": "circuit open",
+      "reset": "Reset breaker",
+      "resetting": "Resetting…",
+      "resetFailed": "Reset failed:"
+    }
+  }
+}

@@ -17,6 +17,12 @@ export { Collapsible } from "./components/collapsible.js"
 export { Keybind, type KeybindProps } from "./components/keybind.js"
 export { cn } from "./lib/utils.js"
 export {
+  structuralEqual,
+  stabilizeList,
+  createEventKeyWindow,
+  type EventKeyWindow,
+} from "./lib/stabilize-list.js"
+export {
   CommandPalette,
   type CommandPaletteProps,
   type CommandItem,
@@ -190,6 +196,12 @@ export {
   type SliderProps,
   type RangeSliderProps,
 } from "./components/slider.js"
+export {
+  ImeSafeInput,
+  ImeSafeTextarea,
+  type ImeSafeInputProps,
+  type ImeSafeTextareaProps,
+} from "./components/ime-safe-input.js"
 export {
   Switch,
   Switch as Toggle,

@@ -5,11 +5,18 @@
 
 /**
  * useSlashCommands — "/"-prefix command completion for the prompt input
- * (ZCode chat-input borrowing). While the caret sits in the leading
- * slash token ("/nav"), the hook matches lib/commands COMMANDS
+ * (ZCode chat-input borrowing). While the caret sits in an open slash
+ * token ("/nav" — boundary-aware per parseSlashQuery: line start,
+ * whitespace or punctuation, with the URL exceptions keeping "a//b" and
+ * "https://x/y" inert), the hook matches lib/commands COMMANDS
  * (navigate-type commands surface as executable navigation) and owns
  * keyboard navigation; selecting hands the raw CommandDef back to the
  * caller, which decides how to execute it.
+ *
+ * IME contract: the hook is pure over (text, caret); callers feed it
+ * from a composition-safe input (ImeSafeTextarea borrowing), so the "/"
+ * detection below only re-runs on committed text and never fires on
+ * mid-composition marked text.
  */
 
 import { useMemo, useState } from "react"

@@ -17,7 +17,10 @@
 
 import { useEffect, useRef, useState } from "react"
 
+import { stabilizeList } from "@max/ui-react"
+
 import { authHeaders, fetchJson, z } from "../api"
+import { browserEnvironment, createSseKeepalive, STALE_MS } from "../lib/sse-keepalive"
 
 const BASE = "/api"
 
@@ -77,6 +80,18 @@ const SessionsResponseSchema = z.object({
 })
 
 const DEFAULT_POLL_MS = 10_000
+
+/**
+ * Snapshot stabilization (ZCode taskListItemStabilization borrowing):
+ * every poll/SSE frame hands us freshly parsed JSON, and storing it raw
+ * would re-render the whole session tree on frames whose content is
+ * byte-identical. Structurally-equal rows keep the previous object
+ * reference and an all-equal frame keeps the previous ARRAY reference,
+ * so reference-keyed subscribers bail out.
+ */
+function stabilizeSessions(prev: ReadonlyArray<OpencodeSession>, next: OpencodeSession[]) {
+  return stabilizeList(prev, next, (s) => s.sessionId)
+}
 
 export interface UseOpencodeSessionsOptions {
   /** Polling cadence when SSE is unavailable or while we wait for the first frame. */
@@ -141,7 +156,7 @@ export function useOpencodeSessions(
       try {
         const list = await fetchSessions(signal)
         if (cancelled || signal?.aborted) return
-        setSessions(list)
+        setSessions((prev) => stabilizeSessions(prev, list))
         setGeneratedAt(new Date().toISOString())
         setError(null)
         // Seed the `since` cursor with the freshest sequence number we
@@ -176,56 +191,92 @@ export function useOpencodeSessions(
   }, [enabled])
 
   // SSE subscription. Mounted independently of the polling effect so
-  // EventSource errors don't tear down the polling fallback.
+  // EventSource errors don't tear down the polling fallback. The bare
+  // EventSource is wrapped in the SSE keepalive loop (pi reconnect.ts
+  // borrowing): the browser's own auto-reconnect has no backoff control,
+  // no handshake timeout and no dead-socket detection — the loop owns
+  // retry/backoff/wake-staleness, and each attempt re-reads the `since`
+  // cursor so a reconnect after polling never replays the whole backlog.
   useEffect(() => {
     if (!enabled || disableLive) return
     if (typeof EventSource === "undefined") return
 
-    let closed = false
-    const url = `${BASE}/opencode/events?since=${encodeURIComponent(String(lastSeqRef.current))}`
-    const es = new EventSource(url)
+    let cancelled = false
 
-    es.addEventListener("snapshot", (ev) => {
-      if (closed) return
-      try {
-        const payload = JSON.parse((ev as MessageEvent).data) as {
-          sessions?: OpencodeSession[]
-        }
-        if (Array.isArray(payload.sessions)) {
-          setSessions(payload.sessions)
-          setGeneratedAt(new Date().toISOString())
+    const keepalive = createSseKeepalive({
+      environment: browserEnvironment("opencode-sessions"),
+      // The opencode events stream heartbeats with a VISIBLE data frame
+      // every 15s (apps/api/src/routes/opencode.ts), so a 25s frame
+      // silence is a sound dead-socket signal — unlike the workspace
+      // stream whose comment heartbeats the SSE decoder drops.
+      silenceTimeoutMs: STALE_MS,
+      open: (events) => {
+        let onClosed: ((reason: string) => void) | undefined
+        const url = `${BASE}/opencode/events?since=${encodeURIComponent(String(lastSeqRef.current))}`
+        const es = new EventSource(url)
+        es.onopen = () => events.opened()
+
+        es.addEventListener("snapshot", (ev) => {
+          events.received()
+          try {
+            const payload = JSON.parse((ev as MessageEvent).data) as {
+              sessions?: OpencodeSession[]
+            }
+            // Local binding: Array.isArray narrowing of a property access
+            // does not survive into the setSessions updater closure.
+            const incoming = payload.sessions
+            if (Array.isArray(incoming)) {
+              setSessions((prev) => stabilizeSessions(prev, incoming))
+              setGeneratedAt(new Date().toISOString())
+              setLive(true)
+            }
+          } catch (err) {
+            // Malformed frame — keep the previous snapshot, just log.
+
+            console.warn("[useOpencodeSessions] malformed snapshot frame:", err)
+          }
+        })
+
+        es.addEventListener("heartbeat", () => {
+          // Presence of frames (snapshot or heartbeat) flips `live` and
+          // feeds the loop's liveness clock.
+          events.received()
           setLive(true)
+        })
+
+        es.onerror = () => {
+          // Native EventSource would auto-reconnect internally with an
+          // uncontrolled cadence; the keepalive loop owns retrying now,
+          // so close the socket and let the loop schedule the next
+          // attempt (backoff, handshake timeout, wake-staleness). `live`
+          // flips back to false so the UI can show a "reconnecting"
+          // indicator if it cares — polling is the canonical source of
+          // truth either way.
+          setLive(false)
+          es.close()
+          onClosed?.("eventsource error")
         }
-      } catch (err) {
-        // Malformed frame — keep the previous snapshot, just log.
-        // eslint-disable-next-line no-console
-        console.warn("[useOpencodeSessions] malformed snapshot frame:", err)
-      }
-    })
 
-    es.addEventListener("heartbeat", () => {
-      // No-op; presence of frames (snapshot or heartbeat) flips `live`.
-      setLive(true)
+        return {
+          onClose: (handler) => {
+            onClosed = handler
+          },
+          close: () => es.close(),
+        }
+      },
+      canRetry: async () => !cancelled,
     })
-
-    es.onerror = () => {
-      // EventSource auto-reconnects with backoff; just flip the flag
-      // back to false so the UI can show a "reconnecting" indicator if
-      // it cares. We don't surface this as `error` because polling is
-      // the canonical source of truth.
-      setLive(false)
-    }
 
     return () => {
-      closed = true
-      es.close()
+      cancelled = true
+      keepalive.stop()
     }
   }, [enabled, disableLive])
 
   const refetch = async () => {
     try {
       const list = await fetchSessions()
-      setSessions(list)
+      setSessions((prev) => stabilizeSessions(prev, list))
       setGeneratedAt(new Date().toISOString())
       setError(null)
     } catch (err) {

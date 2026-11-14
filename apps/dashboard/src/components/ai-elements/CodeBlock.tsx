@@ -8,11 +8,17 @@
  * ai-elements CodeTool borrowing): language label, optional line numbers,
  * copy button (hidden when the clipboard API is unavailable or refuses)
  * and auto-collapse past `CODE_COLLAPSE_LINES` lines.
+ *
+ * The code body renders through `@max/ui-react`'s CodeBlockV2
+ * (shiki incremental highlighting, viewport-gated, diff-fence aware —
+ * borrowing); this wrapper keeps the card chrome, collapse expander and the
+ * clipboard gating of the original.
  */
 import { useState } from "react"
 import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react"
 import { useLocale, t } from "@max/i18n"
 import { cn } from "@/lib/utils"
+import { CodeBlockV2 } from "@max/ui-react/code-block-v2"
 import {
   CODE_COLLAPSE_LINES,
   canUseClipboard,
@@ -31,6 +37,8 @@ export interface CodeBlockProps {
   /** Collapse threshold override; passes Infinity to disable collapsing. */
   collapseAfter?: number
   className?: string
+  /** Forwarded to the highlighter's streaming arm (a fence still growing). */
+  streaming?: boolean
 }
 
 type CopyState = "idle" | "copied" | "hidden"
@@ -41,6 +49,7 @@ export function CodeBlock({
   showLineNumbers = false,
   collapseAfter = CODE_COLLAPSE_LINES,
   className,
+  streaming = false,
 }: CodeBlockProps) {
   useLocale()
   const { code, language } = codeBlockModel(rawCode)
@@ -51,7 +60,6 @@ export function CodeBlock({
 
   const shown =
     collapsible && !open ? visibleCodeLines(code, collapseAfter) : { text: code, hiddenCount: 0 }
-  const lines = shown.text.split("\n")
 
   const onCopy = () => {
     copyText(code).then(
@@ -105,23 +113,22 @@ export function CodeBlock({
           )}
         </span>
       </figcaption>
-      <div className="overflow-x-auto">
-        <pre className="p-3 font-mono leading-5 min-w-0">
-          {code === "" ? (
+      <div className="overflow-x-auto min-w-0">
+        {code === "" ? (
+          <pre className="p-3 font-mono leading-5 min-w-0">
             <span className="text-muted-foreground italic">{t("aiElements.code.empty")}</span>
-          ) : (
-            lines.map((line, i) => (
-              <div key={i} className="flex">
-                {showLineNumbers && (
-                  <span className="select-none pr-3 text-right text-muted-foreground/60 w-10 shrink-0 tabular-nums">
-                    {i + 1}
-                  </span>
-                )}
-                <code className="whitespace-pre">{line || " "}</code>
-              </div>
-            ))
-          )}
-        </pre>
+          </pre>
+        ) : (
+          <CodeBlockV2
+            code={shown.text}
+            lang={lang ?? undefined}
+            lineNumbers={showLineNumbers}
+            showHeader={false}
+            copyable={false}
+            streaming={streaming}
+            className="rounded-none border-0 bg-transparent text-inherit"
+          />
+        )}
       </div>
       {shown.hiddenCount > 0 && (
         <button

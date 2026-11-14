@@ -11,6 +11,13 @@
  * pool grouped into popup sections ("roles" / "skills" — see groups).
  * Client-side affordance only: the inserted `@role` token travels in
  * the message text, exactly like the TUI's autocomplete.
+ *
+ * IME contract: this hook stays composition-agnostic by design — its
+ * callers feed it text from a composition-safe input (MentionTextarea
+ * over the shared ImeSafeTextarea, cc-switch ime-safe-input borrowing),
+ * which only reports committed values, so token detection never runs on
+ * mid-composition marked text and the popup stays shut during an IME
+ * composition.
  */
 
 import { useMemo, useState } from "react"

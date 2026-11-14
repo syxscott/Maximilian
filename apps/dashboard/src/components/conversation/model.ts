@@ -1834,3 +1834,128 @@ export function elapsedSeconds(from: number | undefined, now: number): number {
 export function turnDefaultExpanded(status: TurnStatus): boolean {
   return status === "failed"
 }
+
+// ── Render-model equality (structural sharing for memo / partitions) ────────
+
+/**
+ * Content equality of two compiled units — what they RENDER, field by
+ * field. The pipeline rebuilds every unit object on each compile (fresh
+ * references, identical content), so reference equality is useless and
+ * the memo / partition layers need this value-level comparison instead.
+ * Passthrough payloads (tool/permission input, usage) keep their source
+ * event's object identity across compiles, so a reference compare is
+ * both correct and free for them; text slices compare by value.
+ */
+export function sameConversationUnit(
+  a: ConversationUnit | null | undefined,
+  b: ConversationUnit | null | undefined,
+): boolean {
+  if (a === b) return true
+  if (a === null || a === undefined || b === null || b === undefined) return false
+  if (a === null || typeof a !== "object" || b === null || typeof b !== "object") return false
+  if (
+    a.key !== b.key ||
+    a.kind !== b.kind ||
+    a.turnId !== b.turnId ||
+    a.role !== b.role ||
+    a.taskId !== b.taskId ||
+    a.at !== b.at
+  ) {
+    return false
+  }
+  switch (a.kind) {
+    case "text":
+      return b.kind === "text" && a.text === b.text && a.source === b.source
+    case "task":
+      return b.kind === "task" && a.taskId === b.taskId
+    case "tool":
+      return (
+        b.kind === "tool" &&
+        a.tool === b.tool &&
+        a.state === b.state &&
+        a.ok === b.ok &&
+        a.durationMs === b.durationMs &&
+        a.error === b.error &&
+        a.exitCode === b.exitCode &&
+        a.input === b.input
+      )
+    case "retry": {
+      if (b.kind !== "retry") return false
+      if (
+        a.phase !== b.phase ||
+        a.attempts !== b.attempts ||
+        a.totalDelayMs !== b.totalDelayMs ||
+        a.firstAt !== b.firstAt ||
+        a.lastAt !== b.lastAt ||
+        a.providerId !== b.providerId ||
+        a.attempt !== b.attempt ||
+        a.maxAttempts !== b.maxAttempts ||
+        a.reason !== b.reason ||
+        a.entries.length !== b.entries.length
+      ) {
+        return false
+      }
+      return a.entries.every((entry, i) => {
+        const other = b.entries[i]
+        if (other === undefined) return false
+        return (
+          entry.phase === other.phase &&
+          entry.attempt === other.attempt &&
+          entry.delayMs === other.delayMs &&
+          entry.reason === other.reason
+        )
+      })
+    }
+    case "permission":
+      return (
+        b.kind === "permission" &&
+        a.requestId === b.requestId &&
+        a.tool === b.tool &&
+        a.target === b.target &&
+        a.state === b.state &&
+        a.decision === b.decision &&
+        a.via === b.via &&
+        a.reason === b.reason &&
+        a.input === b.input
+      )
+    case "task-status":
+      return (
+        b.kind === "task-status" &&
+        a.status === b.status &&
+        a.error === b.error &&
+        a.usage === b.usage &&
+        a.durationMs === b.durationMs
+      )
+    case "review":
+      return b.kind === "review" && a.score === b.score && a.summary === b.summary
+    case "failed":
+      return b.kind === "failed" && a.error === b.error
+  }
+}
+
+/**
+ * Content equality of two compiled turn models — the TurnGroup render
+ * inputs. Every compile produces fresh TurnModel objects, so a memo
+ * comparator and the live-tail partition stabilizer compare this way:
+ * header fields + per-unit content (see sameConversationUnit).
+ */
+export function sameTurnRender(
+  a: TurnModel | null | undefined,
+  b: TurnModel | null | undefined,
+): boolean {
+  if (a === b) return true
+  if (a === null || a === undefined || b === null || b === undefined) return false
+  if (a === null || typeof a !== "object" || b === null || typeof b !== "object") return false
+  return (
+    a.turnId === b.turnId &&
+    a.role === b.role &&
+    a.status === b.status &&
+    a.taskId === b.taskId &&
+    a.startedAt === b.startedAt &&
+    a.endedAt === b.endedAt &&
+    a.durationMs === b.durationMs &&
+    a.depth === b.depth &&
+    a.units.length === b.units.length &&
+    a.units.every((unit, i) => sameConversationUnit(unit, b.units[i]))
+  )
+}

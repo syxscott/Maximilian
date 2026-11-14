@@ -34,7 +34,8 @@
     "citation": {
       "ordinal": "[{n}]",
       "ariaSource": "Citation source",
-      "untitled": "(untitled)"
+      "untitled": "(untitled)",
+      "previewAria": "Source preview"
     },
     "keyValue": {
       "empty": "No metadata"

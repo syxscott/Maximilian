@@ -10,6 +10,12 @@
  * suggestion pool fed into the hook, which owns filtering, keyboard
  * highlighting and Escape dismissal; insertion goes through the
  * multi-trigger insertTriggerToken.
+ *
+ * The base element is the shared ImeSafeTextarea (cc-switch ime-safe-input
+ * borrowing): while an IME composition is in flight the marked text stays
+ * local to the input — the parent's `onChange` and the per-keystroke
+ * trigger detection only run on committed text, so the candidate popup
+ * never opens on half-composed pinyin.
  */
 
 import {
@@ -19,6 +25,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
 } from "react"
+import { ImeSafeTextarea } from "@max/ui-react"
 import { useLocale, t } from "@max/i18n"
 import { useMention } from "@/hooks/useMention"
 import { cn } from "@/lib/utils"
@@ -67,10 +74,18 @@ export function MentionTextarea({
   const internalRef = useRef<HTMLTextAreaElement>(null)
   const ref = textareaRef ?? internalRef
   const [caret, setCaret] = useState(0)
+  /**
+   * IME composition gate (ImeSafeTextarea borrowing): mirrored from the
+   * input's onComposingChange so key handlers can tell IME traffic
+   * (keyCode 229, candidate navigation) from editor commands.
+   */
+  const composingRef = useRef(false)
 
   const triggers = useMemo(() => providers.flatMap((p) => p.triggers), [providers])
 
-  // Prefix routing is derived from the authoritative value + caret.
+  // Prefix routing is derived from the authoritative value + caret. Both
+  // only move on committed text (the ImeSafeTextarea contract), so this
+  // never runs against mid-composition marked text.
   const match = activeTrigger(value, caret, triggers)
   const routed = match !== null ? providersForTrigger(providers, match.trigger) : []
   const provider = routed[0] ?? null
@@ -102,6 +117,25 @@ export function MentionTextarea({
     feedHook(el.value, next)
   }
 
+  /**
+   * Composition bookkeeping: while the IME holds the marked text the
+   * completion state is parked (popup closed — no candidate UI over
+   * half-composed pinyin); on composition end the caret/token scan runs
+   * once over the committed text.
+   */
+  const handleComposingChange = (composing: boolean) => {
+    composingRef.current = composing
+    if (composing) {
+      mention.onChange("", 0)
+      return
+    }
+    const el = ref.current
+    // Re-track even when the commit was a no-op (cancelled composition):
+    // the DOM caret moved while the marked text lived, and the parked
+    // completion state must resync with whatever is now committed.
+    if (el) trackCaret(el)
+  }
+
   const applyToken = (token?: string) => {
     const el = ref.current
     if (!el || !provider || mention.activeToken === null) return
@@ -124,6 +158,9 @@ export function MentionTextarea({
   }
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    // Keys during an IME composition belong to the IME (candidate
+    // navigation, the confirm Enter) — never popup navigation or submit.
+    if (composingRef.current || e.nativeEvent.isComposing) return
     if (mention.onKeyDown(e)) return
     if (
       (e.key === "Enter" || e.key === "Tab") &&
@@ -150,7 +187,7 @@ export function MentionTextarea({
 
   return (
     <div className={cn("relative", className)} data-testid="mention-textarea">
-      <textarea
+      <ImeSafeTextarea
         ref={ref}
         value={value}
         rows={rows}
@@ -163,12 +200,20 @@ export function MentionTextarea({
           "placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring",
           "disabled:cursor-not-allowed disabled:opacity-50",
         )}
-        onChange={(e) => {
-          onChange(e.target.value)
-          trackCaret(e.target)
+        onValueChange={(next) => {
+          onChange(next)
+          const el = ref.current
+          if (el) trackCaret(el)
         }}
-        onKeyUp={(e) => trackCaret(e.currentTarget)}
-        onClick={(e) => trackCaret(e.currentTarget)}
+        onComposingChange={handleComposingChange}
+        onKeyUp={(e) => {
+          if (composingRef.current || e.nativeEvent.isComposing) return
+          trackCaret(e.currentTarget)
+        }}
+        onClick={(e) => {
+          if (composingRef.current) return
+          trackCaret(e.currentTarget)
+        }}
         onKeyDown={handleKeyDown}
       />
       {open && provider && (

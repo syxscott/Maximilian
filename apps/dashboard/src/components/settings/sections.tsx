@@ -9,20 +9,20 @@
  *
  *   appearance · language · performance (client)
  *   feature flags · tenants (admin API)
- *   providers health · vault · oracle lessons (system read-only)
+ *   providers health (tri-state + breaker reset) · vault · oracle lessons (system read-only)
  *
  * Each section owns its data via react-query; no section fetches unless
  * mounted.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useLocale, t } from "@max/i18n"
-import { systemApi, ProviderListResponseSchema } from "@/api"
+import { chatApi, systemApi, ProviderListResponseSchema } from "@/api"
 import { featureDomain } from "@/features"
 import { filterSections, type SettingsSearchSection } from "./search-model"
 import { useJobs } from "@/hooks/useJobsQueries"
@@ -424,6 +424,142 @@ export function VaultSection() {
 export { OracleLessonsEditor as OracleLessonsSection } from "./oracle-domain/OracleLessonsEditor"
 
 /** Providers health section reads the same API the ProviderPanel uses. */
+
+/** Circuit-breaker stats shape returned by GET …/circuit-breaker/stats. */
+export interface ProviderBreakerStats {
+  state: "closed" | "open" | "half-open"
+  failures: number
+}
+
+/**
+ * Derived health badge state (cc-switch ProviderCard HealthChip
+ * borrowing): unconfigured stays two-state; a configured provider with
+ * breaker stats resolves to operational / degraded / circuitOpen. Stats
+ * that are not in yet (query loading or failed) fall back to the legacy
+ * "configured" badge instead of guessing.
+ */
+export type ProviderHealthBadge =
+  | { kind: "unconfigured" }
+  | { kind: "unverified" }
+  | { kind: "operational" }
+  | { kind: "degraded"; failures: number }
+  | { kind: "circuitOpen" }
+
+export function providerHealthBadge(
+  configured: boolean,
+  stats: ProviderBreakerStats | null | undefined,
+): ProviderHealthBadge {
+  if (!configured) return { kind: "unconfigured" }
+  if (stats == null) return { kind: "unverified" }
+  if (stats.state === "open") return { kind: "circuitOpen" }
+  if (stats.state === "half-open" || stats.failures > 0) {
+    return { kind: "degraded", failures: stats.failures }
+  }
+  return { kind: "operational" }
+}
+
+function badgeVariantFor(
+  badge: ProviderHealthBadge,
+): "default" | "secondary" | "destructive" | "outline" {
+  switch (badge.kind) {
+    case "operational":
+      return "default"
+    case "degraded":
+      return "secondary"
+    case "circuitOpen":
+      return "destructive"
+    default:
+      return "outline"
+  }
+}
+
+function badgeLabelKeyFor(badge: ProviderHealthBadge): string {
+  switch (badge.kind) {
+    case "operational":
+      return "settings.providersHealth.operational"
+    case "degraded":
+      return "settings.providersHealth.degraded"
+    case "circuitOpen":
+      return "settings.providersHealth.circuitOpen"
+    case "unconfigured":
+      return "settings.providersHealth.unconfigured"
+    default:
+      return "settings.providersHealth.ok"
+  }
+}
+
+/**
+ * One provider row: the tri-state badge over live breaker stats plus the
+ * "reset breaker" action when the circuit is open. A failed reset surfaces
+ * inline and the badge stays derived from the (uninvalidated) query — the
+ * rollback is re-derivation, never local wishful state.
+ */
+function ProviderHealthRow({ provider }: { provider: { id: string; configured: boolean } }) {
+  useLocale()
+  const qc = useQueryClient()
+  const stats = useQuery({
+    queryKey: ["settings", "providers-health", "breaker", provider.id],
+    queryFn: ({ signal }) => chatApi.getCircuitBreakerStats(provider.id, signal),
+    enabled: provider.configured,
+    staleTime: 30_000,
+    retry: false,
+  })
+  const [resetError, setResetError] = useState<string | null>(null)
+  const reset = useMutation({
+    mutationFn: () => chatApi.resetCircuitBreaker(provider.id),
+    onSuccess: () => {
+      setResetError(null)
+      void qc.invalidateQueries({
+        queryKey: ["settings", "providers-health", "breaker", provider.id],
+      })
+    },
+    onError: (err: Error) => {
+      setResetError(err.message)
+    },
+  })
+
+  const badge = providerHealthBadge(provider.configured, stats.data ?? null)
+  return (
+    <li className="flex items-center justify-between rounded border px-2 py-1.5">
+      <span className="font-mono text-xs">{provider.id}</span>
+      <span className="flex items-center gap-2">
+        {resetError !== null && (
+          <span
+            className="text-[10px] text-destructive"
+            data-testid={`providers-health-reset-error-${provider.id}`}
+          >
+            {t("settings.providersHealth.resetFailed")} {resetError}
+          </span>
+        )}
+        <Badge
+          variant={badgeVariantFor(badge)}
+          className={`h-4 px-1 text-[10px] ${badge.kind === "degraded" ? "text-amber-600" : ""}`}
+          data-testid={`providers-health-state-${provider.id}`}
+        >
+          {badge.kind === "degraded"
+            ? t("settings.providersHealth.degraded", { failures: badge.failures })
+            : t(badgeLabelKeyFor(badge))}
+        </Badge>
+        {badge.kind === "circuitOpen" && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-[10px]"
+            disabled={reset.isPending}
+            aria-busy={reset.isPending}
+            onClick={() => reset.mutate()}
+            data-testid={`providers-health-reset-${provider.id}`}
+          >
+            {reset.isPending
+              ? t("settings.providersHealth.resetting")
+              : t("settings.providersHealth.reset")}
+          </Button>
+        )}
+      </span>
+    </li>
+  )
+}
+
 export function ProvidersHealthSection() {
   useLocale()
   const { data } = useQuery({
@@ -443,20 +579,7 @@ export function ProvidersHealthSection() {
         ) : (
           <ul className="space-y-1">
             {rows.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between rounded border px-2 py-1.5"
-              >
-                <span className="font-mono text-xs">{p.id}</span>
-                <Badge
-                  variant={p.configured ? "default" : "outline"}
-                  className="h-4 px-1 text-[10px]"
-                >
-                  {p.configured
-                    ? t("settings.providersHealth.ok")
-                    : t("settings.providersHealth.unconfigured")}
-                </Badge>
-              </li>
+              <ProviderHealthRow key={p.id} provider={{ id: p.id, configured: p.configured }} />
             ))}
           </ul>
         )}

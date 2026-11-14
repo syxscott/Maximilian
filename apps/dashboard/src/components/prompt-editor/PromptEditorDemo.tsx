@@ -75,9 +75,19 @@ export function PromptEditorDemo({
   const runCommand = (command: CommandDef) => {
     if (command.navigateTo && onNavigate) onNavigate(command.navigateTo)
     setSent(`/${command.id}`)
-    // Consume the slash token from the input.
-    setText((prev) => prev.replace(/^\/\S*/, ""))
-    setCaret(0)
+    // Consume the ACTIVE slash token — the "/query" ending at the caret,
+    // wherever it sits. Detection is boundary-aware (mid-text activation
+    // after whitespace/punctuation), so a leading-only strip would leave
+    // the token behind.
+    const active = slash.query
+    if (active !== null) {
+      const end = Math.min(caret, text.length)
+      const start = end - active.length - 1
+      if (start >= 0 && text.slice(start, end) === `/${active}`) {
+        setText(`${text.slice(0, start)}${text.slice(end)}`)
+        setCaret(start)
+      }
+    }
   }
 
   const runCommandRef = useRef(runCommand)
@@ -146,7 +156,15 @@ export function PromptEditorDemo({
       <div className="relative mt-1.5">
         <MentionTextarea
           value={text}
-          onChange={setText}
+          onChange={(next) => {
+            setText(next)
+            // The textarea only commits on IME-safe boundaries
+            // (ImeSafeTextarea): caret tracking rides the commit, so the
+            // "/" detection above never re-runs against mid-composition
+            // marked text.
+            const el = textareaRef.current
+            if (el) setCaret(el.selectionStart ?? next.length)
+          }}
           providers={providers}
           textareaRef={textareaRef}
           placeholder={t("promptEditor.demo.placeholder")}

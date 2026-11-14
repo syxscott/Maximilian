@@ -85,9 +85,11 @@ export function extractWebfetch(input: unknown): ToolViewModel {
   )
 }
 
-/** One search hit normalized to a display title. */
+/** One search hit normalized to a display title (+ safe link when present). */
 export interface SearchResult {
   title: string
+  /** http(s) URL of the hit — enables the citation hover preview. */
+  url?: string
 }
 
 export interface SearchViewModel extends ToolViewModel {
@@ -103,7 +105,14 @@ function normalizeHit(raw: unknown): SearchResult | undefined {
   if (typeof raw === "string") return raw.length > 0 ? { title: raw } : undefined
   const item = asRecord(raw)
   const title = pickStr(item, ["title", "name", "headline", "url", "text", "snippet"])
-  return title === undefined ? undefined : { title }
+  if (title === undefined) return undefined
+  // http(s)-only: the citation chip renders non-http URLs as plain text, so
+  // the hover preview must not offer them either.
+  const url = pickStr(item, ["url", "link", "href"])
+  return {
+    title,
+    ...(url !== undefined && /^https?:\/\//i.test(url) ? { url } : {}),
+  }
 }
 
 export function extractSearch(input: unknown): SearchViewModel {

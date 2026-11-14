@@ -15,6 +15,9 @@
       "failed": "失败",
       "skipped": "已跳过"
     },
+    "phase": {
+      "retrying": "重试中 · 第 {attempt} 次 → 下一次第 {next} 次"
+    },
     "turn": {
       "duration": "耗时 {duration}",
       "elapsed": "已运行 {duration}"

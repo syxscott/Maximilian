@@ -8,16 +8,60 @@
  * query header plus a bounded result list, each with a domain-avatar
  * placeholder favicon, title link and snippet. Non-http(s) URLs degrade
  * to plain text titles.
+ *
+ * Result titles with a URL carry the citation hover-preview card (same
+ * HoverCard chain as CitationBlock) — snippet/domain as the preview body.
  */
 import { Search } from "lucide-react"
 import { useLocale, t, formatNumber } from "@max/i18n"
 import { cn } from "@/lib/utils"
-import { webSearchModel } from "./model"
+import { webSearchModel, type WebSearchResult } from "./model"
+import { HoverCard, type HoverCardTrigger } from "./HoverCard"
+import { CitationPreviewCard } from "./CitationPreviewCard"
 
 export interface WebSearchBlockProps {
   /** Passthrough { query, results: [...] } part. */
   search: unknown
   className?: string
+}
+
+/** One result's title — hover-preview variant when a safe URL is present. */
+function ResultTitle({ result }: { result: WebSearchResult }) {
+  const label = result.title !== "" ? result.title : result.url
+  if (result.url === undefined) {
+    return (
+      <span className="truncate font-medium" title={result.title}>
+        {label ?? t("aiElements.webSearch.untitled")}
+      </span>
+    )
+  }
+  const renderTrigger: HoverCardTrigger = ({ domRef, domProps }) => (
+    <span ref={domRef} {...domProps} className="flex min-w-0">
+      <a
+        href={result.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="truncate font-medium text-blue-700 hover:underline"
+        title={result.title}
+        data-testid="websearch-result-link"
+      >
+        {label !== "" ? label : t("aiElements.webSearch.untitled")}
+      </a>
+    </span>
+  )
+  return (
+    <HoverCard renderTrigger={renderTrigger} testId="websearch-preview-card">
+      <CitationPreviewCard
+        citation={{
+          index: 0,
+          title: result.title,
+          url: result.url,
+          snippet: result.snippet,
+          siteName: result.domain,
+        }}
+      />
+    </HoverCard>
+  )
 }
 
 export function WebSearchBlock({ search, className }: WebSearchBlockProps) {
@@ -58,21 +102,7 @@ export function WebSearchBlock({ search, className }: WebSearchBlockProps) {
                 {result.domain.slice(0, 1) || "?"}
               </span>
               <span className="min-w-0 flex flex-col gap-0.5">
-                {result.url !== undefined ? (
-                  <a
-                    href={result.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="truncate font-medium text-blue-700 hover:underline"
-                    title={result.title}
-                  >
-                    {result.title !== "" ? result.title : result.url}
-                  </a>
-                ) : (
-                  <span className="truncate font-medium" title={result.title}>
-                    {result.title !== "" ? result.title : t("aiElements.webSearch.untitled")}
-                  </span>
-                )}
+                <ResultTitle result={result} />
                 {result.snippet !== undefined && (
                   <span className="text-muted-foreground line-clamp-2">{result.snippet}</span>
                 )}

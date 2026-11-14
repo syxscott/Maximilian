@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "uplinkBlocked": "Could not record this decision locally — the answer was NOT sent. Check storage permissions and try again.",
+    "shortcutApprove": "Shortcut: Ctrl/Cmd + Enter",
+    "shortcutReject": "Shortcut: Shift + Ctrl/Cmd + Backspace"
+  },
+  "approvals": {
+    "uplinkBlocked": "Could not record this decision locally — the answer was NOT sent. Check storage permissions and try again."
+  }
+}

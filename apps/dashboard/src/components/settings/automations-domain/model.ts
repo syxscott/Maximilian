@@ -23,6 +23,8 @@
  */
 
 import { formatRelative } from "@max/i18n"
+import { getFutureMatches } from "@datasert/cronjs-matcher"
+import cronstrue from "cronstrue/i18n"
 import { toJobView, type JobView } from "../jobs-domain/model"
 
 export const AUTOMATION_NAME_PREFIX = "automation:"
@@ -406,4 +408,235 @@ export function filterJobEvents(
   if (kind === "all") return events
   const raw = `${kind}-trigger`
   return events.filter((e) => e.kind === raw)
+}
+
+// ── Cron editing suite (conductor scheduler borrowing) ──────────────────────
+
+/**
+ * Per-field accent colors for 5-field cron expressions. Conductor's
+ * `CRON_COLORS_BY_POSITION` colors the SIX Quartz slots (second minute
+ * hour dom mon dow); our expressions have no seconds field, so the array
+ * is re-indexed to slots 1..5 and re-trimmed to five entries — otherwise
+ * every field would render one position too late.
+ */
+export const CRON_FIELD_COLORS: readonly string[] = [
+  "#6569AC", // minute
+  "#45AC59", // hour
+  "#C99E00", // day of month
+  "#EE6B31", // month
+  "#CE2836", // day of week
+]
+
+/** Field help entries in expression order (CronExpressionHelp borrowing). */
+export const CRON_FIELD_HELP: ReadonlyArray<{ key: string; color: string }> = [
+  { key: "automations.cron.field.minute", color: CRON_FIELD_COLORS[0] },
+  { key: "automations.cron.field.hour", color: CRON_FIELD_COLORS[1] },
+  { key: "automations.cron.field.dom", color: CRON_FIELD_COLORS[2] },
+  { key: "automations.cron.field.mon", color: CRON_FIELD_COLORS[3] },
+  { key: "automations.cron.field.dow", color: CRON_FIELD_COLORS[4] },
+]
+
+/**
+ * Ready-made 5-field expressions for the template dropdown. Unlike
+ * conductor's CRON_SAMPLES (Quartz with seconds + `?` wildcards) these are
+ * plain 5-field crons the server accepts directly.
+ */
+export const CRON_TEMPLATES: ReadonlyArray<{ expr: string; labelKey: string }> = [
+  { expr: "*/5 * * * *", labelKey: "automations.cron.template.every5" },
+  { expr: "0 * * * *", labelKey: "automations.cron.template.hourly" },
+  { expr: "0 9 * * MON-FRI", labelKey: "automations.cron.template.weekdayMorning" },
+  { expr: "30 8 1 * *", labelKey: "automations.cron.template.monthlyFirst" },
+  { expr: "0 0 * * 0", labelKey: "automations.cron.template.sundayMidnight" },
+]
+
+/**
+ * Cursor position → cron field index (conductor `getHighlightedPart`
+ * borrowing). Splits everything before the caret on whitespace and clamps
+ * to the five fields, so a caret sitting in the trailing space after a
+ * field keeps that field highlighted.
+ */
+export function cursorToFieldIndex(value: string, selectionStart: number): number {
+  const before = value.slice(0, Math.max(0, selectionStart))
+  const parts = before.split(/\s+/).filter((part) => part.length > 0)
+  return Math.min(parts.length === 0 ? 0 : parts.length - 1, 4)
+}
+
+/** How many future runs the preview shows. */
+export const SCHEDULE_PREVIEW_RUN_COUNT = 10
+
+/**
+ * Intervals this chatty (< 1 min) surface as a soft — not hard — issue:
+ * the server accepts them, but they hammer the queue.
+ */
+export const AUTOMATION_CHATTY_INTERVAL_MS = 60_000
+
+/** One business-level (non-blocking) schedule concern. */
+export interface ScheduleSoftIssue {
+  key: string
+  params?: Record<string, string | number>
+}
+
+/**
+ * Soft validation (cc-switch ProviderForm borrowing): collect the
+ * business-concern list that should NOT block submission, only confirm
+ * it. Today: sub-minute intervals, and the standard-cron gotcha where a
+ * restricted day-of-month AND day-of-week OR together (most users expect
+ * AND).
+ */
+export function collectScheduleSoftIssues(schedule: string): ScheduleSoftIssue[] {
+  const trimmed = schedule.trim()
+  const issues: ScheduleSoftIssue[] = []
+  if (trimmed.length === 0) return issues
+  if (/^\d+$/.test(trimmed)) {
+    const ms = Number(trimmed)
+    if (Number.isSafeInteger(ms) && ms >= AUTOMATION_MIN_INTERVAL_MS) {
+      if (ms < AUTOMATION_CHATTY_INTERVAL_MS) {
+        issues.push({
+          key: "automations.softIssues.chattyInterval",
+          params: { seconds: Math.round(ms / 1000) },
+        })
+      }
+      return issues
+    }
+  }
+  const fields = trimmed.split(/\s+/)
+  if (fields.length === 5 && fields[2] !== "*" && fields[4] !== "*") {
+    issues.push({ key: "automations.softIssues.domDowBoth" })
+  }
+  return issues
+}
+
+/** Result of the advisory schedule preview shown under the input. */
+export interface SchedulePreview {
+  kind: "cron" | "interval" | "invalid"
+  /** i18n key of the hard-validation failure; null when parseable. */
+  errorKey: string | null
+  /** Raw parser detail (cronstrue/cronjs message) for the error line. */
+  errorDetail: string | null
+  /** cronstrue human description (cron only, null otherwise). */
+  description: string | null
+  /** Next fire instants as epoch ms, UTC-sorted, at most 10 entries. */
+  nextRuns: number[]
+}
+
+/**
+ * Pure schedule preview: validates against the same shape rules as
+ * {@link validateScheduleText} (pure digits = intervalMs ≥ 1000, else
+ * exactly 5 cron fields), then computes the next runs — cron via
+ * `@datasert/cronjs-matcher` (5 fields ⇒ `hasSeconds: false`, our
+ * expressions never carry a seconds slot) and intervalMs via a local loop
+ * (no cron library involvement). Never throws: parser failures land in
+ * `errorKey`/`errorDetail` so the dialog can echo them. `locale` is the
+ * @max/i18n tag; cronstrue descriptions follow it (zh → zh_CN).
+ */
+export function buildSchedulePreview(
+  schedule: string,
+  options?: { now?: number; runCount?: number; locale?: string },
+): SchedulePreview {
+  const now = options?.now ?? Date.now()
+  const runCount = options?.runCount ?? SCHEDULE_PREVIEW_RUN_COUNT
+  const cronstrueLocale = (options?.locale ?? "en-US").startsWith("zh") ? "zh_CN" : "en"
+  const trimmed = schedule.trim()
+  if (trimmed.length === 0) {
+    return { kind: "invalid", errorKey: null, errorDetail: null, description: null, nextRuns: [] }
+  }
+  if (/^\d+$/.test(trimmed)) {
+    const ms = Number(trimmed)
+    if (!Number.isSafeInteger(ms) || ms < AUTOMATION_MIN_INTERVAL_MS) {
+      return {
+        kind: "invalid",
+        errorKey: "automations.errors.intervalTooShort",
+        errorDetail: null,
+        description: null,
+        nextRuns: [],
+      }
+    }
+    const nextRuns: number[] = []
+    let t = now
+    for (let i = 0; i < runCount; i += 1) {
+      t += ms
+      nextRuns.push(t)
+    }
+    return { kind: "interval", errorKey: null, errorDetail: null, description: null, nextRuns }
+  }
+  const fields = trimmed.split(/\s+/)
+  if (fields.length !== 5) {
+    return {
+      kind: "invalid",
+      errorKey: "automations.errors.cronFields",
+      errorDetail: null,
+      description: null,
+      nextRuns: [],
+    }
+  }
+  try {
+    // cronstrue describes; a parse failure here (out-of-range field, bad
+    // name) is the hard client-side validation.
+    const description = cronstrue.toString(trimmed, { locale: cronstrueLocale })
+    // startAt pins the matcher's clock (it defaults to Date.now(), which
+    // would make the preview nondeterministic between keystrokes).
+    const isoMatches = getFutureMatches(trimmed, {
+      hasSeconds: false,
+      matchCount: runCount,
+      startAt: new Date(now).toISOString(),
+    })
+    const nextRuns = isoMatches.map((iso) => Date.parse(iso)).filter((ms) => !Number.isNaN(ms))
+    return { kind: "cron", errorKey: null, errorDetail: null, description, nextRuns }
+  } catch (err) {
+    return {
+      kind: "invalid",
+      errorKey: "automations.errors.cronInvalid",
+      errorDetail: err instanceof Error ? err.message : String(err),
+      description: null,
+      nextRuns: [],
+    }
+  }
+}
+
+/**
+ * One preview row: the instant rendered in the scheduler timezone (the
+ * API worker runs on UTC, so cron fields mean UTC) and again in the
+ * viewer's timezone — the dual-timezone comparison that makes "why did it
+ * fire at 02:00?" answerable.
+ */
+export interface ScheduleRunRow {
+  /** Epoch ms of the fire instant. */
+  at: number
+  /** Rendered in the scheduler timezone (UTC). */
+  schedulerText: string
+  /** Rendered in the viewer's local timezone. */
+  localText: string
+}
+
+/** Scheduler-side timezone of the job API (worker runs UTC). */
+export const SCHEDULE_TZ = "UTC"
+
+/** Compact locale-aware stamp for a preview row in one timezone. */
+export function formatRunTime(ms: number, timeZone: string, localeTag: string): string {
+  return new Intl.DateTimeFormat(localeTag, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone,
+  }).format(new Date(ms))
+}
+
+/**
+ * epoch-ms runs → dual-timezone rows for the preview list. `localeTag`
+ * comes from the caller's active dictionary locale so both columns follow
+ * the UI language.
+ */
+export function toScheduleRunRows(
+  nextRuns: number[],
+  localeTag: string,
+  localTimeZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): ScheduleRunRow[] {
+  return nextRuns.map((at) => ({
+    at,
+    schedulerText: formatRunTime(at, SCHEDULE_TZ, localeTag),
+    localText: formatRunTime(at, localTimeZone, localeTag),
+  }))
 }

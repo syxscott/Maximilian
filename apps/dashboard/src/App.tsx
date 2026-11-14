@@ -30,6 +30,13 @@ import { AppCommandPalette } from "./components/AppCommandPalette"
 import { ToastHost } from "./components/ToastHost"
 import { commandsWithKeybinds, type Keybind } from "./lib/commands"
 import { permissionsApi, type PendingPermission } from "./lib/permissions"
+import {
+  browserEnvironment,
+  createSseKeepalive,
+  type SseKeepaliveHandle,
+} from "./lib/sse-keepalive"
+import { pendingUplinks } from "./lib/pending-uplinks"
+import { registerPendingResend, useOptimisticMessages } from "./lib/optimistic-messages"
 import { usePerfTier } from "./lib/perf-tier"
 import { useTheme } from "./lib/theme"
 import {
@@ -60,6 +67,39 @@ const STREAM_CONTROL_EVENT_TYPES: ReadonlySet<string> = new Set([
   "approval-resolved",
   "steering-applied",
 ])
+
+/**
+ * Server-truth lookup the durable uplink ledger consults on reconnect
+ * (`pendingUplinks.reconcile`). Honest boundary: the API surface has no
+ * query endpoint for any uplink kind today — `POST /api/chat` answers with
+ * a server-generated workspaceId (there is no client-visible message id to
+ * ask about), and the permissions/approvals routes expose only answer
+ * endpoints (apps/api/src/routes/permissions.ts, approvals.ts) — so every
+ * kind resolves "unknown" and the ledger keeps its clue until an explicit
+ * settle or the 24 h TTL. When a query endpoint lands, map each kind to it
+ * here; the ledger's accepted/duplicate/failed closure paths are exercised
+ * with injected lookups in test/pending-uplinks.test.ts.
+ */
+function reconcileUplinkLookup(
+  id: string,
+  kind: string,
+): Promise<"accepted" | "duplicate" | "failed" | "unknown"> {
+  switch (kind) {
+    case "chat":
+      // No per-message query endpoint: nothing on the server is keyed by
+      // the client-side clue id, and matching workspaces by message text
+      // would risk falsely closing a duplicate-submission clue.
+      return Promise.resolve("unknown")
+    case "permission":
+    case "approval":
+      // No pending-decision query endpoint — the ledger keeps the clue
+      // (the runtime re-prompts through a fresh permission-request event
+      // if the answer truly never landed).
+      return Promise.resolve("unknown")
+    default:
+      return Promise.resolve("unknown")
+  }
+}
 
 // ── Connection store plumbing (single writer: the App layer) ────────────────
 
@@ -203,6 +243,13 @@ export function App() {
   // ReadableStream so the Authorization bearer token can ride along;
   // the handle exposes `.close()` to mirror the EventSource lifecycle.
   const streamRef = useRef<WorkspaceStreamHandle | null>(null)
+  // The SSE keepalive loop of the current submission (pi reconnect.ts
+  // borrowing). One loop per submission: it owns open/retry/backoff/
+  // handshake-timeout/wake-staleness, while this component keeps the
+  // token-filtered message handling and the SSE_MAX_RETRIES give-up gate.
+  // stopStream() stops the loop alongside the stream, so every lifecycle
+  // path (new submit, Stop, workspace switch, unmount) tears both down.
+  const keepaliveRef = useRef<SseKeepaliveHandle | null>(null)
   // Used to cancel an in-flight POST when the user re-submits. SSE itself
   // can't be aborted (browser API doesn't allow it), but the chat request
   // can, and we close the previous stream in stopStream().
@@ -286,6 +333,11 @@ export function App() {
   // workspace-prefs store for the currently active prefs key.
   const toggleSidebarRef = useRef<() => void>(() => {})
   const stopStream = useCallback(() => {
+    // Stop the keepalive loop FIRST: it closes the current link itself and
+    // ignores the close report once stopped, so the explicit stream close
+    // below can never read as a lost connection worth retrying.
+    keepaliveRef.current?.stop()
+    keepaliveRef.current = null
     if (streamRef.current) {
       streamRef.current.close()
       streamRef.current = null
@@ -323,6 +375,21 @@ export function App() {
   abortSubmissionRef.current = abortSubmission
 
   useEffect(() => () => stopStream(), [stopStream])
+
+  // Optimistic-bubble retry transport (OpenHands useSendMessage borrowing,
+  // adapted): failed pending bubbles render in ChatPanel, but only this
+  // component owns chatApi — and the dock renders ChatPanel, so the retry
+  // cannot ride props. The store invokes this transport on the user's
+  // Retry click; it routes through the SAME submit path (which skips
+  // re-enqueueing for an existing pending id). Re-registered every render
+  // (like the ref bridges above) so it always closes over fresh state,
+  // and cleared on unmount so a stray retry can't touch a dead component.
+  useEffect(() => {
+    registerPendingResend((text, pendingId) => {
+      void handleSubmit(text, pendingId)
+    })
+    return () => registerPendingResend(null)
+  })
 
   // Recent-workspaces list. Used by the switcher in the footer; surfaces
   // workspaces from `GET /api/workspaces` so the user can revisit a past
@@ -364,7 +431,7 @@ export function App() {
     [stopStream],
   )
 
-  async function handleSubmit(message: string) {
+  async function handleSubmit(message: string, pendingId?: string) {
     // Cancel any in-flight request and close any open stream first. Without
     // this, rapid clicks on the Send button would open N parallel SSE
     // connections and leak streams when the user navigates away mid-stream.
@@ -374,8 +441,45 @@ export function App() {
 
     const myToken = ++tokenRef.current
     setSubmitting(true)
+    // Fresh submission — start the consecutive-error count clean (the
+    // previous implementation reset it right after opening the stream;
+    // reconnects deliberately do NOT reset it, or the 5-consecutive-errors
+    // give-up could never trigger).
+    sseErrorCount.current = 0
+
+    // Optimistic user message (OpenHands optimistic-user-message-store
+    // borrowing): the text renders immediately as a faded "sending" bubble
+    // and is consumed by the workspace snapshot echo, so a failed POST no
+    // longer loses it (it flips to an error bubble with a retry). A retry
+    // of an existing bubble passes its id — no second bubble is enqueued.
+    const myPendingId =
+      pendingId ?? useOptimisticMessages.getState().enqueue(workspace?.id ?? null, message)
+    // Durable uplink ledger (ZCode pendingCommandRegistry borrowing): the
+    // reconciliation clue is persisted BEFORE the uplink; a persistence
+    // failure refuses the uplink — an untracked send could never be
+    // reconciled after a reload.
+    if (!pendingUplinks.register(myPendingId, { kind: "chat", payload: { message } })) {
+      useOptimisticMessages.getState().markError(myPendingId)
+      if (tokenRef.current === myToken) setSubmitting(false)
+      return
+    }
     try {
-      const { workspaceId } = await chatApi.chat(message, abortRef.current.signal)
+      const { workspaceId, status } = await chatApi.chat(message, abortRef.current.signal)
+      // The POST response is the ledger's server acknowledgement — applied
+      // even when a newer submit has since taken over the UI: THIS uplink
+      // was durably accepted regardless of staleness. The optimistic
+      // bubble itself stays until the stream echo (the UI-level
+      // confirmation in `handleMessage` below).
+      pendingUplinks.settle(myPendingId, "accepted")
+      if (status === "steered") {
+        // Steering receipt: the server folded the message into the running
+        // workspace and acked with a receiptId. There is no new workspace
+        // snapshot whose userRequest would echo a steered message, so the
+        // receipt IS the echo — retire the bubble now.
+        useOptimisticMessages.getState().remove(myPendingId)
+      } else {
+        useOptimisticMessages.getState().bindWorkspace(myPendingId, workspaceId)
+      }
       // If a newer submit landed while we were POSTing, drop this stream.
       if (tokenRef.current !== myToken) return
       setEvents([])
@@ -392,10 +496,18 @@ export function App() {
         sseErrorCount.current = 0
         try {
           if (data.type === "workspace") {
+            const snapshot = data.workspace as Workspace
+            // Echo consumption (OpenHands consumeMatchingPendingMessage
+            // borrowing): the snapshot carries workspace.userRequest — the
+            // server's rendering of the submitted message. A pending
+            // optimistic message bound to this workspace whose trimmed
+            // content matches is confirmed delivered and leaves the
+            // pending queue (a late echo also consumes an errored entry).
+            useOptimisticMessages.getState().consumeEcho(snapshot.id, snapshot.userRequest)
             // Snapshot frame: full workspace state, so only the latest one
             // per animation frame matters — buffer and coalesce (deepseek
             // chat-demo borrowing) instead of re-rendering per frame.
-            pendingWorkspaceRef.current = { token: myToken, workspace: data.workspace as Workspace }
+            pendingWorkspaceRef.current = { token: myToken, workspace: snapshot }
             streamFlusher.schedule()
           } else if (data.type === "event") {
             const ev = data.event as { type?: string } & Record<string, unknown>
@@ -484,20 +596,23 @@ export function App() {
             // Terminal frame: commit whatever deltas are still buffered so
             // the tail of the stream paints before the teardown below.
             streamFlusher.flushNow()
-            // Tear the stream down. The fetch+ReadableStream impl does
-            // not auto-reconnect like EventSource did, so the retry
-            // counter is driven from `onError` and we reopen manually
-            // from there on transient failures.
+            // Tear the stream down. The keepalive loop must stop FIRST —
+            // otherwise the close below reads as a lost connection and the
+            // loop would re-open the stream this `done` just finished.
+            keepaliveRef.current?.stop()
             streamRef.current?.close()
-            if (streamRef.current && tokenRef.current === myToken) {
-              // submit succeeded; the `done` event closes the lifecycle.
-            }
             if (tokenRef.current === myToken) setSubmitting(false)
           }
         } catch (err) {
           console.error("SSE parse error", err)
         }
       }
+
+      // Give-up flag for this submission: once SSE_MAX_RETRIES consecutive
+      // transport errors have landed, the keepalive loop's canRetry gate
+      // parks it permanently (the UI no longer spins on a permanent
+      // failure — 404, 403, repeated 5xx).
+      let gaveUp = false
 
       const handleError = (err: unknown) => {
         // Ignore errors from a stale stream.
@@ -506,62 +621,108 @@ export function App() {
         // user should see sits in the batch across the reconnect.
         streamFlusher.flushNow()
         // The fetch+ReadableStream impl does NOT auto-reconnect like
-        // EventSource did. We manually re-open up to SSE_MAX_RETRIES
-        // transient failures before giving up; beyond that we close
-        // the stream so the UI doesn't spin forever on a permanent
-        // failure (404, 403, repeated 5xx).
+        // EventSource did. Consecutive transport failures are counted
+        // here (token-guarded; reset per message in `handleMessage` and
+        // at the start of each fresh submission); the reconnect itself is
+        // owned by the keepalive loop, which retries with backoff through
+        // its canRetry gate below instead of re-opening immediately.
         sseErrorCount.current += 1
         if (sseErrorCount.current >= SSE_MAX_RETRIES) {
           console.warn(`SSE gave up after ${sseErrorCount.current} consecutive errors`, err)
+          gaveUp = true
+          // Stop the loop BEFORE the close report lands, so it can't
+          // schedule another attempt past the give-up.
+          keepaliveRef.current?.stop()
           streamRef.current?.close()
           if (tokenRef.current === myToken) setSubmitting(false)
         } else {
           console.warn(
-            `SSE connection error (reconnecting, attempt ${sseErrorCount.current}/${SSE_MAX_RETRIES})`,
+            `SSE connection error (attempt ${sseErrorCount.current}/${SSE_MAX_RETRIES}, reconnect scheduled by keepalive)`,
             err,
           )
           // During reconnect, KEEP submitting=true so the user knows
           // the workspace is still in-flight. The previous EventSource
           // implementation reset submitting on every transient blip,
           // making the button flicker between disabled and enabled
-          // while we were still trying to recover.
-          const current = streamRef.current
-          if (current) {
-            current.close()
-            streamRef.current = openWorkspaceStream(workspaceId, {
-              onMessage: handleMessage,
-              onError: handleError,
-              onClose: () => {
-                if (streamRef.current && tokenRef.current === myToken) {
-                  // Only null out if this is still our stream — a newer
-                  // submit may have already replaced it.
-                  // (No-op: the retry path's reassignment below is the
-                  // only writer.)
-                }
-              },
-            })
-          }
+          // while we were still trying to recover. The loop re-opens
+          // through the `open` adapter below with the same handlers
+          // once its backoff fires (or immediately on a wake).
         }
       }
 
-      streamRef.current = openWorkspaceStream(workspaceId, {
-        onMessage: handleMessage,
-        onError: handleError,
-        onClose: () => {
-          // The handle self-nulls only when we're still the current
-          // submit. A newer submit has its own stream and its own
-          // ref value, so this branch leaves a replacement alone.
-          if (tokenRef.current === myToken) {
-            // Stream closed cleanly (e.g. terminal `done`); the `done`
-            // handler above already flipped submitting back. No-op here.
+      // Stream lifecycle (pi reconnect.ts borrowing): the keepalive loop
+      // owns open/retry/backoff/handshake-timeout/wake-staleness for this
+      // submission. The token semantics are preserved: every adapter
+      // callback filters on `myToken`, and stopStream() stops the loop
+      // before any token bump on the lifecycle paths (new submit, Stop,
+      // workspace switch, unmount).
+      keepaliveRef.current = createSseKeepalive({
+        environment: browserEnvironment("workspace-stream"),
+        // No continuous silence watch for THIS stream: the server
+        // heartbeats with `:` comment frames every 25s, and the SSE
+        // decoder drops comments (they never dispatch), so a healthy
+        // connection is client-silent for as long as one slow tool call
+        // runs — a 25s silence watch would churn-reconnect healthy
+        // sockets. Wake-time staleness (STALE_MS) still replaces sockets
+        // that died while the page was away. The opencode events stream
+        // heartbeats with visible data frames and enables the watch.
+        open: (events) => {
+          // Token guard: a stale loop's reconnect must never clobber a
+          // newer submission's stream. stopStream() stops the loop before
+          // the token bump, so this is belt-and-suspenders.
+          if (tokenRef.current !== myToken) {
+            return { onClose: () => {}, close: () => {} }
+          }
+          let onClosed: ((reason: string) => void) | undefined
+          const handle = openWorkspaceStream(workspaceId, {
+            onOpen: () => events.opened(),
+            onMessage: (data) => {
+              events.received()
+              handleMessage(data)
+            },
+            onError: handleError,
+            onClose: () => onClosed?.("connection closed"),
+          })
+          streamRef.current = handle
+          return {
+            onClose: (handler) => {
+              onClosed = handler
+            },
+            close: () => handle.close(),
           }
         },
+        canRetry: async () => !gaveUp && tokenRef.current === myToken,
+        onConnected: (connected) => {
+          if (!connected) return
+          if (tokenRef.current !== myToken) return
+          // (Re)connect success — reconcile the durable uplink ledger
+          // (ZCode registry discipline: the server is authoritative; the
+          // ledger only ever holds client-side clues).
+          void pendingUplinks.reconcile(reconcileUplinkLookup)
+        },
       })
-      sseErrorCount.current = 0
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return
+      if (err instanceof Error && err.name === "AbortError") {
+        // Stop button (or a newer submission aborting this POST). We cannot
+        // know whether the server processed the message, so the bubble
+        // goes to the error state (retry / dismiss — dismiss restores the
+        // text to the composer) instead of hanging as "sending" until the
+        // watchdog; the ledger clue stays for reconciliation (a client
+        // abort is not proof of non-delivery).
+        useOptimisticMessages.getState().markError(myPendingId)
+        pendingUplinks.settle(myPendingId, "failed")
+        return
+      }
       console.error("chat error", err)
       stopStream()
+      // Optimistic bubble: flip to the error state with the transport
+      // message. The text is preserved in the bubble — the pre-optimistic
+      // behavior lost it entirely (composer and draft store cleared at
+      // submit time).
+      useOptimisticMessages
+        .getState()
+        .markError(myPendingId, err instanceof Error ? err.message : undefined)
+      pendingUplinks.settle(myPendingId, "failed")
       // Only flip submitting off if this submit is still the active one
       // (a newer submission may have already taken over).
       if (tokenRef.current === myToken) setSubmitting(false)
@@ -578,8 +739,18 @@ export function App() {
       const target = pendingPermissions.values().next().value as PendingPermission | undefined
       if (!target || target.kind !== "permission") return
       const id = target.requestId
+      // Durable uplink ledger (ZCode pendingCommandRegistry borrowing): the
+      // decision is registered BEFORE the POST — persistence failure
+      // refuses the uplink, because an untracked answer could vanish on a
+      // reload while the runtime stays parked on the gate. The entry is
+      // sensitive: no plaintext payload is stored (digest only).
+      if (!pendingUplinks.register(id, { kind: "permission", sensitive: true })) {
+        useNotificationStore.getState().push("error", "shell.notify.permissionFailed")
+        return
+      }
       try {
         await permissionsApi.answer(id, decision)
+        pendingUplinks.settle(id, "accepted")
         // Close the dialog only after the server has acknowledged the
         // answer. The previous implementation always cleared in
         // `finally`, which meant a network/server error would silently
@@ -595,6 +766,9 @@ export function App() {
         })
       } catch (err) {
         console.error("[perms] answer failed", err)
+        // Ledger: the client-level failure is not proof of non-delivery —
+        // keep the clue (marked failed) for reconnect reconciliation.
+        pendingUplinks.settle(id, "failed")
         // Real notification: the decision was NOT delivered — leave the
         // dialog open and tell the user, or they'd believe the tool is
         // unblocked while the backend is still waiting.
@@ -621,8 +795,16 @@ export function App() {
           .getState()
           .push("warning", "shell.notify.steeringRejected", { task: target.taskId || id })
       }
+      // Durable uplink ledger: same discipline as answerPermission above —
+      // the clue is persisted before the POST (sensitive: digest only),
+      // persistence failure refuses the uplink, the ACK closes it out.
+      if (!pendingUplinks.register(id, { kind: "approval", sensitive: true })) {
+        useNotificationStore.getState().push("error", "shell.notify.permissionFailed")
+        return
+      }
       try {
         await permissionsApi.answerApproval(id, decision, comment)
+        pendingUplinks.settle(id, "accepted")
         // Same reasoning as answerPermission above: only close on
         // server acknowledgement so a failed POST doesn't leave the
         // user thinking their decision was recorded.
@@ -634,6 +816,8 @@ export function App() {
         })
       } catch (err) {
         console.error("[approvals] answer failed", err)
+        // Ledger: keep the clue for reconciliation (same as permissions).
+        pendingUplinks.settle(id, "failed")
       }
     },
     [pendingPermissions],

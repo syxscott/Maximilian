@@ -15,6 +15,9 @@
       "failed": "Failed",
       "skipped": "Skipped"
     },
+    "phase": {
+      "retrying": "retrying · attempt {attempt} → next {next}"
+    },
     "turn": {
       "duration": "took {duration}",
       "elapsed": "elapsed {duration}"
