@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Per-phase detail lives under `docs/changelogs/` — this file is the high-level summary.
 
+## [1.5.0](https://github.com/syxscott/Maximilian/compare/v1.4.0...v1.5.0) (2026-11-14)
+
+
+### Features
+
+* frontend borrowing wave across dashboard and ui-react ([e118951](https://github.com/syxscott/Maximilian/commit/e1189513b1f48ac2e248cc0ca2494c6f87a8f31c))
+
 ## [1.4.0](https://github.com/syxscott/Maximilian/compare/v1.3.0...v1.4.0) (2026-11-14)
 
 
