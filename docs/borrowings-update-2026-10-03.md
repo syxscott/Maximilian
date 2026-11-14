@@ -261,3 +261,53 @@ Vault 加密行/沙箱挂起；cron/Feishu 特化链。存照待清理：`Plugin
   的借鉴来源——语义边界写得比代码还清楚。
 - 借鉴落地后必须核对"option 有没有 caller"：连续两波（compaction 恢复、本轮差
   点重演）都出现"机制完整但无人传参"的准死代码。
+
+---
+
+## 2026-11-14 前端波次：全部参考仓 UI 层（12 仓 ~1.7M 行 tsx → dashboard/ui-react）
+
+四组并行研究（OpenHands+hermes desktop / opencode+ZCode+pi / conductor+cc-switch+CBM /
+deepseek-harness+OAC+chat-demo 组件层）产出 ~43 候选；主线核实四处真缺陷后两波实施
+（Wave A 缺陷+地基、Wave B 渲染管线+composer），提交 e118951，release 1.5.0。
+全量 30 包 5600+ 测试 0 失败。
+
+### 已核实的真缺陷修复
+
+| 缺陷                                                  | 证据                     | 修复                                                               |
+| ----------------------------------------------------- | ------------------------ | ------------------------------------------------------------------ |
+| 提交失败丢消息（reset+clearDraft 在 POST 结果前执行） | ChatPanel.tsx:176-188    | 乐观气泡：sending/error/重试/回声匹配+150s watchdog（OpenHands）   |
+| SSE 重连无退避、5 败永久放弃                          | App.tsx:224-228          | 保活环（退避+存活重置+唤醒面+静默判死，pi reconnect.ts），双流接线 |
+| 中文 IME 撕文本（全 dashboard 零 composition 处理）   | grep 零命中              | ImeSafeInput/Textarea（cc-switch），IME-Enter 不再误发消息         |
+| OracleLessonsEditor 无脏检查                          | settings/oracle-domain   | useDirtyGuard（conductor 简化版）                                  |
+| diff 预览多 hunk 误读                                 | _helpers/DiffPreview.tsx | 真 LCS（250k 格预算+截断，OpenHands）                              |
+
+### P1 机制
+
+审批快捷键+重复提交守卫；上行命令持久账本（persist-before-send/FNV 摘要/unknown
+不清账，接 chat+permission+approval 三类上行）；cron 编辑套件（下次运行双时区预览
++人话描述+字段着色模板+光标联动帮助+软问题确认）；live-tail 选区钉住；列表引用稳
+定化（per-snapshot 新数组根治）；**增量流式 markdown 管线**（块冻结+尾解析，GFM+
+脚注+引用自愈——AI 正文首次真正按 markdown 渲染）；CodeBlock v2（增量 Shiki+视口
+门控+diff fence）；composer 附件层（拖放深度计数+粘贴路由；诚实边界=本地 staging
+无假上传）；滚动权状态机+行高缓存+学习式估计器+流式尾轮分流；引用角标悬停预览卡；
+provider 健康三态徽章（接既有熔断路由）。
+
+### P2 机制
+
+自适应 flush 地板（成本×3 封顶 250ms）；发送历史+失败回收；上下文占用环（本地估
+算）；语音输入 hook（transcriber 可注入，未注入不渲染按钮）；子代理活动 ticker；
+轮次相位状态机；KaTeX 懒加载+last-good+copy-tex；mermaid 流式保留旧图；SVG
+TimeSeriesChart；软校验"仍要保存"。
+
+### 诚实降级（需后端/产品，勿当缺口重开）
+
+端点测速与模型拉取勾选器（需 api 代理路由）；会话回退+撤销（需 rewind/checkpoint
+API）；contenteditable chip composer（工程量大单列）；附件真实上传通道（staging+
+接口已留）；canvas 雷达（装饰性）。
+
+### 教训
+
+- 每次并行代理跑 `pnpm add` 后，陈旧 peer 符号链接会再次假红 tsc——`pnpm install
+--frozen-lockfile --force` 重链即愈（本波第 2 次验证该修复）。
+- 跨代理契约组件（StreamingMarkdown）先落 pass-through 绑定+data 标记，交付后主线
+  一处 import 换绑——并行期互不阻塞。
