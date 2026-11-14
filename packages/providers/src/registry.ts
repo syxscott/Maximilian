@@ -105,6 +105,13 @@ export function createRegistry(
         apiKey,
         baseURL: preset.baseUrl,
         defaultModel: modelOverride || preset.defaultModel,
+        // Admission reads the apiFormat Declaration (OpenAgentCore
+        // harnessconfig borrowing): the wrapper stack below (SSE guard,
+        // stream watchdogs, retry) presumes a streaming provider, so
+        // streaming is the registry's declared requirement. A format whose
+        // Declaration lacks it — or whose runtime probe narrowed it away —
+        // is refused instead of being wrapped half-working.
+        requires: ["streaming"],
       })
       // Wrap order (innermost first): SSE guard → client-side stop-word
       // fallback → per-attempt stream watchdogs → retry (each retry attempt

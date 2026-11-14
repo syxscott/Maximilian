@@ -55,6 +55,13 @@ export const ConfigSchema = z.object({
   REDIS_URL: z.string().optional(),
   TASK_QUEUE_ENABLED: optionalBooleanString,
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(3),
+  // Park-yield (OpenAgentCore worker.go:277 borrowing): when a queued run
+  // parks on a human decision (permission ask / approval prompt), the
+  // worker releases its BullMQ slot while the run stays alive in the
+  // waiting registry — a waiting turn holds no execution slot. Set false
+  // to restore blocking behaviour (the job holds its slot for the whole
+  // permissionAskTimeoutMs wait).
+  PARK_YIELD_ENABLED: optionalBooleanString,
 
   // Multi-tenancy
   MULTI_TENANT_ENABLED: optionalBooleanString,

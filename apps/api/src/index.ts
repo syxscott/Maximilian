@@ -278,9 +278,11 @@ import {
   listApprovalGateRoute,
 } from "./routes/approval-gate.js"
 import { RemoteApprovalGate } from "./lib/remote-approval-gate.js"
-import { InboundGate } from "./lib/inbound-queue.js"
+import { InboundGate, IdempotencyReceiptStore } from "./lib/inbound-queue.js"
 import { DeadLetterRegistry } from "./lib/inbound-dead-letter.js"
 import { inboundAdmission } from "./middleware/inbound-queue.js"
+import { idempotencyKey } from "./middleware/idempotency-key.js"
+import { jsonBodyGate } from "./middleware/json-body-gate.js"
 import { inboundRoutes, inboundStatsRoute, inboundDeadLetterRoute } from "./routes/inbound.js"
 import {
   createDb,
@@ -1277,6 +1279,22 @@ app.use(
   "/api/*",
   inboundAdmission({ gate: inboundGate, deadLetter: { registry: inboundDeadLetter } }),
 )
+
+// JSON body gate (OpenAgentCore wire-semantics.md row 5 borrowing):
+// every JSON request body is scanned once for duplicate object keys at
+// any depth — JSON.parse silently keeps the last value, so an ambiguous
+// payload must be refused (400 with the dotted path) before any
+// validator sees it. Mounted before the idempotency layer so ambiguous
+// bodies never enter the receipt ledger.
+app.use("/api/*", jsonBodyGate())
+
+// Idempotency-Key receipts (OpenAgentCore wire-semantics.md borrowing):
+// requests carrying an Idempotency-Key are receipted after a successful
+// JSON response — the same key + same body replays the original result,
+// the same key + a different body answers 409 idempotency_conflict. The
+// body is only read for requests that carry the header.
+const idempotencyReceipts = new IdempotencyReceiptStore()
+app.use("/api/*", idempotencyKey({ store: idempotencyReceipts }))
 
 /**
  * Test whether `addr` matches any entry in `TRUSTED_PROXY_LIST`. Supports
@@ -2439,6 +2457,7 @@ import {
   publishEvent,
 } from "./routes/subscriptions.js"
 import { encodeEventFrame } from "./lib/event-feed.js"
+import { sseAuthRecheck } from "./lib/sse-auth-recheck.js"
 
 api.openapi(withMiddleware(createSubscriptionRoute, requireAuthMiddleware()), async (c) => {
   const { type, target, events } = c.req.valid("json")
@@ -2473,6 +2492,16 @@ api.openapi(withMiddleware(streamEventsRoute, requireAuthMiddleware()), async (c
   const eventsParam = c.req.query("events")
   const events = eventsParam ? eventsParam.split(",").map((s) => s.trim()) : []
   const tenantId = c.get("tenantId" as never) as string | undefined
+  // The stream's ORIGINAL authorization (sessions-events.md key recheck):
+  // the exact token that passed requireAuthMiddleware above is re-checked
+  // while the stream stays open — revocation closes the stream.
+  const authHeader = c.req.header("Authorization") ?? ""
+  const streamToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : ""
+  const recheckAuth = sseAuthRecheck({
+    jwtSecret: config.JWT_SECRET,
+    adminToken: config.ADMIN_TOKEN,
+    token: streamToken,
+  })
 
   const encoder = new TextEncoder()
   const id = `sse_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -2523,6 +2552,26 @@ api.openapi(withMiddleware(streamEventsRoute, requireAuthMiddleware()), async (c
         onOverflow: () => {
           // Lag budget exhausted: kill exactly this connection.
           log.warn({ connectionId: id }, "sse subscriber overflow - disconnecting")
+          cleanup()
+        },
+        // (sessions-events.md key recheck borrowing) Recheck the ORIGINAL
+        // auth at most once per second while idle and before every output
+        // batch; a revoked/invalid token closes exactly this stream.
+        recheckAuth,
+        onAuthRevoked: () => {
+          log.warn(
+            { connectionId: id, tenantId: tenantId ?? "dev" },
+            "sse subscriber auth revoked - closing stream",
+          )
+          cleanup()
+        },
+        // (sessions-events.md) "Execution never waits for a reader": a
+        // transport blocked past the write timeout is disconnected.
+        onWriteBlock: (timeoutMs) => {
+          log.warn(
+            { connectionId: id, blockedMs: timeoutMs },
+            "sse subscriber write blocked past timeout - disconnecting",
+          )
           cleanup()
         },
       })

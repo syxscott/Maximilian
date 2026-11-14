@@ -51,6 +51,11 @@ import { z } from "zod"
 import { PendingSlotManager, type PendingSlotPersistence, type PendingSlotRecord } from "@max/core"
 import { WORKSPACE_QUEUE } from "@max/queue"
 import { ErrorSchema } from "../schemas.js"
+import {
+  collectProviderSecrets,
+  redactOutboundMessage,
+  type OutboundRedactor,
+} from "../lib/outbound-redaction.js"
 
 // ── Schedule parsing (cron 5-field or plain intervalMs) ────────────────────
 
@@ -418,6 +423,21 @@ export interface JobsRegistryOptions {
    * queued:false — the same honest boundary as TASK_QUEUE_ENABLED=false.
    */
   queue?: JobsQueuePort
+  /**
+   * Outbound redactor (minimax-code 9a93560 borrowing; the implementation
+   * is the pinned @max/providers `redactOutboundError` export). The
+   * dispatch-failed event carries the BullMQ add() error text into the
+   * event stream — a Redis AUTH failure echoes credentials — so it is
+   * redacted before being recorded. Injectable for tests; when omitted
+   * the providers export is used.
+   */
+  redactOutbound?: OutboundRedactor
+  /**
+   * Secret set for the redactor. Defaults to every provider key
+   * configured in this process (no request context exists on the
+   * scheduler path). Injectable for tests.
+   */
+  redactionSecrets?: () => string[]
 }
 
 export interface JobsRegistry {
@@ -475,6 +495,8 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
   const persistence = options.persistence ?? createInMemorySlotPersistence()
   const slots = new PendingSlotManager(persistence, { now })
   const queue = options.queue
+  const redactOutbound = options.redactOutbound
+  const redactionSecrets = options.redactionSecrets ?? (() => collectProviderSecrets())
   const jobs = new Map<string, JobRecord>()
   let scheduler: ReturnType<typeof setInterval> | undefined
   let ticking = false
@@ -557,10 +579,15 @@ export function createJobsRegistry(options: JobsRegistryOptions = {}): JobsRegis
         note: `queued:${workspaceJobId ?? "no-id"} on ${WORKSPACE_QUEUE} (${data.workspaceId})`,
       })
     } catch (err) {
+      // (minimax-code borrowing) The BullMQ error text goes into the
+      // event stream verbatim — a Redis AUTH failure would echo
+      // credentials — so it passes through the outbound redactor with
+      // this process's provider keys before being recorded.
+      const rawMessage = err instanceof Error ? err.message : String(err)
       pushEvent(job, {
         at,
         kind: "dispatch-failed",
-        error: err instanceof Error ? err.message : String(err),
+        error: redactOutboundMessage(rawMessage, redactionSecrets(), redactOutbound),
         note: "BullMQ add failed — fire recorded but NOT enqueued (slot recovered by design)",
       })
     }

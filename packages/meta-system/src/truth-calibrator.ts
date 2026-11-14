@@ -39,6 +39,22 @@ export interface CalibratorRolePoint {
   costUsd?: number
 }
 
+/**
+ * Benchmark-derived drift signal for a role window (borrowing
+ * MiniMax-Provider-Verifier calculate_toolcall_similarity.py /
+ * compare_with_baseline.py — benchmark suite summaries fed back as
+ * calibration anchors). Both rates are 0..1; undefined means "not
+ * measured in that window" and is skipped, never guessed.
+ */
+export interface BenchmarkDriftSignal {
+  /** ISO timestamp the signal was measured at. */
+  at: string
+  /** ToolCalls-Trigger F1 of the window (candidate vs baseline corpus). */
+  triggerF1?: number
+  /** Error-only-reasoning rate of the window (higher = worse). */
+  errorOnlyReasoningRate?: number
+}
+
 export interface TruthCalibratorDeps {
   /** Metric history for a role (evolution MetricsStore / PgMetricsStore). */
   listRolePoints(role: string): Promise<CalibratorRolePoint[]>
@@ -48,6 +64,12 @@ export interface TruthCalibratorDeps {
   getMeasurements: () => Promise<TruthMeasurement[]> | TruthMeasurement[]
   /** Persist an open→resolved replacement (see TruthAudit.resolveMeasurement). */
   resolveMeasurement(resolved: TruthMeasurement): void
+  /**
+   * Benchmark-derived drift signals per role (benchmark-core suite
+   * summaries). Optional — when unset, benchmark drift resolution is
+   * simply unavailable.
+   */
+  listBenchmarkSignals?: (role: string) => Promise<BenchmarkDriftSignal[]> | BenchmarkDriftSignal[]
   /** Baseline anchor window. Default: 7 days. */
   baselineWindowMs?: number
   /** Minimum post-rollout executions before resolving. Default: 5. */
@@ -129,6 +151,84 @@ export class TruthCalibrator {
       ),
       costDelta: delta(mean(baseline.map((p) => p.costUsd)), mean(post.map((p) => p.costUsd))),
       riskDelta: 0, // no runtime anchor for risk yet — never fabricated
+    }
+
+    const resolvedMeasurement = TruthMeasurementSchema.parse({
+      ...measurement,
+      actual,
+      sampleSize: post.length,
+      recordedAt: measurement.recordedAt, // identity anchor for persistence
+    })
+    this.deps.resolveMeasurement(resolvedMeasurement)
+    return true
+  }
+
+  /**
+   * Resolve open predictions from BENCHMARK drift signals (additive
+   * wiring; the telemetry path in {@link resolveOne} is untouched).
+   *
+   * Mapping (honesty boundaries identical to resolveOne):
+   *   - triggerF1 post−baseline mean  → actual.qualityDelta
+   *     (ToolCalls-Trigger F1 IS the quality dimension here),
+   *   - errorOnlyReasoningRate post−baseline mean → actual.riskDelta
+   *     (a rising only-reasoning failure rate is risk, not quality).
+   * A dimension without signals in BOTH windows resolves to 0, and a
+   * proposal without enough post-window signals stays pending — never
+   * guessed.
+   */
+  async resolveBenchmarkDrift(): Promise<CalibratorSummary> {
+    if (!this.deps.listBenchmarkSignals) {
+      return { resolved: 0, pending: 0, inspected: 0 }
+    }
+    const measurements = await this.deps.getMeasurements()
+    const open = measurements.filter((m) => m.sampleSize === 0)
+
+    let resolved = 0
+    let pending = 0
+    for (const measurement of open) {
+      const didResolve = await this.resolveBenchmarkOne(measurement)
+      if (didResolve) resolved += 1
+      else pending += 1
+    }
+    return { resolved, pending, inspected: open.length }
+  }
+
+  private async resolveBenchmarkOne(measurement: TruthMeasurement): Promise<boolean> {
+    if (!this.deps.listBenchmarkSignals) return false
+    const roles = await this.deps.resolveProposalRoles(measurement.proposalId)
+    if (roles.length === 0) return false
+
+    const signals = (await Promise.all(roles.map((r) => this.deps.listBenchmarkSignals!(r)))).flat()
+    const anchor = Date.parse(measurement.recordedAt)
+    if (!Number.isFinite(anchor)) return false
+
+    const inWindow = (s: BenchmarkDriftSignal, from: number, to: number): boolean => {
+      const t = Date.parse(s.at)
+      return Number.isFinite(t) && t >= from && t < to
+    }
+    const baseline = signals.filter((s) => inWindow(s, anchor - this.baselineWindowMs, anchor))
+    const post = signals.filter((s) => inWindow(s, anchor, this.now().getTime()))
+    if (baseline.length === 0 || post.length < this.minPostSamples) return false
+
+    const meanOf = (values: Array<number | undefined>): number | undefined => {
+      const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+      return nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : undefined
+    }
+    const delta = (before: number | undefined, after: number | undefined): number =>
+      before !== undefined && after !== undefined ? after - before : 0
+
+    const actual = {
+      qualityDelta: delta(
+        meanOf(baseline.map((s) => s.triggerF1)),
+        meanOf(post.map((s) => s.triggerF1)),
+      ),
+      riskDelta: delta(
+        meanOf(baseline.map((s) => s.errorOnlyReasoningRate)),
+        meanOf(post.map((s) => s.errorOnlyReasoningRate)),
+      ),
+      // Dimensions without a benchmark anchor resolve to 0 — never fabricated.
+      costDelta: 0,
+      latencyDeltaMs: 0,
     }
 
     const resolvedMeasurement = TruthMeasurementSchema.parse({

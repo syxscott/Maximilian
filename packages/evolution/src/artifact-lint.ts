@@ -174,3 +174,155 @@ function trimSample(s: string, max = 40): string {
   const oneLine = s.replace(/\s+/g, " ").trim()
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine
 }
+
+// ── Workflow candidate lint (MiniMax-Code-MiniApps borrowing) ──────────────
+
+/**
+ * Declared-access-must-match-the-code (borrowing MiniMax-Code-MiniApps
+ * `docs/package-contract.md:250-276` `ACCESS_UNDECLARED`, reworked for
+ * forged workflow candidates): a candidate workflow step DECLARES the
+ * tools it will use; the static scan requires the step bodies to actually
+ * reference exactly what was declared, and refuses tools in the chain
+ * whose `hasSideEffects` is not declared — the STATIC half of the
+ * step-gate pair (packages/workflow-engine step-gate.ts re-checks the
+ * same rule at RUN time; this lint refuses before anything ships).
+ *
+ *   - `undeclared-tool`            (error)   referenced but not declared
+ *   - `unused-declaration`         (warning) declared but never referenced
+ *   - `side-effects-undeclared`    (error)   no hasSideEffects declared
+ *   - `side-effects-not-whitelisted` (error) side-effecting and not in the
+ *                                            host whitelist (step_not_chainable)
+ */
+
+export type WorkflowLintCode =
+  | "undeclared-tool"
+  | "unused-declaration"
+  | "side-effects-undeclared"
+  | "side-effects-not-whitelisted"
+
+export interface WorkflowLintViolation {
+  code: WorkflowLintCode
+  /** Errors block shipment; warnings do not. */
+  severity: "error" | "warning"
+  detail: string
+  siteId?: string
+}
+
+export interface WorkflowStepCandidate {
+  /** Stable step identity (WorkflowStep.siteId). */
+  siteId?: string
+  /** Tool this step chains (WorkflowStep.tool). */
+  tool?: string
+  /** Free-text step body — scanned for tool references. */
+  body?: string
+}
+
+export interface WorkflowCandidateInput {
+  steps: readonly WorkflowStepCandidate[]
+  /** Tools the candidate DECLARES it will use. */
+  declaredTools?: readonly string[]
+  /**
+   * Tool registry view: name → declared `hasSideEffects`. A name absent
+   * from the map (or with no boolean) is UNDECLARED — the step-gate rule:
+   * "flag unset → never".
+   */
+  toolHasSideEffects?: Readonly<Record<string, boolean>>
+  /** Host whitelist of side-effecting tools allowed in a chain. */
+  sideEffectingTools?: readonly string[]
+  /**
+   * The full tool-name universe the body scan can detect references
+   * against (the host's registry names). Without it, only `step.tool`
+   * references are checkable.
+   */
+  knownTools?: readonly string[]
+}
+
+/** Does `text` reference `name` as a whole word? */
+function referencesTool(text: string, name: string): boolean {
+  if (!name) return false
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`).test(text)
+}
+
+/**
+ * Static scan of a candidate workflow: declared vs referenced tool sets
+ * must agree, and every tool in the chain must have declared (and, when
+ * side-effecting, whitelisted) side effects. Runs at forge/ship time —
+ * the runtime twin is workflow-engine's step gate.
+ */
+export function lintWorkflowCandidate(input: WorkflowCandidateInput): WorkflowLintViolation[] {
+  const violations: WorkflowLintViolation[] = []
+  const declared = new Set(input.declaredTools ?? [])
+  const known = new Set(input.knownTools ?? declared)
+  const sideEffecting = new Set(input.sideEffectingTools ?? [])
+
+  // 1. Collect what the steps actually reference: the chained tool names
+  //    plus any known tool name mentioned inside a step body.
+  const referenced = new Map<string, string[]>() // tool → siteIds
+  const note = (tool: string, siteId?: string): void => {
+    const arr = referenced.get(tool) ?? []
+    if (siteId) arr.push(siteId)
+    referenced.set(tool, arr)
+  }
+  for (const step of input.steps) {
+    if (step.tool) note(step.tool, step.siteId)
+    if (step.body) {
+      for (const tool of known) {
+        if (tool !== step.tool && referencesTool(step.body, tool)) note(tool, step.siteId)
+      }
+    }
+  }
+
+  // 2. Referenced but not declared → error (ACCESS_UNDECLARED analog).
+  for (const [tool, sites] of referenced) {
+    if (!declared.has(tool)) {
+      violations.push({
+        code: "undeclared-tool",
+        severity: "error",
+        detail: `step chain references tool "${tool}" but the candidate does not declare it (steps: ${sites.slice(0, 3).join(", ") || "?"})`,
+        ...(sites[0] !== undefined ? { siteId: sites[0] } : {}),
+      })
+    }
+  }
+
+  // 3. Declared but never referenced → warning (drift, not danger).
+  for (const tool of declared) {
+    if (!referenced.has(tool)) {
+      violations.push({
+        code: "unused-declaration",
+        severity: "warning",
+        detail: `candidate declares tool "${tool}" but no step references it`,
+      })
+    }
+  }
+
+  // 4. Side-effect declaration — the static twin of the step-gate rules.
+  for (const [tool, sites] of referenced) {
+    const flag = input.toolHasSideEffects?.[tool]
+    if (typeof flag !== "boolean") {
+      violations.push({
+        code: "side-effects-undeclared",
+        severity: "error",
+        detail: `step tool "${tool}" does not declare hasSideEffects; set it to true or false before a forged workflow can chain it`,
+        ...(sites[0] !== undefined ? { siteId: sites[0] } : {}),
+      })
+    } else if (flag && !sideEffecting.has(tool)) {
+      violations.push({
+        code: "side-effects-not-whitelisted",
+        severity: "error",
+        detail: `step tool "${tool}" has side effects and is not listed in sideEffectingTools`,
+        ...(sites[0] !== undefined ? { siteId: sites[0] } : {}),
+      })
+    }
+  }
+
+  return violations
+}
+
+/**
+ * The ship-gate verdict over a workflow lint: ERROR violations block the
+ * candidate from shipping; warnings ride along for the review.
+ */
+export function workflowLintBlocksShipment(violations: readonly WorkflowLintViolation[]): boolean {
+  return violations.some((v) => v.severity === "error")
+}

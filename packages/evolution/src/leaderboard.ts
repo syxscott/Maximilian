@@ -262,3 +262,55 @@ export function aggregate(
   }
   return out
 }
+
+// ── Benchmark summary consumption (read-only) ──────────────────────────────
+
+/**
+ * Benchmark-suite summary fields this leaderboard can consume (structural
+ * — @max/benchmark-core's AggregateMetrics fits as-is).
+ */
+export interface BenchmarkSummaryLike {
+  passRate?: number
+  avgQuality?: number
+  avgLatencyMs?: number
+  totalTokens?: number
+  avgAcceptance?: number
+  toolCallsMatchRate?: number
+  toolCallsSchemaAccuracy?: number
+  errorOnlyReasoningRate?: number
+  scenarioCheckPassRate?: number
+}
+
+const BENCHMARK_SUMMARY_FIELDS = [
+  "passRate",
+  "avgQuality",
+  "avgLatencyMs",
+  "totalTokens",
+  "avgAcceptance",
+  "toolCallsMatchRate",
+  "toolCallsSchemaAccuracy",
+  "errorOnlyReasoningRate",
+  "scenarioCheckPassRate",
+] as const
+
+/**
+ * Roll several benchmark suite summaries into ONE per-field-mean summary
+ * (read-only consumption: existing leaderboard fields and aggregation are
+ * untouched — this helper only MERGES summaries that callers hand in,
+ * e.g. per-loop benchmark reports feeding a leaderboard-adjacent row).
+ * A field no summary defines stays absent — undefined, never a fabricated 0.
+ */
+export function aggregateBenchmarkSummaries(
+  summaries: readonly BenchmarkSummaryLike[],
+): BenchmarkSummaryLike {
+  const out: BenchmarkSummaryLike = {}
+  for (const field of BENCHMARK_SUMMARY_FIELDS) {
+    const defined = summaries
+      .map((s) => s[field])
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+    if (defined.length === 0) continue
+    const mean = defined.reduce((a, b) => a + b, 0) / defined.length
+    ;(out as Record<string, number>)[field] = Math.round(mean * 10000) / 10000
+  }
+  return out
+}

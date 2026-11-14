@@ -18,6 +18,7 @@ import { OpencodeExecutor } from "./opencode-executor.js"
 
 const log = getLogger("core:runtime")
 import { runToolLoop, type ToolEnabledProvider } from "./tool-integration.js"
+import { compactProactiveHistory } from "./compaction.js"
 import { isRefusedMetadata, annotateRefusalMarker } from "./refusal.js"
 import { defaultEnvSnapshotProvider } from "./context-anchor.js"
 import { abortSignalAfterChunks } from "./timeout-chunks.js"
@@ -39,7 +40,12 @@ import {
 } from "./termination.js"
 import { appendLedger, extendLedger, freshLedger, type Ledger, type LedgerEntry } from "./ledger.js"
 import { matchSkillsForModel, renderSkillSummary } from "./skills.js"
-import { ModelRouter, deriveTaskCharacteristics, type TaskCharacteristics } from "./model-router.js"
+import {
+  ModelRouter,
+  deriveTaskCharacteristics,
+  type ModelSelection,
+  type TaskCharacteristics,
+} from "./model-router.js"
 import {
   PermissionAuditLog,
   type PermissionAuditEntry,
@@ -109,6 +115,24 @@ export interface AgentMemoryStorePort {
  */
 export interface ModelSelectorPort {
   select(role: AgentRole): { provider: string; model: string; score: number; reason: string } | null
+}
+
+/**
+ * Run-scoped provider/model snapshot (borrowing; OpenAgentCore
+ * model-execution.md "Saved defaults" — the resolved bundle binds at
+ * session creation and later edits never rewrite a live session). Built
+ * once per execute() when `providerBundleFreeze` is on; every task in the
+ * run reads its role/task entry instead of re-consulting the selector or
+ * router, so registry edits and hot config only affect new runs.
+ */
+interface ProviderBundleSnapshot {
+  /** modelSelector verdict per agent role (null = selector abstained). */
+  selectorByRole: Map<
+    AgentRole,
+    { provider: string; model: string; score: number; reason: string } | null
+  >
+  /** modelRouter verdict per task id. */
+  routerByTask: Map<string, ModelSelection>
 }
 
 /**
@@ -492,11 +516,59 @@ export interface RuntimeOptions {
   toolOutputArtifactDir?: string
   /**
    * How long a parked "ask" permission prompt waits for a human answer
-   * before the PermissionService resolves it fail-closed as `unavailable`
+   * before the runtime resolves it fail-closed as `unavailable`
    * (deepseek-harness borrowing: an unanswered ask NEVER approves; the tool
    * call surfaces as an error so the LLM can adapt). Default: 600_000 (10 min).
    */
   permissionAskTimeoutMs?: number
+  /**
+   * (borrowing; OpenAgentCore services/core/internal/execution/worker.go:277
+   * + delivery.go:349) Called when a workspace transitions between "parked"
+   * (a permission/approval promise is waiting on a human decision) and
+   * "running". OAC semantics: a waiting turn stays reserved but holds no
+   * execution slot. Hosts use the `parked: true` signal to release their
+   * slot (the worker detaches the run and returns from the BullMQ
+   * processor) while the run itself keeps living in this runtime's waiting
+   * registry — the in-process parked promise IS the wake channel, so the
+   * resumed turn continues from the park point without re-running.
+   *
+   * Transitions are edge-triggered: the hook fires only on the 0↔1
+   * crossing of concurrent parked prompts, and a prompt that settles
+   * within the same microtask batch (always-rule auto-approval,
+   * auto-reviewer) never reports parked at all.
+   */
+  onParkStateChange?: (info: { workspaceId: string; parked: boolean }) => void
+  /**
+   * (borrowing; OpenAgentCore contracts/agents-api/model-execution.md
+   * "Saved defaults") Freeze the run's provider/model resolution at run
+   * start: the modelSelector/modelRouter verdicts for the planned roles
+   * and tasks are snapshotted when execute() begins and reused for every
+   * task in that run — mid-run hot config updates and provider-registry
+   * edits only affect NEW runs, never the run in flight (a session binds
+   * its resolved bundle at creation; a model-only edit does not rewrite
+   * live sessions). Tasks added by a mid-run replan resolve on their
+   * first execution and then freeze for the rest of the run. Default:
+   * true. Set false to restore per-task re-selection.
+   */
+  providerBundleFreeze?: boolean
+  /**
+   * (borrowing; Mini-Agent agent.py:201-319) Proactive compaction for the
+   * tool loop: before EVERY LLM send the loop checks the injected local
+   * estimate over the live history AND the last API-reported request
+   * total — either exceeding `tokenLimit` compacts once, then one-shot
+   * debounces the next check. With a `summarizer`, compaction keeps the
+   * system head and every real user message and summarizes each
+   * user→user execution segment (a failing summarizer degrades that
+   * segment to its raw text); without one, the existing truncation
+   * compaction applies. Omitted (default) = passive-only behavior
+   * (compaction happens exclusively after a provider overflow rejection,
+   * via hosts wiring contextOverflowRecovery).
+   */
+  proactiveCompaction?: {
+    tokenLimit: number
+    estimateTokens: (messages: readonly import("@max/providers").ChatMessage[]) => number
+    summarizer?: import("./compaction.js").CompactionSummarizer
+  }
   /**
    * Stop suppression window (stop-suppression.ts): how long after an
    * explicit stop automatic re-triggers (auto-continue, queue re-dispatch,
@@ -744,6 +816,29 @@ export class AgentRuntime {
   private readonly bashLedger = new BashSettlementLedger()
   /** Goal final-reply machines, one active goal per workspace. */
   private readonly goalMachines = new Map<string, GoalFinalReplyMachine>()
+  /**
+   * Park tracking (borrowing; see RuntimeOptions.onParkStateChange): count
+   * of concurrently parked permission/approval prompts per workspace.
+   * A workspace is "parked" while its count is > 0.
+   */
+  private parkCounts = new Map<string, number>()
+  /** Workspaces the parked transition has been reported for (edge trigger). */
+  private parkedReported = new Set<string>()
+  private readonly onParkStateChange?: RuntimeOptions["onParkStateChange"]
+  /** (borrowing) Freeze each run's provider/model bundle at run start. */
+  private readonly providerBundleFreeze: boolean
+  /** (borrowing) Proactive dual-signal compaction config for the tool loop. */
+  private readonly proactiveCompaction?: RuntimeOptions["proactiveCompaction"]
+  /**
+   * Live per-workspace tool-scope overrides (borrowing; MiniApps
+   * package-contract.md:156 "live switch"): consulted by the tool loop's
+   * provider on EVERY definition listing and tool execution (see
+   * ToolEnabledProvider.setLiveToolScopes), so a mid-run scope change
+   * applies to the next tool call without re-running the task. Allowed
+   * replaces the manifest's allowedTools; denied is unioned with the
+   * manifest's deniedTools (fail-closed). Entries die with the run.
+   */
+  private workspaceToolScopes = new Map<string, { allowed?: string[]; denied?: string[] }>()
 
   constructor(
     private factory: AgentFactory,
@@ -757,6 +852,9 @@ export class AgentRuntime {
     this.termination = options?.termination ?? NeverTermination
     this.enableToolLoop = options?.enableToolLoop ?? false
     this.permissionAskTimeoutMs = options?.permissionAskTimeoutMs ?? 600_000
+    this.onParkStateChange = options?.onParkStateChange
+    this.providerBundleFreeze = options?.providerBundleFreeze ?? true
+    this.proactiveCompaction = options?.proactiveCompaction ?? defaultProactiveCompaction()
     this.autoReviewer = options?.autoReviewer
     this.runawayGuardPatience = options?.runawayGuardPatience ?? 4
     this.toolOutputMaxChars = options?.toolOutputMaxChars ?? 20_000
@@ -946,6 +1044,159 @@ export class AgentRuntime {
     return this.bashLedger.records(workspaceId)
   }
 
+  /**
+   * Track a parked human-decision promise (borrowing; see
+   * RuntimeOptions.onParkStateChange). Registers the wait against
+   * `workspaceId`, fires the hook on the running→parked edge, and clears
+   * it (with the parked→running edge) when the promise settles.
+   *
+   * The parked edge is checked from a zero-delay macrotask queued AFTER
+   * the wait is registered: a prompt that auto-resolves without ever
+   * leaving the microtask queue (PermissionService always-rule) settles
+   * the Promise.race and its handler chain before the check runs, so
+   * transient "parked" reports are never emitted for runs that did not
+   * actually wait on a human. (A microtask check would fire early: the
+   * settle callbacks themselves queue microtasks ahead of it.)
+   */
+  private trackPark<T>(workspaceId: string, parkedPromise: Promise<T>): Promise<T> {
+    const hook = this.onParkStateChange
+    // The count is tracked unconditionally — isWorkspaceParked (duplicate
+    // dispatch guards, diagnostics) must be correct even without a hook.
+    this.parkCounts.set(workspaceId, (this.parkCounts.get(workspaceId) ?? 0) + 1)
+    setTimeout(() => {
+      if ((this.parkCounts.get(workspaceId) ?? 0) > 0 && !this.parkedReported.has(workspaceId)) {
+        this.parkedReported.add(workspaceId)
+        if (hook) {
+          try {
+            hook({ workspaceId, parked: true })
+          } catch (err) {
+            log.error({ err, workspaceId }, "onParkStateChange(parked) hook threw")
+          }
+        }
+      }
+    }, 0)
+    // then(onSettled, onSettled) instead of finally: a rejecting park
+    // (abort path) must not create a second rejected derived promise that
+    // nothing consumes (unhandled rejection).
+    const onSettled = (): void => {
+      const next = (this.parkCounts.get(workspaceId) ?? 1) - 1
+      if (next > 0) {
+        this.parkCounts.set(workspaceId, next)
+        return
+      }
+      this.parkCounts.delete(workspaceId)
+      // Only the workspace's LAST parked prompt reports the unpark edge.
+      if (this.parkedReported.delete(workspaceId) && hook) {
+        try {
+          hook({ workspaceId, parked: false })
+        } catch (err) {
+          log.error({ err, workspaceId }, "onParkStateChange(unparked) hook threw")
+        }
+      }
+    }
+    void parkedPromise.then(onSettled, onSettled)
+    return parkedPromise
+  }
+
+  /**
+   * Whether the workspace currently has at least one parked permission or
+   * approval prompt (borrowing; OAC "waiting turn" diagnostics). Hosts use
+   * this to skip duplicate dispatch for workspaces whose run is alive in
+   * the waiting registry.
+   */
+  isWorkspaceParked(workspaceId: string): boolean {
+    return (this.parkCounts.get(workspaceId) ?? 0) > 0
+  }
+
+  /**
+   * Live tool allowlist override (borrowing; MiniApps package-contract.md:156
+   * "live switch"). Takes effect on the workspace's NEXT tool definition
+   * listing / tool execution — no task re-run, no new API surface needed:
+   * hosts (TUI, tests) call this directly, and the HTTP-side file config
+   * (PUT /api/permissions) keeps flowing through withPermission's per-call
+   * re-read. Pass undefined to lift the override and fall back to the
+   * agent manifest's allowedTools.
+   */
+  setWorkspaceToolAllowlist(workspaceId: string, tools: string[] | undefined): void {
+    const entry = this.workspaceToolScopes.get(workspaceId) ?? {}
+    if (tools === undefined) delete entry.allowed
+    else entry.allowed = tools
+    if (entry.allowed === undefined && entry.denied === undefined) {
+      this.workspaceToolScopes.delete(workspaceId)
+    } else {
+      this.workspaceToolScopes.set(workspaceId, entry)
+    }
+  }
+
+  /**
+   * Live tool denylist override (borrowing; see setWorkspaceToolAllowlist).
+   * Unioned with the agent manifest's deniedTools — deny wins and is
+   * fail-closed: the next call of a denied tool throws
+   * PermissionDeniedError, which the tool loop surfaces to the agent as an
+   * explainable tool error (no crash, the LLM adapts).
+   */
+  setWorkspaceToolDenylist(workspaceId: string, tools: string[] | undefined): void {
+    const entry = this.workspaceToolScopes.get(workspaceId) ?? {}
+    if (tools === undefined) delete entry.denied
+    else entry.denied = tools
+    if (entry.allowed === undefined && entry.denied === undefined) {
+      this.workspaceToolScopes.delete(workspaceId)
+    } else {
+      this.workspaceToolScopes.set(workspaceId, entry)
+    }
+  }
+
+  /**
+   * Build the run-scoped provider/model snapshot (borrowing; see
+   * RuntimeOptions.providerBundleFreeze). Resolves the selector verdict
+   * once per planned role and the router verdict once per planned task,
+   * at run start. Returns undefined when the freeze is off or neither
+   * port is configured — callers then keep the per-task re-selection.
+   */
+  private buildProviderBundleSnapshot(
+    plan: import("./types.js").Plan,
+  ): ProviderBundleSnapshot | undefined {
+    if (!this.providerBundleFreeze) return undefined
+    if (!this.modelSelector && !this.modelRouter) return undefined
+    const snapshot: ProviderBundleSnapshot = {
+      selectorByRole: new Map(),
+      routerByTask: new Map(),
+    }
+    for (const task of plan.tasks) {
+      if (this.modelSelector && !snapshot.selectorByRole.has(task.agentRole)) {
+        snapshot.selectorByRole.set(task.agentRole, this.modelSelector.select(task.agentRole))
+      }
+      if (this.modelRouter && !snapshot.routerByTask.has(task.id)) {
+        snapshot.routerByTask.set(
+          task.id,
+          this.modelRouter.selectModel(deriveTaskCharacteristics(task)),
+        )
+      }
+    }
+    return snapshot
+  }
+
+  /** Resolve and freeze a selector verdict for a role missing from the snapshot (mid-run replan). */
+  private resolveSelectorInto(
+    bundle: ProviderBundleSnapshot,
+    role: AgentRole,
+  ): { provider: string; model: string; score: number; reason: string } | null {
+    const selection = this.modelSelector?.select(role) ?? null
+    bundle.selectorByRole.set(role, selection)
+    return selection
+  }
+
+  /** Resolve and freeze a router verdict for a task missing from the snapshot (mid-run replan). */
+  private resolveRouterInto(
+    bundle: ProviderBundleSnapshot,
+    taskId: string,
+    taskChars: TaskCharacteristics,
+  ): ModelSelection {
+    const selection = this.modelRouter!.selectModel(taskChars)
+    bundle.routerByTask.set(taskId, selection)
+    return selection
+  }
+
   awaitPermission(
     requestId: string,
     meta: { workspaceId: string; taskId: string; tool: string; target: string },
@@ -1022,49 +1273,55 @@ export class AgentRuntime {
           return "deny"
         }
       })()
-      return Promise.race([
-        reviewPromise,
-        serviceResolution.then((r) =>
-          r.outcome === "allowed" ? ("allow" as const) : ("deny" as const),
-        ),
-        userDecision.then((d) => (d === "deny" ? ("deny" as const) : ("allow" as const))),
-      ]) as Promise<"allow" | "deny">
+      return this.trackPark(
+        meta.workspaceId,
+        Promise.race([
+          reviewPromise,
+          serviceResolution.then((r) =>
+            r.outcome === "allowed" ? ("allow" as const) : ("deny" as const),
+          ),
+          userDecision.then((d) => (d === "deny" ? ("deny" as const) : ("allow" as const))),
+        ]) as Promise<"allow" | "deny">,
+      )
     }
 
-    return Promise.race([
-      serviceResolution.then((r): "allow" | "deny" => {
-        // Service settled on its own: always-rule auto-approval or
-        // fail-closed timeout. Only act when the user channel is still
-        // parked — if the user answered first, resolvePermission already
-        // audited + emitted, and service.answer() settling afterwards must
-        // not double-record.
-        if (!this.permissionResolvers.has(requestId)) {
-          return r.outcome === "allowed" ? "allow" : "deny"
-        }
-        if (r.outcome === "allowed") {
-          this.settleUserChannel(requestId, meta, "allow", "always-rule")
-          return "allow"
-        }
-        if (r.outcome === "rejected") {
-          this.settleUserChannel(requestId, meta, "deny", "user")
+    return this.trackPark(
+      meta.workspaceId,
+      Promise.race([
+        serviceResolution.then((r): "allow" | "deny" => {
+          // Service settled on its own: always-rule auto-approval or
+          // fail-closed timeout. Only act when the user channel is still
+          // parked — if the user answered first, resolvePermission already
+          // audited + emitted, and service.answer() settling afterwards must
+          // not double-record.
+          if (!this.permissionResolvers.has(requestId)) {
+            return r.outcome === "allowed" ? "allow" : "deny"
+          }
+          if (r.outcome === "allowed") {
+            this.settleUserChannel(requestId, meta, "allow", "always-rule")
+            return "allow"
+          }
+          if (r.outcome === "rejected") {
+            this.settleUserChannel(requestId, meta, "deny", "user")
+            return "deny"
+          }
+          const via = r.outcome === "cancelled" ? "user" : "timeout"
+          this.settleUserChannel(requestId, meta, "deny", via)
           return "deny"
-        }
-        const via = r.outcome === "cancelled" ? "user" : "timeout"
-        this.settleUserChannel(requestId, meta, "deny", via)
-        return "deny"
-      }),
-      userDecision.then((d): "allow" | "deny" => {
-        // Route the user's answer through the service so "always" stores
-        // its pattern rule and matching pending asks batch-resolve.
-        void service
-          .answer(
-            requestId,
-            d === "allow" ? "allowed-once" : d === "allow-always" ? "always" : "rejected",
-          )
-          .catch(() => {})
-        return d === "deny" ? "deny" : "allow"
-      }),
-    ])
+        }),
+        userDecision.then((d): "allow" | "deny" => {
+          // Route the user's answer through the service so "always" stores
+          // its pattern rule and matching pending asks batch-resolve.
+          void service
+            .answer(
+              requestId,
+              d === "allow" ? "allowed-once" : d === "allow-always" ? "always" : "rejected",
+            )
+            .catch(() => {})
+          return d === "deny" ? "deny" : "allow"
+        }),
+      ]),
+    )
   }
 
   /**
@@ -1180,9 +1437,12 @@ export class AgentRuntime {
       throw new Error(`approval request ${requestId} already pending`)
     }
     const promptedAt = new Date().toISOString()
-    return new Promise<ApprovalResponse>((resolve, reject) => {
-      this.approvalResolvers.set(requestId, { resolve, reject, meta: { ...meta, promptedAt } })
-    })
+    return this.trackPark(
+      meta.workspaceId,
+      new Promise<ApprovalResponse>((resolve, reject) => {
+        this.approvalResolvers.set(requestId, { resolve, reject, meta: { ...meta, promptedAt } })
+      }),
+    )
   }
 
   resolveApproval(requestId: string, response: ApprovalResponse): ApprovalResolveResult {
@@ -1596,6 +1856,13 @@ export class AgentRuntime {
       this.emit({ type: "workspace-status", workspaceId: updated.id, status: "executing" })
       this.emit({ type: "plan", workspaceId: updated.id, plan: updated.plan })
 
+      // Provider bundle freeze (borrowing; OAC model-execution.md "Saved
+      // defaults"): resolve the run's provider/model bundle ONCE at run
+      // start — mid-run hot config updates and registry edits affect only
+      // new runs. The snapshot dies with this execute() call, so the next
+      // run re-resolves against the then-current config.
+      const providerBundle = this.buildProviderBundleSnapshot(updated.plan)
+
       // Seed the ledger with a high-level plan entry.
       const planSummary = `${updated.plan.tasks.length} tasks across ${new Set(updated.plan.tasks.map((t) => t.agentRole)).size} roles`
       const planEntry: LedgerEntry = {
@@ -1778,7 +2045,7 @@ export class AgentRuntime {
           runnable.map(async (task) => {
             await sem.acquire()
             try {
-              await this.runTask(updated, task, counters, stallDetector)
+              await this.runTask(updated, task, counters, stallDetector, providerBundle)
               completed.add(task.id)
             } catch (err) {
               const error = err instanceof Error ? err.message : String(err)
@@ -2117,6 +2384,9 @@ export class AgentRuntime {
       this.steeringQueues.delete(workspace.id)
       this.followUpQueues.delete(workspace.id)
       this.reproducibilityCaptures.delete(workspace.id)
+      // Live tool scopes die with the run (they are a run-scoped lever, not
+      // durable state — the next run starts from the manifest base again).
+      this.workspaceToolScopes.delete(workspace.id)
     }
   }
 
@@ -2136,6 +2406,8 @@ export class AgentRuntime {
       roundRef: { value: number }
     },
     stallDetector: StallDetector,
+    /** Run-scoped frozen provider/model bundle (borrowing; may be undefined when the freeze is off). */
+    bundle?: ProviderBundleSnapshot,
   ): Promise<void> {
     const _completed = counters.completed
     const messagesRef = counters.messagesEmittedRef
@@ -2183,9 +2455,16 @@ export class AgentRuntime {
         span?.setAttribute("task.description", task.description.slice(0, 200))
 
         // Select best provider for this role if model selector is available.
+        // With the frozen run bundle (borrowing; OAC "Saved defaults") the
+        // run-start snapshot is authoritative: re-selection never happens
+        // for a role the snapshot already resolved.
         let preferredProvider: string | undefined
         if (this.modelSelector) {
-          const selection = this.modelSelector.select(task.agentRole)
+          const selection = bundle
+            ? bundle.selectorByRole.has(task.agentRole)
+              ? (bundle.selectorByRole.get(task.agentRole) ?? null)
+              : this.resolveSelectorInto(bundle, task.agentRole)
+            : this.modelSelector.select(task.agentRole)
           if (selection) {
             preferredProvider = selection.provider
             span?.setAttribute("task.selectedProvider", selection.provider)
@@ -2209,7 +2488,10 @@ export class AgentRuntime {
         const lastSelectionRef: { key: string | undefined } = { key: undefined }
         if (this.modelRouter) {
           const taskChars = deriveTaskCharacteristics(task)
-          const selection = this.modelRouter.selectModel(taskChars)
+          const selection = bundle
+            ? (bundle.routerByTask.get(task.id) ??
+              this.resolveRouterInto(bundle, task.id, taskChars))
+            : this.modelRouter.selectModel(taskChars)
           agent.setModelOverride(selection.provider, selection.model)
           lastSelectionRef.key = `${selection.provider}/${selection.model}`
           span?.setAttribute("task.modelRouter.provider", selection.provider)
@@ -2287,13 +2569,22 @@ export class AgentRuntime {
 
           // P0-A wiring: when tool loop is enabled and the agent provides a
           // tool-enabled provider, route the chat call through `runToolLoop`.
-          // Set per-agent tool allowlist (借鉴 cc-switch) before running.
+          // Tool scopes (借鉴 cc-switch) are LIVE (borrowing; MiniApps
+          // package-contract.md:156): the manifest sets stay the base and
+          // the runtime's per-workspace overrides are re-read on EVERY
+          // definition listing / tool execution, so a mid-run permission
+          // change lands on the next call instead of being baked in once.
           const toolProvider: ToolEnabledProvider | undefined = this.enableToolLoop
             ? agent.getToolProvider()
             : undefined
           if (toolProvider) {
             toolProvider.setToolAllowlist(agent.manifest.allowedTools)
             toolProvider.setToolDenylist(agent.manifest.deniedTools)
+            toolProvider.setLiveToolScopes(() => {
+              const override = this.workspaceToolScopes.get(workspace.id)
+              if (!override) return undefined
+              return { allowed: override.allowed, denied: override.denied }
+            })
           }
 
           // Ref to capture last tool call info for self-critique observation
@@ -2427,6 +2718,7 @@ export class AgentRuntime {
                   safetyCheck, // beforeToolCall (SafetyGuardrails)
                   this.assembleBashAwareAfterToolCall(workspace.id, task.id), // afterToolCall (bash settlement + output budget)
                   this.assembleRunawayGuardOnStepEnd(workspace.id), // onStepEnd (runaway guard)
+                  this.proactiveCompaction, // proactive dual-signal compaction (borrowing; Mini-Agent)
                 ),
                 ctx.signal,
                 workspace.id,
@@ -3101,6 +3393,46 @@ export class AgentRuntime {
  * The loop's `tool-start` / `tool-end` events flow through `emit` so the
  * API SSE stream and the ScopedBus mirror them like any other RuntimeEvent.
  */
+/** Rough whole-request token estimate (chars/4 + per-message overhead). */
+function estimateChatTokens(messages: readonly ChatMessage[]): number {
+  let total = 0
+  for (const m of messages) total += 4 + Math.ceil((m.content?.length ?? 0) / 4)
+  return total
+}
+
+/**
+ * Default proactive dual-signal compaction config (Mini-Agent borrowing):
+ * a chars/4 heuristic estimate against a high ceiling — ordinary runs never
+ * compact, runaway contexts do. Hosts override via RuntimeOptions. This
+ * default exists because the option previously had no setter anywhere:
+ * an unwired recovery path is dead code, not a feature.
+ */
+export function defaultProactiveCompaction(): NonNullable<RuntimeOptions["proactiveCompaction"]> {
+  return { tokenLimit: 120_000, estimateTokens: estimateChatTokens }
+}
+
+/**
+ * Default context-overflow recovery (minimax 5b4e0a4 wiring seam): the
+ * runToolLoop option existed since the 2026-10 wave but no host ever passed
+ * it, so the "force-compact and resend exactly once after a provider
+ * overflow rejection" path was unreachable in production. The default
+ * force-compacts the rejected request to half its estimated size via the
+ * compaction primitives (per-turn LLM summaries apply when the host
+ * injects a summarizer through proactiveCompaction).
+ */
+export function defaultContextOverflowRecovery(): (
+  rejected: readonly ChatMessage[],
+) => Promise<ChatMessage[] | undefined> {
+  return async (rejected) => {
+    const cfg = defaultProactiveCompaction()
+    return await compactProactiveHistory(rejected, {
+      tokenLimit: cfg.tokenLimit,
+      estimateTokens: cfg.estimateTokens,
+      forceFraction: 0.5,
+    })
+  }
+}
+
 async function runToolLoopAndSubmit(
   agent: Agent,
   task: import("./types.js").Task,
@@ -3131,6 +3463,8 @@ async function runToolLoopAndSubmit(
     round: number,
     info: { toolCalls: number; stopReason?: string },
   ) => string | undefined,
+  // Proactive dual-signal compaction (borrowing; Mini-Agent agent.py:201-319).
+  proactiveCompaction?: RuntimeOptions["proactiveCompaction"],
 ): Promise<Result> {
   const messages = agent.buildChatMessages(task, ctx)
   const { response, allToolCalls } = await runToolLoop(toolProvider, messages, {
@@ -3154,6 +3488,17 @@ async function runToolLoopAndSubmit(
     afterToolCall,
 
     onStepEnd,
+
+    // Proactive dual-signal compaction (borrowing; Mini-Agent) — the
+    // runtime supplies a conservative default (see defaultProactiveCompaction);
+    // a host override replaces it wholesale.
+    ...(proactiveCompaction
+      ? { proactiveCompaction }
+      : { proactiveCompaction: defaultProactiveCompaction() }),
+
+    // Context-overflow recovery default (minimax 5b4e0a4 wiring seam): see
+    // defaultContextOverflowRecovery — previously an option no host passed.
+    contextOverflowRecovery: defaultContextOverflowRecovery(),
   })
   const result: Result = {
     id: `r-${randomUUID().slice(0, 8)}`,

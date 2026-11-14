@@ -21,8 +21,10 @@ import type {
   EmbeddingResponse,
   Provider,
 } from "../base.js"
-import { ProviderError, classifyProviderError } from "../base.js"
+import { ProviderError } from "../base.js"
+import { classifyProviderErrorBody, errorFactsFromUnknown } from "../error-classification.js"
 import { wireStopSequences } from "../capability-predicates.js"
+import { gateUsageShape } from "../usage.js"
 
 export interface OpenAIChatConfig {
   id: string
@@ -102,7 +104,7 @@ export class OpenAIChatProvider implements Provider {
             // Capability gate (crewAI supports_stop_words borrowing): model
             // families that reject `stop` with a 400 (Bedrock openai.*) get
             // the parameter omitted; the client-side fallback truncates.
-            stop: wireStopSequences(model, options.stopSequences),
+            stop: wireStopSequences(model, options.stopSequences, "openai_chat"),
             response_format,
             ...(Object.keys(extra).length > 0 ? { extra_body: extra } : {}),
           } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming)
@@ -120,51 +122,48 @@ export class OpenAIChatProvider implements Provider {
             typeof refusal === "string" && refusal !== ""
               ? "refusal"
               : (choice.finish_reason ?? undefined)
-          if (response.usage) {
-            span?.setAttribute("llm.promptTokens", response.usage.prompt_tokens)
-            span?.setAttribute("llm.completionTokens", response.usage.completion_tokens)
-            const cached = (
-              response.usage as {
-                prompt_tokens_details?: { cached_tokens?: number }
-              }
-            ).prompt_tokens_details?.cached_tokens
-            if (cached) span?.setAttribute("llm.cacheReadTokens", cached)
-          }
-          // Reasoning tokens (借鉴 deepseek-harness WireUsage.completion_tokens_details.reasoning_tokens)
-          const reasoningTokens = (
-            response.usage as {
-              completion_tokens_details?: { reasoning_tokens?: number }
+          // Self-consistency gate (OpenAgentCore sessions/usage.go
+          // MeasuredUsage borrowing): OpenAI-style protocols fold cached
+          // tokens INSIDE prompt_tokens — the "inclusive" cache semantics
+          // enforce cached ≤ input and total = input + output. An
+          // inconsistent or incomplete breakdown is reported as UNKNOWN
+          // (undefined), never as zero-filled accounting.
+          const usage = gateUsageShape(response.usage, { cacheSemantics: "inclusive" })
+          if (usage) {
+            span?.setAttribute("llm.promptTokens", usage.promptTokens)
+            span?.setAttribute("llm.completionTokens", usage.completionTokens)
+            if (usage.cacheReadTokens) {
+              span?.setAttribute("llm.cacheReadTokens", usage.cacheReadTokens)
             }
-          ).completion_tokens_details?.reasoning_tokens
-          if (reasoningTokens !== undefined) {
-            span?.setAttribute("llm.reasoningTokens", reasoningTokens)
+            if (usage.reasoningTokens) {
+              span?.setAttribute("llm.reasoningTokens", usage.reasoningTokens)
+            }
           }
           return {
             content: choice.message?.content ?? "",
             model: response.model,
-            usage: response.usage
-              ? {
-                  promptTokens: response.usage.prompt_tokens,
-                  completionTokens: response.usage.completion_tokens,
-                  totalTokens: response.usage.total_tokens,
-                  cacheReadTokens:
-                    (
-                      response.usage as {
-                        prompt_tokens_details?: { cached_tokens?: number }
-                      }
-                    ).prompt_tokens_details?.cached_tokens ?? 0,
-                  cacheCreationTokens: 0,
-                  reasoningTokens: reasoningTokens ?? 0,
-                }
-              : undefined,
+            usage,
             finishReason,
             raw: response,
           }
         } catch (err) {
-          const status = (err as { status?: number }).status
-          const message = (err as Error).message ?? "Unknown error"
-          const { code } = classifyProviderError(status, message)
-          throw new ProviderError(this.id, status, message, err, code)
+          // Body-aware classification (MiniMax-MCP-JS api.ts + cli
+          // mapApiErrorBase borrowing): vendor codes from the error body /
+          // trailing message suffix drive the stable code + retryable
+          // verdict, and the trace-id header is captured into the error so
+          // support tickets carry it. Falls back to the status/message
+          // heuristics when the body carries nothing.
+          const facts = errorFactsFromUnknown(err)
+          const verdict = classifyProviderErrorBody(facts)
+          throw new ProviderError(
+            this.id,
+            facts.status,
+            facts.message ?? "Unknown error",
+            err,
+            verdict.code,
+            verdict.requestId,
+            verdict.retryable,
+          )
         }
       },
       { "llm.provider": this.id, "llm.model": model },
@@ -249,23 +248,12 @@ export class OpenAIChatProvider implements Provider {
         }
         finishReason = refusalSeen ? "refusal" : (choice?.finish_reason ?? finishReason)
         if (chunk.usage) {
-          const reasoningTokens = (
-            chunk.usage as {
-              completion_tokens_details?: { reasoning_tokens?: number }
-            }
-          ).completion_tokens_details?.reasoning_tokens
-          usage = {
-            promptTokens: chunk.usage.prompt_tokens,
-            completionTokens: chunk.usage.completion_tokens,
-            totalTokens: chunk.usage.total_tokens,
-            cacheReadTokens: (
-              chunk.usage as {
-                prompt_tokens_details?: { cached_tokens?: number }
-              }
-            ).prompt_tokens_details?.cached_tokens,
-            cacheCreationTokens: 0,
-            reasoningTokens: reasoningTokens ?? 0,
-          }
+          // Streaming usage accumulation with the same self-consistency gate
+          // as the non-streaming path: a chunk whose usage fails the gate
+          // leaves the last good measurement in place rather than poisoning
+          // the accumulated record (OpenAgentCore MeasuredUsage borrowing).
+          const gated = gateUsageShape(chunk.usage, { cacheSemantics: "inclusive" })
+          if (gated) usage = gated
         }
         yield { delta, done: false, finishReason, usage, raw: chunk }
       }
@@ -285,10 +273,19 @@ export class OpenAIChatProvider implements Provider {
       if ((err as { name?: string }).name === "AbortError") {
         throw new ProviderError(this.id, 0, "Stream aborted", err, "ABORTED")
       }
-      const status = (err as { status?: number }).status
-      const message = (err as Error).message ?? "Stream error"
-      const { code } = classifyProviderError(status, message)
-      throw new ProviderError(this.id, status, message, err, code)
+      const facts = errorFactsFromUnknown(err)
+      const verdict = classifyProviderErrorBody(facts)
+      // Body-aware classification (MiniMax-MCP-JS api.ts + cli
+      // mapApiErrorBase borrowing) — same wiring as the non-streaming catch.
+      throw new ProviderError(
+        this.id,
+        facts.status,
+        facts.message ?? "Stream error",
+        err,
+        verdict.code,
+        verdict.requestId,
+        verdict.retryable,
+      )
     } finally {
       consumer.abort()
       clearIdleTimeout()

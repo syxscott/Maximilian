@@ -122,7 +122,7 @@ export class GeminiNativeProvider implements Provider {
     if (max !== undefined) cfg.maxOutputTokens = max
     // Capability gate (crewAI supports_stop_words borrowing): omit the
     // parameter entirely for model families that reject it.
-    const stop = wireStopSequences(model, options.stopSequences)
+    const stop = wireStopSequences(model, options.stopSequences, "gemini_native")
     if (stop?.length) {
       cfg.stopSequences = stop
     }

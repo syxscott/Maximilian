@@ -483,3 +483,44 @@ export function recordProposalOutcome(input: {
     sampleSize: input.sampleSize ?? 1,
   })
 }
+
+/**
+ * ToolCalls-Trigger F1 drift as a predicted-vs-observed measurement
+ * (borrowing MiniMax-Provider-Verifier calculate_toolcall_similarity.py /
+ * compare_with_baseline.py — the F1 the simulation predicted for a
+ * rollout vs the F1 measured on the benchmark corpus afterwards).
+ *
+ * F1 IS the quality dimension here, so it maps onto qualityDelta; the
+ * other deltas resolve to 0 — never fabricated (same honesty boundary as
+ * TruthCalibrator). Built on the existing buildMeasurement so the parsed
+ * shape and defaults stay identical.
+ */
+export function buildTriggerDriftMeasurement(input: {
+  proposalId: string
+  proposalAction: ProposalAction
+  /** F1 the simulation predicted the rollout would keep (0..1). */
+  predictedTriggerF1: number
+  /** F1 measured post-rollout against the same baseline (0..1). */
+  observedTriggerF1: number
+  sampleSize?: number
+  recordedAt?: string
+}): TruthMeasurement {
+  return buildMeasurement({
+    proposalId: input.proposalId,
+    proposalAction: input.proposalAction,
+    predicted: {
+      costDelta: 0,
+      latencyDeltaMs: 0,
+      qualityDelta: input.predictedTriggerF1,
+      riskDelta: 0,
+    },
+    actual: {
+      costDelta: 0,
+      latencyDeltaMs: 0,
+      qualityDelta: input.observedTriggerF1,
+      riskDelta: 0,
+    },
+    sampleSize: input.sampleSize ?? 1,
+    ...(input.recordedAt ? { recordedAt: input.recordedAt } : {}),
+  })
+}

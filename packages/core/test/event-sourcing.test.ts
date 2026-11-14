@@ -86,4 +86,64 @@ describe("EventStore", () => {
     store.clear()
     expect(store.size).toBe(0)
   })
+
+  // ── Terminal-outcome retention (borrowing; OAC journal.go:13-19) ──
+
+  it("keeps the terminal event readable after the log exceeds its limit", () => {
+    const store = new EventStore({ maxEventsPerAggregate: 3 })
+    // Heavy traffic: observations fill and prune the window.
+    for (let i = 0; i < 10; i++) {
+      store.append({ type: "tool:end", aggregateId: "ws-1", data: { i } })
+    }
+    // The terminal outcome arrives, then MORE observations push it out of
+    // the pruned observation window.
+    store.append({ type: "workspace-failed", aggregateId: "ws-1", data: { error: "boom" } })
+    for (let i = 0; i < 5; i++) {
+      store.append({ type: "tool:end", aggregateId: "ws-1", data: { post: i } })
+    }
+
+    const events = store.getEvents("ws-1")
+    // Observations are pruned to the limit; the terminal event survives
+    // in its reserved entry, at its chronological (seq) position.
+    const terminal = events.find((e) => e.type === "workspace-failed")
+    expect(terminal).toBeDefined()
+    expect(terminal?.data).toEqual({ error: "boom" })
+    // Sequence order is preserved for replay consumers.
+    const seqs = events.map((e) => e.seq)
+    expect([...seqs].sort((a, b) => a - b)).toEqual(seqs)
+    const state = store.project("ws-1", workspaceStatusReducer, {
+      status: "executing",
+      completedTasks: 0,
+      failedTasks: 0,
+    })
+    expect(state.status).toBe("failed")
+  })
+
+  it("the reserved terminal entry holds the LATEST terminal outcome", () => {
+    const store = new EventStore({ maxEventsPerAggregate: 2 })
+    store.append({ type: "workspace-completed", aggregateId: "ws-2", data: { at: 1 } })
+    store.append({ type: "workspace-failed", aggregateId: "ws-2", data: { at: 2 } })
+    const events = store.getEvents("ws-2")
+    const terminal = events.filter(
+      (e) => e.type === "workspace-failed" || e.type === "workspace-completed",
+    )
+    // One reserved entry — the newest terminal event replaced the older one.
+    expect(terminal).toHaveLength(1)
+    expect(terminal[0].type).toBe("workspace-failed")
+    expect(store.size).toBe(1)
+  })
+
+  it("terminal event types are configurable", () => {
+    const store = new EventStore({ maxEventsPerAggregate: 1, terminalEventTypes: ["turn-done"] })
+    store.append({ type: "workspace-failed", aggregateId: "ws-3", data: null }) // not terminal here
+    store.append({ type: "workspace-failed", aggregateId: "ws-3", data: null }) // prunes the first
+    store.append({ type: "turn-done", aggregateId: "ws-3", data: { ok: true } })
+    store.append({ type: "workspace-failed", aggregateId: "ws-3", data: null }) // prunes the second observation
+
+    // getEvents restores append order (seq): the observation appended
+    // AFTER the terminal event sorts after it, and the terminal event
+    // survives regardless of the observation window.
+    const types = store.getEvents("ws-3").map((e) => e.type)
+    expect(types).toEqual(["turn-done", "workspace-failed"])
+  })
 })

@@ -21,6 +21,8 @@ import { withSpan } from "@max/telemetry"
 import type { ChatChunk, ChatMessage, ChatOptions, ChatResponse, Provider } from "../base.js"
 import { ProviderError } from "../base.js"
 import { wireStopSequences } from "../capability-predicates.js"
+import { declarationForFormat } from "../format-capabilities.js"
+import { gateUsageShape } from "../usage.js"
 
 export interface AnthropicMessagesConfig {
   id: string
@@ -31,6 +33,18 @@ export interface AnthropicMessagesConfig {
   /** Default max_tokens; Anthropic requires this field — defaults to 4096. */
   defaultMaxTokens?: number
   defaultTemperature?: number
+}
+
+/**
+ * Raw wire usage record of the Anthropic Messages protocol. The SDK's typed
+ * `Usage` predates prompt caching; the runtime payload carries the cache
+ * counters alongside the base pair whenever caching is in effect.
+ */
+interface AnthropicUsageWire {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
 }
 
 export class AnthropicMessagesProvider implements Provider {
@@ -48,7 +62,12 @@ export class AnthropicMessagesProvider implements Provider {
     this.id = config.id
     this.name = config.name
     this.defaultModel = config.defaultModel
-    this.defaultMaxTokens = config.defaultMaxTokens ?? 4096
+    // 限额映射 declaration (OpenAgentCore harnessconfig borrowing): the
+    // anthropic wire REQUIRES max_tokens on every request — the fallback
+    // value lives in the apiFormat Declaration, next to the requirement it
+    // exists to satisfy, not as a bare literal here.
+    const declaration = declarationForFormat("anthropic")
+    this.defaultMaxTokens = config.defaultMaxTokens ?? declaration.maxOutputTokensFallback ?? 4096
     this.defaultTemperature = config.defaultTemperature ?? 0.7
     this.client = new Anthropic({
       apiKey: config.apiKey,
@@ -96,7 +115,7 @@ export class AnthropicMessagesProvider implements Provider {
             max_tokens: options.maxTokens ?? this.defaultMaxTokens,
             // Capability gate (crewAI supports_stop_words borrowing): omit
             // the parameter entirely for model families that reject it.
-            stop_sequences: wireStopSequences(model, options.stopSequences),
+            stop_sequences: wireStopSequences(model, options.stopSequences, "anthropic"),
           })
           const textBlock = response.content.find((b) => b.type === "text")
           const content = textBlock && textBlock.type === "text" ? textBlock.text : ""
@@ -104,35 +123,27 @@ export class AnthropicMessagesProvider implements Provider {
           // payload includes `cache_creation_input_tokens` and
           // `cache_read_input_tokens` whenever caching is in effect.
           const usageExt = response.usage as
-            | (typeof response.usage & {
-                cache_creation_input_tokens?: number
-                cache_read_input_tokens?: number
-              })
-            | undefined
-          const promptTokens = usageExt?.input_tokens ?? 0
-          const completionTokens = usageExt?.output_tokens ?? 0
-          const cacheReadTokens = usageExt?.cache_read_input_tokens ?? 0
-          const cacheCreationTokens = usageExt?.cache_creation_input_tokens ?? 0
-          if (usageExt) {
-            span?.setAttribute("llm.promptTokens", promptTokens)
-            span?.setAttribute("llm.completionTokens", completionTokens)
-            if (cacheReadTokens) {
-              span?.setAttribute("llm.cacheReadTokens", cacheReadTokens)
+            (typeof response.usage & AnthropicUsageWire) | undefined
+          // Self-consistency gate (OpenAgentCore sessions/usage.go
+          // MeasuredUsage borrowing): an incomplete or inconsistent breakdown
+          // is reported as UNKNOWN (undefined), never zero-filled accounting.
+          // Anthropic's cache counters sit outside input_tokens — the
+          // "exclusive" cache semantics waive the cached ≤ input bound.
+          const usage = gateUsageShape(usageExt, { cacheSemantics: "exclusive" })
+          if (usage) {
+            span?.setAttribute("llm.promptTokens", usage.promptTokens)
+            span?.setAttribute("llm.completionTokens", usage.completionTokens)
+            if (usage.cacheReadTokens) {
+              span?.setAttribute("llm.cacheReadTokens", usage.cacheReadTokens)
             }
-            if (cacheCreationTokens) {
-              span?.setAttribute("llm.cacheCreationTokens", cacheCreationTokens)
+            if (usage.cacheCreationTokens) {
+              span?.setAttribute("llm.cacheCreationTokens", usage.cacheCreationTokens)
             }
           }
           return {
             content,
             model: response.model,
-            usage: {
-              promptTokens,
-              completionTokens,
-              totalTokens: promptTokens + completionTokens,
-              cacheReadTokens,
-              cacheCreationTokens,
-            },
+            usage,
             // stop_reason passthrough — includes safety refusals
             // (`stop_reason: "refusal"`, deepseek chat-demo reply.ts
             // settleReply borrowing). Newer API versions emit it even though
@@ -170,15 +181,43 @@ export class AnthropicMessagesProvider implements Provider {
       // message_delta event and must reach finishReason like the
       // non-streaming path does.
       let stopReason: string | undefined
+      // Streaming usage accumulation (aligned with formats/openai-chat.ts):
+      // message_start carries the complete input-side usage and message_delta
+      // the CUMULATIVE output_tokens. Dropping either left the streaming
+      // path's token accounting at zero, so both are captured and merged
+      // into every chunk from the moment they are known.
+      let startUsage: AnthropicUsageWire | undefined
+      let outputTokens: number | undefined
+      const accumulatedUsage = (): AnthropicUsageWire | undefined => {
+        if (!startUsage) return undefined
+        return outputTokens === undefined
+          ? { ...startUsage }
+          : { ...startUsage, output_tokens: outputTokens }
+      }
+      const gatedUsage = (): ChatChunk["usage"] =>
+        gateUsageShape(accumulatedUsage(), { cacheSemantics: "exclusive" })
       for await (const event of stream) {
+        if (event.type === "message_start") {
+          startUsage = (event.message as { usage?: AnthropicUsageWire } | undefined)?.usage
+        }
         if (event.type === "message_delta") {
           stopReason = event.delta.stop_reason ?? undefined
+          const deltaUsage = (event as { usage?: { output_tokens?: number } }).usage
+          if (deltaUsage && typeof deltaUsage.output_tokens === "number") {
+            outputTokens = deltaUsage.output_tokens
+          }
         }
         if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-          yield { delta: event.delta.text, done: false, finishReason: stopReason, raw: event }
+          yield {
+            delta: event.delta.text,
+            done: false,
+            finishReason: stopReason,
+            usage: gatedUsage(),
+            raw: event,
+          }
         }
       }
-      yield { delta: "", done: true, finishReason: stopReason }
+      yield { delta: "", done: true, finishReason: stopReason, usage: gatedUsage() }
     } catch (err) {
       throw new ProviderError(
         this.id,

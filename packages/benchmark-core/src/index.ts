@@ -52,3 +52,63 @@ export {
   type FrontendValidationResult,
   type StructuralFinding,
 } from "./runners/frontend-runner.js"
+
+// ── Validator layer (verify.py borrowing) ───────────────────────────────────
+export type {
+  CaseValidator,
+  JsonSchemaObject,
+  ObservedToolCall,
+  ToolDefinition,
+  ValidatorCaseContext,
+  ValidatorCaseRun,
+  ValidatorFields,
+  ValidatorMessageSlice,
+} from "./validators/types.js"
+export { ValidatorRegistry, type ResolveOptions } from "./validators/registry.js"
+export {
+  ToolCallsValidator,
+  type ToolCallsSummary,
+  type ToolCallsValidateFields,
+} from "./validators/tool-calls.js"
+export {
+  ScenarioCheckValidator,
+  extractActualOrder,
+  extractExpectedOrder,
+  stripThinkBlocks,
+  type ScenarioCheckSummary,
+  type ScenarioCheckValidateFields,
+} from "./validators/scenario-check.js"
+export {
+  isErrorOnlyReasoning,
+  runErrorOnlyReasoningCheck,
+  summarizeErrorOnlyReasoning,
+  type ErrorOnlyReasoningFields,
+  type ErrorOnlyReasoningSummary,
+} from "./validators/error-only-reasoning.js"
+export {
+  validateAgainstSchema,
+  summarizeSchemaIssues,
+  type SchemaIssue,
+} from "./validators/json-schema.js"
+export { extractMessageFromRaw, extractToolsFromRaw } from "./validators/protocol.js"
+
+// ── Trigger drift + incremental rerun ───────────────────────────────────────
+export {
+  classifyFinishReason,
+  compareWithBaseline,
+  computeTriggerF1,
+  sampleFromResult,
+  suitesToTriggerSamples,
+  type LoopComparison,
+  type LoopComparisonInput,
+  type TriggerComparisonReport,
+  type TriggerF1Result,
+  type TriggerSample,
+} from "./trigger-drift.js"
+export {
+  canonicalJson,
+  loadPersistedResults,
+  prepareBenchmarkRequest,
+  saveResultsJsonl,
+  stableHash,
+} from "./persistence.js"

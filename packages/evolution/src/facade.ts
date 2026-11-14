@@ -25,7 +25,8 @@ import {
   type OracleTriadReport,
 } from "./oracle-triad.js"
 import { MemoryCurator, normalizeContentKey } from "./curator.js"
-import { EvolutionEngine, SCORE_THRESHOLD } from "./evolution.js"
+import { EvolutionEngine, SCORE_THRESHOLD, type EvolutionBudgetOptions } from "./evolution.js"
+import type { Judge } from "./llm-judge.js"
 import { SealedFileVault } from "./sealed-files.js"
 import { lintPromptShape } from "./artifact-lint.js"
 import { containsSecret, scrubSecrets } from "./secret-scrub.js"
@@ -99,6 +100,17 @@ export interface EvolutionFacadeOptions {
    * behaviour; "off" is the legacy unconditional render.
    */
   lessonGating?: "off" | "shadow" | "enforce"
+  /**
+   * Pluggable judge handed to the evolution engine (llm-judge borrowing).
+   * A judge whose outputs declare `nonDeterministic` gets the flip-noise
+   * margin calibration; the default offline judge is unchanged.
+   */
+  judge?: Judge
+  /**
+   * Judge budget gate (pr-review-tuning backtest borrowing): estimated
+   * cost is checked before a cycle starts; over budget → no new case.
+   */
+  evolutionBudget?: EvolutionBudgetOptions
 }
 
 export class EvolutionFacade {
@@ -139,7 +151,10 @@ export class EvolutionFacade {
       undefined,
       opts.candidates.map((p) => ({ provider: p })),
     )
-    this.evolution = new EvolutionEngine(opts.rootDir, this.metrics, this.profiles)
+    this.evolution = new EvolutionEngine(opts.rootDir, this.metrics, this.profiles, undefined, {
+      ...(opts.judge ? { judge: opts.judge } : {}),
+      ...(opts.evolutionBudget ? { budget: opts.evolutionBudget } : {}),
+    })
     this.sealedVault = opts.sealedVault
     this.lessonGating = opts.lessonGating ?? "shadow"
     this.reflector =
@@ -249,6 +264,12 @@ export class EvolutionFacade {
       // inline with the profile save that is happening anyway.
       const curated = MemoryCurator.curateAll(nextMemory, updated.curatorState)
       nextMemory = curated.memory
+      // Taste-to-checks escalation (mcode-stack borrowing): same-type
+      // lessons that recur (2nd hit of the same normalized key) upgrade
+      // to a check-proposal entry — the verified consumer chain (worker
+      // recordCompletion → profile memory) carries it like any lesson.
+      const escalated = MemoryCurator.escalateRecurringLessons(nextMemory)
+      nextMemory = escalated.memory
       await this.profiles.save({
         ...updated,
         memory: nextMemory,

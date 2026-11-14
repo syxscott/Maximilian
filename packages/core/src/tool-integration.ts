@@ -10,6 +10,8 @@ import {
   type ExecuteInput,
   isPermissionRequestError,
   isPermissionDeniedError,
+  PermissionDeniedError,
+  type ToolName,
 } from "@max/tools"
 import type { Provider, ChatMessage, ChatOptions } from "@max/providers"
 import { mergeAdjacentSameRole } from "@max/providers"
@@ -17,6 +19,7 @@ import type { AgentContext, Agent } from "./agent.js"
 import { isLLMRequestOversized } from "./error-taxonomy.js"
 import { isRefusalFinish, settleRefusal, canContinueAsPrefix } from "./refusal.js"
 import { shouldInjectAnchor, formatAnchorMessage } from "./context-anchor.js"
+import { compactProactiveHistory, type CompactionSummarizer } from "./compaction.js"
 import type {
   BeforeToolCallContext,
   BeforeToolCallResult,
@@ -90,6 +93,16 @@ export class ToolEnabledProvider {
    * Per-agent tool denylist (借鉴 cc-switch, wins over allowlist).
    */
   private deniedToolNames?: Set<string>
+  /**
+   * Live tool-scope source (borrowing; MiniApps package-contract.md:156
+   * "live switch" semantics). When set, the CURRENT allow/deny sets are
+   * re-read on EVERY getToolDefinitions() and executeTool() call —
+   * mid-run permission changes apply to the next call without re-running
+   * the task. The static sets from setToolAllowlist/setToolDenylist stay
+   * as the base: the live allow REPLACES the static allow, the live deny
+   * is UNIONED with the static deny (deny is fail-closed).
+   */
+  private liveToolScopes?: () => { allowed?: string[]; denied?: string[] } | undefined
   /** Cached tool instructions string, invalidated when tool sets change. */
   private toolInstructionsCache?: string
 
@@ -116,13 +129,42 @@ export class ToolEnabledProvider {
     this.toolInstructionsCache = undefined // Invalidate cache
   }
 
+  /**
+   * Install the live tool-scope source (borrowing; see the field doc).
+   * Pass undefined to fall back to the static sets only.
+   */
+  setLiveToolScopes(
+    get: (() => { allowed?: string[]; denied?: string[] } | undefined) | undefined,
+  ): void {
+    this.liveToolScopes = get
+    this.toolInstructionsCache = undefined // Invalidate cache
+  }
+
+  /**
+   * Effective allow/deny sets RIGHT NOW (borrowing): re-evaluated on every
+   * definition listing and tool execution so a live scope change lands on
+   * the next call. Live allow replaces the static allow; live deny unions
+   * with the static deny.
+   */
+  private effectiveScopes(): { allowed?: Set<string>; denied?: Set<string> } {
+    const live = this.liveToolScopes?.()
+    const allowed = live?.allowed !== undefined ? new Set(live.allowed) : this.allowedToolNames
+    const deniedNames = live?.denied
+    const denied =
+      deniedNames !== undefined
+        ? new Set([...(this.deniedToolNames ?? []), ...deniedNames])
+        : this.deniedToolNames
+    return { allowed, denied }
+  }
+
   /** Get tool definitions for the current scope, filtered by allow/deny. */
   getToolDefinitions(): ToolDefinition[] {
     const all = this.registry.materialize().definitions
-    if (!this.allowedToolNames && !this.deniedToolNames) return all
+    const { allowed, denied } = this.effectiveScopes()
+    if (!allowed && !denied) return all
     return all.filter((d) => {
-      if (this.deniedToolNames?.has(d.name)) return false
-      if (this.allowedToolNames && !this.allowedToolNames.has(d.name)) return false
+      if (denied?.has(d.name)) return false
+      if (allowed && !allowed.has(d.name)) return false
       return true
     })
   }
@@ -135,6 +177,23 @@ export class ToolEnabledProvider {
     result: unknown
     output?: { structured: unknown; content: ReadonlyArray<{ type: string; text?: string }> }
   }> {
+    // Live-scope gate (borrowing; MiniApps package-contract.md:156): the
+    // CURRENT scopes are re-read at execution time, so a mid-run denylist
+    // change denies the next call of the same tool with an explainable
+    // error (PermissionDeniedError — the tool loop surfaces it as a
+    // tool-end error the LLM can adapt to) instead of executing it. The
+    // denial is about the TOOL as a whole here, so the error's target is
+    // the tool name itself.
+    const { allowed, denied } = this.effectiveScopes()
+    const scopeDenied =
+      denied?.has(call.name) === true || (allowed !== undefined && !allowed.has(call.name))
+    if (scopeDenied) {
+      throw new PermissionDeniedError({
+        tool: call.name as ToolName,
+        target: call.name,
+        callId: call.id,
+      })
+    }
     const materialization = this.registry.materialize()
     const input: ExecuteInput = {
       sessionID: context.sessionID,
@@ -158,16 +217,31 @@ export class ToolEnabledProvider {
   }
 
   /** Chat with tool definitions included. */
+  /** Render the tool instructions block from the current definitions. */
+  private buildToolInstructions(): string {
+    const toolDefs = this.getToolDefinitions()
+    return toolDefs.length > 0
+      ? `\n\nYou have access to the following tools:\n${toolDefs.map((t) => `- ${t.name}: ${t.description}`).join("\n")}\n\nTo use a tool, respond with a JSON block:\n\`\`\`tool\n{"name": "tool-name", "input": {...}}\n\`\`\``
+      : ""
+  }
+
+  /** Chat with tool definitions included. */
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<ToolEnabledResponse> {
-    // Use cached tool instructions if available
-    if (this.toolInstructionsCache === undefined) {
-      const toolDefs = this.getToolDefinitions()
-      this.toolInstructionsCache =
-        toolDefs.length > 0
-          ? `\n\nYou have access to the following tools:\n${toolDefs.map((t) => `- ${t.name}: ${t.description}`).join("\n")}\n\nTo use a tool, respond with a JSON block:\n\`\`\`tool\n{"name": "tool-name", "input": {...}}\n\`\`\``
-          : ""
+    // Compute the tool instructions from the CURRENT scopes. The cache is
+    // only valid without a live scope source (borrowing): with one set,
+    // the CURRENT allow/deny sets must shape the tool list on every
+    // round, or a mid-run scope change would leave a denied tool
+    // advertised to the LLM.
+    let toolInstructions: string
+    if (this.liveToolScopes) {
+      toolInstructions = this.buildToolInstructions()
+      this.toolInstructionsCache = undefined
+    } else {
+      if (this.toolInstructionsCache === undefined) {
+        this.toolInstructionsCache = this.buildToolInstructions()
+      }
+      toolInstructions = this.toolInstructionsCache
     }
-    const toolInstructions = this.toolInstructionsCache
 
     const enhancedMessages = messages.map((m, i) =>
       i === 0 && m.role === "system" ? { ...m, content: m.content + toolInstructions } : m,
@@ -542,6 +616,33 @@ export interface ToolLoopOptions {
    * `defaultEnvSnapshotProvider` from context-anchor.ts.
    */
   envSnapshot?: () => string
+  /**
+   * (borrowing; Mini-Agent agent.py:201-319) Proactive compaction: BEFORE
+   * every LLM send the loop checks BOTH signals — the injected local
+   * estimate over the live history AND the last API-reported request
+   * total (from the previous response's usage, already in hand) — and
+   * either one exceeding `tokenLimit` compacts once, then one-shot
+   * debounces the NEXT check (the reported total is stale until the
+   * post-compaction response arrives; Mini-Agent _skip_next_token_check).
+   *
+   * With a `summarizer`, compaction keeps the system head and every real
+   * user message and summarizes each user→user execution segment per
+   * turn (see compaction.ts summarizePerTurn); a failing summarizer
+   * degrades that segment to its raw concatenated text. Without one, the
+   * existing truncation compaction applies.
+   *
+   * Independent of `contextOverflowRecovery`: the passive path keeps its
+   * exactly-once-per-run semantics; the proactive path has its own
+   * trigger and its own count.
+   */
+  proactiveCompaction?: {
+    /** Either signal above this total triggers compaction before the next send. */
+    tokenLimit: number
+    /** Injected local token estimator over the current request history. */
+    estimateTokens: (messages: readonly ChatMessage[]) => number
+    /** Injected per-turn summarizer; omit to keep the truncation compaction. */
+    summarizer?: CompactionSummarizer
+  }
 }
 
 /** Tools that write files and are subject to ownedFiles gating. */
@@ -887,12 +988,20 @@ async function executeSingleToolCall(
 /**
  * Run a tool execution loop: send messages, execute tool calls, repeat.
  * This is the core agentic loop pattern.
+ *
+ * `proactiveCompactions` counts the proactive dual-signal compactions
+ * performed before sends (borrowing; Mini-Agent agent.py:201-319) — 0
+ * when `options.proactiveCompaction` is not configured.
  */
 export async function runToolLoop(
   provider: ToolEnabledProvider,
   messages: ChatMessage[],
   options: ChatOptions & ToolLoopOptions = {},
-): Promise<{ response: ToolEnabledResponse; allToolCalls: ToolCall[] }> {
+): Promise<{
+  response: ToolEnabledResponse
+  allToolCalls: ToolCall[]
+  proactiveCompactions: number
+}> {
   const maxRounds = options.maxRounds ?? 10
   const maxToolCalls = options.maxToolCalls ?? 30
   const refundOnProgress = options.refundOnProgress ?? false
@@ -905,9 +1014,55 @@ export async function runToolLoop(
   // this same provider.chat call site so every request-level transform in
   // the normal before-LLM pipeline is reapplied. A second rejection is final.
   let overflowRecoveryAttempted = false
+
+  // ── Proactive compaction (borrowing; Mini-Agent agent.py:82-84, 193-257) ──
+  // Own trigger, own count — separate from the passive overflow-recovery
+  // attempt flag above (whose exactly-once-per-run semantics are untouched).
+  let skipNextTokenCheck = false
+  let lastReportedTotalTokens = 0
+  let proactiveCompactions = 0
+
+  /** Double-signal check + one-shot compaction before every LLM send. */
+  async function proactiveCompactBeforeSend(): Promise<void> {
+    const pc = options.proactiveCompaction
+    if (!pc) return
+    // One-shot debounce (Mini-Agent _skip_next_token_check): after a
+    // compaction the reported total still reflects the PRE-compaction
+    // request, so exactly one check is skipped while the next response
+    // refreshes it.
+    if (skipNextTokenCheck) {
+      skipNextTokenCheck = false
+      return
+    }
+    const estimated = pc.estimateTokens(currentMessages)
+    if (estimated <= pc.tokenLimit && lastReportedTotalTokens <= pc.tokenLimit) return
+    const compacted = await compactProactiveHistory(currentMessages, {
+      tokenLimit: pc.tokenLimit,
+      estimateTokens: pc.estimateTokens,
+      ...(pc.summarizer ? { summarizer: pc.summarizer } : {}),
+    })
+    // Persist the compaction in the loop's live history (in place, so
+    // every later round observes it).
+    currentMessages.length = 0
+    currentMessages.push(...compacted)
+    proactiveCompactions++
+    skipNextTokenCheck = true
+  }
+
   async function chatWithOverflowRecovery(): Promise<ToolEnabledResponse> {
+    // Proactive dual-signal check before EVERY send (Mini-Agent runs its
+    // summary check before each step's request).
+    await proactiveCompactBeforeSend()
     try {
-      return await provider.chat(currentMessages, options)
+      const response = await provider.chat(currentMessages, options)
+      // API-reported signal (Mini-Agent api_total_tokens): refreshed per
+      // response; the next round's check reads the fresh total.
+      if (response.usage) {
+        lastReportedTotalTokens =
+          response.usage.totalTokens ??
+          response.usage.promptTokens + response.usage.completionTokens
+      }
+      return response
     } catch (err) {
       if (
         !options.contextOverflowRecovery ||
@@ -931,7 +1086,12 @@ export async function runToolLoop(
       currentMessages.length = 0
       currentMessages.push(...compacted)
       // Resend exactly once — through the same call site (normal pipeline).
-      return provider.chat(currentMessages, options)
+      const resent = await provider.chat(currentMessages, options)
+      if (resent.usage) {
+        lastReportedTotalTokens =
+          resent.usage.totalTokens ?? resent.usage.promptTokens + resent.usage.completionTokens
+      }
+      return resent
     }
   }
 
@@ -972,7 +1132,7 @@ export async function runToolLoop(
     if (options.shouldStopAfterTurn?.()) {
       injectEnvAnchor()
       const finalResponse = await chatWithOverflowRecovery()
-      return { response: settleIfRefused(finalResponse), allToolCalls }
+      return { response: settleIfRefused(finalResponse), allToolCalls, proactiveCompactions }
     }
 
     injectEnvAnchor()
@@ -985,7 +1145,7 @@ export async function runToolLoop(
     // by protocol). The settled response carries refused: true with parsed
     // tool calls cleared; the raw body is preserved for audit.
     if (isRefusalFinish(response.stopReason)) {
-      return { response: settleRefusal(response), allToolCalls }
+      return { response: settleRefusal(response), allToolCalls, proactiveCompactions }
     }
 
     if (response.toolCalls.length === 0) {
@@ -1001,7 +1161,7 @@ export async function runToolLoop(
           continue
         }
       }
-      return { response, allToolCalls }
+      return { response, allToolCalls, proactiveCompactions }
     }
 
     // Check budget before executing tool calls
@@ -1012,7 +1172,7 @@ export async function runToolLoop(
     }
     if (toolBudget.value <= 0) {
       settleUncalledToolCalls(droppedByTruncation, currentMessages, options, allToolCalls)
-      return { response, allToolCalls }
+      return { response, allToolCalls, proactiveCompactions }
     }
 
     // Execute tool calls
@@ -1107,7 +1267,7 @@ export async function runToolLoop(
   // post-rounds response is terminal — settle it and return without any
   // follow-up injection (canContinueAfterRefusal() is false by protocol).
   if (isRefusalFinish(finalResponse.stopReason)) {
-    return { response: settleRefusal(finalResponse), allToolCalls }
+    return { response: settleRefusal(finalResponse), allToolCalls, proactiveCompactions }
   }
 
   // Follow-up injection (借鉴 openclaw): if external follow-up messages
@@ -1135,11 +1295,11 @@ export async function runToolLoop(
       }
       followUpMessages.push(...followUps)
       const followUpResponse = await provider.chat(followUpMessages, options)
-      return { response: followUpResponse, allToolCalls }
+      return { response: followUpResponse, allToolCalls, proactiveCompactions }
     }
   }
 
-  return { response: finalResponse, allToolCalls }
+  return { response: finalResponse, allToolCalls, proactiveCompactions }
 }
 
 // ── Registry Factory ──

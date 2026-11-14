@@ -10,6 +10,9 @@
  *   WORKSPACE_DIR      — directory for file-based workspace storage (fallback)
  *   OPENAI_API_KEY / ANTHROPIC_API_KEY / OPENROUTER_API_KEY — LLM provider
  *   WORKER_CONCURRENCY — max concurrent jobs (default: 3)
+ *   PARK_YIELD_ENABLED — release the BullMQ slot while a run waits on a
+ *                        human decision (default: true; OAC worker.go:277
+ *                        borrowing, see src/park-yield.ts)
  */
 
 import path from "node:path"
@@ -69,6 +72,13 @@ import {
   materializeScheduledWorkspace,
   type ScheduledJobExtras,
 } from "./jobs-materialize.js"
+import {
+  DetachedRunRegistry,
+  ParkSignal,
+  executeUntilPark,
+  type ParkStateInfo,
+  type ParkYieldOutcome,
+} from "./park-yield.js"
 
 const log = getLogger("worker")
 
@@ -299,6 +309,20 @@ async function main() {
     modelRouting?.selector
   const modelRouterPort: ModelRouter | undefined = modelRouting?.router
 
+  // Park-yield (borrowing; OpenAgentCore worker.go:277 — see park-yield.ts).
+  // When PARK_YIELD_ENABLED (default on), a queued run that parks on a
+  // human decision releases its BullMQ slot: the processor races execute
+  // against the runtime's parked edge, detaches the run (which keeps
+  // living in the runtime's waiting registry — the in-process parked
+  // promise is the wake channel, so the resumed turn continues from the
+  // park point without re-running) and returns. The runtime's global park
+  // hook fans out to the per-job signal of the job that owns the
+  // workspace; entries are delete-on-settle so a detached run's LATER
+  // parks are ignored (its slot was already released).
+  const parkYieldEnabled = config.PARK_YIELD_ENABLED !== false
+  const parkListeners = new Map<string, (info: ParkStateInfo) => void>()
+  const detachedRuns = new DetachedRunRegistry()
+
   const runtime = new AgentRuntime(finalFactory, sink, {
     // Tool loop (minimax-code borrowing) — see the API entry for the flag.
     enableToolLoop: config.TOOL_LOOP_ENABLED,
@@ -306,6 +330,13 @@ async function main() {
     memoryStore: memoryStorePort,
     modelSelector: modelSelectorPort,
     modelRouter: modelRouterPort,
+    ...(parkYieldEnabled
+      ? {
+          onParkStateChange: (info: ParkStateInfo): void => {
+            parkListeners.get(info.workspaceId)?.(info)
+          },
+        }
+      : {}),
   })
 
   // Commander (POST /api/chat parity) — kind=workspace job fires arrive as
@@ -488,6 +519,75 @@ async function main() {
     }
   })
 
+  // Post-execute steps shared by the synchronous path and the detached
+  // (parked) path: review attach + goal judgement. The runtime already
+  // wrote the final state via the sink — these only decorate it.
+  const finalizeExecutedWorkspace = async (
+    final: Workspace,
+    tenantId: string | undefined,
+  ): Promise<void> => {
+    const reviewResult = final.results.find((r) => r.agentRole === "review")
+    const review = reviewResult?.metadata?.review as import("@max/core").ReviewResult | undefined
+    if (review) {
+      final.review = review
+      await store.saveWorkspace(final, tenantId)
+    }
+    // Goal-judge (hermes borrowing): grade the user's goal from the run's
+    // outcome evidence and persist it under workspace.metadata. Best-effort —
+    // a judgement failure must not fail the job after the work completed.
+    try {
+      const judged = await withGoalJudgement(final)
+      if (judged !== final) await store.saveWorkspace(judged, tenantId)
+    } catch (err) {
+      log.warn({ workspaceId: final.id, err }, "goal judgement attach failed")
+    }
+  }
+
+  // Processor parity for detached failures: a run that throws after its
+  // slot was released must still leave a `failed` terminal state.
+  const persistFailedWorkspace = async (
+    workspace: Workspace,
+    message: string,
+    tenantId: string | undefined,
+  ): Promise<void> => {
+    const failed: Workspace = {
+      ...workspace,
+      status: "failed",
+      error: message,
+      updatedAt: new Date().toISOString(),
+    }
+    try {
+      await store.saveWorkspace(failed, tenantId)
+    } catch (saveErr) {
+      log.error({ workspaceId: workspace.id, err: saveErr }, "failed to persist failed state")
+    }
+  }
+
+  // Notification egress (openclaw gateway borrowing) — extracted so the
+  // detached (parked) completion path can notify when the run ACTUALLY
+  // finishes instead of when its job returned at park time. The job id is
+  // unavailable on that path (the job completed at park time), so the body
+  // omits it there.
+  const sendCompletionNotification = (
+    workspaceId: string,
+    opts?: { scheduledWorkspaceId?: string; jobId?: string },
+  ): void => {
+    if (!notificationGateway) return
+    const scheduledWorkspaceId = opts?.scheduledWorkspaceId
+    notificationGateway.notify({
+      channel: "webhook",
+      recipientId: process.env.GATEWAY_NOTIFY_RECIPIENT ?? "default",
+      title: `Workspace ${workspaceId} completed`,
+      body: scheduledWorkspaceId
+        ? `Scheduled job materialized workspace ${workspaceId}; all tasks finished.`
+        : opts?.jobId
+          ? `All tasks finished (job ${opts.jobId}).`
+          : `All tasks finished.`,
+      workspaceId,
+      severity: "info",
+    })
+  }
+
   // The processor function: called by BullMQ for each job.
   const processor: WorkspaceProcessor = async (
     workspaceId: string,
@@ -523,9 +623,43 @@ async function main() {
           "scheduled fire: materializing workspace from message",
         )
         const lease = await acquireResourceLease(redisUrl, resourceBudget)
+        // The park listener is registered under the REAL materialized id
+        // (inside the runner); track it so the finally below can always
+        // clean up, whatever the outcome.
+        let parkListenerWorkspaceId = workspaceId
         try {
+          // Park-yield plumbing for the materialized run: the signal is
+          // registered under the REAL workspace id inside the runner (the
+          // placeholder id never parks — it does not exist), the detached
+          // lifecycle lands in the shared registry (duplicate-dispatch
+          // guard), and the completion notification fires when the run
+          // actually finishes, not when the job returned at park time.
+          const signal = new ParkSignal()
           const final = await materializeScheduledWorkspace(
-            { commander, runtime, store, publishEvent: publishWorkspaceEvent },
+            {
+              commander,
+              runtime,
+              store,
+              publishEvent: publishWorkspaceEvent,
+              ...(parkYieldEnabled
+                ? {
+                    park: {
+                      signal,
+                      registerParkListener: (id: string): void => {
+                        parkListeners.set(id, signal.observe)
+                        parkListenerWorkspaceId = id
+                      },
+                      detach: (detached: Promise<void>, id: string): void => {
+                        detachedRuns.track(id, detached)
+                        parkListeners.delete(id)
+                      },
+                      onDetachedComplete: async (detachedFinal: Workspace): Promise<void> => {
+                        sendCompletionNotification(detachedFinal.id)
+                      },
+                    },
+                  }
+                : {}),
+            },
             scheduledExtras,
             { tenantId, scheduledWorkspaceId: workspaceId },
           )
@@ -547,6 +681,7 @@ async function main() {
           throw err
         } finally {
           await lease.release()
+          if (parkYieldEnabled) parkListeners.delete(parkListenerWorkspaceId)
         }
         return
       }
@@ -563,6 +698,19 @@ async function main() {
       log.warn(
         { workspaceId, remainingMs: suppression.remainingMs },
         "auto-resume suppressed (explicit stop within the suppression window) — skipping dispatch",
+      )
+      return
+    }
+
+    // Park-yield duplicate guard: a workspace with a detached (parked) run
+    // is status "executing" and ALIVE in this process's waiting registry —
+    // falling through to the mid-execution reset below would re-plan and
+    // double-execute it. (A worker restart empties the registry, so a
+    // genuinely orphaned workspace still recovers through the reset path.)
+    if (parkYieldEnabled && detachedRuns.has(workspaceId)) {
+      log.warn(
+        { workspaceId },
+        "workspace has a detached (parked) run in flight — skipping duplicate dispatch",
       )
       return
     }
@@ -588,9 +736,59 @@ async function main() {
     workspace.metadata = { ...(workspace.metadata ?? {}), tenantId: tenantId ?? null }
 
     const lease = await acquireResourceLease(redisUrl, resourceBudget)
-    let final: Workspace
+    let final: Workspace | undefined
     try {
-      final = await runtime.execute(workspace, { autoResume: true })
+      if (parkYieldEnabled) {
+        // Park-yield (borrowing; OpenAgentCore worker.go:277): race the
+        // execute call against the parked edge. When the run parks on a
+        // human decision, arm the detached terminal handlers and return —
+        // the BullMQ slot is released while the run keeps living in the
+        // runtime's waiting registry (resuming continues from the park
+        // point, nothing re-runs).
+        const signal = new ParkSignal()
+        parkListeners.set(workspaceId, signal.observe)
+        let raced: ParkYieldOutcome
+        try {
+          raced = await executeUntilPark({
+            workspaceId,
+            execute: () => runtime.execute(workspace, { autoResume: true }),
+            signal,
+            onDetachedComplete: async (detachedFinal) => {
+              await finalizeExecutedWorkspace(detachedFinal, tenantId)
+              log.info(
+                { workspaceId, status: detachedFinal.status },
+                "detached (parked) workspace execution complete",
+              )
+              sendCompletionNotification(workspaceId)
+            },
+            onDetachedFailure: async (err) => {
+              if (err instanceof AutoResumeSuppressedError) {
+                // The stop path already persisted the terminal state —
+                // keep it (same parity as the synchronous catch).
+                log.warn(
+                  { workspaceId, remainingMs: err.remainingMs },
+                  "detached execution suppressed after explicit stop",
+                )
+                return
+              }
+              log.error(
+                { workspaceId, err: err.message },
+                "detached runtime.execute threw - marking workspace failed",
+              )
+              await persistFailedWorkspace(workspace, err.message, tenantId)
+            },
+          })
+        } finally {
+          parkListeners.delete(workspaceId)
+        }
+        if (raced.outcome === "parked") {
+          detachedRuns.track(workspaceId, raced.detached)
+          return
+        }
+        final = raced.result
+      } else {
+        final = await runtime.execute(workspace, { autoResume: true })
+      }
     } catch (err) {
       if (err instanceof AutoResumeSuppressedError) {
         // The execute-time gate is the authoritative suppression check (it
@@ -610,43 +808,13 @@ async function main() {
       // act on. Re-throw so BullMQ records the failure on the job itself.
       const message = (err as Error)?.message ?? String(err)
       log.error({ workspaceId, err: message }, "runtime.execute threw - marking workspace failed")
-      const failed: Workspace = {
-        ...workspace,
-        status: "failed",
-        error: message,
-        updatedAt: new Date().toISOString(),
-      }
-      try {
-        await store.saveWorkspace(failed, tenantId)
-      } catch (saveErr) {
-        log.error(
-          { workspaceId, err: saveErr },
-          "failed to persist failed state after runtime error",
-        )
-      }
+      await persistFailedWorkspace(workspace, message, tenantId)
       throw err
     } finally {
       await lease.release()
     }
 
-    // Persist review if present. The runtime already wrote the final
-    // state via the sink — we just need to attach the review verdict
-    // that lives in agent result metadata.
-    const reviewResult = final.results.find((r) => r.agentRole === "review")
-    const review = reviewResult?.metadata?.review as import("@max/core").ReviewResult | undefined
-    if (review) {
-      final.review = review
-      await store.saveWorkspace(final, tenantId)
-    }
-    // Goal-judge (hermes borrowing): grade the user's goal from the run's
-    // outcome evidence and persist it under workspace.metadata. Best-effort —
-    // a judgement failure must not fail the job after the work completed.
-    try {
-      const judged = await withGoalJudgement(final)
-      if (judged !== final) await store.saveWorkspace(judged, tenantId)
-    } catch (err) {
-      log.warn({ workspaceId, err }, "goal judgement attach failed")
-    }
+    await finalizeExecutedWorkspace(final, tenantId)
 
     log.info({ workspaceId, status: final.status }, "workspace execution complete")
   }
@@ -802,17 +970,21 @@ async function main() {
       },
       "job completed",
     )
+    // Park-yield: a job that returned at park time "completes" while its
+    // run is still parked in the waiting registry — defer the notification
+    // to the detached run's real completion (onDetachedComplete).
+    if (parkYieldEnabled && detachedRuns.has(job.data.workspaceId)) {
+      log.info(
+        { jobId: job.id, workspaceId: job.data.workspaceId },
+        "job returned at park time - completion notification deferred to the detached run",
+      )
+      return
+    }
     if (notificationGateway) {
       const workspaceId = ranWorkspaceId ?? job.data.workspaceId
-      notificationGateway.notify({
-        channel: "webhook",
-        recipientId: process.env.GATEWAY_NOTIFY_RECIPIENT ?? "default",
-        title: `Workspace ${workspaceId} completed`,
-        body: ranWorkspaceId
-          ? `Scheduled job ${String(job.id)} materialized workspace ${workspaceId}; all tasks finished.`
-          : `All tasks finished (job ${String(job.id)}).`,
-        workspaceId,
-        severity: "info",
+      sendCompletionNotification(workspaceId, {
+        ...(ranWorkspaceId ? { scheduledWorkspaceId: job.data.workspaceId } : {}),
+        jobId: String(job.id),
       })
     }
   })

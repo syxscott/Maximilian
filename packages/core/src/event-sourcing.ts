@@ -38,15 +38,41 @@ export type EventReducer<S, T = unknown> = (state: S, event: StoredEvent<T>) => 
 export interface EventStoreOptions {
   /** Max events per aggregate (oldest are pruned). Default: 1000. */
   maxEventsPerAggregate?: number
+  /**
+   * (borrowing; see terminalEventTypes default) Event types counted as
+   * TERMINAL for an aggregate. A terminal event is recorded beyond the
+   * per-aggregate limit, in the one entry the limit reserves for it —
+   * pruning can never evict the latest terminal outcome, so a projection
+   * replayed after heavy traffic still sees how the aggregate ended.
+   */
+  terminalEventTypes?: string[]
 }
+
+/**
+ * Terminal event types by default (borrowing; OpenAgentCore
+ * services/core/internal/sessions/journal.go:13-19 — "The terminal outcome
+ * is recorded beyond those limits, in the one entry they reserve for it"):
+ * the built-in workspace vocabulary's final states plus the opencode
+ * bridge's session-error terminal status (the read model in
+ * apps/api/src/opencode-state-store.ts badges sessions on it).
+ */
+const DEFAULT_TERMINAL_EVENT_TYPES = ["workspace-completed", "workspace-failed", "session:error"]
 
 export class EventStore {
   private events = new Map<string, StoredEvent[]>()
+  /**
+   * Reserved terminal slot per aggregate (borrowing; journal.go:17): the
+   * LATEST terminal outcome lives here, OUTSIDE the observation log's
+   * limit. A newer terminal event replaces it; pruning never touches it.
+   */
+  private terminalEvents = new Map<string, StoredEvent>()
   private seqCounters = new Map<string, number>()
   private maxEvents: number
+  private terminalTypes: Set<string>
 
   constructor(options?: EventStoreOptions) {
     this.maxEvents = options?.maxEventsPerAggregate ?? 1000
+    this.terminalTypes = new Set(options?.terminalEventTypes ?? DEFAULT_TERMINAL_EVENT_TYPES)
   }
 
   /** Append an event to an aggregate's log. Returns the stored event with id/seq/timestamp. */
@@ -64,6 +90,15 @@ export class EventStore {
       seq,
     }
 
+    if (this.terminalTypes.has(type)) {
+      // Terminal outcome (borrowing; journal.go:199): recorded in the
+      // reserved entry, beyond the observation limit. Replacing the
+      // previous terminal event mirrors the upstream journal — the one
+      // reserved entry always holds the aggregate's final outcome.
+      this.terminalEvents.set(aggregateId, event as StoredEvent)
+      return event
+    }
+
     let log = this.events.get(aggregateId)
     if (!log) {
       log = []
@@ -71,7 +106,8 @@ export class EventStore {
     }
     log.push(event as StoredEvent)
 
-    // Prune if over limit
+    // Prune if over limit — observations only; the reserved terminal
+    // entry is outside this log and can never be evicted.
     if (log.length > this.maxEvents) {
       log.splice(0, log.length - this.maxEvents)
     }
@@ -82,8 +118,14 @@ export class EventStore {
   /** Get all events for an aggregate, optionally starting from a sequence number. */
   getEvents(aggregateId: string, fromSeq?: number): StoredEvent[] {
     const log = this.events.get(aggregateId) ?? []
-    if (fromSeq === undefined) return [...log]
-    return log.filter((e) => e.seq >= fromSeq)
+    const terminal = this.terminalEvents.get(aggregateId)
+    // Merge the reserved terminal outcome back into sequence order so
+    // consumers (replay/projection/rebuild) observe the same order the
+    // events were appended in.
+    const merged =
+      terminal !== undefined ? [...log, terminal].sort((a, b) => a.seq - b.seq) : [...log]
+    if (fromSeq === undefined) return merged
+    return merged.filter((e) => e.seq >= fromSeq)
   }
 
   /** Get the latest sequence number for an aggregate. */
@@ -100,21 +142,23 @@ export class EventStore {
     return events.reduce(reducer, initialState)
   }
 
-  /** Get all aggregate ids that have events. */
+  /** Get all aggregate ids that have events (observations OR a terminal outcome). */
   getAggregateIds(): string[] {
-    return [...this.events.keys()]
+    return [...new Set([...this.events.keys(), ...this.terminalEvents.keys()])]
   }
 
   /** Clear all events (for testing). */
   clear(): void {
     this.events.clear()
+    this.terminalEvents.clear()
     this.seqCounters.clear()
   }
 
-  /** Total event count across all aggregates. */
+  /** Total event count across all aggregates (observations + reserved terminal entries). */
   get size(): number {
     let total = 0
     for (const log of this.events.values()) total += log.length
+    total += this.terminalEvents.size
     return total
   }
 }

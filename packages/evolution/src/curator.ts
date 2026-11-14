@@ -20,7 +20,14 @@
  */
 
 import type { AgentMemory, AgentProfile, CuratorState, MemoryEntry } from "./types.js"
-import { toMemoryEntry } from "./types.js"
+import { entryContent, toMemoryEntry } from "./types.js"
+import {
+  checkProposalKey,
+  isCheckProposalEntry,
+  toCheckProposal,
+  toCheckProposalEntry,
+} from "./taste-to-checks.js"
+import type { CheckProposalProof } from "./taste-to-checks.js"
 
 export type CuratorBucket = "userFeedback" | "reviewSuggestions" | "commonErrors" | "goodExamples"
 
@@ -158,6 +165,119 @@ export class MemoryCurator {
       totalConsolidated: (priorState?.totalConsolidated ?? 0) + consolidated,
     }
     return { memory: next, curatorState, consolidated }
+  }
+
+  /**
+   * Taste-to-checks escalation pass (mcode-stack stacks/ronny
+   * taste-to-checks borrowing): same-type lessons that hit >= 2 times
+   * (active copies PLUS already-archived copies, so post-consolidation
+   * history still counts) escalate to ONE check-proposal entry in
+   * `reviewSuggestions`; the redundant active duplicates are archived
+   * like a consolidation sweep would. Pinned entries are immune (their
+   * active copy is kept and not archived). Dedupe: a proposal for a
+   * normalized key is emitted exactly once — later passes (and later
+   * buckets holding the same key) see the existing proposal and skip.
+   */
+  static escalateRecurringLessons(
+    mem: AgentMemory,
+    opts: { minOccurrences?: number; proof?: Partial<CheckProposalProof> } = {},
+  ): { memory: AgentMemory; proposals: MemoryEntry[] } {
+    const minOccurrences = opts.minOccurrences ?? 2
+    const next: AgentMemory = { ...mem }
+    const proposals: MemoryEntry[] = []
+
+    // Proposals already emitted (active or archived) — never duplicated.
+    const existingKeys = new Set<string>()
+    const scanProposals = (entries: MemoryEntry[] | undefined): void => {
+      for (const e of entries ?? []) {
+        const key = checkProposalKey(e)
+        if (key) existingKeys.add(key)
+      }
+    }
+    scanProposals(next.reviewSuggestions)
+    for (const bucketEntries of Object.values(next.archived ?? {})) scanProposals(bucketEntries)
+
+    // Global occurrence count per normalized key across every bucket,
+    // INCLUDING archived copies: the consolidation pass may have already
+    // collapsed earlier repeats — their archived copies still prove
+    // recurrence.
+    const counts = new Map<string, number>()
+    for (const bucket of CURATOR_BUCKETS) {
+      const count = (entries: MemoryEntry[] | undefined): void => {
+        for (const e of entries ?? []) {
+          if (isCheckProposalEntry(e)) continue
+          const key = normalizeContentKey(entryContent(e))
+          if (!key) continue
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
+      }
+      count(next[bucket])
+      count(next.archived?.[bucket])
+    }
+
+    const qualifyingKeys = new Set(
+      [...counts.entries()]
+        .filter(([key, n]) => n >= minOccurrences && !existingKeys.has(key))
+        .map(([key]) => key),
+    )
+    if (qualifyingKeys.size === 0) return { memory: mem, proposals }
+
+    // Per bucket: keep the newest active copy of each qualifying key as
+    // the rule source; archive the redundant duplicates.
+    for (const bucket of CURATOR_BUCKETS) {
+      const active = next[bucket]
+      const newestForKey = new Map<string, { entry: MemoryEntry; index: number }>()
+      for (let i = active.length - 1; i >= 0; i--) {
+        const e = active[i]!
+        if (isCheckProposalEntry(e)) continue
+        const key = normalizeContentKey(entryContent(e))
+        if (!qualifyingKeys.has(key)) continue
+        if (!newestForKey.has(key)) newestForKey.set(key, { entry: e, index: i })
+      }
+      if (newestForKey.size === 0) continue
+
+      const staying: MemoryEntry[] = []
+      const retiring: MemoryEntry[] = []
+      for (let i = 0; i < active.length; i++) {
+        const e = active[i]!
+        const key = normalizeContentKey(entryContent(e))
+        if (qualifyingKeys.has(key) && newestForKey.get(key)?.index !== i && !isPinned(e)) {
+          retiring.push(e)
+        } else {
+          staying.push(e)
+        }
+      }
+
+      for (const [key, { entry }] of newestForKey) {
+        if (existingKeys.has(key)) continue // another bucket escalated it first
+        const proposal = toCheckProposal(entryContent(entry), counts.get(key) ?? 0, opts.proof)
+        if (!proposal) continue
+        proposals.push(toCheckProposalEntry(proposal, key))
+        existingKeys.add(key)
+      }
+
+      next[bucket] = staying
+      if (retiring.length > 0) {
+        next.archived = {
+          ...(next.archived ?? {}),
+          [bucket]: [
+            ...(next.archived?.[bucket] ?? []),
+            ...retiring.map((e) =>
+              toMemoryEntry({
+                ...e,
+                metadata: { ...(e.metadata ?? {}), archivedAt: new Date().toISOString() },
+              }),
+            ),
+          ],
+        }
+      }
+    }
+
+    if (proposals.length > 0) {
+      next.reviewSuggestions = [...next.reviewSuggestions, ...proposals]
+      next.totalEntries = next.totalEntries + proposals.length
+    }
+    return { memory: next, proposals }
   }
 
   /** Convenience: curate a full profile (memory + curator bookkeeping). */

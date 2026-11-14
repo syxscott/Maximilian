@@ -22,7 +22,18 @@
  *
  * Predicates match on model-id patterns so new catalog entries pick the
  * right behavior without code changes.
+ *
+ * Layering (OpenAgentCore harnessconfig harness.go Declaration borrowing):
+ * this table is the FINE layer beneath the coarse apiFormat-level
+ * Declaration in format-capabilities.ts. `wireStopSequences` consults the
+ * format's EFFECTIVE capability set first (declared minus runtime-narrowed)
+ * and this model-id table second — a narrowed or undeclared format omits
+ * the parameter for every model, a declared format still defers to the
+ * per-family rejection evidence below.
  */
+
+import { formatSupports } from "./format-capabilities.js"
+import type { ApiFormat } from "./presets/types.js"
 
 /**
  * Model-id families with known parameter rejections. A rejection entry is
@@ -59,15 +70,22 @@ export function supportsStopSequences(modelId: string | undefined): boolean {
 }
 
 /**
- * Wire gate: the stop sequences to send for `modelId`, or undefined when the
- * model family rejects them (the parameter is omitted entirely) or none were
- * requested.
+ * Wire gate: the stop sequences to send for `modelId`, or undefined when
+ * they were not requested, when the format's Declaration does not carry the
+ * stopSequences capability (or a runtime probe narrowed it away — the
+ * client-side fallback still applies), or when the model family rejects
+ * them (the parameter is omitted entirely).
+ *
+ * `format` is optional for backward compatibility; callers that know their
+ * apiFormat pass it so the Declaration gate applies.
  */
 export function wireStopSequences(
   modelId: string | undefined,
   stopSequences: string[] | undefined,
+  format?: ApiFormat,
 ): string[] | undefined {
   if (!stopSequences || stopSequences.length === 0) return undefined
+  if (format && !formatSupports(format, "stopSequences")) return undefined
   if (!supportsStopSequences(modelId)) return undefined
   return stopSequences
 }

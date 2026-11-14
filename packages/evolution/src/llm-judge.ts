@@ -110,6 +110,21 @@ export interface JudgeOutput {
   feedback: string
   /** Anchored rubric scores when a rubricContext was provided. */
   rubric?: RubricScores
+  /**
+   * Declared by the judge itself when its scoring is NOT deterministic
+   * (a live LLM judge). The engine treats a declared non-deterministic
+   * judge as a noise source: it re-runs the baseline once to measure flip
+   * noise and widens the promote margin to at least that noise
+   * (pr-review-tuning backtest.md:18-55 borrowing). The default offline
+   * judge leaves this unset → zero noise → unchanged margin behaviour.
+   */
+  nonDeterministic?: boolean
+  /**
+   * Original-text excerpt the judge's verdict is grounded in. Absent when
+   * the judge did not cite evidence; {@link enforceEvidenceGate} degrades
+   * such verdicts (minimax_search browse borrowing — see EVIDENCE_MANDATE).
+   */
+  evidenceQuote?: string
 }
 
 export type Judge = (input: JudgeInput) => Promise<JudgeOutput> | JudgeOutput
@@ -234,4 +249,62 @@ function scoreRubric(candidate: string, ctx: RubricContext): RubricScores {
 /** Scale a 0..1 composite to 0..10 (matches the existing `reviewScore` scale). */
 export function toReviewScore(j: JudgeOutput): number {
   return Math.round(j.composite * 10 * 100) / 100
+}
+
+// ── Evidence mandate (minimax_search borrowing) ────────────────────────────
+
+/**
+ * Evidence-forcing clause (borrowing MiniMax minimax_search
+ * `minimax_search_browse.py:199,218`, whose browse prompt ends with
+ * "If there is no relevant information, please clearly refuse to answer.
+ * When answering, please identify and extract the original content as the
+ * evidence."). Judges that score without quoting the artifact they judged
+ * produce unfalsifiable verdicts; the mandate makes every verdict carry
+ * its own evidence or an explicit refusal, and
+ * {@link enforceEvidenceGate} degrades verdicts that carry neither.
+ */
+export const EVIDENCE_MANDATE =
+  "Answer with an excerpt of the original text as evidence; " +
+  "if there is no relevant information, explicitly refuse to answer."
+
+/**
+ * Render the anchored-rubric prompt an LLM judge scores against: the
+ * charter (when given), the four anchor sets, and the evidence mandate.
+ */
+export function buildRubricPrompt(
+  input: { charter?: string; rubricContext?: RubricContext } = {},
+): string {
+  const lines: string[] = []
+  if (input.charter) lines.push(`# Charter\n${input.charter.trim()}\n`)
+  lines.push("# Scoring anchors")
+  for (const [dimension, anchors] of Object.entries(RUBRIC_ANCHORS)) {
+    lines.push(`- ${dimension}: 1.0 = ${anchors.one}; 0.5 = ${anchors.half}; 0.0 = ${anchors.zero}`)
+  }
+  if (input.rubricContext?.positives?.length) {
+    lines.push(`- Must trigger on: ${input.rubricContext.positives.join("; ")}`)
+  }
+  if (input.rubricContext?.negatives?.length) {
+    lines.push(`- Must NOT trigger on: ${input.rubricContext.negatives.join("; ")}`)
+  }
+  lines.push(`\n# Evidence mandate\n${EVIDENCE_MANDATE}`)
+  return lines.join("\n")
+}
+
+/**
+ * Degrade an evidence-free verdict (the enforcement half of
+ * EVIDENCE_MANDATE): a composite without an `evidenceQuote` is halved and
+ * the feedback names the violation, so an LLM judge that ignores the
+ * mandate cannot sail a candidate through the promote margin. A verdict
+ * that DID quote evidence — or an explicit refusal carrying no score —
+ * passes through unchanged.
+ */
+export function enforceEvidenceGate(judge: JudgeOutput): JudgeOutput {
+  if (typeof judge.evidenceQuote === "string" && judge.evidenceQuote.trim().length > 0) {
+    return judge
+  }
+  return {
+    ...judge,
+    composite: Math.max(0, judge.composite * 0.5),
+    feedback: `${judge.feedback}; evidence mandate violated: no original-text excerpt quoted — score degraded`,
+  }
 }

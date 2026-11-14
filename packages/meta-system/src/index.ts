@@ -87,7 +87,12 @@ export {
 export { SafeRollout, type RolloutApplyInput, type RolloutResult } from "./safe-rollout.js"
 export { ReplayEngine, type ReplayDeps, type ReplayInput } from "./replay-engine.js"
 export { PendingProposalStore } from "./pending-proposal-store.js"
-export { TruthAudit, buildMeasurement, type TruthAuditDeps } from "./truth-audit.js"
+export {
+  TruthAudit,
+  buildMeasurement,
+  buildTriggerDriftMeasurement,
+  type TruthAuditDeps,
+} from "./truth-audit.js"
 export {
   GOAL_VERDICTS,
   GOAL_VERDICT_QUALITY_DELTA,
@@ -108,6 +113,7 @@ export {
 } from "./goal-judge.js"
 export {
   TruthCalibrator,
+  type BenchmarkDriftSignal,
   type CalibratorRolePoint,
   type TruthCalibratorDeps,
   type CalibratorSummary,

@@ -10,6 +10,24 @@ export {
 // Toolkit (借鉴 SuperAGI)
 export { DefaultToolRegistry, BUILT_IN_TOOLKITS, type Tool, type Toolkit } from "./toolkit.js"
 export { bashTool, type BashInput, type BashOutput } from "./bash.js"
+// (borrowing) Mini-Agent background shell trio
+export {
+  bashOutputTool,
+  bashKillTool,
+  type BashOutputInput,
+  type BashOutputResult,
+  type BashKillInput,
+  type BashKillResult,
+} from "./bash-output.js"
+export {
+  BackgroundShellRegistry,
+  getBackgroundShellRegistry,
+  setBackgroundShellRegistry,
+  type BackgroundShellRegistryOptions,
+  type BackgroundShellSnapshot,
+  type BackgroundShellStatus,
+  type ReadResult,
+} from "./bash-background.js"
 export { readTool, type ReadInput, type ReadOutput } from "./read.js"
 export { writeTool, type WriteInput, type WriteOutput } from "./write.js"
 export { editTool, type EditInput, type EditOutput } from "./edit.js"
@@ -42,6 +60,7 @@ export {
 } from "./permission-service.js"
 
 import { bashTool } from "./bash.js"
+import { bashOutputTool, bashKillTool } from "./bash-output.js"
 import { readTool } from "./read.js"
 import { writeTool } from "./write.js"
 import { editTool } from "./edit.js"
@@ -51,6 +70,8 @@ import type { AnyTool } from "@max/llm"
 
 export const BUILTIN_TOOLS: Record<string, AnyTool> = {
   bash: bashTool,
+  bash_output: bashOutputTool,
+  bash_kill: bashKillTool,
   read: readTool,
   write: writeTool,
   edit: editTool,

@@ -40,8 +40,9 @@ import { readModifyWriteAtomic, writeFileAtomic } from "./atomic.js"
 import { validateCandidate, type GateResult } from "./constraint-gates.js"
 import { lintPromptShape, summarizeViolations, type LintViolation } from "./artifact-lint.js"
 import { scrubSecrets, containsSecret } from "./secret-scrub.js"
-import { defaultJudge, toReviewScore, type Judge } from "./llm-judge.js"
+import { defaultJudge, toReviewScore, type Judge, type JudgeInput } from "./llm-judge.js"
 import { resolveFamilyRow, type EvolutionDecisionShipGate } from "./ship-gates.js"
+import { EvolutionBudgetGate } from "./budget-gate.js"
 
 export const SCORE_THRESHOLD = 6.0
 export const ACCEPTANCE_THRESHOLD = 0.5
@@ -65,13 +66,34 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
   promoteMargin: PROMOTE_MARGIN,
 }
 
+/**
+ * Judge budget (backtest.md:18-55 borrowing): before a cycle starts, the
+ * estimated judge cost is checked against the limit; over budget → no new
+ * case starts. The spent total persists in durable state via
+ * {@link EvolutionBudgetGate}.
+ */
+export interface EvolutionBudgetOptions {
+  /** Total budget for judge calls (same unit as estimates, e.g. tokens). */
+  limit: number
+  /** Estimated cost of ONE judge invocation. Default: 1000. */
+  estimatePerJudgeCall?: number | ((input: JudgeInput) => number)
+  /** State file (default: <rootDir>/evolution-state.json). */
+  statePath?: string
+}
+
+export const DEFAULT_JUDGE_CALL_ESTIMATE = 1000
+
 export interface EvolutionEngineOptions {
   /** Pluggable judge for A/B scoring. Default: `defaultJudge` (offline). */
   judge?: Judge
+  /** Judge budget gate (backtest.md borrowing). Unset → unbounded. */
+  budget?: EvolutionBudgetOptions
 }
 
 export class EvolutionEngine {
   private readonly judge: Judge
+  private readonly budget: EvolutionBudgetGate | undefined
+  private readonly budgetOptions: EvolutionBudgetOptions | undefined
 
   constructor(
     private rootDir: string,
@@ -81,6 +103,13 @@ export class EvolutionEngine {
     opts: EvolutionEngineOptions = {},
   ) {
     this.judge = opts.judge ?? defaultJudge
+    this.budgetOptions = opts.budget
+    this.budget = opts.budget
+      ? new EvolutionBudgetGate({
+          statePath: opts.budget.statePath ?? path.join(rootDir, "evolution-state.json"),
+          limit: opts.budget.limit,
+        })
+      : undefined
   }
 
   private versionsDir(role: string): string {
@@ -219,6 +248,50 @@ export class EvolutionEngine {
       return decision
     }
 
+    // 3. Budget gate (backtest.md:18-55 borrowing): estimate the judge
+    //    cost BEFORE starting the cycle — over budget, no new case starts
+    //    (no candidate is scored, only the refusal is logged).
+    const failureStrings = extractFailureModeStrings(failures, this.config.scoreThreshold)
+    if (this.budget && this.budgetOptions) {
+      const perCall = estimateJudgeCallCost(
+        this.budgetOptions.estimatePerJudgeCall,
+        basePrompt,
+        failureStrings,
+        safeFeedback,
+        this.config.scoreThreshold,
+      )
+      // Conservative estimate: old + new + one noise-calibration repeat.
+      const estimate = perCall * 3
+      const headroom = await this.budget.ensureHeadroom(estimate)
+      if (!headroom) {
+        const remaining = await this.budget.remaining()
+        const newId2 = newId
+        await fs.mkdir(this.versionsDir(role), { recursive: true })
+        const refusedStub: AgentVersion = AgentVersionSchema.parse({
+          id: newId2,
+          agentRole: role,
+          manifest: { ...currentManifest, systemPrompt: currentManifest.systemPrompt },
+          createdAt: new Date().toISOString(),
+          reason: `budget_exhausted: estimated ${estimate} > remaining ${remaining} — no new case started`,
+          stats: { totalTasks: 0, avgScore: 0 },
+        })
+        await writeFileAtomic(this.versionFile(role, newId2), JSON.stringify(refusedStub, null, 2))
+        const decision: EvolutionDecision = withShipGate({
+          id: `evo-${randomUUID().slice(0, 8)}`,
+          agentRole: role,
+          fromVersion: current?.id ?? "v0",
+          toVersion: newId2,
+          outcome: "discarded",
+          oldAvgScore: 0,
+          newAvgScore: 0,
+          triggeredAt: new Date().toISOString(),
+          reason: `Budget exhausted: estimated judge cost ${estimate} exceeds remaining ${remaining} — stopped before starting a new case.`,
+        })
+        await this.appendDecision(role, decision)
+        return decision
+      }
+    }
+
     const candidate: AgentVersion = AgentVersionSchema.parse({
       id: newId,
       agentRole: role,
@@ -234,8 +307,7 @@ export class EvolutionEngine {
     await fs.mkdir(this.versionsDir(role), { recursive: true })
     await writeFileAtomic(this.versionFile(role, newId), JSON.stringify(candidate, null, 2))
 
-    // 3. A/B scoring via the pluggable Judge (default heuristic, or LLM).
-    const failureStrings = extractFailureModeStrings(failures, this.config.scoreThreshold)
+    // 4. A/B scoring via the pluggable Judge (default heuristic, or LLM).
     const oldJudge = await this.judge({
       candidate: basePrompt,
       baseline: basePrompt,
@@ -243,6 +315,27 @@ export class EvolutionEngine {
       feedback: safeFeedback,
       scoreThreshold: this.config.scoreThreshold,
     })
+
+    // Noise calibration (backtest.md:54 borrowing): "A model review is not
+    // deterministic. When the budget allows, run the baseline twice on the
+    // same cases and count the flips; a candidate has to beat that noise."
+    // Only a judge that DECLARES itself non-deterministic (LLM path) pays
+    // for the repeat; the deterministic default judge keeps zero noise and
+    // the margin behaviour is unchanged.
+    let observedFlipNoise = 0
+    let judgeCalls = 1
+    if (oldJudge.nonDeterministic === true) {
+      const baselineRepeat = await this.judge({
+        candidate: basePrompt,
+        baseline: basePrompt,
+        failures: failureStrings,
+        feedback: safeFeedback,
+        scoreThreshold: this.config.scoreThreshold,
+      })
+      observedFlipNoise = Math.abs(toReviewScore(baselineRepeat) - toReviewScore(oldJudge))
+      judgeCalls += 1
+    }
+
     const newJudge = await this.judge({
       candidate: newSystemPrompt,
       baseline: basePrompt,
@@ -250,16 +343,30 @@ export class EvolutionEngine {
       feedback: safeFeedback,
       scoreThreshold: this.config.scoreThreshold,
     })
+    judgeCalls += 1
+
+    if (this.budget && this.budgetOptions) {
+      const perCall = estimateJudgeCallCost(
+        this.budgetOptions.estimatePerJudgeCall,
+        basePrompt,
+        failureStrings,
+        safeFeedback,
+        this.config.scoreThreshold,
+      )
+      await this.budget.charge(perCall * judgeCalls)
+    }
 
     // Convert 0..1 composite → 0..10 review score.
     const oldScore = toReviewScore(oldJudge)
     const newScore = toReviewScore(newJudge)
     const deltaScore = newScore - oldScore
 
-    // 4. Promote if new > old + margin. We add the length penalty to the
-    //    margin so overlong candidates pay an extra cost — borrowed from
-    //    the Hermes anti-bloat operator.
-    const effectiveMargin = this.config.promoteMargin + newJudge.lengthPenalty
+    // 5. Promote if new > old + margin. The margin is max(config, observed
+    //    flip noise) so a non-deterministic judge must be beaten by more
+    //    than its own noise; the length penalty is added on top so
+    //    overlong candidates pay an extra cost (Hermes anti-bloat).
+    const effectiveMargin =
+      Math.max(this.config.promoteMargin, observedFlipNoise) + newJudge.lengthPenalty
     const promoted = newScore > oldScore + effectiveMargin
 
     if (promoted) {
@@ -317,6 +424,11 @@ export class EvolutionEngine {
     ]
     if (newJudge.lengthPenalty > 0) {
       reasonParts.push(`length penalty ${newJudge.lengthPenalty.toFixed(2)}`)
+    }
+    if (observedFlipNoise > 0) {
+      reasonParts.push(
+        `baseline flip noise ${observedFlipNoise.toFixed(2)} (margin widened to beat it)`,
+      )
     }
     if (newJudge.feedback) {
       reasonParts.push(newJudge.feedback)
@@ -383,6 +495,26 @@ function nextVersionId(versions: string[]): string {
     .map((x) => parseInt(x, 10))
   const max = nums.length > 0 ? Math.max(...nums) : 0
   return `v${max + 1}`
+}
+
+/** Resolve the per-call cost estimate (flat default when unset). */
+function estimateJudgeCallCost(
+  estimate: number | ((input: JudgeInput) => number) | undefined,
+  basePrompt: string,
+  failures: string[],
+  feedback: string[],
+  scoreThreshold: number,
+): number {
+  if (typeof estimate === "function") {
+    return estimate({
+      candidate: basePrompt,
+      baseline: basePrompt,
+      failures,
+      feedback,
+      scoreThreshold,
+    })
+  }
+  return estimate ?? DEFAULT_JUDGE_CALL_ESTIMATE
 }
 
 /**

@@ -6,6 +6,7 @@ import type {
   ChatChunk,
   EmbeddingResponse,
 } from "./base.js"
+import { ProviderError } from "./base.js"
 
 /**
  * Retry status broadcast (opencode `session/retry.ts` UI-semantics
@@ -315,6 +316,12 @@ function resolveDelay(
 }
 
 function isRetryable(err: unknown, retryableStatuses: number[]): boolean {
+  // Explicit verdict from body-aware classification (MiniMax-MCP-JS api.ts +
+  // cli mapApiErrorBase borrowing) wins over every heuristic: a vendor code
+  // that maps to AUTH / CONTENT_FILTER / QUOTA must not be retried even when
+  // the HTTP status alone would look transient, and an explicitly retryable
+  // vendor verdict retries. undefined = not classified → heuristics decide.
+  if (err instanceof ProviderError && err.retryable !== undefined) return err.retryable
   if (err instanceof Error) {
     const msg = err.message.toLowerCase()
     // Network errors

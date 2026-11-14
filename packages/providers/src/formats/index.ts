@@ -21,6 +21,8 @@ import { AnthropicMessagesProvider } from "./anthropic.js"
 import { GeminiNativeProvider } from "./gemini-native.js"
 import { OpenAIResponsesProvider } from "./openai-responses.js"
 import type { ApiFormat } from "../presets/types.js"
+import { assertFormatAdmission } from "../format-capabilities.js"
+import type { ApiFormatCapability } from "../format-capabilities.js"
 
 /**
  * Factory input — all generic providers accept this shape.
@@ -33,6 +35,14 @@ export interface ProviderFactoryConfig {
   defaultModel: string
   defaultMaxTokens?: number
   defaultTemperature?: number
+  /**
+   * Capabilities the caller REQUIRES from this provider (OpenAgentCore
+   * harnessconfig Declaration borrowing). Admission consults the same
+   * apiFormat Declaration the runtime gates read — a provider whose
+   * declaration does not include a required capability is refused here,
+   * not built half-working.
+   */
+  requires?: readonly ApiFormatCapability[]
 }
 
 /**
@@ -45,6 +55,13 @@ export function createProviderForFormat(
   apiFormat: ApiFormat,
   config: ProviderFactoryConfig,
 ): Provider {
+  // Declaration-gated admission (harnessconfig borrowing): required
+  // capabilities are checked against the single Declaration — the effective
+  // set (declared minus runtime-narrowed) — so a narrowed capability also
+  // refuses admission.
+  if (config.requires && config.requires.length > 0) {
+    assertFormatAdmission(apiFormat, config.requires)
+  }
   switch (apiFormat) {
     case "openai_chat":
       return new OpenAIChatProvider(config)

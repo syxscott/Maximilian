@@ -41,6 +41,7 @@ import {
   type Workspace,
 } from "@max/core"
 import type { FileWorkspaceStore } from "@max/workspace"
+import { executeUntilPark, type ParkSignal } from "./park-yield.js"
 
 const log = getLogger("worker:jobs-materialize")
 
@@ -87,6 +88,27 @@ export interface MaterializeDeps {
   store: Pick<FileWorkspaceStore, "saveWorkspace">
   /** Existing publishWorkspaceEvent channel — carries the backfill. */
   publishEvent: MaterializeEventSink
+  /**
+   * Park-yield (borrowing; OpenAgentCore worker.go:277 — see park-yield.ts).
+   * When provided, a run that parks on a human decision does NOT hold the
+   * caller's slot for the whole ask timeout: the run detaches (it keeps
+   * living in the runtime's waiting registry — resuming continues from the
+   * park point), and this function returns the pre-execution workspace.
+   */
+  park?: {
+    /** Per-job park signal — its observer is wired to the runtime hook. */
+    signal: ParkSignal
+    /**
+     * Register the signal's observer under the REAL workspace id (the
+     * scheduler's placeholder id never parks — it does not exist). Must be
+     * called before execute so the parked edge reaches the signal.
+     */
+    registerParkListener: (workspaceId: string) => void
+    /** Track the detached run's lifecycle promise in the worker registry. */
+    detach: (detached: Promise<void>, workspaceId: string) => void
+    /** Worker-side detached completion (deferred completion notification). */
+    onDetachedComplete: (final: Workspace) => Promise<void>
+  }
 }
 
 export interface MaterializeContext {
@@ -160,6 +182,32 @@ export async function materializeScheduledWorkspace(
 
   // 1. Plan — the message IS the user request (POST /api/chat parity).
   const { workspace, plan } = await deps.commander.plan(extras.message)
+
+  // Review verdict attach (the runtime doesn't know "review" is special).
+  // Shared by the synchronous and the detached (parked) completion path.
+  const attachReviewVerdict = async (final: Workspace): Promise<void> => {
+    const reviewResult = final.results.find((r) => r.agentRole === "review")
+    const review = reviewResult?.metadata?.review as ReviewResult | undefined
+    if (!review) return
+    final.review = review
+    await deps.store.saveWorkspace(final, ctx.tenantId)
+  }
+
+  // Processor parity: a failed execution must leave a `failed` terminal
+  // state. Shared by the synchronous catch and the detached failure path.
+  const persistFailedState = async (err: Error): Promise<void> => {
+    const failed: Workspace = {
+      ...workspace,
+      status: "failed",
+      error: err.message,
+      updatedAt: new Date().toISOString(),
+    }
+    try {
+      await deps.store.saveWorkspace(failed, ctx.tenantId)
+    } catch (saveErr) {
+      log.error({ workspaceId: workspace.id, err: saveErr }, "failed to persist failed state")
+    }
+  }
 
   // 2a. Preflight gate (parity with the chat route's 400).
   const preflightErrors = deps.commander.preflight(plan)
@@ -254,7 +302,41 @@ export async function materializeScheduledWorkspace(
   //    state, then propagate so BullMQ records the job failure.
   let final: Workspace
   try {
-    final = await deps.runtime.execute(workspace, { autoResume: true })
+    if (deps.park) {
+      // Park-yield (borrowing; see MaterializeDeps.park): race execute
+      // against the parked edge. The park hook reports the REAL workspace
+      // id, so the observer must be registered before the first tool call.
+      deps.park.registerParkListener(workspace.id)
+      const raced = await executeUntilPark({
+        workspaceId: workspace.id,
+        execute: () => deps.runtime.execute(workspace, { autoResume: true }),
+        signal: deps.park.signal,
+        onDetachedComplete: async (detachedFinal) => {
+          await attachReviewVerdict(detachedFinal)
+          await deps.park!.onDetachedComplete(detachedFinal)
+        },
+        onDetachedFailure: async (err) => {
+          // Post-park failures keep processor parity: persist the failed
+          // terminal state (no BullMQ job left to record it).
+          log.error(
+            { workspaceId: workspace.id, jobId: extras.jobId ?? "unknown", err: err.message },
+            "detached materialized execution threw - marking failed",
+          )
+          await persistFailedState(err)
+        },
+      })
+      if (raced.outcome === "parked") {
+        deps.park.detach(raced.detached, workspace.id)
+        log.info(
+          { workspaceId: workspace.id, jobId: extras.jobId ?? "unknown" },
+          "materialized run parked on human decision - detached, slot released",
+        )
+        return workspace
+      }
+      final = raced.result
+    } else {
+      final = await deps.runtime.execute(workspace, { autoResume: true })
+    }
   } catch (err) {
     if (err instanceof AutoResumeSuppressedError) {
       // Explicit stop within the suppression window: leave the terminal
@@ -275,27 +357,12 @@ export async function materializeScheduledWorkspace(
       { workspaceId: workspace.id, jobId: extras.jobId ?? "unknown", err: message },
       "materialized workspace execution threw - marking failed",
     )
-    const failed: Workspace = {
-      ...workspace,
-      status: "failed",
-      error: message,
-      updatedAt: new Date().toISOString(),
-    }
-    try {
-      await deps.store.saveWorkspace(failed, ctx.tenantId)
-    } catch (saveErr) {
-      log.error({ workspaceId: workspace.id, err: saveErr }, "failed to persist failed state")
-    }
+    await persistFailedState(err instanceof Error ? err : new Error(message))
     throw err
   }
 
   // Review verdict attach (the runtime doesn't know "review" is special).
-  const reviewResult = final.results.find((r) => r.agentRole === "review")
-  const review = reviewResult?.metadata?.review as ReviewResult | undefined
-  if (review) {
-    final.review = review
-    await deps.store.saveWorkspace(final, ctx.tenantId)
-  }
+  await attachReviewVerdict(final)
 
   return final
 }

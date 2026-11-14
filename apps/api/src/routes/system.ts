@@ -11,6 +11,11 @@ import { ProviderListResponseSchema } from "../schemas.js"
 import { VISIBLE_PROVIDER_PRESETS } from "@max/providers"
 import type { ProviderRegistry } from "@max/providers"
 import type { Context } from "hono"
+import {
+  collectOutboundSecrets,
+  redactOutboundMessage,
+  type OutboundRedactor,
+} from "../lib/outbound-redaction.js"
 
 export const listProvidersRoute = createRoute({
   method: "get",
@@ -419,6 +424,12 @@ export const providerTestChatRoute = createRoute({
 
 export interface ProviderTestChatDeps {
   registry: ProviderRegistry
+  /**
+   * Outbound redactor (minimax-code 9a93560 borrowing; the implementation
+   * is the pinned @max/providers `redactOutboundError` export). Injectable
+   * for tests; when omitted the providers export is used.
+   */
+  redactOutbound?: OutboundRedactor
 }
 
 export function providerTestChatHandler(deps: ProviderTestChatDeps) {
@@ -461,9 +472,15 @@ export function providerTestChatHandler(deps: ProviderTestChatDeps) {
           : {}),
       })
     } catch (err) {
+      // (minimax-code borrowing) The provider SDK error text echoes the
+      // API key on auth failures and goes out verbatim on this 502. Pass
+      // it through the redactor with THIS request's secrets: the request's
+      // credential headers plus this provider's configured key.
+      const rawMessage = err instanceof Error ? err.message : "provider call failed"
+      const secrets = collectOutboundSecrets(c.req.raw.headers, id)
       return c.json(
         {
-          error: err instanceof Error ? err.message : "provider call failed",
+          error: redactOutboundMessage(rawMessage, secrets, deps.redactOutbound),
           durationMs: Date.now() - startedAt,
         },
         502,

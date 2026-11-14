@@ -13,6 +13,7 @@
 
 import { BenchmarkEvaluator } from "./evaluator.js"
 import type { BenchmarkTask, BenchmarkResult, BenchmarkSuiteResult } from "./types.js"
+import { computeTriggerF1, suitesToTriggerSamples } from "./trigger-drift.js"
 
 // ── ANSI helpers ─────────────────────────────────────────────────────────────
 
@@ -224,6 +225,37 @@ function printSummary(
     console.log(
       `\n${BOLD}Delta:${RESET}      quality=${deltaStr(qDelta)}  acceptance=${deltaStr(aDelta)}`,
     )
+
+    // Trigger-F1 column of the dual-mode comparison (borrowing
+    // compare_with_baseline.py): whether the two modes agree on
+    // triggering tool_calls, with error_* failures broken out. Shown
+    // only when at least one side carries finish-reason data.
+    const f1Line = renderTriggerF1Line(baseline, maximilian)
+    if (f1Line) console.log(f1Line)
+  }
+}
+
+/**
+ * One-line ToolCalls-Trigger-F1 for the baseline/maximilian pair, or null
+ * when neither run recorded finish reasons (no tool_calls validator data).
+ */
+function renderTriggerF1Line(
+  baseline: BenchmarkSuiteResult,
+  maximilian: BenchmarkSuiteResult,
+): string | null {
+  const samples = suitesToTriggerSamples(baseline, maximilian)
+  const hasData = [...samples.baseline, ...samples.candidate].some(
+    (s) => (s.finishReason ?? null) !== null,
+  )
+  if (!hasData) return null
+  try {
+    const f1 = computeTriggerF1(samples.baseline, samples.candidate)
+    return (
+      `\n${BOLD}Trigger-F1:${RESET}  f1=${color(f1.f1, [0.5, 0.8])}  precision=${f1.precision.toFixed(2)}  recall=${f1.recall.toFixed(2)}` +
+      `  (TP ${f1.tp} / FP ${f1.fp} / FN ${f1.fn} / TN ${f1.tn}, errors ${f1.errorCount}/${f1.totalSamples})`
+    )
+  } catch (err) {
+    return `${YELLOW}Trigger-F1: unavailable (${err instanceof Error ? err.message : String(err)})${RESET}`
   }
 }
 
@@ -270,7 +302,7 @@ async function main(): Promise<void> {
 
   // Run evaluations.
   let baselineResult: BenchmarkSuiteResult | null = null
-  let maximilianResult: BenchmarkSuiteResult | null = null
+  const maximilianResult: BenchmarkSuiteResult | null = null
 
   if (args.mode === "baseline" || args.mode === "both") {
     console.log(`${CYAN}Running baseline evaluation...${RESET}`)

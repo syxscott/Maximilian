@@ -41,3 +41,34 @@ export {
 export * from "./catalog-sync.js"
 export * from "./stream-watchdog.js"
 export * from "./capability-predicates.js"
+// Outbound error redaction (minimax-code 9a93560 borrowing). Cross-agent
+// contract: apps/api imports `redactOutboundError` from this package —
+// keep the export name and `(message: string, secrets: string[]): string`
+// signature stable.
+export { redactOutboundError } from "./redact.js"
+// Body-aware error classification + trace-id capture (MiniMax-MCP-JS/cli
+// borrowing). Re-exported from base.js too; listed here for direct import.
+export {
+  classifyProviderErrorBody,
+  pickTraceId,
+  extractVendorErrorCode,
+  errorFactsFromUnknown,
+  MINIMAX_ERROR_CODES,
+} from "./error-classification.js"
+export type {
+  VendorErrorCodeEntry,
+  VendorErrorCodeTable,
+  ProviderErrorFacts,
+  ClassifiedProviderError,
+} from "./error-classification.js"
+// Usage self-consistency gate (OpenAgentCore sessions/usage.go borrowing).
+export { measuredUsage, gateUsageShape } from "./usage.js"
+export type {
+  MeasuredUsage,
+  MeasuredUsageOptions,
+  UsageCacheSemantics,
+  GatedChatUsage,
+} from "./usage.js"
+// apiFormat-level capability Declaration (OpenAgentCore harnessconfig
+// harness.go borrowing).
+export * from "./format-capabilities.js"

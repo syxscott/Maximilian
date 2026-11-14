@@ -16,7 +16,14 @@
 export * from "./types.js"
 export { MetricsStore } from "./metrics-store.js"
 export type { MetricsStoreLike } from "./metrics-store.js"
-export { computeFlipMatrix, summarizeFlipMatrix, type FlipMatrix } from "./flip-matrix.js"
+export {
+  computeFlipMatrix,
+  summarizeFlipMatrix,
+  classifyFinishReason,
+  computeTriggerF1,
+  type FlipMatrix,
+  type TriggerF1Result,
+} from "./flip-matrix.js"
 export {
   runOracleTriad,
   OracleLessonsMissingError,
@@ -28,8 +35,10 @@ export { ProfileStore } from "./profile-store.js"
 export {
   Leaderboard,
   aggregate,
+  aggregateBenchmarkSummaries,
   MIN_DOMAINS_FOR_OVERALL,
   type AggregateOptions,
+  type BenchmarkSummaryLike,
 } from "./leaderboard.js"
 export { ModelSelector, DEFAULT_SELECTOR_CONFIG } from "./selector.js"
 export { AgentMemoryStore, COMPRESSION_THRESHOLD } from "./memory.js"
@@ -41,6 +50,19 @@ export {
   type CurateReport,
   type EntryMatch,
 } from "./curator.js"
+export {
+  CHECK_PROPOSAL_KIND,
+  ENFORCE_AT_PRIORITY,
+  classifyEnforceSlot,
+  toCheckProposal,
+  toCheckProposalEntry,
+  renderCheckProposal,
+  isCheckProposalEntry,
+  checkProposalKey,
+  type CheckProposalLesson,
+  type CheckProposalProof,
+  type EnforceAt,
+} from "./taste-to-checks.js"
 export {
   BackgroundReflector,
   defaultReflector,
@@ -55,8 +77,15 @@ export { CuratorStateSchema, type CuratorState } from "./types.js"
 export {
   EvolutionEngine,
   DEFAULT_EVOLUTION_CONFIG,
+  DEFAULT_JUDGE_CALL_ESTIMATE,
   type EvolutionEngineOptions,
+  type EvolutionBudgetOptions,
 } from "./evolution.js"
+export {
+  EvolutionBudgetGate,
+  type EvolutionBudgetGateOptions,
+  type EvolutionBudgetState,
+} from "./budget-gate.js"
 export { EvolutionFacade } from "./facade.js"
 export { evolutionAwareFactory } from "./factory.js"
 export {
@@ -79,11 +108,17 @@ export {
   lintPromptShape,
   summarizeViolations,
   countReferences,
+  lintWorkflowCandidate,
+  workflowLintBlocksShipment,
   MAX_REFERENCES,
   MAX_SECTIONS,
   type LintViolation,
   type LintCode,
   type PromptShapeInput,
+  type WorkflowLintViolation,
+  type WorkflowLintCode,
+  type WorkflowCandidateInput,
+  type WorkflowStepCandidate,
 } from "./artifact-lint.js"
 export {
   SealedFileVault,
@@ -98,6 +133,9 @@ export { containsSecret, findSecrets, scrubSecrets, type SecretMatch } from "./s
 export {
   defaultJudge,
   toReviewScore,
+  buildRubricPrompt,
+  enforceEvidenceGate,
+  EVIDENCE_MANDATE,
   RUBRIC_ANCHORS,
   type Judge,
   type JudgeInput,

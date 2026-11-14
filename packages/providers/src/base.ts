@@ -150,63 +150,51 @@ export type { RetryPolicyConfig, ResolvedRetryPolicy, BackoffConfig } from "./re
 export { resolveRetryPolicy } from "./retry-policy.js"
 export type { LlmError } from "./llm-error.js"
 
-// Import for use in this file (not just re-export)
-import { isContextWindowExceededError, isQuotaExceededError } from "./error-utils.js"
+// Error classification lives in its own module (body-aware variant + vendor
+// code tables + trace-id capture, MiniMax-MCP-JS/cli borrowing); the
+// status-only classifier moved there and is re-exported here so the
+// historical `from "./base.js"` import path keeps working.
+export {
+  httpErrorCode,
+  classifyProviderError,
+  classifyProviderErrorBody,
+  pickTraceId,
+  extractVendorErrorCode,
+  MINIMAX_ERROR_CODES,
+} from "./error-classification.js"
+export type {
+  VendorErrorCodeEntry,
+  VendorErrorCodeTable,
+  ProviderErrorFacts,
+  ClassifiedProviderError,
+} from "./error-classification.js"
 
 /** Error type for provider failures. */
 export class ProviderError extends Error {
+  /**
+   * Vendor trace/request id captured from the response headers
+   * (e.g. MiniMax `trace-id`) — mirrors the LlmFailure.requestId shape in
+   * llm-error.ts so support tickets can be correlated on either path.
+   */
+  public readonly requestId?: string
+  /**
+   * Explicit retryability verdict from body-aware classification
+   * (undefined = not classified; heuristics decide at the retry layer).
+   */
+  public readonly retryable?: boolean
+
   constructor(
     public readonly providerId: string,
     public readonly statusCode: number | undefined,
     message: string,
     public readonly cause?: unknown,
     public readonly code?: string,
+    requestId?: string,
+    retryable?: boolean,
   ) {
     super(`[${providerId}] ${message}`)
     this.name = "ProviderError"
+    this.requestId = requestId
+    this.retryable = retryable
   }
-}
-
-/**
- * Map an HTTP status to a stable error code string (借鉴 deepseek-harness).
- * Used to standardize error codes across different provider adapters.
- */
-export function httpErrorCode(status: number): string {
-  if (status === 401 || status === 403) return "AUTH"
-  if (status === 429) return "RATE_LIMIT"
-  if (status === 400) return "INVALID_REQUEST"
-  if (status >= 500) return "SERVER"
-  return `HTTP_${status}`
-}
-
-/**
- * Classify a provider error to determine retryability and error code.
- * Uses deepseek-harness error classification predicates.
- */
-export function classifyProviderError(
-  statusCode: number | undefined,
-  message: string,
-): { retryable: boolean; code: string } {
-  if (statusCode === 401 || statusCode === 403) {
-    return { retryable: false, code: "AUTH" }
-  }
-  if (statusCode === 429) {
-    return { retryable: true, code: "RATE_LIMIT" }
-  }
-  if (statusCode !== undefined && statusCode >= 500) {
-    return { retryable: true, code: "SERVER" }
-  }
-  if (statusCode === 0 || message.includes("fetch failed") || message.includes("ECONNREFUSED")) {
-    return { retryable: true, code: "TRANSPORT" }
-  }
-  if (isContextWindowExceededError(message)) {
-    return { retryable: false, code: "CONTEXT_WINDOW_EXCEEDED" }
-  }
-  if (isQuotaExceededError(message)) {
-    return { retryable: false, code: "QUOTA" }
-  }
-  if (statusCode === undefined) {
-    return { retryable: false, code: "UNKNOWN" }
-  }
-  return { retryable: false, code: httpErrorCode(statusCode) }
 }
