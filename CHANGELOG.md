@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Per-phase detail lives under `docs/changelogs/` — this file is the high-level summary.
 
+## [1.6.0](https://github.com/syxscott/Maximilian/compare/v1.5.1...v1.6.0) (2026-11-14)
+
+
+### Features
+
+* **ci:** agent bot — scheduled autonomous rounds on GitHub Actions ([fc3327b](https://github.com/syxscott/Maximilian/commit/fc3327be3c5af0bd257fcc6d171fd456552d8e54))
+
 ## [1.5.1](https://github.com/syxscott/Maximilian/compare/v1.5.0...v1.5.1) (2026-11-14)
 
 
