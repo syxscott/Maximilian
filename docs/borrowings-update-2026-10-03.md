@@ -204,3 +204,60 @@ route.middleware（执行序先于 validators），实测 unauth 401 / admin 200
 
 量级：上游 14.6k 行 vs 移植 ~1.3k 行（≈11:1；缺口=宿主 UI 面、IndexedDB→SQLite
 事务替代、语音/搜索 UI 无对应物）。
+
+---
+
+## 2026-11-14 波次：MiniMax-AI 全组织（minimax-org/ 11 仓 + minimax-code 增量）
+
+背景：45 参考仓全量更新（17 仓有更新）；MiniMax-AI 组织除模型论文仓外的基础设施
+仓全部克隆分析（Mini-Agent、OpenAgentCore、mcode-stack、MiniApps、Plugins、
+MCP-JS、mcode-agent-table、Provider-Verifier、minimax_search、cli）。四组并行
+研究 + 主线抽查核实后实施，提交 67c0bfb（+8c32ec0 gitleaks 夹具 allowlist），
+release 1.4.0。全量 30 包 5220 测试 0 失败。
+
+### P1（三处真缺陷 + 三处补缺）
+
+| 机制                                                                                                  | 来源                      | 落点/消费者                                                                                              |
+| ----------------------------------------------------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 执行槽位饥饿：parked 审批占 BullMQ 槽最长 10 分钟，3 个即饿死并发                                     | OAC worker.go:277         | worker `park-yield.ts`（park 边沿让槽、resolve 续跑同 continuation 零重跑；PARK_YIELD_ENABLED 默认开）   |
+| event-log 撕裂追加：appendLocked 不查尾部，崩溃撕裂行被粘接→SSE 重放丢事件                            | mcode-agent-table b00862b | api `event-log.ts` classifyTail（字节级）+ 单 fd + ftruncate 回滚 + 未应用条目拒追加；上游 12 例矩阵移植 |
+| 出站错误脱敏：test-chat 探针原文回传 err.message（SDK 401 回显密钥）                                  | minimax-code 9a93560      | providers `redact.ts`（契约导出）+ api system.ts/jobs.ts 接线                                            |
+| 后台 shell 注册表：run_in_background/bash_output 游标/bash_kill                                       | Mini-Agent bash_tool.py   | tools `bash-background.ts`/`bash-output.ts`，BUILTIN_TOOLS 注册                                          |
+| Usage 自洽门：cached≤input、total=sum，不一致按未知不入账                                             | OAC usage.go              | providers `usage.ts` measuredUsage/gateUsageShape                                                        |
+| 评测三件：validator 注册表 / tool_calls 四格混淆矩阵+schema 准确率 / 对基线 F1 漂移（接 truth-audit） | Provider-Verifier         | benchmark-core validators/* + evolution flip-matrix + cli 对比表                                         |
+
+### P2 机制
+
+- **runtime**：provider bundle 按 run 冻结；权限活开关（每次调用重读 live scopes，
+  fail-closed）；event-sourcing 终局保留位（terminal 事件不受限额剪除）；主动双
+  信号压缩 + 分轮 LLM 摘要（Mini-Agent；无 summarizer 退化截断）。
+- **providers**：错误体感知分类（厂商码/trace-id/retryable verdict）+ anthropic
+  流式 usage 采集（主线自查发现缺失）+ 能力单点声明（准入+只窄不宽）。
+- **api**：SSE 鉴权重查+慢读者断连；幂等键重放+同 key 异 body 409；duplicate
+  JSON key 400 带 path（boot 冒烟实测）。
+- **evolution**：taste-to-checks 教训漏斗（重复纠正→check-proposal）；promote 噪
+  声校准（非确定性 judge 基线双跑）+ 预算门；workflow 声明-实际一致性 lint；judge
+  证据强制条款。
+
+### 主线集成发现（上一波的死缝）
+
+**contextOverflowRecovery 从未接线**：2026-10-13 波的"强制压缩恢复"只落了
+tool-integration 的 option 与 compaction.ts 原语，**没有任何 host 传过该回调**
+（runtime.ts 注释写着 "via hosts wiring" 但无人接）——生产上该恢复路径不可达。
+本轮补线：runtime 默认 `defaultContextOverflowRecovery()`（强制压到一半，
+system+真实 user 意图 verbatim 保留——无摘要器时截断路径会吞任务指令，已修）+
+`defaultProactiveCompaction()`（chars/4 估算、120k 天花板）。
+
+### 诚实边界（无宿主面/已有对应物，勿重开）
+
+agent-table 拓扑即策略（无多代理讨论面，框架勿先建）；插件注册表整线
+（PluginManager 本身悬空）；MCP server 托管/媒体生成/iframe 宿主/WS 网关/
+Vault 加密行/沙箱挂起；cron/Feishu 特化链。存照待清理：`PluginManager`、
+`scopeForbidsPath`、`terminal_title_toggle` keybind 三处疑似悬空件。
+
+### 教训
+
+- 上游"协议规格类文档"（MiniApps package-contract、OAC contracts/*.md）是最优质
+  的借鉴来源——语义边界写得比代码还清楚。
+- 借鉴落地后必须核对"option 有没有 caller"：连续两波（compaction 恢复、本轮差
+  点重演）都出现"机制完整但无人传参"的准死代码。
