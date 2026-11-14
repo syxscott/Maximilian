@@ -311,3 +311,41 @@ API）；contenteditable chip composer（工程量大单列）；附件真实上
 --frozen-lockfile --force` 重链即愈（本波第 2 次验证该修复）。
 - 跨代理契约组件（StreamingMarkdown）先落 pass-through 绑定+data 标记，交付后主线
   一处 import 换绑——并行期互不阻塞。
+
+### 2026-11-14 bug 审查轮（99540c5，release 1.5.1）
+
+两轮审查并行扫两波新机制（读实现→读测试→最小复现证实/证伪）：**7 个确认 bug 修复**，
+9 项疑似核实为不可达或设计权衡（附验证步骤记录在案）。
+
+确认修复（每条带回归测试）：
+
+1. **worker 双重 completed 通知**：parked 定时触发以占位 id 完成、detached run 以真实
+   物化 id 在注册表——只查 job id 落空，webhook 立即发+真实完成再发。修复：双 id 查
+   （park-yield `shouldDeferCompletionNotification`）。
+2. **bash 注册表死锁**：16 个立即退出命令占满 cap 后，retention cap（32>16）永远腾不
+   出槽，run_in_background 永久失效。修复：start 前 force-evict 最老 EXITED 记录。
+3. **PermissionDialog 失败砖化**：answer 网络错误后 submittedIds 不释放、快捷键注销，
+   注释承诺的"留框重试"实际走不通。修复：失败路径释放 submittedIds。
+4. **VirtualTurnWindow 锚点回拉**：heights/units 引用变化使锚点 effect 重执行，把读者
+   拽回锚点行（自激）。修复：lastAnchorRef 门控——仅锚点目标变化才写 scrollTop。
+5. **ChatPanel IME 吞键**：组合期 ↑/↓ 触发历史召回打断候选导航、Ctrl+Enter 提交半成
+   品。修复：isComposing/keyCode 229 事件忽略。
+6. **ContextMeter 每键 O(会话)**：全量事件 stringify 随击键重算。修复：useMemo 按
+   events 引用。
+7. **PromptEditorDemo 错依赖**：slashPickItems 的 useMemo 依赖 [open]，供应陈旧映射。
+   修复：依赖 [slash.items]。
+
+疑似未证实（记录待验证，勿当已修）：
+
+- event-log 锁 TTL（5s）vs 大文件临界区——数百 MB 日志同步读可超时，需锁续期（设计权衡）。
+- EventFeed.subscribe 同 id 静默覆盖（概率 ~1e-9）。
+- bash 游标 vs 20k 行裁剪的中段游标漂移（需绝对行计数根治）。
+- 定时触发失败重试 = 双重物化新 workspace（需产品决策：一次 fire = 一份工作是否预期）。
+- useDropIntake 浏览器取消路径卡 dragging（有缓解；无 iframe 落点面）。
+- structuralEqual 循环引用（消费方均为 JSON 产物，不可达）；事件 key 窗口只逻辑过期
+  （无生产消费方）；mermaid 暗色回落（恒显式主题）；keepalive wake 绕过退避（与上游一致）。
+
+审查确认无恙的高风险面：event-log classifyTail 字节级判定与三种回滚路径、body-gate
+对 5000 随机文档 fuzz 零误报、幂等中间件顺序、SSE 重查定时器清理、redact 长度降序、
+format-capabilities 声明与四格式实际能力逐项吻合、live tool scopes 的 finally 清理、
+forceFraction 交错算法全形状、backup/restore 链续接（GENESIS 续链+接缝验证）。
