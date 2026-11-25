@@ -390,3 +390,22 @@ modal focus 契约（OpenHands use-modal-focus，接 quickpick/dock add-panel；
 ### 诚实边界（无消费面/需决策，勿重开）
 
 stream reasoning 累积（core stream 管线无在线消费者——启用流式执行时再借）；retired model fallback（与"显式配置绝不覆盖"冲突，需产品开关）；feedback 的 PostHog survey provider（宿主无 PostHog，默认 fetch/file）；**存照新增**：`appendHiddenReminders` 压缩配置仍无生产者（清理轮候选）。ZCode v4.0.0 对滚动权零变化；chat-demo 剩余项无上传/归档消费面。
+
+### 2026-11-26 bug 审查轮（2f5becb，release 1.7.1）
+
+两审查代理并行扫三波新机制：**8 个确认 bug 修复**，另有一批疑似/设计缺口记录在案。
+
+确认修复：
+
+1. **SSE drop 回调粒度**：同一 chunk 内多个超限帧只回调一次（契约为每事件一次+累计计数）。
+2. **openai-chat `chat()` 缺 ProviderError 直通守卫**——429 的 statusCode/requestId/code/retryable 被重包丢失（stream/gemini 早有，唯 chat 漏）。
+3. **usage groupBy 缺组键 500**（TypeError localeCompare undefined）→ `(unknown)` 占位桶，求和不变。
+4. **worker 恢复 sweep check-then-add 跨进程竞态**（Wave B 声称闭环但没闭：两个 sweep 并发都过检查又都 add）→ Redis SET NX PX claim（60s TTL、fail-open）。
+5. **locale 切换从不触发按需加载**（高危，被 test setup 预载双 locale 掩盖）：subscribe() 接语言变更。
+6. **Agent.buildMessages 记忆预算是死代码**：memoryText 算了不用、原文全量进 LLM；请求副本逐条套预算（recall() 仍返回完整条目）。
+7. **assembleGoalReply 纯空白输出原样下发**（与 fingerprint 归一语义冲突）→ NO_OUTPUT_REPLY。
+8. **feedback fetch transport 无超时**（挂起端点永久"发送中"）→ 10s AbortController 默认。
+
+疑似/设计缺口（记录待验证）：BackgroundJobRegistry cancel 后 run 完成态覆盖；session-store scrub 注入缝无调用方（vault 不可达、env 注入密钥不入册）；resolvedProviderSecrets 进程级 Set 无清理 API；tool-output-budget 短输出不擦密；log-mask 正则对邮箱等的过度脱敏；Vault.remove 不从 redactions 移除；supervisor 行缓冲跨 chunk UTF-8（预存）；SSRF guard 未覆盖 6to4/Teredo/NAT64-local-use 内嵌 IPv4 + DNS rebinding 残余；readResponseTextLimited Content-Length 分支不排空 body；cancelWaiting/getJobs 状态集不含 prioritized/paused；FTS auto vs LIKE 子串语义差异（设计取舍）；后台 registry stdout/stderr 共用 decoder 的交错边界。
+
+审查确认无恙：SSE 核心算法 2 万随机 wire 对照 WHATWG 参考 0 差异；webhook guard IPv4 短写/八进制/mapped/CGNAT 全正确；chunked tee 背压实测有界；Vault.redact 未登记密钥也覆盖；cause 链/OpenRouter id 族/EMPTY_RESPONSE 时序与上游一致；FTS5 触发器/迁移/snippet 实测正常；modal focus StrictMode/动态内容/WeakSet 无泄漏；compaction 400 例 forceFraction 模糊 0 异常；goal reply 500 例 emoji 裁剪无孤立代理项；OutageTracker/collector 告警次数精确。
