@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Per-phase detail lives under `docs/changelogs/` — this file is the high-level summary.
 
+## [1.7.1](https://github.com/syxscott/Maximilian/compare/v1.7.0...v1.7.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* bug-audit round on the 2026-11-25 three waves ([2f5becb](https://github.com/syxscott/Maximilian/commit/2f5becb0b9fa3aa047f669ea75af0238f68ded85))
+
 ## [1.7.0](https://github.com/syxscott/Maximilian/compare/v1.6.0...v1.7.0) (2026-11-25)
 
 
