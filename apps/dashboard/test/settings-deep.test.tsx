@@ -32,6 +32,7 @@ import {
   bucketPreview,
 } from "../src/components/settings/subagents-domain/model"
 import {
+  toBreakdownRows,
   toDailySeries,
   toSummaryView,
   toWindowRows,
@@ -293,6 +294,37 @@ describe("usage-domain model", () => {
     expect(toWindowRows("x")).toEqual([])
   })
 
+  it("normalizes the per-session breakdown defensively", () => {
+    const rows = toBreakdownRows({
+      bySession: [
+        {
+          key: "task-1",
+          agentId: "a1",
+          agentRole: "general",
+          totalRequests: 3,
+          totalInputTokens: 100,
+          totalOutputTokens: 50,
+          realTotalTokens: 150,
+          totalCostUsd: 0.25,
+          totalCostUsdKnown: true,
+          successRate: 1,
+          cacheHitRate: 0.5,
+        },
+        null,
+        { noKey: true },
+      ],
+      byAgentRole: [{ key: "general" }],
+    })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ key: "task-1", requests: 3, realTokens: 150 })
+    // Falls back to the role dimension when session rows are absent.
+    expect(toBreakdownRows({ byAgentRole: [{ key: "general" }] })).toEqual([
+      expect.objectContaining({ key: "general", costKnown: false }),
+    ])
+    expect(toBreakdownRows(null)).toEqual([])
+    expect(toBreakdownRows({ bySession: "nope" })).toEqual([])
+  })
+
   it("formats compact metrics", () => {
     expect(formatCompact(999)).toBe("999")
     expect(formatCompact(1500)).toBe("1.5k")
@@ -381,6 +413,7 @@ vi.mock("@/hooks/useSettingsQueries", () => ({
   useProviderTestChat: vi.fn(),
   useSubagentProfiles: vi.fn(),
   useUsageSummary: vi.fn(),
+  useUsageBreakdown: vi.fn(),
   useUsageDaily: vi.fn(),
   useUsageWindows: vi.fn(),
   useSessionStoreStatus: vi.fn(),
@@ -605,12 +638,38 @@ describe("settings deep domains: render smoke", () => {
         },
       }) as never,
     )
+    mocked.useUsageBreakdown.mockReturnValue(
+      q({
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        data: {
+          bySession: [
+            {
+              key: "task-1",
+              agentId: "a1",
+              agentRole: "general",
+              totalRequests: 2,
+              totalInputTokens: 80,
+              totalOutputTokens: 20,
+              realTotalTokens: 100,
+              totalCostUsd: 0.5,
+              totalCostUsdKnown: true,
+              successRate: 1,
+              cacheHitRate: 0.4,
+            },
+          ],
+        },
+      }) as never,
+    )
     renderWithQuery(<UsageDomain />)
     expect(screen.getByTestId("usage-line")).toBeTruthy()
     expect(screen.getByTestId("usage-bars")).toBeTruthy()
     expect(screen.getByTestId("usage-windows-table")).toBeTruthy()
     expect(screen.getByText("5h")).toBeTruthy()
     expect(screen.getByText("Unknown")).toBeTruthy() // unpriced window cost
+    expect(screen.getByTestId("usage-session-table")).toBeTruthy()
+    expect(screen.getByText("task-1")).toBeTruthy()
   })
 
   it("SessionStoreStatusCard shows counts, or the disabled hint", () => {

@@ -14,13 +14,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useLocale, t } from "@max/i18n"
 import {
+  useUsageBreakdown,
   useUsageDaily,
   useUsageSummary,
   useUsageWindows,
   type UsageRange,
 } from "@/hooks/useSettingsQueries"
-import { formatCompact, toDailySeries, toSummaryView, toWindowRows } from "./model"
-import { DailyBarChart, MiniLineChart, WindowsTable } from "./UsageCharts"
+import { formatCompact, toBreakdownRows, toDailySeries, toSummaryView, toWindowRows } from "./model"
+import { DailyBarChart, MiniLineChart, SessionBreakdownTable, WindowsTable } from "./UsageCharts"
 
 const RANGES: UsageRange[] = ["7d", "30d"]
 
@@ -41,18 +42,23 @@ export function UsageDomain() {
   const summary = useUsageSummary(range)
   const daily = useUsageDaily(range)
   const windows = useUsageWindows()
+  // Session drill-down rides the same range; absent on old backends, where
+  // the table simply renders its empty state.
+  const breakdown = useUsageBreakdown(range, "session")
 
   const summaryView = useMemo(() => toSummaryView(summary.data), [summary.data])
   const requestSeries = useMemo(() => toDailySeries(daily.data, "requests"), [daily.data])
   const costSeries = useMemo(() => toDailySeries(daily.data, "cost"), [daily.data])
   const windowRows = useMemo(() => toWindowRows(windows.data), [windows.data])
+  const sessionRows = useMemo(() => toBreakdownRows(breakdown.data), [breakdown.data])
 
-  const loading = summary.isLoading || daily.isLoading || windows.isLoading
-  const errored = summary.isError || daily.isError || windows.isError
+  const loading = summary.isLoading || daily.isLoading || windows.isLoading || breakdown.isLoading
+  const errored = summary.isError || daily.isError || windows.isError || breakdown.isError
   const retry = () => {
     void summary.refetch()
     void daily.refetch()
     void windows.refetch()
+    void breakdown.refetch()
   }
 
   return (
@@ -140,6 +146,14 @@ export function UsageDomain() {
               <p className="text-xs font-medium">{t("settingsDeep.usage.windowsTitle")}</p>
               <WindowsTable rows={windowRows} />
             </div>
+
+            {/* Per-session drill-down for the selected range (token-monitor
+                sessionUsageArchive borrowing). Heading is inline English to
+                keep this change inside the usage-domain files. */}
+            <div className="space-y-1">
+              <p className="text-xs font-medium">Sessions</p>
+              <SessionBreakdownTable rows={sessionRows} testId="usage-session-table" />
+            </div>
           </>
         )}
       </CardContent>
@@ -148,5 +162,5 @@ export function UsageDomain() {
 }
 
 // Re-export so a settings page can pull the whole domain from one module.
-export { MiniLineChart, DailyBarChart, WindowsTable } from "./UsageCharts"
+export { MiniLineChart, DailyBarChart, WindowsTable, SessionBreakdownTable } from "./UsageCharts"
 export { formatCompact } from "./model"

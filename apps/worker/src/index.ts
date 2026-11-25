@@ -851,6 +851,18 @@ async function main() {
           const row = stalled.find((r) => r.id === id)
           const ws = await store.loadWorkspace(id, row?.tenantId ?? undefined)
           if (!ws) return
+          // Conditional update + enqueue dedupe (MiniApps engine.mjs
+          // 28d4388 borrowing): a concurrent re-dispatch or a duplicate
+          // sweep pass must neither clobber a newer status nor double-run.
+          // Re-check the live row: only still-stalled workspaces are reset.
+          const live = (await store.listStalledRunning()).some(
+            (r) => r.id === id && r.tenantId === row?.tenantId,
+          )
+          if (!live) return
+          // Skip when an execute job for this workspace is already queued,
+          // delayed or active — one recovery pass per stalled workspace.
+          const pending = await recoveryQueue.getJobs(["wait", "waiting", "delayed", "active"])
+          if (pending.some((j) => j.data?.workspaceId === id)) return
           ws.status = "planning"
           await store.saveWorkspace(ws, row?.tenantId ?? undefined)
           await recoveryQueue.add("execute", {

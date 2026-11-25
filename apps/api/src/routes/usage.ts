@@ -3,12 +3,16 @@
  * by the EvolutionEngine (token counts, cache hits, cost, success rate).
  *
  * Endpoints
- *   GET  /api/obs/usage/summary?range=today|1d|7d|14d|30d|custom
- *   GET  /api/obs/usage/daily?range=...
+ *   GET  /api/obs/usage/summary?range=today|1d|7d|14d|30d|custom[&groupBy=session|agentRole]
+ *   GET  /api/obs/usage/daily?range=...[&groupBy=session|agentRole]
  *
  * Both reuse the file-backed MetricsStore (when no Postgres) and the
  * PgMetricsStore (when DATABASE_URL is set); the API layer treats them
- * identically via EvolutionFacade.metrics.
+ * identically via EvolutionFacade.metrics. The optional `groupBy` dimension
+ * returns a per-session / per-role decomposition derived from the same single
+ * `metrics.listAll` scan the summary already performs (token-monitor
+ * sessionUsageArchive borrowing) — no second scan that could drift from the
+ * totals.
  */
 
 import { createRoute } from "@hono/zod-openapi"
@@ -134,6 +138,153 @@ export interface UsageSummary {
     successRate: number
     cacheHitRate: number
   }>
+  /**
+   * Per-session rows; present only when `groupBy=session` was requested.
+   * Group key is `MetricRecord.taskId` — the session/workspace association
+   * key. Rows sum exactly to the summary totals.
+   */
+  bySession?: UsageBreakdownEntry[]
+  /** Per-role rows; present only when `groupBy=agentRole` was requested. */
+  byAgentRole?: UsageBreakdownEntry[]
+}
+
+/**
+ * Decomposition dimension for range queries.
+ *
+ * (borrowing) token-monitor's sessionUsageArchive keeps one row per session
+ * for every native range, so a range view can drill from the total into the
+ * sessions that produced it. Maximilian has no separate session archive;
+ * `MetricRecord.taskId` plays that role, and the decomposition is computed
+ * from the same records list the summary aggregates.
+ */
+export type UsageGroupBy = "session" | "agentRole"
+
+const USAGE_GROUP_BY_VALUES: readonly UsageGroupBy[] = ["session", "agentRole"]
+
+export interface UsageBreakdownEntry {
+  /** Group key: taskId for `session`, role name for `agentRole`. */
+  key: string
+  agentId: string
+  agentRole: string
+  totalRequests: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCacheReadTokens: number
+  totalCacheCreationTokens: number
+  /** Same formula as `UsageSummary.realTotalTokens` (fresh input + output +
+   *  cache creation), so entries sum exactly to the summary value. */
+  realTotalTokens: number
+  totalCostUsd: number
+  /** False when any request in this group lacked a pricing entry. */
+  totalCostUsdKnown: boolean
+  successRate: number
+  cacheHitRate: number
+}
+
+export type ParsedUsageGroupBy = { ok: true; groupBy?: UsageGroupBy } | { ok: false }
+
+/**
+ * Parse the optional `groupBy` query parameter. Absent → no breakdown (the
+ * historical response shape); an unknown value is reported as invalid so the
+ * route can answer 400 instead of silently ignoring a client typo.
+ */
+export function parseUsageGroupBy(raw: string | undefined): ParsedUsageGroupBy {
+  if (raw === undefined) return { ok: true, groupBy: undefined }
+  if ((USAGE_GROUP_BY_VALUES as readonly string[]).includes(raw)) {
+    return { ok: true, groupBy: raw as UsageGroupBy }
+  }
+  return { ok: false }
+}
+
+interface BreakdownBucket {
+  key: string
+  agentId: string
+  agentRole: string
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  freshInputTokens: number
+  costUsd: number
+  successes: number
+  unpriced: number
+}
+
+/**
+ * Aggregate the in-range records into one row per group key.
+ *
+ * Token/cost/rate formulas mirror `aggregateUsageSummary` exactly, so for
+ * either dimension the group rows sum to the summary:
+ *   - `realTotalTokens` sums to `summary.realTotalTokens`
+ *   - `totalRequests`, `totalInputTokens`, `totalOutputTokens`,
+ *     `totalCacheReadTokens`, `totalCacheCreationTokens`, `totalCostUsd`
+ *     sum to their summary counterparts.
+ * Groups are sorted by tokens (desc) then key (asc) for stable rendering.
+ */
+export function aggregateUsageBreakdown(
+  records: MetricRecord[],
+  range: ResolvedUsageRange,
+  groupBy: UsageGroupBy,
+): UsageBreakdownEntry[] {
+  const buckets = new Map<string, BreakdownBucket>()
+  for (const r of records) {
+    if (!inRange(r, range)) continue
+    const key = groupBy === "session" ? r.taskId : r.agentRole
+    let bucket = buckets.get(key)
+    if (!bucket) {
+      bucket = {
+        key,
+        agentId: r.agentId,
+        agentRole: r.agentRole,
+        requests: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        freshInputTokens: 0,
+        costUsd: 0,
+        successes: 0,
+        unpriced: 0,
+      }
+      buckets.set(key, bucket)
+    }
+    bucket.requests++
+    bucket.inputTokens += r.tokenInput
+    bucket.outputTokens += r.tokenOutput
+    bucket.cacheReadTokens += r.cacheReadTokens ?? 0
+    bucket.cacheCreationTokens += r.cacheCreationTokens ?? 0
+    bucket.freshInputTokens += getFreshInputTokens({
+      provider: r.provider,
+      promptTokens: r.tokenInput,
+      cacheReadTokens: r.cacheReadTokens ?? 0,
+      cacheCreationTokens: r.cacheCreationTokens ?? 0,
+    })
+    bucket.costUsd += MetricsStore.estimateCostUSD(r)
+    if (!r.error) bucket.successes++
+    if (isUnpriced(r, hasExactPricingEntry)) bucket.unpriced++
+  }
+
+  return [...buckets.values()]
+    .map((b) => ({
+      key: b.key,
+      agentId: b.agentId,
+      agentRole: b.agentRole,
+      totalRequests: b.requests,
+      totalInputTokens: b.inputTokens,
+      totalOutputTokens: b.outputTokens,
+      totalCacheReadTokens: b.cacheReadTokens,
+      totalCacheCreationTokens: b.cacheCreationTokens,
+      realTotalTokens: b.freshInputTokens + b.outputTokens + b.cacheCreationTokens,
+      totalCostUsd: b.costUsd,
+      totalCostUsdKnown: b.unpriced === 0,
+      successRate: b.requests > 0 ? b.successes / b.requests : 0,
+      cacheHitRate:
+        b.inputTokens + b.cacheCreationTokens > 0
+          ? b.cacheReadTokens / (b.inputTokens + b.cacheCreationTokens)
+          : 0,
+    }))
+    .sort((a, b) => b.realTotalTokens - a.realTotalTokens || a.key.localeCompare(b.key))
 }
 
 export interface DailyUsageEntry {
@@ -475,7 +626,18 @@ export const usageSummaryRoute = createRoute({
   path: "/obs/usage/summary",
   tags: ["usage"],
   responses: {
-    200: { content: { "application/json": { schema: z.unknown() } }, description: "Usage summary" },
+    200: {
+      content: {
+        "application/json": {
+          schema: z.unknown(),
+        },
+      },
+      description: "Usage summary; `groupBy=session|agentRole` adds a matching breakdown array",
+    },
+    400: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Invalid groupBy value",
+    },
     503: {
       content: { "application/json": { schema: ErrorSchema } },
       description: "Evolution disabled",
@@ -492,7 +654,18 @@ export const usageDailyRoute = createRoute({
   path: "/obs/usage/daily",
   tags: ["usage"],
   responses: {
-    200: { content: { "application/json": { schema: z.unknown() } }, description: "Daily usage" },
+    200: {
+      content: {
+        "application/json": {
+          schema: z.unknown(),
+        },
+      },
+      description: "Daily usage; `groupBy=session|agentRole` adds a range-wide breakdown array",
+    },
+    400: {
+      content: { "application/json": { schema: ErrorSchema } },
+      description: "Invalid groupBy value",
+    },
     503: {
       content: { "application/json": { schema: ErrorSchema } },
       description: "Evolution disabled",
@@ -554,17 +727,43 @@ export function usageRoutes(deps: UsageRouteDeps) {
     return parsed.data
   }
 
+  /**
+   * Resolve `groupBy` once per request; an invalid value is a client error,
+   * not a silent fallback (a typo would otherwise hide the whole drill-down).
+   */
+  function groupByFrom(c: Context): ParsedUsageGroupBy {
+    return parseUsageGroupBy(c.req.query("groupBy"))
+  }
+
+  function invalidGroupBy(c: Context, raw: string) {
+    return c.json(
+      {
+        error: "invalid_group_by",
+        code: "invalid_group_by",
+        details: { groupBy: raw, allowed: USAGE_GROUP_BY_VALUES },
+      },
+      400,
+    )
+  }
+
   return {
     summary: async (c: Context) => {
       if (!evolution) {
         return c.json({ error: "evolution_disabled" }, 503)
       }
+      const grouped = groupByFrom(c)
+      if (!grouped.ok) return invalidGroupBy(c, c.req.query("groupBy") ?? "")
       const preset = parsePreset(c.req.query("range"))
       const range = resolveUsageRange(preset)
       try {
         const tenantId = c.get("tenantId" as never) as string | undefined
         const records = await evolution.metrics.listAll({ tenantId })
         const summary = aggregateUsageSummary(records, range, preset)
+        if (grouped.groupBy) {
+          const rows = aggregateUsageBreakdown(records, range, grouped.groupBy)
+          if (grouped.groupBy === "session") summary.bySession = rows
+          else summary.byAgentRole = rows
+        }
         return c.json(summary)
       } catch (err) {
         log.error({ err }, "usage summary failed")
@@ -599,6 +798,8 @@ export function usageRoutes(deps: UsageRouteDeps) {
       if (!evolution) {
         return c.json({ error: "evolution_disabled" }, 503)
       }
+      const grouped = groupByFrom(c)
+      if (!grouped.ok) return invalidGroupBy(c, c.req.query("groupBy") ?? "")
       const preset = parsePreset(c.req.query("range"))
       const range = resolveUsageRange(preset)
       try {
@@ -606,12 +807,25 @@ export function usageRoutes(deps: UsageRouteDeps) {
         const records = await evolution.metrics.listAll({ tenantId })
         const daily = aggregateDailyUsage(records, range, hasExactPricingEntry)
         const page = paginate(daily, parsePagination(c), (d) => d.date)
-        return c.json({
+        const body: {
+          range: UsageRangePreset
+          daily: DailyUsageEntry[]
+          nextCursor: string | undefined
+          total: number
+          bySession?: UsageBreakdownEntry[]
+          byAgentRole?: UsageBreakdownEntry[]
+        } = {
           range: preset,
           daily: page.items,
           nextCursor: page.nextCursor,
           total: page.total,
-        })
+        }
+        if (grouped.groupBy) {
+          const rows = aggregateUsageBreakdown(records, range, grouped.groupBy)
+          if (grouped.groupBy === "session") body.bySession = rows
+          else body.byAgentRole = rows
+        }
+        return c.json(body)
       } catch (err) {
         log.error({ err }, "usage daily failed")
         return c.json({ error: "internal_error" }, 500)

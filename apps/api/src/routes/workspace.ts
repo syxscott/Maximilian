@@ -253,6 +253,14 @@ export interface StopWorkspaceDeps {
   audit?: AuditLedger
   /** Overridable for tests. Defaults to the Redis pub/sub publisher. */
   publish?: (redisUrl: string, signal: WorkspaceStopSignal) => Promise<void>
+  /**
+   * Eagerly remove still-waiting BullMQ jobs for this workspace so a stop
+   * takes effect immediately (MiniApps engine.mjs 0e8c24a borrowing). The
+   * durable stop signal already guarantees queued runs never start; this
+   * just deletes them instead of waiting out the TTL. Optional because the
+   * API process may run without a queue handle.
+   */
+  cancelWaiting?: (workspaceId: string) => Promise<unknown>
 }
 
 /**
@@ -282,6 +290,13 @@ export function stopWorkspace(deps: StopWorkspaceDeps) {
         reason,
         source: "api",
       })
+    }
+    // Eager cleanup of not-yet-started jobs for this workspace — best
+    // effort; the durable stop signal already prevents their execution.
+    try {
+      await deps.cancelWaiting?.(id)
+    } catch {
+      // the Redis stop signal above is the authoritative guard
     }
     await deps.audit?.append("workspace.stopped", { workspaceId: id, reason })
 

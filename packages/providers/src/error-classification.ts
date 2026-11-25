@@ -30,9 +30,21 @@
  * The vendor trace-id header is captured into the verdict so the throw site
  * can attach it to a ProviderError (`requestId`, mirroring the LlmFailure
  * requestId shape in llm-error.ts).
+ *
+ * Transport failures are classified separately by walking the Node error's
+ * `cause` chain for stable OS/library codes (cc-switch src-tauri/src/proxy/
+ * error.rs:234-269 classify_error_chain borrowing): zh-CN Windows localizes
+ * the `message` ("以一种访问权限不允许的方式…"), so message heuristics cannot
+ * be trusted there while `ECONNREFUSED` / `ETIMEDOUT` / `CERT_*` stay stable.
+ * The resulting {@link NetworkErrorKind} is merged into the verdict as a
+ * diagnostic field next to `requestId`.
  */
 
-import { isContextWindowExceededError, isQuotaExceededError } from "./error-utils.js"
+import {
+  isContextWindowExceededError,
+  isQuotaExceededError,
+  TRANSPORT_ERROR_CODE,
+} from "./error-utils.js"
 
 /**
  * Map an HTTP status to a stable error code string (借鉴 deepseek-harness).
@@ -129,6 +141,12 @@ export interface ProviderErrorFacts {
   readonly headers?: unknown
   /** Injectable vendor code table; defaults to {@link MINIMAX_ERROR_CODES}. */
   readonly codeTable?: VendorErrorCodeTable
+  /**
+   * Stable transport kind derived from the Node `code` cause chain by
+   * {@link classifyNetworkCauseChain}, when one matched. Precomputed by
+   * {@link errorFactsFromUnknown}.
+   */
+  readonly networkKind?: NetworkErrorKind
 }
 
 /** Body-aware classification verdict. */
@@ -139,6 +157,12 @@ export interface ClassifiedProviderError {
   requestId?: string
   /** Raw vendor code that drove the classification, when one matched. */
   vendorCode?: string
+  /**
+   * Stable transport kind (REFUSED / TIMEOUT / DNS / TLS / BLOCKED /
+   * BROKEN_PIPE) when the failure came from the Node cause chain. Diagnostic
+   * companion to {@link ProviderError.requestId}; `code` stays TRANSPORT.
+   */
+  networkKind?: NetworkErrorKind
 }
 
 /** Response headers searched for the vendor trace id (MiniMax uses `trace-id`). */
@@ -264,6 +288,112 @@ function bodyErrorMessage(parsed: Record<string, unknown>): string | undefined {
   return undefined
 }
 
+// ── Network cause-chain classification ─────────────────────────────────────
+
+/**
+ * Stable transport failure kinds (cc-switch src-tauri/src/proxy/error.rs:218-227
+ * `NetworkErrorKind` borrowing, renamed to SCREAMING_SNAKE for this package).
+ *
+ * The kind is a diagnostic label; retryability is uniform (TRANSPORT is in
+ * DEFAULT_RETRYABLE_CODES) because every one of these is a connection-level
+ * failure that may succeed on a fresh attempt.
+ */
+export type NetworkErrorKind = "BLOCKED" | "REFUSED" | "BROKEN_PIPE" | "TIMEOUT" | "DNS" | "TLS"
+
+/** Stable Node error codes mapped to kinds; TLS codes match the CERT marker. */
+const NETWORK_CODE_KINDS: Readonly<Record<string, NetworkErrorKind>> = Object.freeze({
+  EACCES: "BLOCKED",
+  EPERM: "BLOCKED",
+  ECONNREFUSED: "REFUSED",
+  EPIPE: "BROKEN_PIPE",
+  ENOTFOUND: "DNS",
+  EAI_AGAIN: "DNS",
+  ETIMEDOUT: "TIMEOUT",
+})
+
+/**
+ * Node TLS certificate failure codes all carry `CERT` (`CERT_HAS_EXPIRED`,
+ * `DEPTH_ZERO_SELF_SIGNED_CERT`, `SELF_SIGNED_CERT_IN_CHAIN`, …) — matching
+ * by substring keeps the self-signed variants that lack the `CERT_` prefix.
+ */
+const CERT_CODE_MARKER = "CERT"
+
+/** Defensive cap so a cyclic/very deep `cause` chain cannot spin. */
+const MAX_CAUSE_DEPTH = 10
+
+function networkKindForCode(code: string): NetworkErrorKind | undefined {
+  if (code.includes(CERT_CODE_MARKER)) return "TLS"
+  return Object.prototype.hasOwnProperty.call(NETWORK_CODE_KINDS, code)
+    ? NETWORK_CODE_KINDS[code]
+    : undefined
+}
+
+// DNS/TLS fallback wording is intentionally English-only (cc-switch borrowing):
+// undici / rustls / c-ares emit English regardless of the OS locale, while the
+// outer `TypeError: fetch failed` message is what gets localized.
+const DNS_TEXT_PATTERN = /\b(?:dns|getaddrinfo|name resolution|nodename nor servname)\b/i
+const TLS_TEXT_PATTERN = /\b(?:certificate|cert|tls|ssl|handshake)\b/i
+
+/**
+ * Walk an unknown thrown value's `cause` chain and classify the transport
+ * failure (cc-switch error.rs:234-269 `classify_error_chain` borrowing).
+ *
+ * Stable Node codes win over text: `fetch failed` wraps the real
+ * `ECONNREFUSED` / `ETIMEDOUT` / `CERT_*` one or two levels down, and on
+ * localized Windows the wrapper message carries no usable signal. When no
+ * code matches, DNS and TLS fall back to English text on the cause messages.
+ *
+ * @returns the stable kind, or undefined when nothing matched (the caller
+ *          keeps its original status/message heuristics unchanged).
+ */
+export function classifyNetworkCauseChain(err: unknown): NetworkErrorKind | undefined {
+  let dns = false
+  let blocked = false
+  let refused = false
+  let brokenPipe = false
+  let timeout = false
+  let tls = false
+
+  const seen = new Set<unknown>()
+  let current: unknown = err
+  for (
+    let depth = 0;
+    depth < MAX_CAUSE_DEPTH && current !== null && current !== undefined;
+    depth++
+  ) {
+    if (seen.has(current)) break
+    seen.add(current)
+    if (typeof current === "object") {
+      const code = (current as { code?: unknown }).code
+      if (typeof code === "string") {
+        const kind = networkKindForCode(code)
+        if (kind === "DNS") dns = true
+        else if (kind === "BLOCKED") blocked = true
+        else if (kind === "REFUSED") refused = true
+        else if (kind === "BROKEN_PIPE") brokenPipe = true
+        else if (kind === "TIMEOUT") timeout = true
+        else if (kind === "TLS") tls = true
+      }
+      const message = (current as { message?: unknown }).message
+      if (typeof message === "string") {
+        if (DNS_TEXT_PATTERN.test(message)) dns = true
+        if (TLS_TEXT_PATTERN.test(message)) tls = true
+      }
+    }
+    current = (current as { cause?: unknown }).cause
+  }
+
+  // Same precedence as cc-switch: DNS first, then local blocking, connection
+  // refusal/breakage, timeout, TLS.
+  if (dns) return "DNS"
+  if (blocked) return "BLOCKED"
+  if (refused) return "REFUSED"
+  if (brokenPipe) return "BROKEN_PIPE"
+  if (timeout) return "TIMEOUT"
+  if (tls) return "TLS"
+  return undefined
+}
+
 /**
  * Gather {@link ProviderErrorFacts} from an unknown thrown value — the SDK
  * error shapes (openai `APIError`, `@anthropic-ai/sdk` `APIError`) all
@@ -272,6 +402,9 @@ function bodyErrorMessage(parsed: Record<string, unknown>): string | undefined {
  * degrade to message-only facts.
  */
 export function errorFactsFromUnknown(err: unknown): ProviderErrorFacts {
+  // Transport kind first: the cause chain is locale-independent even when the
+  // outer message is localized, and it must survive the SDK wrappers.
+  const networkKind = classifyNetworkCauseChain(err)
   const source = err as
     | {
         status?: unknown
@@ -282,13 +415,17 @@ export function errorFactsFromUnknown(err: unknown): ProviderErrorFacts {
       }
     | undefined
   if (source === null || typeof source !== "object") {
-    return { message: typeof err === "string" ? err : undefined }
+    return {
+      message: typeof err === "string" ? err : undefined,
+      ...(networkKind === undefined ? {} : { networkKind }),
+    }
   }
   return {
     status: typeof source.status === "number" ? source.status : undefined,
     message: typeof source.message === "string" ? source.message : undefined,
     body: source.error ?? source.body,
     headers: source.headers,
+    ...(networkKind === undefined ? {} : { networkKind }),
   }
 }
 
@@ -298,7 +435,9 @@ export function errorFactsFromUnknown(err: unknown): ProviderErrorFacts {
  * heuristics but HTTP status classification (401/403/429/402, cli order)
  * is applied first so transport-level semantics stay stable; on 2xx/absent
  * status the vendor code is the ONLY meaningful signal, exactly the
- * "HTTP 200 + status_code" case that motivated the module.
+ * "HTTP 200 + status_code" case that motivated the module. A Node cause-chain
+ * transport kind then outranks the message heuristics, and only when neither
+ * body nor chain carries a signal do the original heuristics apply unchanged.
  */
 export function classifyProviderErrorBody(facts: ProviderErrorFacts): ClassifiedProviderError {
   const { status, body, headers } = facts
@@ -333,7 +472,21 @@ export function classifyProviderErrorBody(facts: ProviderErrorFacts): Classified
     }
   }
 
-  // 3. Status/message heuristics as the fallback.
+  // 3. Stable transport kind from the Node cause chain (cc-switch
+  // classify_error_chain borrowing). This outranks the message heuristics:
+  // `code` is locale-independent while the message may be localized, and it
+  // keeps working when "fetch failed" is wrapped two levels deep.
+  if (facts.networkKind !== undefined) {
+    return {
+      retryable: true,
+      code: TRANSPORT_ERROR_CODE,
+      requestId,
+      vendorCode,
+      networkKind: facts.networkKind,
+    }
+  }
+
+  // 4. Status/message heuristics as the fallback.
   const fallback = classifyProviderError(status, apiMessage)
   return { retryable: fallback.retryable, code: fallback.code, requestId, vendorCode }
 }

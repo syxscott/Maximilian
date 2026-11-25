@@ -21,15 +21,22 @@
 import { describe, expect, it } from "vitest"
 import {
   classifyProviderErrorBody,
+  classifyNetworkCauseChain,
   extractVendorErrorCode,
   pickTraceId,
   errorFactsFromUnknown,
   MINIMAX_ERROR_CODES,
+  type NetworkErrorKind,
 } from "../src/error-classification.js"
 import { ProviderError } from "../src/base.js"
 import { withRetry } from "../src/retry.js"
 import { OpenAIChatProvider } from "../src/formats/openai-chat.js"
 import type { ChatMessage } from "../src/base.js"
+
+/** Node-style error carrying a stable OS/library `code` (cc-switch borrowing). */
+function codedError(code: string, message = "connect failed"): Error {
+  return Object.assign(new Error(message), { code })
+}
 
 describe("classifyProviderErrorBody — MiniMax preset codes", () => {
   it("maps base_resp.status_code 1004 to AUTH (non-retryable)", () => {
@@ -247,6 +254,22 @@ describe("openai-chat catch wiring — code / retryable / requestId on ProviderE
     expect(bare.requestId).toBeUndefined()
     expect(bare.retryable).toBeUndefined()
   })
+
+  it("classifies a localized transport error by its stable cause-chain code", async () => {
+    const p = provider()
+    injectThrowingClient(
+      p,
+      Object.assign(new Error("以一种访问权限不允许的方式，做了一个访问套接字尝试。"), {
+        status: undefined,
+        cause: codedError("ECONNREFUSED"),
+      }),
+    )
+    await expect(p.chat(messages)).rejects.toMatchObject({
+      code: "TRANSPORT",
+      retryable: true,
+      networkKind: "REFUSED",
+    })
+  })
 })
 
 describe("withRetry honors the explicit body-aware verdict", () => {
@@ -349,5 +372,116 @@ describe("errorFactsFromUnknown", () => {
     })
     expect(errorFactsFromUnknown("plain string")).toEqual({ message: "plain string" })
     expect(errorFactsFromUnknown(undefined)).toEqual({ message: undefined })
+  })
+
+  it("extracts the stable kind from the cause chain into the facts", () => {
+    const sdkError = Object.assign(new Error("fetch failed"), { cause: codedError("EPIPE") })
+    expect(errorFactsFromUnknown(sdkError).networkKind).toBe("BROKEN_PIPE")
+    // No code anywhere → the field is absent so the original heuristics apply.
+    expect(errorFactsFromUnknown(new Error("读取超时，请稍后再试")).networkKind).toBeUndefined()
+  })
+})
+
+describe("classifyNetworkCauseChain — stable Node codes over localized text", () => {
+  const cases: ReadonlyArray<readonly [string, NetworkErrorKind]> = [
+    ["EACCES", "BLOCKED"],
+    ["EPERM", "BLOCKED"],
+    ["ECONNREFUSED", "REFUSED"],
+    ["EPIPE", "BROKEN_PIPE"],
+    ["ENOTFOUND", "DNS"],
+    ["EAI_AGAIN", "DNS"],
+    ["ETIMEDOUT", "TIMEOUT"],
+    ["CERT_HAS_EXPIRED", "TLS"],
+    ["DEPTH_ZERO_SELF_SIGNED_CERT", "TLS"],
+  ]
+
+  for (const [code, kind] of cases) {
+    it(`maps ${code} to ${kind}`, () => {
+      expect(classifyNetworkCauseChain({ code }), code).toBe(kind)
+    })
+  }
+
+  it("walks two levels down the cause chain", () => {
+    const inner = codedError("EPIPE")
+    const mid = Object.assign(new Error("以一种访问权限不允许的方式，做了一个访问套接字尝试。"), {
+      cause: inner,
+    })
+    const outer = Object.assign(new Error("fetch failed"), { cause: mid })
+    expect(classifyNetworkCauseChain(outer)).toBe("BROKEN_PIPE")
+  })
+
+  it("ignores localized messages when a stable code is present", () => {
+    for (const message of [
+      "connect ECONNREFUSED 127.0.0.1:443",
+      "以一种访问权限不允许的方式，做了一个访问套接字尝试。",
+    ]) {
+      expect(classifyNetworkCauseChain(codedError("ECONNREFUSED", message))).toBe("REFUSED")
+    }
+  })
+
+  it("falls back to English DNS/TLS wording only when no code matches", () => {
+    expect(classifyNetworkCauseChain(new Error("getaddrinfo ENOTFOUND api.example.com"))).toBe(
+      "DNS",
+    )
+    expect(classifyNetworkCauseChain(new Error("certificate has expired"))).toBe("TLS")
+    expect(classifyNetworkCauseChain(new Error("无法连接到网络，请检查设置"))).toBeUndefined()
+  })
+
+  it("merges the kind into the body verdict as retryable TRANSPORT", () => {
+    const facts = errorFactsFromUnknown(
+      Object.assign(new Error("以一种访问权限不允许的方式，做了一个访问套接字尝试。"), {
+        cause: codedError("ETIMEDOUT"),
+      }),
+    )
+    expect(facts.networkKind).toBe("TIMEOUT")
+    expect(classifyProviderErrorBody(facts)).toMatchObject({
+      code: "TRANSPORT",
+      retryable: true,
+      networkKind: "TIMEOUT",
+    })
+  })
+
+  it("keeps the original heuristics unchanged when no code exists", () => {
+    expect(
+      classifyProviderErrorBody(errorFactsFromUnknown(new Error("fetch failed"))),
+    ).toMatchObject({
+      code: "TRANSPORT",
+      retryable: true,
+    })
+    const localized = classifyProviderErrorBody(
+      errorFactsFromUnknown(new Error("网络连接失败，请稍后再试")),
+    )
+    expect(localized.code).toBe("UNKNOWN")
+    expect(localized.retryable).toBe(false)
+    expect(localized.networkKind).toBeUndefined()
+  })
+})
+
+describe("withRetry — cause-chain transport kind", () => {
+  const messages: ChatMessage[] = [{ role: "user", content: "hi" }]
+
+  it("retries a localized transport error via its stable cause code", async () => {
+    let attempts = 0
+    const provider = {
+      id: "t",
+      name: "t",
+      defaultModel: "m",
+      isConfigured: () => true,
+      chat: async () => {
+        attempts += 1
+        if (attempts === 1) {
+          throw Object.assign(new Error("以一种访问权限不允许的方式，做了一个访问套接字尝试。"), {
+            cause: codedError("ETIMEDOUT"),
+          })
+        }
+        return { content: "ok", model: "m" }
+      },
+      stream: async function* () {
+        yield { delta: "", done: true }
+      },
+    }
+    const resilient = withRetry(provider, { maxAttempts: 2, baseDelay: 1, sleep: async () => {} })
+    await expect(resilient.chat(messages)).resolves.toMatchObject({ content: "ok" })
+    expect(attempts).toBe(2)
   })
 })

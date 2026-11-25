@@ -14,6 +14,14 @@ export { GeminiNativeProvider } from "./gemini-native.js"
 export type { GeminiNativeConfig } from "./gemini-native.js"
 export { OpenAIResponsesProvider } from "./openai-responses.js"
 export type { OpenAIResponsesConfig } from "./openai-responses.js"
+// OpenRouter `native_finish_reason` empty-stop guard (pi #12407 borrowing).
+export {
+  readOpenRouterNativeFinishReason,
+  isEmptyOpenRouterStop,
+  openRouterEmptyStopMessage,
+  CLEAN_STOP_NATIVE_REASONS,
+} from "./openrouter-finish-reason.js"
+export type { OpenRouterStopState } from "./openrouter-finish-reason.js"
 
 import type { Provider } from "../base.js"
 import { OpenAIChatProvider } from "./openai-chat.js"

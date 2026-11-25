@@ -162,3 +162,67 @@ describe("BackgroundJobRegistry (借鉴 opencode)", () => {
     expect(result?.status).toBe("cancelled")
   })
 })
+
+// 排队期可取消（MiniApps minimax-bot engine.mjs 0e8c24a borrowing）
+describe("BackgroundJobRegistry queued lifecycle (0e8c24a)", () => {
+  it("enqueue() registers a queued job without running it", () => {
+    const reg = new BackgroundJobRegistry()
+    const { id } = reg.enqueue({ type: "eval", metadata: { k: 1 } })
+    expect(reg.get(id)?.status).toBe("queued")
+    expect(reg.get(id)?.metadata).toEqual({ k: 1 })
+    expect(reg.list()).toHaveLength(1)
+  })
+
+  it("enqueue() rejects a duplicate id instead of silently extending", () => {
+    const reg = new BackgroundJobRegistry()
+    reg.enqueue({ id: "dup", type: "eval" })
+    expect(() => reg.enqueue({ id: "dup", type: "eval" })).toThrow(/already tracked/)
+  })
+
+  it("start() claims a queued job and runs it", async () => {
+    const reg = new BackgroundJobRegistry()
+    const { id, done: queuedDone } = reg.enqueue({ type: "eval" })
+    const run = vi.fn(async () => "ok")
+    const { done } = reg.start({ id, type: "eval", run })
+    const info = await done
+    expect(info.status).toBe("completed")
+    expect(info.output).toBe("ok")
+    expect(run).toHaveBeenCalledTimes(1)
+    expect((await queuedDone).status).toBe("completed")
+    expect(reg.get(id)?.status).toBe("completed")
+  })
+
+  it("cancel() during queued marks stopped, persists/broadcasts, and blocks the later start", async () => {
+    const persist = vi.fn()
+    const broadcast = vi.fn()
+    const reg = new BackgroundJobRegistry({ persist, broadcast })
+    const { id, done } = reg.enqueue({ id: "job-q1", type: "eval" })
+
+    expect(reg.cancel(id)).toBe(true)
+    const info = reg.get(id)
+    expect(info?.status).toBe("cancelled")
+    expect(info?.completedAt).toBeDefined()
+
+    // 落盘 + 广播都以 cancelled 状态发生
+    expect(persist).toHaveBeenCalledWith(expect.objectContaining({ id, status: "cancelled" }))
+    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ id, status: "cancelled" }))
+    expect((await done).status).toBe("cancelled")
+
+    // 启动守卫：排队期已取消的 job 不得执行
+    const run = vi.fn(async () => "boom")
+    const after = reg.start({ id, type: "eval", run })
+    expect((await after.done).status).toBe("cancelled")
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it("persist() failure does not break cancellation", () => {
+    const reg = new BackgroundJobRegistry({
+      persist: () => {
+        throw new Error("EIO")
+      },
+    })
+    const { id } = reg.enqueue({ id: "job-q2", type: "eval" })
+    expect(reg.cancel(id)).toBe(true)
+    expect(reg.get(id)?.status).toBe("cancelled")
+  })
+})

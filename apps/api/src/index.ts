@@ -324,7 +324,7 @@ import {
 } from "./routes/tenants.js"
 import { rateLimiter } from "hono-rate-limiter"
 import { securityHeaders } from "./middleware/security-headers.js"
-import { createQueue, subscribeWorkspaceEvents } from "@max/queue"
+import { cancelWaitingWorkspaceJobs, createQueue, subscribeWorkspaceEvents } from "@max/queue"
 import { swaggerUI } from "@hono/swagger-ui"
 import { FileMemoryStore } from "@max/core"
 import type { AgentMemoryStorePort, ModelSelectorPort } from "@max/core"
@@ -2089,6 +2089,15 @@ api.openapi(
     // window. Undefined REDIS_URL means no queue mode — local runs only.
     redisUrl: config.REDIS_URL,
     audit: auditLedger,
+    // Eager removal of waiting jobs (MiniApps engine.mjs 0e8c24a): the
+    // durable signal guarantees queued runs never start; this deletes them
+    // immediately instead of waiting out the stop-ledger TTL.
+    cancelWaiting:
+      queue !== undefined
+        ? async (workspaceId: string) => {
+            await cancelWaitingWorkspaceJobs(queue, workspaceId)
+          }
+        : undefined,
   }),
 )
 

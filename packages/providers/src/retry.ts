@@ -7,6 +7,7 @@ import type {
   EmbeddingResponse,
 } from "./base.js"
 import { ProviderError } from "./base.js"
+import { classifyNetworkCauseChain } from "./error-classification.js"
 
 /**
  * Retry status broadcast (opencode `session/retry.ts` UI-semantics
@@ -323,6 +324,11 @@ function isRetryable(err: unknown, retryableStatuses: number[]): boolean {
   // vendor verdict retries. undefined = not classified → heuristics decide.
   if (err instanceof ProviderError && err.retryable !== undefined) return err.retryable
   if (err instanceof Error) {
+    // Stable Node cause-chain code (cc-switch error.rs classify_error_chain
+    // borrowing): locale-independent, so a localized "fetch failed" wrapper
+    // still retries on ECONNREFUSED / ETIMEDOUT / CERT_* even when the
+    // message text carries no usable signal.
+    if (classifyNetworkCauseChain(err) !== undefined) return true
     const msg = err.message.toLowerCase()
     // Network errors
     if (

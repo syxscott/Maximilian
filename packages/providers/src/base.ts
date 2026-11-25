@@ -6,6 +6,8 @@
  * No business logic changes required.
  */
 
+import type { NetworkErrorKind } from "./error-classification.js"
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant"
   content: string
@@ -158,6 +160,7 @@ export {
   httpErrorCode,
   classifyProviderError,
   classifyProviderErrorBody,
+  classifyNetworkCauseChain,
   pickTraceId,
   extractVendorErrorCode,
   MINIMAX_ERROR_CODES,
@@ -167,6 +170,7 @@ export type {
   VendorErrorCodeTable,
   ProviderErrorFacts,
   ClassifiedProviderError,
+  NetworkErrorKind,
 } from "./error-classification.js"
 
 /** Error type for provider failures. */
@@ -182,6 +186,13 @@ export class ProviderError extends Error {
    * (undefined = not classified; heuristics decide at the retry layer).
    */
   public readonly retryable?: boolean
+  /**
+   * Stable transport kind from the Node cause chain (REFUSED / TIMEOUT /
+   * DNS / TLS / BLOCKED / BROKEN_PIPE) — diagnostic companion to
+   * {@link requestId}, populated by body-aware classification when the
+   * failure came from a stable OS/library `code`.
+   */
+  public readonly networkKind?: NetworkErrorKind
 
   constructor(
     public readonly providerId: string,
@@ -191,10 +202,12 @@ export class ProviderError extends Error {
     public readonly code?: string,
     requestId?: string,
     retryable?: boolean,
+    networkKind?: NetworkErrorKind,
   ) {
     super(`[${providerId}] ${message}`)
     this.name = "ProviderError"
     this.requestId = requestId
     this.retryable = retryable
+    this.networkKind = networkKind
   }
 }

@@ -23,8 +23,21 @@ import type {
 } from "../base.js"
 import { ProviderError } from "../base.js"
 import { classifyProviderErrorBody, errorFactsFromUnknown } from "../error-classification.js"
+import {
+  isEmptyOpenRouterStop,
+  openRouterEmptyStopMessage,
+  readOpenRouterNativeFinishReason,
+} from "./openrouter-finish-reason.js"
 import { wireStopSequences } from "../capability-predicates.js"
 import { gateUsageShape } from "../usage.js"
+
+/**
+ * OpenRouter reaches this generic format through several presets (`openrouter`,
+ * `openrouter-2`, `openrouter-v`), so match the id family rather than one
+ * literal. Only these routes carry OpenRouter's `native_finish_reason`
+ * extension; other providers' chunks are left untouched (pi #12407 borrowing).
+ */
+const OPENROUTER_ID_PATTERN = /^openrouter(?:$|-)/
 
 export interface OpenAIChatConfig {
   id: string
@@ -163,6 +176,7 @@ export class OpenAIChatProvider implements Provider {
             verdict.code,
             verdict.requestId,
             verdict.retryable,
+            verdict.networkKind,
           )
         }
       },
@@ -233,11 +247,30 @@ export class OpenAIChatProvider implements Provider {
       let finishReason: string | undefined
       let refusalSeen = false
       let usage: ChatChunk["usage"] | undefined
+      // OpenRouter empty-stop detection (pi #12407 borrowing): track the
+      // upstream's native reason and whether anything visible was streamed,
+      // because OpenRouter normalizes upstream failures to `stop`.
+      const trackNativeFinishReason = OPENROUTER_ID_PATTERN.test(this.id)
+      let nativeFinishReason: string | undefined
+      let textSeen = false
+      let toolCallSeen = false
 
       for await (const chunk of stream) {
         armIdleTimeout() // Reset idle timer on each chunk
         const choice = chunk.choices[0]
+        if (trackNativeFinishReason && choice) {
+          // Later chunks may repeat finish_reason without the native field;
+          // keep the first/last value that actually carried it.
+          nativeFinishReason = readOpenRouterNativeFinishReason(choice) ?? nativeFinishReason
+        }
         const delta = choice?.delta?.content ?? ""
+        if (typeof delta === "string" && delta.trim() !== "") {
+          textSeen = true
+        }
+        const toolCalls = choice?.delta?.tool_calls
+        if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+          toolCallSeen = true
+        }
         // Refusal mapping (deepseek chat-demo reply.ts settleReply
         // borrowing): streamed refusals arrive as non-empty
         // `delta.refusal` text while finish_reason stays "stop" — once a
@@ -257,9 +290,37 @@ export class OpenAIChatProvider implements Provider {
         }
         yield { delta, done: false, finishReason, usage, raw: chunk }
       }
+      const nativeReason = nativeFinishReason
+      if (
+        trackNativeFinishReason &&
+        nativeReason !== undefined &&
+        isEmptyOpenRouterStop({
+          finishReason,
+          nativeFinishReason: nativeReason,
+          hasVisibleOutput: textSeen || refusalSeen || toolCallSeen,
+        })
+      ) {
+        // Retryable empty response (pi #12407 borrowing): OpenRouter reported
+        // an upstream failure as a clean `stop` after reasoning-only output.
+        // EMPTY_RESPONSE is in DEFAULT_RETRYABLE_CODES, and the explicit
+        // retryable verdict lets the retry layer honor it.
+        throw new ProviderError(
+          this.id,
+          undefined,
+          openRouterEmptyStopMessage(nativeReason),
+          undefined,
+          "EMPTY_RESPONSE",
+          undefined,
+          true,
+        )
+      }
       exhausted = true
       yield { delta: "", done: true, finishReason, usage }
     } catch (err) {
+      // An already-classified ProviderError carries its own verdict; the
+      // OpenRouter empty-stop guard above throws one, and re-wrapping would
+      // erase EMPTY_RESPONSE/retryable through the generic heuristics.
+      if (err instanceof ProviderError) throw err
       // Check if it was an idle timeout
       if (idleTimeout?.signal.aborted) {
         throw new ProviderError(
@@ -285,6 +346,7 @@ export class OpenAIChatProvider implements Provider {
         verdict.code,
         verdict.requestId,
         verdict.retryable,
+        verdict.networkKind,
       )
     } finally {
       consumer.abort()

@@ -50,6 +50,7 @@ export { redactOutboundError } from "./redact.js"
 // borrowing). Re-exported from base.js too; listed here for direct import.
 export {
   classifyProviderErrorBody,
+  classifyNetworkCauseChain,
   pickTraceId,
   extractVendorErrorCode,
   errorFactsFromUnknown,
@@ -60,6 +61,7 @@ export type {
   VendorErrorCodeTable,
   ProviderErrorFacts,
   ClassifiedProviderError,
+  NetworkErrorKind,
 } from "./error-classification.js"
 // Usage self-consistency gate (OpenAgentCore sessions/usage.go borrowing).
 export { measuredUsage, gateUsageShape } from "./usage.js"

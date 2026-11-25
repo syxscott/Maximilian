@@ -10,7 +10,15 @@
  */
 
 import { useLocale, t } from "@max/i18n"
-import { dailyBars, formatCompact, polylinePoints, type DailyPoint, type WindowRow } from "./model"
+import { DataGrid, type DataGridColumn } from "@max/ui-react"
+import {
+  dailyBars,
+  formatCompact,
+  polylinePoints,
+  type BreakdownRow,
+  type DailyPoint,
+  type WindowRow,
+} from "./model"
 
 /** Mini line chart: single polyline + baseline, ~no chrome. */
 export function MiniLineChart({
@@ -104,6 +112,91 @@ export function DailyBarChart({
         </rect>
       ))}
     </svg>
+  )
+}
+
+/**
+ * Per-session / per-role range breakdown (token-monitor sessionUsageArchive
+ * borrowing): the rows behind `?groupBy=session|agentRole`, rendered through
+ * the shared DataGrid so sorting and density match the rest of the app.
+ *
+ * Header labels are inline English on purpose: the files owned by this change
+ * are the usage-domain components, and adding locale keys would edit a shared
+ * file outside that scope. Numeric cells go through formatCompact.
+ */
+export function SessionBreakdownTable({ rows, testId }: { rows: BreakdownRow[]; testId?: string }) {
+  useLocale()
+  const columns: Array<DataGridColumn<BreakdownRow>> = [
+    {
+      key: "key",
+      header: "Session",
+      sortable: true,
+      value: (row) => row.key,
+      render: (row) => <span className="font-mono">{row.key}</span>,
+    },
+    { key: "agentRole", header: "Agent role", sortable: true, value: (row) => row.agentRole },
+    {
+      key: "requests",
+      header: t("settingsDeep.usage.col.requests"),
+      sortable: true,
+      align: "right",
+      value: (row) => row.requests,
+      render: (row) => formatCompact(row.requests),
+    },
+    {
+      key: "inputTokens",
+      header: t("settingsDeep.usage.col.input"),
+      sortable: true,
+      align: "right",
+      value: (row) => row.inputTokens,
+      render: (row) => formatCompact(row.inputTokens),
+    },
+    {
+      key: "outputTokens",
+      header: t("settingsDeep.usage.col.output"),
+      sortable: true,
+      align: "right",
+      value: (row) => row.outputTokens,
+      render: (row) => formatCompact(row.outputTokens),
+    },
+    {
+      key: "realTokens",
+      header: t("settingsDeep.usage.summary.tokens"),
+      sortable: true,
+      align: "right",
+      value: (row) => row.realTokens,
+      render: (row) => formatCompact(row.realTokens),
+    },
+    {
+      key: "costUsd",
+      header: t("settingsDeep.usage.col.cost"),
+      sortable: true,
+      align: "right",
+      value: (row) => row.costUsd,
+      render: (row) =>
+        row.costKnown ? `$${row.costUsd.toFixed(4)}` : t("settingsDeep.store.countUnknown"),
+    },
+    {
+      key: "successRate",
+      header: t("settingsDeep.usage.summary.successRate"),
+      sortable: true,
+      align: "right",
+      value: (row) => row.successRate,
+      render: (row) => `${(row.successRate * 100).toFixed(0)}%`,
+    },
+  ]
+  return (
+    <div data-testid={testId}>
+      <DataGrid
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.key}
+        defaultSort={{ key: "realTokens", direction: "desc" }}
+        emptyState={
+          <p className="text-xs text-muted-foreground">{t("settingsDeep.common.empty")}</p>
+        }
+      />
+    </div>
   )
 }
 

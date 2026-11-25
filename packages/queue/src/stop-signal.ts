@@ -12,13 +12,17 @@
  * locally (in-process runs) and publish here (worker runs). The worker
  * subscribes at startup and aborts its own runtime.
  *
- * At-least-once delivery: pub/sub has no delivery guarantee, so the worker
- * treats a missed signal the same as before this module existed (the run
- * finishes) — the stop route's local abort plus the stop-suppression window
- * remain the correctness backstop for queued/re-fired work.
+ * Pub/sub has no delivery guarantee, so a signal can be missed entirely
+ * (subscriber down, worker restarting). {@link publishWorkspaceStop}
+ * therefore ALSO stamps the durable stop ledger ({@link ./stop-ledger.ts}):
+ * a workspace stopped while its job is still waiting in BullMQ stays
+ * stopped across restarts, and the worker's dispatch guard refuses to
+ * start it. The stop route's local abort plus the stop-suppression window
+ * remain the low-latency fast path for in-flight runs.
  */
 
 import { Redis } from "ioredis"
+import { createRedisWorkspaceStopLedger } from "./stop-ledger.js"
 
 /** Canonical pub/sub channel — must match between publisher and subscriber. */
 export const WORKSPACE_STOP_CHANNEL = "maximilian:workspace:stop"
@@ -53,11 +57,26 @@ export function decodeStopSignal(raw: string): WorkspaceStopSignal | null {
   }
 }
 
-/** Publish a stop signal (API side). Fire-and-forget with a bounded wait. */
+/**
+ * Publish a stop signal (API side). Also stamps the durable stop ledger so
+ * a job still waiting in BullMQ is not executed after a worker restart /
+ * a missed pub/sub delivery (borrowing: engine.mjs 0e8c24a — queued jobs
+ * are marked stopped, and the dispatch guard refuses them).
+ *
+ * The ledger write is best-effort and happens BEFORE the publish: if Redis
+ * is degrading we still want the marker attempted before the fire-and-forget
+ * signal. A ledger failure never suppresses the signal.
+ */
 export async function publishWorkspaceStop(
   redisUrl: string,
   signal: WorkspaceStopSignal,
 ): Promise<void> {
+  const ledger = createRedisWorkspaceStopLedger(redisUrl)
+  try {
+    await ledger.markStopped(signal.workspaceId, signal.reason).catch(() => {})
+  } finally {
+    ledger.close()
+  }
   const publisher = new Redis(redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1 })
   try {
     await publisher.publish(WORKSPACE_STOP_CHANNEL, encodeStopSignal(signal))

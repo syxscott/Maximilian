@@ -22,7 +22,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import Database from "better-sqlite3"
-import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.js"
+import { SCHEMA_SQL, SCHEMA_VERSION, SEARCH_FTS_SQL } from "./schema.js"
 import { GENESIS_HASH, messageChainHash } from "./hash-chain.js"
 import {
   DEFAULT_PAIRING_TABLE,
@@ -99,6 +99,34 @@ export interface HistoryVerification {
   reason?: string
 }
 
+/**
+ * Search backend for {@link SessionStore.searchMessages} /
+ * {@link SessionStore.searchMessagesFts}.
+ *
+ *   - `auto` (default): use the FTS5 index whenever the query has at least
+ *     one indexable token and the index is available; otherwise fall back
+ *     to the legacy LIKE scan. This is what lets an existing
+ *     `store.searchMessages(query, { limit, workspaceId })` call site gain
+ *     full-text search with no argument change.
+ *   - `fts`: force the FTS5 index. Query-syntax failures still degrade to
+ *     LIKE so a user query can never surface as a 500.
+ *   - `like`: keep the legacy literal-substring scan (`%`/`_` escaped).
+ */
+export type MessageSearchMode = "auto" | "fts" | "like"
+
+/** Options for {@link SessionStore.searchMessages} / {@link SessionStore.searchMessagesFts}. */
+export interface MessageSearchOptions {
+  limit?: number
+  workspaceId?: string
+  /** Backend selection; defaults to `auto`. */
+  mode?: MessageSearchMode
+  /**
+   * Auto/fts only: treat the final term as a prefix (`term*`), so `auth`
+   * also matches `authentication`. Ignored by the LIKE fallback.
+   */
+  prefix?: boolean
+}
+
 /** One cross-session search hit: a message row plus its session's workspace context. */
 export interface MessageSearchHit {
   sessionId: string
@@ -106,6 +134,12 @@ export interface MessageSearchHit {
   role: string
   content: string
   createdAt: string | null
+  /**
+   * Highlighted excerpt from the FTS index (opencode search.ts snippet()
+   * borrowing), present only when FTS served the query. LIKE hits carry
+   * the full `content` instead, exactly like before.
+   */
+  snippet?: string
 }
 
 /** A persisted event row (camelCase mirror of the `events` table). */
@@ -279,6 +313,52 @@ function encodePayload(payload: unknown): string | null {
   return JSON.stringify(payload)
 }
 
+/** Query characters that switch an FTS5 MATCH from bare terms to real syntax. */
+const FTS_SYNTAX = /["*]|\b(?:AND|OR|NOT)\b/i
+/** Indexable FTS5 token: letters and numbers only (punctuation never matches). */
+const FTS_TOKEN = /[\p{L}\p{N}]+/gu
+
+/**
+ * Build the "safe" FTS5 MATCH expression: an OR of double-quoted
+ * alphanumeric tokens (opencode search.ts `plainOrQuery` borrowing).
+ * Quoting means punctuation (`C++`, `%`, `_`, emoji, …) is never parsed as
+ * an FTS operator. Returns undefined when there is no indexable token.
+ */
+function buildQuotedFtsExpression(query: string, prefix: boolean): string | undefined {
+  const tokens = query.trim().match(FTS_TOKEN) ?? []
+  if (tokens.length === 0) return undefined
+  const terms = tokens.map((token) => `"${token}"`)
+  if (prefix) terms[terms.length - 1] = `${terms[terms.length - 1]}*`
+  return terms.join(" OR ")
+}
+
+/**
+ * Build the preferred FTS5 MATCH expression (opencode search.ts
+ * `hasFtsSyntax` borrowing): a query that already carries FTS syntax
+ * (double quotes, a prefix `*`, or an AND/OR/NOT operator) is passed
+ * through unchanged so phrases, prefixes and boolean expressions keep
+ * working; anything else uses {@link buildQuotedFtsExpression}. Callers
+ * recover from a rejected raw expression by retrying the quoted form.
+ */
+function buildFtsExpression(query: string, prefix: boolean): string | undefined {
+  const trimmed = query.trim()
+  if (trimmed === "") return undefined
+  if (FTS_SYNTAX.test(trimmed)) return trimmed
+  return buildQuotedFtsExpression(query, prefix)
+}
+
+/**
+ * Whether an error thrown by the FTS path is a query/index-shape problem
+ * (safe to degrade to LIKE) rather than a storage defect such as a closed
+ * database or corruption, which must propagate.
+ */
+function isFtsQueryError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /fts5|MATCH|no such table|no such column|unterminated|malformed|syntax error|unknown special/i.test(
+    message,
+  )
+}
+
 /**
  * The SQLite session store. Construct, then either call `migrate()`
  * explicitly or rely on the lazy auto-migrate on first use.
@@ -420,6 +500,21 @@ export class SessionStore {
             "CREATE INDEX IF NOT EXISTS idx_messages_session_parent ON messages (session_id, parent_id)",
           )
           this.setMetaRaw("schema_version", "4")
+        },
+      },
+      {
+        // v4 -> v5 (opencode search-index borrowing): FTS5 external-content
+        // index over messages.content plus its triggers. SCHEMA_SQL already
+        // carries this DDL for fresh databases; here it is re-asserted with
+        // IF NOT EXISTS so an older database gains the same objects. The
+        // 'rebuild' command repopulates the index from `messages`, making
+        // rows written before v5 searchable; rebuild is idempotent, and the
+        // whole edge runs inside its own transaction like every other edge.
+        to: 5,
+        up: () => {
+          this.db.exec(SEARCH_FTS_SQL)
+          this.db.exec("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')")
+          this.setMetaRaw("schema_version", "5")
         },
       },
     ]
@@ -776,16 +871,43 @@ export class SessionStore {
   }
 
   /**
-   * Search messages across sessions (case-insensitive substring). Joins
-   * the sessions table so results carry workspace context. The query is
-   * treated as LITERAL text: `%` and `_` are escaped, so "100%" finds
-   * the literal percent sign instead of matching every row. Soft-deleted
-   * (rewound) messages are excluded.
+   * Search messages across sessions. Joins the sessions table so results
+   * carry workspace context, and excludes soft-deleted (rewound) messages.
+   *
+   * Backend selection (see {@link MessageSearchMode}):
+   *   - `auto` (default): FTS5 full-text search (bm25 ranking, prefix and
+   *     phrase syntax, snippet highlighting) whenever the query has an
+   *     indexable token; otherwise the legacy LIKE scan.
+   *   - `fts`: force FTS5, still degrading to LIKE if SQLite cannot parse
+   *     the expression.
+   *   - `like`: legacy literal-substring scan — `%`/`_`/backslash are
+   *     escaped, so "100%" finds the literal percent sign.
+   *
+   * The LIKE path remains the safety net for punctuation-only queries and
+   * for any database whose FTS index is unavailable, so a search can never
+   * throw merely because of the query text.
    */
-  searchMessages(
-    query: string,
-    opts?: { limit?: number; workspaceId?: string },
-  ): MessageSearchHit[] {
+  searchMessages(query: string, opts?: MessageSearchOptions): MessageSearchHit[] {
+    const mode = opts?.mode ?? "auto"
+    const expression = buildFtsExpression(query, opts?.prefix ?? false)
+    if (mode !== "like" && expression !== undefined) {
+      try {
+        return this.searchMessagesFts(query, opts)
+      } catch (error) {
+        // Degrade to LIKE only for query / index-shape problems (including
+        // a missing FTS table); real storage defects propagate.
+        if (!isFtsQueryError(error)) throw error
+      }
+    }
+    return this.searchMessagesLike(query, opts)
+  }
+
+  /**
+   * Legacy literal-substring search (the pre-FTS behavior, kept as the
+   * fallback and as an explicit opt-out). `%`, `_` and backslash are
+   * escaped, so they match literally instead of acting as wildcards.
+   */
+  private searchMessagesLike(query: string, opts?: MessageSearchOptions): MessageSearchHit[] {
     const limit = opts?.limit ?? 50
     // Escape the LIKE metacharacters (backslash first — it is the ESCAPE
     // character itself — then the two wildcards), then wrap in %...%.
@@ -815,6 +937,84 @@ export class SessionStore {
       createdAt: string | null
     }>
     return rows
+  }
+
+  /**
+   * FTS5 full-text search over `messages.content` (opencode search-index/
+   * search.ts borrowing). The external-content index is maintained by
+   * triggers and ranked with `bm25()`; `snippet()` produces the highlight.
+   * A query carrying FTS syntax (`"phrase"`, `prefix*`, `AND`/`OR`/`NOT`)
+   * is passed through; other text becomes an OR of quoted tokens.
+   *
+   * Never throws because of query text: a rejected raw expression is
+   * retried as the quoted-token form, and a punctuation-only query returns
+   * []. Only genuine storage defects propagate.
+   */
+  searchMessagesFts(query: string, opts?: MessageSearchOptions): MessageSearchHit[] {
+    const preferred = buildFtsExpression(query, opts?.prefix ?? false)
+    if (preferred === undefined) return []
+    try {
+      return this.runFtsSearch(preferred, opts)
+    } catch (error) {
+      if (!isFtsQueryError(error)) throw error
+      const sanitized = buildQuotedFtsExpression(query, opts?.prefix ?? false)
+      // Punctuation-only text has nothing to index; an expression identical
+      // to the one SQLite just rejected cannot succeed either.
+      if (sanitized === undefined) return []
+      if (sanitized === preferred) throw error
+      return this.runFtsSearch(sanitized, opts)
+    }
+  }
+
+  /** Run one already-built FTS5 MATCH expression (see {@link searchMessagesFts}). */
+  private runFtsSearch(expression: string, opts?: MessageSearchOptions): MessageSearchHit[] {
+    const limit = opts?.limit ?? 50
+    const withWorkspace = opts?.workspaceId !== undefined
+    const rows = (
+      withWorkspace
+        ? this.statement(
+            "searchMessagesFtsWorkspace",
+            `SELECT m.session_id AS sessionId, s.workspace_id AS workspaceId,
+                    m.role AS role, m.content AS content, m.created_at AS createdAt,
+                    snippet(messages_fts, 0, '[', ']', ' … ', 24) AS snippet,
+                    bm25(messages_fts) AS score
+             FROM messages_fts
+             JOIN messages m ON m.rowid = messages_fts.rowid
+             JOIN sessions s ON s.id = m.session_id
+             WHERE messages_fts MATCH ? AND m.deleted_at IS NULL AND s.workspace_id = ?
+             ORDER BY score, m.created_at DESC, m.id DESC LIMIT ?`,
+          ).all(expression, opts?.workspaceId, limit)
+        : this.statement(
+            "searchMessagesFtsAll",
+            `SELECT m.session_id AS sessionId, s.workspace_id AS workspaceId,
+                    m.role AS role, m.content AS content, m.created_at AS createdAt,
+                    snippet(messages_fts, 0, '[', ']', ' … ', 24) AS snippet,
+                    bm25(messages_fts) AS score
+             FROM messages_fts
+             JOIN messages m ON m.rowid = messages_fts.rowid
+             JOIN sessions s ON s.id = m.session_id
+             WHERE messages_fts MATCH ? AND m.deleted_at IS NULL
+             ORDER BY score, m.created_at DESC, m.id DESC LIMIT ?`,
+          ).all(expression, limit)
+    ) as Array<{
+      sessionId: string
+      workspaceId: string | null
+      role: string
+      content: string
+      createdAt: string | null
+      snippet: string | null
+    }>
+    return rows.map((row) => {
+      const hit: MessageSearchHit = {
+        sessionId: row.sessionId,
+        workspaceId: row.workspaceId,
+        role: row.role,
+        content: row.content,
+        createdAt: row.createdAt,
+      }
+      if (row.snippet !== null) hit.snippet = row.snippet
+      return hit
+    })
   }
 
   /**
@@ -1270,6 +1470,17 @@ export class SessionStore {
    * `treeMarkers`; markers of sessions not in the replacement are
    * dropped, while unrelated meta rows (e.g. the legacy_seq event-
    * migration bookkeeping) survive.
+   *
+   * Ordering/atomicity (minimax-code store.mjs deleteChat borrowing): the
+   * reference writes the "forgotten" state before clearing the
+   * un-rebuildable transcript, because a failure there leaves a chat
+   * listed-but-empty. Here the irreversible DELETEs and the replacement
+   * INSERTs share ONE `BEGIN IMMEDIATE` transaction, which is strictly
+   * stronger: no committed intermediate state exists, so a failure at any
+   * point (mid-DELETE or mid-INSERT) rolls the WHOLE swap back and the
+   * pre-swap content survives. The IMMEDIATE lock also serializes
+   * concurrent writers, so an append that commits after the swap is never
+   * overwritten by it.
    */
   replaceSessions(
     sessions: ReplaceSessionRow[],
@@ -1356,7 +1567,7 @@ export class SessionStore {
   }
 }
 
-export { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.js"
+export { SCHEMA_SQL, SCHEMA_VERSION, SEARCH_FTS_SQL } from "./schema.js"
 export {
   buildMessageVersions,
   getVisibleMessages,

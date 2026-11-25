@@ -21,6 +21,7 @@ import {
   normalizeMessageTree,
   treeBoundaryMetaKey,
   treeRootMetaKey,
+  SCHEMA_VERSION,
   type MessageTreeRow,
 } from "../src/index.js"
 
@@ -311,7 +312,8 @@ describe("v3→v4 migration edge — the tree columns", () => {
     raw.close()
 
     const reopened = new SessionStore({ path: dbPath }).migrate()
-    expect(reopened.schemaVersion).toBe(4)
+    // The chain walks v3 -> v4 -> v5 (the FTS edge is a no-op for content).
+    expect(reopened.schemaVersion).toBe(SCHEMA_VERSION)
     const row = reopened.listMessages("s")[0]
     expect(row.content).toBe("q")
     expect(row.seq).toBe(1) // v3 hash-chain data survived
@@ -342,7 +344,7 @@ describe("v3→v4 migration edge — the tree columns", () => {
 
     // And once more through a fresh handle (process restart path).
     const reopened = new SessionStore({ path: dbPath }).migrate()
-    expect(reopened.schemaVersion).toBe(4)
+    expect(reopened.schemaVersion).toBe(SCHEMA_VERSION)
     expect(reopened.listMessages("s")).toHaveLength(1)
     reopened.close()
   })

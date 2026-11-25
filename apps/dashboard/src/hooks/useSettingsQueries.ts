@@ -17,7 +17,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { z } from "zod"
-import { BASE, authHeaders, fetchJson, usageApi } from "../api"
+import { BASE, authHeaders, fetchJson, usageApi, type UsageGroupBy } from "../api"
 
 const SETTINGS_DEEP_PREFIX = "settings-deep" as const
 
@@ -208,6 +208,19 @@ export function useUsageSummary(range: UsageRange) {
   return useQuery({
     queryKey: [SETTINGS_DEEP_PREFIX, "usage-summary", range],
     queryFn: ({ signal }) => usageApi.summary(range, signal),
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * Range summary plus a per-session / per-role decomposition
+ * (token-monitor sessionUsageArchive borrowing). The breakdown rides the
+ * same `/obs/usage/summary` endpoint via `groupBy`.
+ */
+export function useUsageBreakdown(range: UsageRange, groupBy: UsageGroupBy) {
+  return useQuery({
+    queryKey: [SETTINGS_DEEP_PREFIX, "usage-summary", range, "breakdown", groupBy],
+    queryFn: ({ signal }) => usageApi.summaryGrouped(range, groupBy, signal),
     staleTime: 30_000,
   })
 }

@@ -8,9 +8,35 @@
  */
 
 export * from "./resource-lease.js"
+export * from "./background-job.js"
+export * from "./stop-ledger.js"
 
 import { Queue, Worker, type JobsOptions } from "bullmq"
 import { Redis } from "ioredis"
+import {
+  createRedisWorkspaceStopLedger,
+  skipIfWorkspaceStopped,
+  type StopGuardJob,
+  type WorkspaceStopLedger,
+} from "./stop-ledger.js"
+
+/** Minimal structural slice of a BullMQ job used by the waiting-job canceller. */
+export interface WaitingJobHandle {
+  id?: string
+  data?: { workspaceId?: unknown }
+  getState(): Promise<string>
+  remove(): Promise<void>
+}
+
+/** Structural slice of a BullMQ queue used by {@link cancelWaitingJob}. */
+export interface JobLookupQueue {
+  getJob(jobId: string): Promise<WaitingJobHandle | null | undefined>
+}
+
+/** Structural slice of a BullMQ queue used by {@link cancelWaitingWorkspaceJobs}. */
+export interface JobListingQueue extends JobLookupQueue {
+  getJobs(types?: string | string[]): Promise<WaitingJobHandle[]>
+}
 
 /** Canonical queue name — must match between producer and consumer. */
 export const WORKSPACE_QUEUE = "workspace-execution"
@@ -87,16 +113,43 @@ export type WorkspaceProcessor = (
  * way to detect a missing worker and would happily enqueue jobs into
  * a void, leaving workspaces stuck in "planning" forever.
  */
+export interface CreateWorkerOptions {
+  /**
+   * Durable stop ledger consulted before every dispatch. Defaults to a
+   * Redis-backed ledger on `redisUrl`. Inject an in-memory ledger in tests.
+   */
+  stopLedger?: WorkspaceStopLedger
+}
+
+/**
+ * Dispatch guard wired into every job (borrowing: engine.mjs runHelper()'s
+ * "already stopped → do not execute" guard). A workspace stopped while its
+ * job was queued keeps its durable marker across restarts, so the retry /
+ * post-restart pickup is refused here instead of silently running.
+ */
+async function guardStoppedWorkspace(
+  ledger: WorkspaceStopLedger,
+  job: StopGuardJob,
+  processor: WorkspaceProcessor,
+): Promise<void> {
+  if (await skipIfWorkspaceStopped(ledger, job)) return
+  const { workspaceId, mode, tenantId, resourceBudget } = job.data as WorkspaceJobData
+  await processor(workspaceId, mode, tenantId, resourceBudget)
+}
+
 export function createWorker(
   redisUrl: string,
   processor: WorkspaceProcessor,
   concurrency = 3,
+  options: CreateWorkerOptions = {},
 ): { worker: Worker<WorkspaceJobData>; stopHeartbeat: () => void } {
+  const ownedLedger =
+    options.stopLedger === undefined ? createRedisWorkspaceStopLedger(redisUrl) : undefined
+  const stopLedger = options.stopLedger ?? ownedLedger!
   const worker = new Worker<WorkspaceJobData>(
     WORKSPACE_QUEUE,
     async (job) => {
-      const { workspaceId, mode, tenantId, resourceBudget } = job.data
-      await processor(workspaceId, mode, tenantId, resourceBudget)
+      await guardStoppedWorkspace(stopLedger, job, processor)
     },
     {
       connection: { url: redisUrl },
@@ -107,8 +160,117 @@ export function createWorker(
       lockDuration: 300_000,
     },
   )
+  if (ownedLedger !== undefined) {
+    // The default ledger owns a dedicated Redis connection; release it with
+    // the worker so shutdown doesn't leak it.
+    worker.on("closed", () => ownedLedger.close())
+  }
   const stopHeartbeat = startHeartbeat(redisUrl)
   return { worker, stopHeartbeat }
+}
+
+// ---------------------------------------------------------------------------
+// Waiting-job cancellation (borrowing: engine.mjs 0e8c24a).
+//
+// A stop that arrives while a workspace job is still waiting in BullMQ has
+// two durability gaps: pub/sub can be missed, and the waiting job itself
+// stays live. These helpers let a host remove the queued job outright;
+// publishWorkspaceStop covers the marker side so a restart cannot pick the
+// workspace back up.
+// ---------------------------------------------------------------------------
+
+/** Result of cancelling one known BullMQ job id. */
+export type WaitingJobCancelOutcome =
+  | { cancelled: true; jobId: string; state: string }
+  | { cancelled: false; jobId: string; state: string | undefined; reason: string }
+
+/** States from which a queued job can still be removed with no side effects. */
+export function isCancellableWaitingState(state: string): boolean {
+  return state === "waiting" || state === "delayed" || state === "paused"
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * Remove a single waiting/delayed/paused job by id. Active jobs are left
+ * alone (their processor owns them); terminal jobs are reported as not
+ * cancellable. Returns a discriminated result instead of throwing so callers
+ * can surface an honest outcome.
+ */
+export async function cancelWaitingJob(
+  queue: JobLookupQueue,
+  jobId: string,
+): Promise<WaitingJobCancelOutcome> {
+  const job = await queue.getJob(jobId)
+  if (!job) return { cancelled: false, jobId, state: undefined, reason: "job not found" }
+  let state: string
+  try {
+    state = await job.getState()
+  } catch (err) {
+    return {
+      cancelled: false,
+      jobId,
+      state: undefined,
+      reason: `getState failed: ${errorMessage(err)}`,
+    }
+  }
+  if (!isCancellableWaitingState(state)) {
+    return {
+      cancelled: false,
+      jobId,
+      state,
+      reason: `job is ${state}; only waiting/delayed/paused jobs can be removed`,
+    }
+  }
+  try {
+    await job.remove()
+  } catch (err) {
+    return { cancelled: false, jobId, state, reason: `remove failed: ${errorMessage(err)}` }
+  }
+  return { cancelled: true, jobId, state }
+}
+
+export interface WorkspaceWaitingJobCancelSummary {
+  /** BullMQ ids removed from the queue. */
+  cancelledJobIds: string[]
+  /** Per-job failures; a partial sweep still reports what it removed. */
+  errors: string[]
+}
+
+/**
+ * Remove every waiting/delayed/paused job whose payload targets
+ * `workspaceId` (the scheduled-fire path enqueues one placeholder job per
+ * fire, so this clears all of them). Non-matching jobs are ignored.
+ */
+export async function cancelWaitingWorkspaceJobs(
+  queue: JobListingQueue,
+  workspaceId: string,
+): Promise<WorkspaceWaitingJobCancelSummary> {
+  const cancelledJobIds: string[] = []
+  const errors: string[] = []
+  let jobs: WaitingJobHandle[]
+  try {
+    jobs = await queue.getJobs(["waiting", "delayed", "paused"])
+  } catch (err) {
+    return { cancelledJobIds, errors: [`getJobs failed: ${errorMessage(err)}`] }
+  }
+  for (const job of jobs) {
+    if (job.data?.workspaceId !== workspaceId) continue
+    const jobId = job.id
+    if (typeof jobId !== "string" || jobId.length === 0) {
+      errors.push(`job targeting ${workspaceId} has no id`)
+      continue
+    }
+    try {
+      await job.remove()
+      cancelledJobIds.push(jobId)
+    } catch (err) {
+      errors.push(`job ${jobId}: ${errorMessage(err)}`)
+    }
+  }
+  return { cancelledJobIds, errors }
 }
 
 /**

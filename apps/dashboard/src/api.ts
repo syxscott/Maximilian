@@ -571,6 +571,34 @@ export const ProviderBreakdownSchema = z.object({
 })
 export type ProviderBreakdown = z.infer<typeof ProviderBreakdownSchema>
 
+// ── Usage range breakdown (token-monitor sessionUsageArchive borrowing) ──
+
+/** Decomposition dimension accepted by `/obs/usage/*?groupBy=`. */
+export const UsageGroupBySchema = z.enum(["session", "agentRole"])
+export type UsageGroupBy = z.infer<typeof UsageGroupBySchema>
+
+/**
+ * One per-session / per-role row. `key` is the MetricRecord taskId for
+ * `session`, or the role name for `agentRole`. Rows sum exactly to the
+ * summary totals (realTotalTokens in particular).
+ */
+export const UsageBreakdownEntrySchema = z.object({
+  key: z.string(),
+  agentId: z.string(),
+  agentRole: z.string(),
+  totalRequests: z.number().int().nonnegative(),
+  totalInputTokens: z.number().int().nonnegative(),
+  totalOutputTokens: z.number().int().nonnegative(),
+  totalCacheReadTokens: z.number().int().nonnegative(),
+  totalCacheCreationTokens: z.number().int().nonnegative(),
+  realTotalTokens: z.number().int().nonnegative(),
+  totalCostUsd: z.number().nonnegative(),
+  totalCostUsdKnown: z.boolean(),
+  successRate: z.number().min(0).max(1),
+  cacheHitRate: z.number().min(0).max(1),
+})
+export type UsageBreakdownEntry = z.infer<typeof UsageBreakdownEntrySchema>
+
 export const UsageSummarySchema = z.object({
   range: UsageRangeSchema,
   totalRequests: z.number().int().nonnegative(),
@@ -588,6 +616,10 @@ export const UsageSummarySchema = z.object({
   latency: LatencyStatsSchema,
   /** Per-provider breakdown (mirrors token-monitor's provider aggregation). */
   byProvider: z.array(ProviderBreakdownSchema).optional(),
+  /** Per-session rows; present only when requested with `groupBy=session`. */
+  bySession: z.array(UsageBreakdownEntrySchema).optional(),
+  /** Per-role rows; present only when requested with `groupBy=agentRole`. */
+  byAgentRole: z.array(UsageBreakdownEntrySchema).optional(),
 })
 export type UsageSummary = z.infer<typeof UsageSummarySchema>
 
@@ -608,6 +640,8 @@ export type DailyUsageEntry = z.infer<typeof DailyUsageEntrySchema>
 export const UsageDailyResponseSchema = z.object({
   range: UsageRangeSchema,
   daily: z.array(DailyUsageEntrySchema),
+  nextCursor: z.string().nullable().optional(),
+  total: z.number().int().nonnegative().optional(),
 })
 export type UsageDailyResponse = z.infer<typeof UsageDailyResponseSchema>
 
@@ -1165,6 +1199,17 @@ export const usageApi = {
   summary: (range: string, signal?: AbortSignal) =>
     fetchJson(
       `${BASE}/obs/usage/summary?range=${encodeURIComponent(range)}`,
+      { headers: authHeaders(), signal },
+      UsageSummarySchema,
+    ),
+
+  /**
+   * Same endpoint with an optional decomposition dimension. Additive: the
+   * base `summary` call above keeps its historical response shape.
+   */
+  summaryGrouped: (range: string, groupBy: UsageGroupBy, signal?: AbortSignal) =>
+    fetchJson(
+      `${BASE}/obs/usage/summary?range=${encodeURIComponent(range)}&groupBy=${encodeURIComponent(groupBy)}`,
       { headers: authHeaders(), signal },
       UsageSummarySchema,
     ),

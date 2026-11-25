@@ -35,6 +35,24 @@ export interface WindowRow {
   costUsd: number | null
 }
 
+/**
+ * One row of the per-session / per-role range breakdown
+ * (token-monitor sessionUsageArchive borrowing). `key` is the taskId for a
+ * session group and the role name for an agentRole group.
+ */
+export interface BreakdownRow {
+  key: string
+  agentRole: string
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  /** Fresh input + output + cache creation — sums to the summary's total. */
+  realTokens: number
+  costUsd: number
+  costKnown: boolean
+  successRate: number
+}
+
 function num(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback
 }
@@ -94,6 +112,41 @@ export function toWindowRows(raw: unknown): WindowRow[] {
       inputTokens: num(row.inputTokens),
       outputTokens: num(row.outputTokens),
       costUsd: typeof row.costUsd === "number" && Number.isFinite(row.costUsd) ? row.costUsd : null,
+    })
+  }
+  return rows
+}
+
+/**
+ * Normalize the `groupBy` breakdown of a summary payload. Prefers
+ * `bySession` (the dashboard's drill-down dimension) and falls back to
+ * `byAgentRole`; garbage or absent fields yield an empty table rather than
+ * a render crash.
+ */
+export function toBreakdownRows(raw: unknown): BreakdownRow[] {
+  if (raw == null || typeof raw !== "object") return []
+  const row = raw as Record<string, unknown>
+  const list = Array.isArray(row.bySession)
+    ? row.bySession
+    : Array.isArray(row.byAgentRole)
+      ? row.byAgentRole
+      : []
+  const rows: BreakdownRow[] = []
+  for (const item of list) {
+    if (item == null || typeof item !== "object") continue
+    const entry = item as Record<string, unknown>
+    const key = str(entry.key)
+    if (!key) continue
+    rows.push({
+      key,
+      agentRole: str(entry.agentRole),
+      requests: num(entry.totalRequests),
+      inputTokens: num(entry.totalInputTokens),
+      outputTokens: num(entry.totalOutputTokens),
+      realTokens: num(entry.realTotalTokens),
+      costUsd: num(entry.totalCostUsd),
+      costKnown: entry.totalCostUsdKnown === true,
+      successRate: num(entry.successRate),
     })
   }
   return rows
