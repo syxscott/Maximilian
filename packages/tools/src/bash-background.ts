@@ -16,6 +16,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process"
 import { randomUUID } from "node:crypto"
+import { createUtf8StreamDecoder } from "./utf8-stream.js"
 
 /** Lifecycle states, mirroring the Mini-Agent status vocabulary. */
 export type BackgroundShellStatus = "running" | "completed" | "failed" | "terminated" | "error"
@@ -296,13 +297,18 @@ export class BackgroundShellRegistry {
   private attachCollectors(record: BackgroundShellRecord): void {
     const { proc } = record
 
+    // stdout and stderr are merged into one ordered stream, so they share
+    // a single decoder: a multi-byte character may straddle a chunk
+    // boundary (or an stdout/stderr interleaving point).
+    const decoder = createUtf8StreamDecoder()
+
     const pushChunk = (chunk: Buffer): void => {
       // Bound retained output: when the line budget is exhausted, drop
       // the OLDEST lines so recent output (the part callers poll for)
       // always wins. The cursor contract stays consistent for readers
       // holding a cursor within the retained window; readers pinned to
       // evicted indices get the clamp warning from read().
-      const text = record.pendingPartial + chunk.toString()
+      const text = record.pendingPartial + decoder.push(chunk)
       const parts = text.split("\n")
       record.pendingPartial = parts.pop() ?? ""
       for (const line of parts) record.lines.push(line)
@@ -326,9 +332,11 @@ export class BackgroundShellRegistry {
         }
       })
       proc.on("close", (code) => {
-        // Flush any trailing partial line so no output is lost.
-        if (record.pendingPartial.length > 0) {
-          record.lines.push(record.pendingPartial)
+        // Flush any trailing partial line plus bytes held back
+        // mid-character, so no output is lost.
+        const tail = decoder.end()
+        if (record.pendingPartial.length > 0 || tail.length > 0) {
+          record.lines.push(record.pendingPartial + tail)
           record.pendingPartial = ""
         }
         if (record.status === "running") {

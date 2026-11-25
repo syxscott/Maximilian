@@ -24,7 +24,13 @@
  *   - an abort of the owning workspace settles every pending execution as
  *     `cancelled` with `exitStatus: "unknown"` — the process was killed
  *     before it could report an exit.
+ *
+ * Snapshots are scrubbed on the WHOLE text before truncation (hermes-agent
+ * borrowing: "mask before cutting", see `./secret-scrub.js`). A cut that
+ * starts inside a credential would otherwise hide its prefix from the masker.
  */
+
+import { scrubForModelContext, type SecretRedactor } from "./secret-scrub.js"
 
 export type BashSettlementStatus = "completed" | "failed" | "cancelled"
 export type BashExitStatus = "known" | "unknown"
@@ -71,6 +77,11 @@ export interface BashSettleInput {
 export interface BashSettlementOptions {
   /** Max chars kept of any output snapshot. Default 8000. */
   maxSnapshotChars?: number
+  /**
+   * Vault used to redact exact-match secrets before a snapshot is cut.
+   * Optional: without it the pattern layer (`log-mask`) still applies.
+   */
+  vault?: SecretRedactor
 }
 
 export interface SettledBashExecution {
@@ -78,9 +89,15 @@ export interface SettledBashExecution {
   readonly truncated: boolean
 }
 
-function truncateSnapshot(text: string, maxChars: number): SettledBashExecution {
-  if (text.length <= maxChars) return { text, truncated: false }
-  return { text: text.slice(0, maxChars), truncated: true }
+function truncateSnapshot(
+  text: string,
+  maxChars: number,
+  vault?: SecretRedactor,
+): SettledBashExecution {
+  // Scrub the WHOLE text first, then cut — see secret-scrub.ts.
+  const scrubbed = scrubForModelContext(text, vault)
+  if (scrubbed.length <= maxChars) return { text: scrubbed, truncated: false }
+  return { text: scrubbed.slice(0, maxChars), truncated: true }
 }
 
 /**
@@ -92,11 +109,12 @@ export function settleBashExecution(
   opts?: BashSettlementOptions,
 ): BashSettlementRecord {
   const maxSnapshotChars = opts?.maxSnapshotChars ?? 8_000
+  const vault = opts?.vault
   const startedAtMs = input.startedAtMs
   const durationMs = startedAtMs === undefined ? 0 : Math.max(0, input.endedAtMs - startedAtMs)
   const snapshot = input.outputSnapshot
   const settledSnapshot =
-    snapshot === undefined ? undefined : truncateSnapshot(snapshot, maxSnapshotChars)
+    snapshot === undefined ? undefined : truncateSnapshot(snapshot, maxSnapshotChars, vault)
 
   let status: BashSettlementStatus
   let exitStatus: BashExitStatus
@@ -141,18 +159,22 @@ export function settleBashExecution(
  * result. Known shapes are read directly; anything else falls back to
  * JSON so a snapshot is never silently lost.
  */
-export function extractOutputSnapshot(result: unknown, maxChars: number): SettledBashExecution {
-  if (typeof result === "string") return truncateSnapshot(result, maxChars)
+export function extractOutputSnapshot(
+  result: unknown,
+  maxChars: number,
+  vault?: SecretRedactor,
+): SettledBashExecution {
+  if (typeof result === "string") return truncateSnapshot(result, maxChars, vault)
   if (result !== null && typeof result === "object") {
     for (const key of ["output", "content", "text"]) {
       const value = (result as Record<string, unknown>)[key]
-      if (typeof value === "string") return truncateSnapshot(value, maxChars)
+      if (typeof value === "string") return truncateSnapshot(value, maxChars, vault)
     }
   }
   const fallback = JSON.stringify(result)
   return fallback === undefined
     ? { text: "", truncated: false }
-    : truncateSnapshot(fallback, maxChars)
+    : truncateSnapshot(fallback, maxChars, vault)
 }
 
 interface PendingBashExecution {
@@ -176,9 +198,11 @@ export class BashSettlementLedger {
   private readonly recordsByWorkspace = new Map<string, BashSettlementRecord[]>()
   private seq = 0
   private readonly maxSnapshotChars: number
+  private readonly vault?: SecretRedactor
 
   constructor(opts?: BashSettlementOptions) {
     this.maxSnapshotChars = opts?.maxSnapshotChars ?? 8_000
+    this.vault = opts?.vault
   }
 
   private key(workspaceId: string, taskId: string): string {
@@ -199,7 +223,7 @@ export class BashSettlementLedger {
    * the latest observation as the partial-output snapshot.
    */
   noteOutput(workspaceId: string, taskId: string, result: unknown): void {
-    const snapshot = extractOutputSnapshot(result, this.maxSnapshotChars)
+    const snapshot = extractOutputSnapshot(result, this.maxSnapshotChars, this.vault)
     if (!snapshot.text) return
     this.observed.set(this.key(workspaceId, taskId), snapshot)
   }
@@ -241,7 +265,7 @@ export class BashSettlementLedger {
         ...(observed ? { outputSnapshot: observed.text } : {}),
         reason: info.error,
       },
-      { maxSnapshotChars: this.maxSnapshotChars },
+      { maxSnapshotChars: this.maxSnapshotChars, vault: this.vault },
     )
     this.file(record)
     return record
@@ -278,7 +302,7 @@ export class BashSettlementLedger {
               ...(observed ? { outputSnapshot: observed.text } : {}),
               reason,
             },
-            { maxSnapshotChars: this.maxSnapshotChars },
+            { maxSnapshotChars: this.maxSnapshotChars, vault: this.vault },
           ),
         )
       }
@@ -300,7 +324,7 @@ export class BashSettlementLedger {
             outputSnapshot: observed.text,
             reason,
           },
-          { maxSnapshotChars: this.maxSnapshotChars },
+          { maxSnapshotChars: this.maxSnapshotChars, vault: this.vault },
         ),
       )
     }

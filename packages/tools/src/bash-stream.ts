@@ -19,6 +19,7 @@ import { spawn } from "node:child_process"
 import { type ToolStreamItem, terminalSuccess } from "@max/llm"
 import { getAbortSignal } from "@max/llm"
 import { ToolKind } from "@max/llm"
+import { createUtf8StreamDecoder } from "./utf8-stream.js"
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 600_000
@@ -112,6 +113,10 @@ export const streamingBashTool = {
 
     let stdout = ""
     let stderr = ""
+    // One decoder per stream: a multi-byte character may straddle a
+    // chunk boundary, so decoding per chunk would emit U+FFFD.
+    const stdoutDecoder = createUtf8StreamDecoder()
+    const stderrDecoder = createUtf8StreamDecoder()
     let stdoutTruncated = false
     let stderrTruncated = false
     let timedOut = false
@@ -141,7 +146,7 @@ export const streamingBashTool = {
           stdoutTruncated = true
           warnings.push("stdout truncated (exceeded 1MB)")
         } else {
-          stdout += chunk.toString()
+          stdout += stdoutDecoder.push(chunk)
         }
       }
     })
@@ -152,7 +157,7 @@ export const streamingBashTool = {
           stderrTruncated = true
           warnings.push("stderr truncated (exceeded 1MB)")
         } else {
-          stderr += chunk.toString()
+          stderr += stderrDecoder.push(chunk)
         }
       }
     })
@@ -167,6 +172,9 @@ export const streamingBashTool = {
     if (abortSignal) {
       abortSignal.removeEventListener("abort", abortHandler)
     }
+    // Flush bytes held back mid-character when the streams ended.
+    stdout += stdoutDecoder.end()
+    stderr += stderrDecoder.end()
 
     const result: BashOutput = {
       command: input.command,

@@ -19,9 +19,29 @@
  * Deliberately fail-closed on nothing: structural mismatches are skipped,
  * store errors propagate (the caller decides whether that is fatal — the
  * JSONL side is written independently and stays authoritative).
+ *
+ * Persisted output is scrubbed before storage (hermes-agent borrowing:
+ * "mask before cutting"). The default is the local log-mask layer
+ * (`secret-mask.ts`); callers that hold a Vault pass `scrubForModelContext`
+ * from `@max/core` so exact-match vault secrets are redacted too. This
+ * package cannot import `@max/core` itself, hence the injection seam.
  */
 
 import type { SessionStore } from "./index.js"
+import { maskSecrets, maskValueDeep } from "./secret-mask.js"
+
+/**
+ * Options for {@link createSessionRuntimeListener}.
+ */
+export interface SessionRuntimeListenerOptions {
+  /**
+   * Secret scrubber applied to persisted event payloads and task-complete
+   * output. Defaults to the local pattern masker. Pass
+   * `scrubForModelContext(vault)` from `@max/core` when a vault is
+   * available so registered secrets are redacted exactly.
+   */
+  scrub?: (text: string) => string
+}
 
 /**
  * Surrogate-safe slice (deepseek dc07e5a50d borrowing, local copy — this
@@ -47,7 +67,9 @@ const STEERING_LABEL = /^\[steering[^\]]*\]\s*/
 
 export function createSessionRuntimeListener(
   store: SessionStore,
+  options: SessionRuntimeListenerOptions = {},
 ): (event: SessionRuntimeEvent) => void {
+  const scrub = options.scrub ?? maskSecrets
   // Session rows are per-workspace; create once per process (updatedAt
   // refreshes are not worth an extra upsert per event).
   const ensuredSessions = new Set<string>()
@@ -67,7 +89,14 @@ export function createSessionRuntimeListener(
     const workspaceId = event.workspaceId
     if (!workspaceId || typeof workspaceId !== "string") return
 
-    store.appendEvent({ workspaceId, type: event.type, payload: payloadOf(event) })
+    // Deep-scrub the mirrored payload too: it carries `result.output` for
+    // task-complete, so a raw mirror would persist the very secret the
+    // conversation row below is scrubbed to withhold.
+    store.appendEvent({
+      workspaceId,
+      type: event.type,
+      payload: maskValueDeep(payloadOf(event), scrub),
+    })
 
     if (event.type === "plan") {
       const plan = event.plan as { id?: string; userRequest?: string } | undefined
@@ -102,7 +131,9 @@ export function createSessionRuntimeListener(
           id: `msg:${result?.taskId ?? event.taskId ?? "task"}:assistant`,
           sessionId,
           role: "assistant",
-          content: output,
+          // Scrub the full output before it is persisted; no truncation
+          // happens here, so this is the whole-text layer.
+          content: scrub(output),
         })
       }
       const usage = result?.metadata?.usage

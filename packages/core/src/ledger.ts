@@ -15,7 +15,13 @@
  *
  * Use `appendLedger` to add entries; `renderLedger` to project them to a
  * short text preview (e.g. for prompts or UI tooltips).
+ *
+ * Rendered content is scrubbed before any slice (hermes-agent borrowing:
+ * "mask before cutting", see `./secret-scrub.js`) — the 200-char answer cap
+ * must not cut a credential in half and leak its prefix into a prompt.
  */
+
+import { scrubForModelContext, type SecretRedactor } from "./secret-scrub.js"
 
 export type LedgerEntry =
   | { kind: "plan"; round: number; summary: string; selectedAgent?: string; at: string }
@@ -70,20 +76,22 @@ export function filterLedger<K extends LedgerEntry["kind"]>(
  * Render the ledger to a compact human-readable string. Used to inject
  * the orchestrator's recent context into an LLM prompt.
  */
-export function renderLedger(ledger: Ledger, maxEntries = 20): string {
+export function renderLedger(ledger: Ledger, maxEntries = 20, vault?: SecretRedactor): string {
+  const scrub = (text: string): string => scrubForModelContext(text, vault)
   const tail = ledger.entries.slice(-maxEntries)
   const lines = tail.map((e) => {
     switch (e.kind) {
       case "plan":
-        return `[plan r${e.round}] ${e.summary}${e.selectedAgent ? ` → ${e.selectedAgent}` : ""}`
+        return `[plan r${e.round}] ${scrub(e.summary)}${e.selectedAgent ? ` → ${e.selectedAgent}` : ""}`
       case "action":
         return `[action r${e.round}] ${e.agent}${e.tool ? ` :: ${e.tool}` : ""}`
       case "observation":
-        return `[obs r${e.round}] ${e.agent} ${e.ok ? "ok" : `failed: ${e.error ?? "?"}`}`
+        return `[obs r${e.round}] ${e.agent} ${e.ok ? "ok" : `failed: ${scrub(e.error ?? "?")}`}`
       case "fact":
-        return `[fact] ${e.subject}: ${e.content}`
+        return `[fact] ${e.subject}: ${scrub(e.content)}`
       case "answer":
-        return `[answer r${e.round}] ${e.content.slice(0, 200)}`
+        // Scrub BEFORE the cap: cutting first would strand a secret's prefix.
+        return `[answer r${e.round}] ${scrub(e.content).slice(0, 200)}`
     }
   })
   return lines.join("\n")

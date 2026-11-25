@@ -10,6 +10,7 @@
 import { makeTool, type ToolContent, ToolKind } from "@max/llm"
 import { spawn } from "node:child_process"
 import { getBackgroundShellRegistry } from "./bash-background.js"
+import { createUtf8StreamDecoder } from "./utf8-stream.js"
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 600_000
@@ -153,6 +154,10 @@ export const bashTool = makeTool<BashInput, BashOutput>({
 
       let stdout = ""
       let stderr = ""
+      // One decoder per stream: a multi-byte character may straddle a
+      // chunk boundary, so decoding per chunk would emit U+FFFD.
+      const stdoutDecoder = createUtf8StreamDecoder()
+      const stderrDecoder = createUtf8StreamDecoder()
       let stdoutTruncated = false
       let stderrTruncated = false
       let timedOut = false
@@ -169,7 +174,7 @@ export const bashTool = makeTool<BashInput, BashOutput>({
           warnings.push("stdout truncated (exceeded 1MB)")
           return
         }
-        stdout += chunk.toString()
+        stdout += stdoutDecoder.push(chunk)
       })
 
       proc.stderr?.on("data", (chunk: Buffer) => {
@@ -178,7 +183,7 @@ export const bashTool = makeTool<BashInput, BashOutput>({
           warnings.push("stderr truncated (exceeded 1MB)")
           return
         }
-        stderr += chunk.toString()
+        stderr += stderrDecoder.push(chunk)
       })
 
       proc.on("error", (err) => {
@@ -191,6 +196,9 @@ export const bashTool = makeTool<BashInput, BashOutput>({
 
       proc.on("close", (code) => {
         clearTimeout(timer)
+        // Flush bytes held back mid-character when the stream ended.
+        stdout += stdoutDecoder.end()
+        stderr += stderrDecoder.end()
         resolve({
           command: input.command,
           cwd,

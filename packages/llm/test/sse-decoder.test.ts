@@ -328,4 +328,173 @@ describe("readServerSentEvents", () => {
     const events = await collect([bytes.slice(0, 8), bytes.slice(8)])
     expect(events).toEqual([{ event: "message", data: "世界", lastEventId: "" }])
   })
+
+  it("reports oversized-event drops through the callback option", async () => {
+    const wire = "data: one\n\ndata: " + "x".repeat(200) + "\n\ndata: three\n\n"
+    const callbacks: number[] = []
+    const events: ServerSentEvent[] = []
+    for await (const event of readServerSentEvents(byteStream([ENC.encode(wire)]), undefined, {
+      maxPendingBytes: 100,
+      onOversizedEvent: (dropped) => callbacks.push(dropped),
+    })) {
+      events.push(event)
+    }
+    expect(events.map((e) => e.data)).toEqual(["one", "three"])
+    expect(callbacks).toEqual([1])
+  })
+})
+
+/**
+ * Fixed-size chunking, used to prove that every chunk width decodes the same
+ * sequence as the one-shot feed (the differential property at larger sizes).
+ */
+function splitFixed(bytes: Uint8Array, chunkSize: number): Uint8Array[] {
+  const chunks: Uint8Array[] = []
+  for (let start = 0; start < bytes.length; start += chunkSize) {
+    chunks.push(bytes.slice(start, start + chunkSize))
+  }
+  return chunks
+}
+
+describe("SSE decoder — large inputs", () => {
+  /** 64 events × 1 KiB ≈ 64 KiB of frames with ids. */
+  function mediumWire(): string {
+    const frames: string[] = []
+    for (let i = 0; i < 64; i++) {
+      frames.push(`id: ${i}\ndata: ${i}:${"x".repeat(1024)}\n\n`)
+    }
+    return frames.join("")
+  }
+
+  it("decodes a 64 KiB stream identically at every chunk size", async () => {
+    const bytes = ENC.encode(mediumWire())
+    const expected = await collect([bytes])
+    expect(expected.length).toBe(64)
+    expect(expected[0]).toEqual({
+      event: "message",
+      data: `0:${"x".repeat(1024)}`,
+      lastEventId: "0",
+    })
+
+    for (const chunkSize of [1, 3, 17, 1024, 4096, bytes.length]) {
+      const events = await collect(splitFixed(bytes, chunkSize))
+      expect(events, `fixed chunk size ${chunkSize}`).toEqual(expected)
+    }
+  })
+
+  it("matches the one-shot sequence for a 1 MiB stream under pseudo-random splits", async () => {
+    const frames: string[] = []
+    for (let i = 0; i < 256; i++) {
+      frames.push(`id: ${i}\ndata: ${String(i).padStart(3, "0")}${"y".repeat(4096)}\n\n`)
+    }
+    const bytes = ENC.encode(frames.join(""))
+    expect(bytes.length).toBeGreaterThan(1024 * 1024)
+
+    const expected = await collect([bytes])
+    expect(expected.length).toBe(256)
+
+    for (const [segments, seed] of [
+      [16, 7],
+      [64, 99],
+      [512, 2024],
+    ] as const) {
+      const events = await collect(splitRandom(bytes, segments, seed))
+      expect(events, `${segments}-way random split (seed ${seed})`).toEqual(expected)
+    }
+  })
+
+  it("decodes a single 16 MiB event (the 1 MiB case scaled up) without rescanning", () => {
+    const size = 16 * 1024 * 1024
+    const wire = "data: " + "x".repeat(size - 8) + "\n\n"
+    const chunkSize = 64 * 1024
+    const decoder = new ServerSentEventDecoder()
+
+    const started = performance.now()
+    let events = 0
+    for (let start = 0; start < wire.length; start += chunkSize) {
+      events += decoder.push(wire.slice(start, start + chunkSize)).length
+    }
+    events += decoder.end().length
+    const elapsed = performance.now() - started
+
+    expect(events).toBe(1)
+    // Linear scan: well under a second. The previous whole-buffer rescan took
+    // ~3.2 s on the same input (quadratic in the event size).
+    expect(elapsed).toBeLessThan(1500)
+  }, 3000)
+})
+
+describe("ServerSentEventDecoder — maxPendingBytes", () => {
+  it("drops only the oversized event and keeps its neighbours in the same chunk", () => {
+    const decoder = new ServerSentEventDecoder({ maxPendingBytes: 100 })
+    const events = [
+      ...decoder.push("data: one\n\n"),
+      ...decoder.push(`data: ${"x".repeat(200)}\n\n`),
+      ...decoder.push("data: three\n\n"),
+    ]
+    expect(events.map((e) => e.data)).toEqual(["one", "three"])
+    expect(decoder.droppedOversizedEvents).toBe(1)
+  })
+
+  it("keeps an event that arrived before the oversized one in the same push", () => {
+    const decoder = new ServerSentEventDecoder({ maxPendingBytes: 100 })
+    const events = decoder.push(`data: one\n\ndata: ${"x".repeat(200)}\n\ndata: three\n\n`)
+    expect(events.map((e) => e.data)).toEqual(["one", "three"])
+    expect(decoder.droppedOversizedEvents).toBe(1)
+  })
+
+  it("recovers on the next event when the oversized event spans chunks", () => {
+    const decoder = new ServerSentEventDecoder({ maxPendingBytes: 100 })
+    const oversized = `data: ${"y".repeat(300)}\n\n`
+    const events: ServerSentEvent[] = []
+    // Feed 64-byte pieces so the oversized line is incomplete for many pushes.
+    const wire = "data: one\n\n" + oversized + "data: after\n\n"
+    for (let start = 0; start < wire.length; start += 64) {
+      events.push(...decoder.push(wire.slice(start, start + 64)))
+    }
+    expect(events.map((e) => e.data)).toEqual(["one", "after"])
+    expect(decoder.droppedOversizedEvents).toBe(1)
+  })
+
+  it("does not drop an event whose size equals the limit, but drops one byte over", () => {
+    const wire = "data: abc\n\n"
+    const size = ENC.encode(wire).length
+
+    const atLimit = new ServerSentEventDecoder({ maxPendingBytes: size })
+    expect(atLimit.push(wire)).toEqual([{ event: "message", data: "abc", lastEventId: "" }])
+    expect(atLimit.droppedOversizedEvents).toBe(0)
+
+    const overLimit = new ServerSentEventDecoder({ maxPendingBytes: size - 1 })
+    expect(overLimit.push(wire)).toEqual([])
+    expect(overLimit.droppedOversizedEvents).toBe(1)
+  })
+
+  it("does not apply fields of a dropped event (id / event / data)", () => {
+    const decoder = new ServerSentEventDecoder({ maxPendingBytes: 50 })
+    const events = [
+      ...decoder.push("data: keep\n\n"),
+      ...decoder.push(`id: 42\nevent: bad\ndata: ${"z".repeat(200)}\n\n`),
+      ...decoder.push("data: after\n\n"),
+    ]
+    expect(events).toEqual([
+      { event: "message", data: "keep", lastEventId: "" },
+      { event: "message", data: "after", lastEventId: "" },
+    ])
+    expect(decoder.droppedOversizedEvents).toBe(1)
+  })
+
+  it("buffers without a limit by default", () => {
+    const decoder = new ServerSentEventDecoder()
+    const data = "q".repeat(256 * 1024)
+    const events = decoder.push(`data: ${data}\n\n`)
+    expect(events).toEqual([{ event: "message", data, lastEventId: "" }])
+    expect(decoder.droppedOversizedEvents).toBe(0)
+  })
+
+  it("rejects a non-positive maxPendingBytes", () => {
+    expect(() => new ServerSentEventDecoder({ maxPendingBytes: 0 })).toThrow(/maxPendingBytes/)
+    expect(() => new ServerSentEventDecoder({ maxPendingBytes: Number.NaN })).toThrow(
+      /maxPendingBytes/,
+    )
+  })
 })

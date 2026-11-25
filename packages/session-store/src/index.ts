@@ -1387,7 +1387,11 @@ export {
   serializeChainEntry,
   type MessageChainEntry,
 } from "./hash-chain.js"
-export { createSessionRuntimeListener, type SessionRuntimeEvent } from "./runtime-listener.js"
+export {
+  createSessionRuntimeListener,
+  type SessionRuntimeEvent,
+  type SessionRuntimeListenerOptions,
+} from "./runtime-listener.js"
 export {
   DEFAULT_PAIRING_TABLE,
   sanitizeHistoryItems,

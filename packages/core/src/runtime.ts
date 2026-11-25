@@ -78,6 +78,8 @@ import {
   type SuppressionVerdict,
 } from "./stop-suppression.js"
 import { BashSettlementLedger } from "./bash-settlement.js"
+import type { SecretRedactor } from "./secret-scrub.js"
+import { redactResolvedProviderCredentials } from "./vault-bootstrap.js"
 import {
   GoalFinalReplyMachine,
   normalizeReplyFingerprint,
@@ -515,6 +517,15 @@ export interface RuntimeOptions {
    */
   toolOutputArtifactDir?: string
   /**
+   * Credential vault used to scrub secrets out of tool output before it is
+   * truncated, externalized, or snapshotted (hermes-agent borrowing: "mask
+   * before cutting"). Wired into the bash settlement ledger and the
+   * tool-output budget. Defaults to the process-local registry populated by
+   * `loadProviderCredentialsFromVault()`; pass a `Vault` to also cover
+   * non-provider secrets. The pattern layer (`log-mask`) always applies.
+   */
+  vault?: SecretRedactor
+  /**
    * How long a parked "ask" permission prompt waits for a human answer
    * before the runtime resolves it fail-closed as `unavailable`
    * (deepseek-harness borrowing: an unanswered ask NEVER approves; the tool
@@ -813,7 +824,9 @@ export class AgentRuntime {
   /** Settlement budget for cascade stops. */
   private readonly cascadeSettlementTimeoutMs: number
   /** Settlement records for bash executions observed through the tool loop. */
-  private readonly bashLedger = new BashSettlementLedger()
+  private readonly bashLedger: BashSettlementLedger
+  /** Optional vault scrubbing tool output before truncation/persistence. */
+  private readonly secretVault?: SecretRedactor
   /** Goal final-reply machines, one active goal per workspace. */
   private readonly goalMachines = new Map<string, GoalFinalReplyMachine>()
   /**
@@ -859,6 +872,8 @@ export class AgentRuntime {
     this.runawayGuardPatience = options?.runawayGuardPatience ?? 4
     this.toolOutputMaxChars = options?.toolOutputMaxChars ?? 20_000
     this.toolOutputArtifactDir = options?.toolOutputArtifactDir
+    this.secretVault = options?.vault ?? { redact: redactResolvedProviderCredentials }
+    this.bashLedger = new BashSettlementLedger({ vault: this.secretVault })
     this.stopSuppression = new StopSuppressionWindow({
       windowMs: options?.stopSuppressionWindowMs,
     })
@@ -995,6 +1010,7 @@ export class AgentRuntime {
       artifactDir,
       maxChars: this.toolOutputMaxChars,
       scope: workspaceId,
+      vault: this.secretVault,
     }).afterToolCall
   }
 

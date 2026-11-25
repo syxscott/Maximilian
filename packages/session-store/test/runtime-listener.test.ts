@@ -104,4 +104,49 @@ describe("createSessionRuntimeListener", () => {
     expect(() => onEvent({ type: "plan", plan: { id: "p1", userRequest: "x" } })).not.toThrow()
     expect(store.listEvents("ws1")).toHaveLength(0)
   })
+
+  it("masks pattern-shaped credentials in task-complete output by default", () => {
+    onEvent({
+      type: "task-complete",
+      workspaceId: "ws1",
+      taskId: "t1",
+      result: { taskId: "t1", output: "using key AKIAIOSFODNN7EXAMPLE now" },
+    })
+    const messages = store.listMessages("ws:ws1")
+    expect(messages[0]?.content).not.toContain("AKIAIOSFODNN7EXAMPLE")
+    expect(messages[0]?.content).toContain("[REDACTED]")
+  })
+
+  it("applies an injected vault scrubber to the message and the mirrored payload", () => {
+    const SECRET = "Zq7Xv2Lm9Pd4Rt6Yw1Ub3Ce5Fg8Hj0Ka2Nm4Pz6Xs9Qd1Wv3Ty5Uo7Ir9El2Ao4Gs6"
+    const scrubbedListener = createSessionRuntimeListener(store, {
+      scrub: (text: string) => text.split(SECRET).join("[redacted]"),
+    })
+    scrubbedListener({
+      type: "task-complete",
+      workspaceId: "ws1",
+      taskId: "t1",
+      result: { taskId: "t1", output: `answer with ${SECRET}` },
+    })
+    const messages = store.listMessages("ws:ws1")
+    expect(messages[0]?.content).toBe("answer with [redacted]")
+    expect(messages[0]?.content).not.toContain(SECRET)
+
+    // The events mirror carries the same raw output; it must be scrubbed too.
+    const events = store.listEvents("ws1", { type: "task-complete" })
+    expect(events).toHaveLength(1)
+    // listEvents decodes the JSON payload for us.
+    const payload = events[0]!.payload as { result?: { output?: string } }
+    expect(payload.result?.output).toBe("answer with [redacted]")
+  })
+
+  it("leaves ordinary task-complete output unchanged", () => {
+    onEvent({
+      type: "task-complete",
+      workspaceId: "ws1",
+      taskId: "t1",
+      result: { taskId: "t1", output: "the answer" },
+    })
+    expect(store.listMessages("ws:ws1")[0]?.content).toBe("the answer")
+  })
 })

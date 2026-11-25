@@ -11,7 +11,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { Vault, loadProviderCredentialsFromVault } from "../src/index.js"
+import {
+  Vault,
+  loadProviderCredentialsFromVault,
+  redactResolvedProviderCredentials,
+} from "../src/index.js"
 
 let dir: string
 const SAVED_ENV: Record<string, string | undefined> = {}
@@ -66,6 +70,24 @@ describe("loadProviderCredentialsFromVault", () => {
       MAXIMILIAN_VAULT_PASSPHRASE: "wrong-passphrase",
     })
     expect(creds).toEqual({})
+  })
+
+  it("registers resolved secrets for output scrubbing", async () => {
+    const vaultPath = path.join(dir, "vault.json")
+    const vault = new Vault(vaultPath, "test-passphrase")
+    await vault.load()
+    await vault.save({ title: "provider:kimi", secret: "sk-custom-key-abc123" })
+
+    const creds = await loadProviderCredentialsFromVault({
+      MAXIMILIAN_VAULT_PATH: vaultPath,
+      MAXIMILIAN_VAULT_PASSPHRASE: "test-passphrase",
+    })
+    expect(Object.values(creds)).toContain("sk-custom-key-abc123")
+    // The Vault instance is local to the bootstrap; the process-local
+    // registry keeps its exact secrets available to tool-output scrubbing.
+    expect(redactResolvedProviderCredentials("echo sk-custom-key-abc123 done")).toBe(
+      "echo [redacted] done",
+    )
   })
 
   it("treats a missing vault file as empty", async () => {

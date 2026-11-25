@@ -22,6 +22,12 @@ import { createHmac, randomUUID } from "node:crypto"
 import { createRoute } from "@hono/zod-openapi"
 import { z } from "zod"
 import { EventFeed } from "../lib/event-feed.js"
+import { isAllowedWebhookUrl, WebhookTargetRejectedError } from "../lib/webhook-target-guard.js"
+import {
+  DEFAULT_WEBHOOK_RESPONSE_MAX_BYTES,
+  readResponseTextLimited,
+  WebhookResponseTooLargeError,
+} from "../lib/read-response-limited.js"
 
 export interface Subscription {
   id: string
@@ -60,13 +66,34 @@ export function getSubscription(id: string, tenantId?: string): Subscription | u
   return sub
 }
 
-export function createSubscription(input: {
+export interface CreateSubscriptionInput {
   type: "webhook" | "sse"
   target: string
   events?: string[]
   createdBy?: string
   tenantId?: string
-}): Subscription {
+  /**
+   * Test/development escape hatch forwarded to `isAllowedWebhookUrl`
+   * (gateway `allowInsecure` borrowing). Lets tests create a subscriber that
+   * points at a local HTTP server; production callers leave it unset.
+   */
+  allowInsecureWebhookTargets?: boolean
+}
+
+export function createSubscription(input: CreateSubscriptionInput): Subscription {
+  // SSRF guard (cc-switch usage_script.rs borrowing): the webhook target is
+  // user-controlled egress. Reject loopback / private / link-local / cloud
+  // metadata destinations before the subscription is stored, so a rejected
+  // target can never enter the delivery map. The HTTP route additionally
+  // validates via `CreateSubscriptionRequest`; this check covers direct
+  // callers (tests, future internal consumers).
+  if (input.type === "webhook") {
+    const verdict = isAllowedWebhookUrl(input.target, {
+      allowInsecure: input.allowInsecureWebhookTargets,
+    })
+    if (!verdict.ok) throw new WebhookTargetRejectedError(input.target, verdict.reason)
+  }
+
   const sub: Subscription = {
     id: `sub_${randomUUID().slice(0, 8)}`,
     type: input.type,
@@ -90,18 +117,39 @@ export function deleteSubscription(id: string, tenantId?: string): boolean {
   return subscriptions.delete(id)
 }
 
+export interface PublishEventOptions {
+  /**
+   * Webhook response byte cap (default 1 MiB, cc-switch
+   * read_response_text_limited borrowing). Oversized responses abort and
+   * count as a failed delivery; they are never treated as delivered.
+   */
+  maxResponseBytes?: number
+  /**
+   * Test/development escape hatch forwarded to `isAllowedWebhookUrl`
+   * (gateway `allowInsecure` borrowing) for subscribers stored with an
+   * insecure target (e.g. a test server on loopback).
+   */
+  allowInsecureWebhookTargets?: boolean
+  /** Fetch implementation seam for tests; defaults to global fetch. */
+  fetchImpl?: typeof fetch
+}
+
 /**
  * Publish an event to all subscribers whose filters match.
  * Called by ScopedBus handlers — see api/src/index.ts.
  * @param eventName - the runtime event type
  * @param payload - the event payload (contains workspaceId for tenant routing)
  * @param tenantId - tenant that originated this event (from workspace.metadata.tenantId)
+ * @param opts - delivery knobs (response cap, escape hatch, fetch seam)
  */
 export async function publishEvent(
   eventName: string,
   payload: unknown,
   tenantId?: string,
+  opts: PublishEventOptions = {},
 ): Promise<void> {
+  const maxResponseBytes = opts.maxResponseBytes ?? DEFAULT_WEBHOOK_RESPONSE_MAX_BYTES
+  const fetchImpl = opts.fetchImpl ?? fetch
   // SSE first — synchronous, encoded ONCE server-side (opencode event-feed
   // borrowing). Every subscriber connection receives the same immutable
   // frame string through its independent bounded queue; a lagging
@@ -131,12 +179,27 @@ export async function publishEvent(
       })
       const sig = createHmac("sha256", sub.secret).update(body).digest("hex")
 
+      // Re-check at delivery time too (defense in depth): a subscription may
+      // predate the guard or have been stored with the insecure escape hatch.
+      // This is the egress request an attacker controls, so it must pass the
+      // same allowlist on every attempt.
+      const verdict = isAllowedWebhookUrl(sub.target, {
+        allowInsecure: opts.allowInsecureWebhookTargets,
+      })
+      if (!verdict.ok) {
+        sub.totalFailures++
+        console.warn(`[subscription ${sub.id}] webhook target rejected: ${verdict.reason}`)
+        return
+      }
+
       // Retry delivery up to 3 times with exponential backoff
       const maxRetries = 3
       let lastError: Error | undefined
+      let attempts = 0
       for (let attempt = 0; attempt < maxRetries; attempt++) {
+        attempts++
         try {
-          const res = await fetch(sub.target, {
+          const res = await fetchImpl(sub.target, {
             method: "POST",
             headers: {
               "content-type": "application/json",
@@ -144,8 +207,19 @@ export async function publishEvent(
               "x-maximilian-signature": `sha256=${sig}`,
             },
             body,
+            // No-follow (cc-switch usage_script.rs borrowing). In
+            // Node/undici, `redirect: "manual"` resolves with the REAL 3xx
+            // response (not an opaqueredirect), so the Location header and
+            // body stay visible to this process while undici never connects
+            // to the redirect target. That closes both the SSRF-via-302 path
+            // (the target allowlist cannot be bypassed) and the leak of the
+            // HMAC signature / POST body to a third-party host.
+            redirect: "manual",
             signal: AbortSignal.timeout(10_000),
           })
+          // Consume under a byte cap (and discard): a hostile endpoint must
+          // not be able to OOM the API through its response body.
+          await readResponseTextLimited(res, maxResponseBytes)
           sub.lastDeliveredAt = new Date().toISOString()
           sub.totalDeliveries++
           if (!res.ok) sub.totalFailures++
@@ -153,6 +227,9 @@ export async function publishEvent(
         } catch (err) {
           lastError = err as Error
           sub.totalFailures++
+          // An oversized response will be oversized on every retry; fail
+          // once instead of re-reading it three times.
+          if (err instanceof WebhookResponseTooLargeError) break
           // Wait before retrying (exponential backoff: 1s, 2s, 4s)
           if (attempt < maxRetries - 1) {
             await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)))
@@ -160,7 +237,7 @@ export async function publishEvent(
         }
       }
       console.warn(
-        `[subscription ${sub.id}] webhook delivery failed after ${maxRetries} attempts:`,
+        `[subscription ${sub.id}] webhook delivery failed after ${attempts} attempt(s):`,
         lastError?.message,
       )
     }),
@@ -169,11 +246,27 @@ export async function publishEvent(
 
 // ── OpenAPI routes ──────────────────────────────────────────────────────────
 
-const CreateSubscriptionRequest = z.object({
-  type: z.enum(["webhook", "sse"]),
-  target: z.string().min(1),
-  events: z.array(z.string()).optional(),
-})
+export const CreateSubscriptionRequest = z
+  .object({
+    type: z.enum(["webhook", "sse"]),
+    target: z.string().min(1),
+    events: z.array(z.string()).optional(),
+  })
+  // SSRF guard at the HTTP boundary as well: the OpenAPI validator rejects
+  // a disallowed webhook target with 400 before the handler (or
+  // createSubscription's own check) ever sees it. SSE targets are ignored by
+  // delivery, so they are not validated.
+  .superRefine((req, ctx) => {
+    if (req.type !== "webhook") return
+    const verdict = isAllowedWebhookUrl(req.target)
+    if (!verdict.ok) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["target"],
+        message: `webhook target rejected: ${verdict.reason}`,
+      })
+    }
+  })
 
 const SubscriptionResponse = z.object({
   id: z.string(),

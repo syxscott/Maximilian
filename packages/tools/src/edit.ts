@@ -3,8 +3,9 @@
 // Plain TypeScript, no Effect-TS
 
 import { makeTool, type ToolContent, ToolKind } from "@max/llm"
-import { readFile, writeFile, stat } from "node:fs/promises"
+import { writeFile, stat } from "node:fs/promises"
 import { resolve } from "node:path"
+import { readEditableText } from "./editable-file.js"
 
 export interface EditInput {
   path: string
@@ -63,7 +64,9 @@ export const editTool = makeTool<EditInput, EditOutput>({
       throw new Error(`File not found: ${filePath}`)
     }
 
-    const content = await readFile(filePath, "utf-8")
+    // Gate before matching: a file whose bytes are not valid UTF-8 must
+    // never be rewritten as text (see editable-file.ts).
+    const content = await readEditableText(filePath)
     const occurrences = countOccurrences(content, input.oldString)
 
     if (occurrences === 0) {

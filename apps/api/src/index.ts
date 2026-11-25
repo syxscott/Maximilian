@@ -283,6 +283,7 @@ import { DeadLetterRegistry } from "./lib/inbound-dead-letter.js"
 import { inboundAdmission } from "./middleware/inbound-queue.js"
 import { idempotencyKey } from "./middleware/idempotency-key.js"
 import { jsonBodyGate } from "./middleware/json-body-gate.js"
+import { multipartBodyGate } from "./middleware/multipart-body-gate.js"
 import { inboundRoutes, inboundStatsRoute, inboundDeadLetterRoute } from "./routes/inbound.js"
 import {
   createDb,
@@ -1287,6 +1288,12 @@ app.use(
 // validator sees it. Mounted before the idempotency layer so ambiguous
 // bodies never enter the receipt ledger.
 app.use("/api/*", jsonBodyGate())
+
+// Multipart upload gate (cc-switch read_request_body_limited borrowing):
+// session-restore archives are large, so this uses its own 128 MiB cap rather
+// than the JSON gate's 512 KiB. Mounted before the idempotency layer so the
+// body is still untouched when this gate (or a later middleware) reads it.
+app.use("/api/*", multipartBodyGate())
 
 // Idempotency-Key receipts (OpenAgentCore wire-semantics.md borrowing):
 // requests carrying an Idempotency-Key are receipted after a successful

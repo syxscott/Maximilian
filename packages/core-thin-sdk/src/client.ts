@@ -190,7 +190,13 @@ export class OpencodeHttpClient {
   ): AsyncIterable<EventEnvelope<T>> {
     const reader = response.body!.getReader()
     const decoder = new TextDecoder("utf-8")
-    let buffer = ""
+    // Unterminated text carried into the next chunk. Each chunk is scanned on
+    // its own, so the work is linear in the body: no accumulated buffer is
+    // re-indexed or re-sliced per chunk (both were O(n²) before). A delimiter
+    // split across chunks is handled by checking whether the carry ends with
+    // LF and the chunk starts with LF.
+    let pending = ""
+    let pendingEndsWithNl = false
 
     const aborted = new Promise<{ done: true; value: undefined }>(() => {
       if (!signal) return
@@ -208,21 +214,37 @@ export class OpencodeHttpClient {
     while (!signal?.aborted) {
       const next = await Promise.race([reader.read(), aborted])
       if (!next || next.done) break
-      buffer += decoder.decode(next.value, { stream: true })
+      const text = decoder.decode(next.value, { stream: true })
+      let start = 0
 
-      let frameEnd = buffer.indexOf("\n\n")
-      while (frameEnd !== -1) {
-        const frame = buffer.slice(0, frameEnd)
-        buffer = buffer.slice(frameEnd + 2)
+      if (pendingEndsWithNl && text.startsWith("\n")) {
+        // The carry's trailing LF and this chunk's leading LF are the blank
+        // line that terminates the pending frame.
+        const evt = this.parseSseFrame(pending.slice(0, -1), path)
+        if (evt) yield evt as EventEnvelope<T>
+        pending = ""
+        pendingEndsWithNl = false
+        start = 1
+      }
+
+      for (;;) {
+        const frameEnd = text.indexOf("\n\n", start)
+        if (frameEnd === -1) break
+        const frame = pending + text.slice(start, frameEnd)
+        pending = ""
         const evt = this.parseSseFrame(frame, path)
         if (evt) yield evt as EventEnvelope<T>
-        frameEnd = buffer.indexOf("\n\n")
+        start = frameEnd + 2
       }
+
+      const tail = text.slice(start)
+      pending += tail
+      if (tail.length > 0) pendingEndsWithNl = tail.endsWith("\n")
     }
 
     // Drain any remaining buffer (best-effort).
-    if (buffer.trim()) {
-      const evt = this.parseSseFrame(buffer, path)
+    if (pending.trim()) {
+      const evt = this.parseSseFrame(pending, path)
       if (evt) yield evt as EventEnvelope<T>
     }
   }

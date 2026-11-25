@@ -19,10 +19,17 @@
  *    instructions, so one huge tool output cannot tax every subsequent
  *    round (the C2C paper's communication-cost lesson applied to tool
  *    results).
+ *
+ * Output is scrubbed on the WHOLE text before any truncation or persistence
+ * (hermes-agent borrowing: "mask before cutting", see `./secret-scrub.js`):
+ * the externalized artifact, the receipt, and the head+tail fallback preview
+ * all derive from the scrubbed text, so a credential can never reach disk or
+ * the model because a cut window started inside it.
  */
 
 import { promises as fs } from "node:fs"
 import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
+import { scrubForModelContext, type SecretRedactor } from "./secret-scrub.js"
 import path from "node:path"
 import type { AfterToolCallContext, AfterToolCallResult } from "./types.js"
 
@@ -90,6 +97,12 @@ export interface ToolOutputBudgetOptions {
   /** Session/task scoping for the artifact filename. */
   scope?: string
   /**
+   * Vault used to redact exact-match secrets before the output is truncated,
+   * externalized, or previewed. Optional: without it the pattern layer
+   * (`log-mask`) still applies.
+   */
+  vault?: SecretRedactor
+  /**
    * Durable omission sink (deepseek borrowing: budget-exceeded decisions
    * are recorded as replayable events, not silent truncations — resume/
    * fork/replay must not resurrect the omitted bytes). Called once per
@@ -117,7 +130,9 @@ export function createToolOutputBudget(opts: ToolOutputBudgetOptions): {
   return {
     async afterToolCall(context) {
       if (context.isError) return undefined
-      const text = stringifyOutput(context.result)
+      // Scrub the WHOLE output first; every downstream artifact/receipt/preview
+      // is derived from this scrubbed text (see secret-scrub.ts).
+      const text = scrubForModelContext(stringifyOutput(context.result), opts.vault)
       if (text.length <= maxChars) return undefined
 
       const toolName =

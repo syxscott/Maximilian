@@ -26,6 +26,13 @@
  */
 
 import type { Context, Next } from "hono"
+import {
+  DEFAULT_JSON_BODY_MAX_BYTES,
+  payloadTooLargeResponse,
+  requestBodyExceedsByteLimit,
+  utf8ByteLength,
+  type BodyLimitOptions,
+} from "../lib/request-body-limit.js"
 
 export interface DuplicateKeyScan {
   /** First duplicate key's dotted path, or null when none was found. */
@@ -235,7 +242,7 @@ export function findDuplicateJsonKeyPath(text: string): DuplicateKeyScan {
   return { path: null, ok }
 }
 
-export interface JsonBodyGateOptions {
+export interface JsonBodyGateOptions extends BodyLimitOptions {
   /**
    * Extra paths exempt from the gate (matched against the request path).
    * The probes never carry JSON bodies, but explicit exemptions keep the
@@ -248,11 +255,19 @@ export interface JsonBodyGateOptions {
 const GATED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
 
 export function jsonBodyGate(opts?: JsonBodyGateOptions) {
+  const maxBytes = opts?.maxBytes ?? DEFAULT_JSON_BODY_MAX_BYTES
   return async (c: Context, next: Next) => {
     if (!GATED_METHODS.has(c.req.method)) return next()
     if (opts?.exempt?.(c.req.path)) return next()
     const contentType = (c.req.header("content-type") ?? "").toLowerCase()
     if (!contentType.includes("application/json")) return next()
+
+    // Byte gate first (cc-switch read_request_body_limited borrowing): reject
+    // oversized bodies before the scan allocates anything for them. Exactly
+    // `maxBytes` bytes is accepted.
+    if (await requestBodyExceedsByteLimit(c.req.raw, maxBytes)) {
+      return payloadTooLargeResponse(c, maxBytes)
+    }
 
     let text = ""
     try {
@@ -263,6 +278,11 @@ export function jsonBodyGate(opts?: JsonBodyGateOptions) {
       return next() // unreadable body — let the route handle it
     }
     if (text.length === 0) return next()
+    // Defensive backstop for a missing/unreadable Content-Length where the
+    // streaming check could not run: measure the decoded bytes too.
+    if (utf8ByteLength(text) > maxBytes) {
+      return payloadTooLargeResponse(c, maxBytes)
+    }
 
     const scan = findDuplicateJsonKeyPath(text)
     if (scan.path !== null) {

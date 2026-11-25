@@ -315,17 +315,20 @@ export class Supervisor extends EventEmitter {
     ) => {
       if (!stream) return
       stream.on("data", (chunk: Buffer) => {
-        const text = chunk.toString("utf8")
-        s[bufKey] += text
-        // Drain line-by-line for both logging and ready-signal detection.
+        // Linear drain: walk the chunk once with a cursor instead of
+        // re-indexing/re-slicing the whole buffer per line. Only the
+        // unterminated tail is carried into the next chunk.
+        const rest = s[bufKey] + chunk.toString("utf8")
+        let start = 0
         let nl: number
-        while ((nl = s[bufKey].indexOf("\n")) !== -1) {
-          const line = s[bufKey].slice(0, nl).replace(/\r$/, "")
-          s[bufKey] = s[bufKey].slice(nl + 1)
+        while ((nl = rest.indexOf("\n", start)) !== -1) {
+          const line = rest.slice(start, nl).replace(/\r$/, "")
+          start = nl + 1
           this.emit("log", { stream: kind, line })
           log.debug({ stream: kind, line }, "opencode")
           this.tryParseReady(line)
         }
+        s[bufKey] = rest.slice(start)
       })
     }
     pump(proc.stdout, "stdout", "stdoutBuf")

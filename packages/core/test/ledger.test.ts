@@ -74,4 +74,48 @@ describe("Ledger", () => {
     expect(lines).toHaveLength(3)
     expect(lines[0]).toContain("s47")
   })
+
+  it("scrubs the answer before the 200-char cap (no credential prefix leak)", () => {
+    const SECRET = "Zq7Xv2Lm9Pd4Rt6Yw1Ub3Ce5Fg8Hj0Ka2Nm4Pz6Xs9Qd1Wv3Ty5Uo7Ir9El2Ao4Gs6"
+    const vault = { redact: (text: string): string => text.split(SECRET).join("[redacted]") }
+    const l: Ledger = {
+      workspaceId: "ws",
+      entries: [
+        {
+          kind: "answer",
+          round: 1,
+          // Cap window ends inside the secret: cutting first strands its tail.
+          content: `${"x".repeat(190)}${SECRET}${"y".repeat(100)}`,
+          at: "t",
+        },
+      ],
+    }
+    const text = renderLedger(l, 20, vault)
+    expect(text).not.toContain(SECRET)
+    expect(text).not.toContain(SECRET.slice(0, 10))
+    expect(text).toContain("[redacted]")
+    expect(text).toContain(`${"x".repeat(190)}[redacted]`)
+  })
+
+  it("scrubs fact/plan content and leaves plain renders unchanged", () => {
+    const SECRET = "Zq7Xv2Lm9Pd4Rt6Yw1Ub3Ce5Fg8Hj0Ka2Nm4Pz6Xs9Qd1Wv3Ty5Uo7Ir9El2Ao4Gs6"
+    const vault = { redact: (text: string): string => text.split(SECRET).join("[redacted]") }
+    const l: Ledger = {
+      workspaceId: "ws",
+      entries: [
+        { kind: "plan", round: 0, summary: `do ${SECRET}`, at: "t" },
+        { kind: "fact", round: 1, subject: "s", content: `learned ${SECRET}`, at: "t" },
+        { kind: "observation", round: 1, agent: "a", ok: false, error: SECRET, at: "t" },
+      ],
+    }
+    const text = renderLedger(l, 20, vault)
+    expect(text).not.toContain(SECRET)
+    expect(text).toContain("[redacted]")
+
+    const plain: Ledger = {
+      workspaceId: "ws",
+      entries: [{ kind: "fact", round: 0, subject: "s", content: "ordinary", at: "t" }],
+    }
+    expect(renderLedger(plain)).toBe("[fact] s: ordinary")
+  })
 })

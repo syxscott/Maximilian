@@ -8,13 +8,17 @@
  * one-record-per-execution guarantee, and the runtime wiring through the
  * tool-loop event path and abort().
  */
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { AgentRuntime } from "../src/runtime.js"
 import {
   BashSettlementLedger,
   extractOutputSnapshot,
   settleBashExecution,
 } from "../src/bash-settlement.js"
+import { Vault } from "../src/vault.js"
 
 // ── Settle rules ────────────────────────────────────────────────────────────
 
@@ -146,6 +150,90 @@ describe("extractOutputSnapshot", () => {
       truncated: false,
     })
     expect(extractOutputSnapshot("abcdefghij", 3)).toEqual({ text: "abc", truncated: true })
+  })
+})
+
+// ── Scrub before truncate ───────────────────────────────────────────────────
+
+describe("scrub before truncate", () => {
+  const SECRET = "Zq7Xv2Lm9Pd4Rt6Yw1Ub3Ce5Fg8Hj0Ka2Nm4Pz6Xs9Qd1Wv3Ty5Uo7Ir9El2Ao4Gs6"
+  const PREFIX = "A".repeat(10)
+  const SUFFIX = "B".repeat(100)
+  let dir: string
+  let vault: Vault
+
+  beforeEach(async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bash-scrub-"))
+    vault = new Vault(path.join(dir, "vault.json"), "test-passphrase")
+    await vault.load()
+    await vault.save({ title: "provider:test", secret: SECRET })
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("settleBashExecution scrubs the whole snapshot before cutting", () => {
+    // Cut window starts at index 10, inside the secret: naive truncation
+    // would strand SECRET.slice(0, 10).
+    const text = `${PREFIX}${SECRET}${SUFFIX}`
+    const record = settleBashExecution(
+      {
+        settlementId: "bash-scrub-1",
+        workspaceId: "ws",
+        taskId: "t1",
+        exitCode: 0,
+        endedAtMs: 1,
+        outputSnapshot: text,
+      },
+      { maxSnapshotChars: 20, vault },
+    )
+    expect(record.outputTruncated).toBe(true)
+    expect(record.outputSnapshot).toBe(`${PREFIX}[redacted]`)
+    expect(record.outputSnapshot).not.toContain(SECRET.slice(0, 10))
+  })
+
+  it("extractOutputSnapshot scrubs known shapes before cutting", () => {
+    const text = `${PREFIX}${SECRET}${SUFFIX}`
+    expect(extractOutputSnapshot({ output: text }, 20, vault)).toEqual({
+      text: `${PREFIX}[redacted]`,
+      truncated: true,
+    })
+  })
+
+  it("extractOutputSnapshot scrubs the JSON fallback before cutting", () => {
+    // '{"data":"' is 9 chars, so a 19-char cut starts inside the secret.
+    const result = { data: `${SECRET}${SUFFIX}` }
+    const snapshot = extractOutputSnapshot(result, 19, vault)
+    expect(snapshot.text).toBe('{"data":"[redacted]')
+    expect(snapshot.text).not.toContain(SECRET.slice(0, 10))
+  })
+
+  it("the ledger scrubs noted output on its way into a settlement", () => {
+    const ledger = new BashSettlementLedger({ maxSnapshotChars: 20, vault })
+    ledger.observeStart("ws", "t1", 0)
+    ledger.noteOutput("ws", "t1", `${PREFIX}${SECRET}${SUFFIX}`)
+    const record = ledger.observeEnd("ws", "t1", { ok: true, durationMs: 1, endedAtMs: 1 })
+    expect(record?.outputSnapshot).toBe(`${PREFIX}[redacted]`)
+    // The cut already happened (scrubbed) in noteOutput; settling re-scrubs
+    // and finds the snapshot within budget.
+    expect(record?.outputTruncated).toBe(false)
+  })
+
+  it("leaves snapshots without secrets unchanged", () => {
+    const record = settleBashExecution(
+      {
+        settlementId: "bash-scrub-plain",
+        workspaceId: "ws",
+        taskId: "t1",
+        exitCode: 0,
+        endedAtMs: 1,
+        outputSnapshot: "all output here",
+      },
+      { maxSnapshotChars: 100, vault },
+    )
+    expect(record.outputSnapshot).toBe("all output here")
+    expect(record.outputTruncated).toBe(false)
   })
 })
 

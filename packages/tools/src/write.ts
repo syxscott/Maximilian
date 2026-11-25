@@ -5,6 +5,7 @@
 import { makeTool, type ToolContent, ToolKind } from "@max/llm"
 import { writeFile, stat, mkdir } from "node:fs/promises"
 import { resolve, dirname } from "node:path"
+import { readEditableText } from "./editable-file.js"
 
 export interface WriteInput {
   path: string
@@ -37,6 +38,12 @@ export const writeTool = makeTool<WriteInput, WriteOutput>({
       existed = true
     } catch {
       // File doesn't exist
+    }
+
+    // Overwriting rewrites the whole file as text, so an existing file
+    // must be valid UTF-8 (see editable-file.ts). New files need no gate.
+    if (existed) {
+      await readEditableText(filePath)
     }
 
     await mkdir(dirname(filePath), { recursive: true })

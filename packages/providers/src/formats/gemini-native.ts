@@ -23,6 +23,14 @@ import type { ChatChunk, ChatMessage, ChatOptions, ChatResponse, Provider } from
 import { ProviderError } from "../base.js"
 import { wireStopSequences } from "../capability-predicates.js"
 
+/**
+ * Cap for a single buffered Gemini SSE event, forwarded to the WHATWG
+ * decoder (cc-switch proxy/sse.rs borrowing). A runaway frame is dropped
+ * instead of growing the buffer without bound; the stream resumes at the
+ * next event boundary, so one bad frame does not end the whole response.
+ */
+const MAX_SSE_EVENT_BYTES = 4 * 1024 * 1024
+
 export interface GeminiNativeConfig {
   id: string
   name: string
@@ -225,7 +233,9 @@ export class GeminiNativeProvider implements Provider {
     // kept its frames stuck in the buffer and glued consecutive frames
     // together (deepseek chat-demo sse.ts borrowing). Cancelling mid-stream
     // releases the connection through the generator's own cleanup.
-    for await (const event of readServerSentEvents(response.body)) {
+    for await (const event of readServerSentEvents(response.body, undefined, {
+      maxPendingBytes: MAX_SSE_EVENT_BYTES,
+    })) {
       const json = event.data.trim()
       if (!json) continue
       try {

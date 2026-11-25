@@ -122,7 +122,12 @@ export function openWorkspaceStream(
       }
       handlers.onOpen?.()
       try {
-        for await (const event of readServerSentEvents(res.body, controller.signal)) {
+        // 4 MiB per-event cap (cc-switch proxy/sse.rs borrowing): a single
+        // oversized server frame cannot balloon the decoder's pending
+        // buffer; the decoder drops it and keeps the stream alive.
+        for await (const event of readServerSentEvents(res.body, controller.signal, {
+          maxPendingBytes: 4 * 1024 * 1024,
+        })) {
           // The decoder keeps the last `id` seen (empty frames don't reset
           // it), matching the previous manual tracking of `id:` lines.
           if (event.lastEventId) lastEventId = event.lastEventId
