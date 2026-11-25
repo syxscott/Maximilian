@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Per-phase detail lives under `docs/changelogs/` — this file is the high-level summary.
 
+## [1.7.0](https://github.com/syxscott/Maximilian/compare/v1.6.0...v1.7.0) (2026-11-25)
+
+
+### Features
+
+* correctness and security wave (SSE linearity, scrub, UTF-8, SSRF) ([1acf93e](https://github.com/syxscott/Maximilian/commit/1acf93e6274605d8229fffe083ba68fafd4e290b))
+* resilience wave (queued-stop, FTS5, usage breakdown) ([b05782f](https://github.com/syxscott/Maximilian/commit/b05782f58b839a444cdcf759e7720019d5df29cd))
+* UX and observability wave (focus, lazy i18n, compaction, feedback) ([6c632a6](https://github.com/syxscott/Maximilian/commit/6c632a6796810f58c692b894c29414c71005aea6))
+
 ## [1.6.0](https://github.com/syxscott/Maximilian/compare/v1.5.1...v1.6.0) (2026-11-14)
 
 
