@@ -368,3 +368,25 @@ forceFraction 交错算法全形状、backup/restore 链续接（GENESIS 续链+
 
 启用 agent 轮：Settings → Secrets → Actions 加 `OPENAI_API_KEY`，然后
 Actions → Agent Bot → Run workflow → round=agent（goal 可自定义）。
+
+---
+
+## 2026-11-25 波次：全量更新后三波实施（1acf93e / b05782f / 6c632a6，release 1.7.0）
+
+上游更新量 ~6300 提交（hermes ~4930、opencode 639、cc-switch 314、pi 283、swarms 135、OpenHands 142、token-monitor 131、CBM 101、crewAI 81 等）。四组分析 + 抽查核实后三波落地；全量 5866 测试 0 失败。
+
+### Wave A 正确性/安全（1acf93e）
+
+SSE 解析线性化（pi #12451：buffer+=text 逐 chunk 重扫 O(n²)→只扫新文本；16MiB 3.2s→29ms）；事件级 pending 上限（cc-switch）；擦密顺序 scrub(whole)→truncate + Vault.redact 接线（hermes：Vault.redact 原零调用、provider key 在 env 里而四条截断路径不擦）；edit/write UTF-8 闸门（opencode b4d81f0）；shell 跨 chunk StringDecoder（opencode d432a06）；webhook SSRF 三件套（cc-switch dce5608be：redirect:manual+白名单复检+响应上限）+ JSON 512KiB/multipart 128MiB 闸门。
+
+### Wave B 韧性（b05782f）
+
+queue queued-stop+durable stop-ledger（MiniApps 0e8c24a）；worker 恢复条件更新+去重入队（28d4388）；session-store FTS5+bm25+snippet（opencode b8fe9ac67f，SCHEMA_VERSION 5，searchMessages auto|fts|like）+ replaceSessions 原子性回归证明；usage groupBy=session|agentRole 分解（token-monitor，求和==summary，UsageDomain Sessions 表）；providers cause 链分类（cc-switch error.rs）+ OpenRouter native_finish_reason 空 stop 重试（pi #12407）。
+
+### Wave C UX/可观测（6c632a6）
+
+modal focus 契约（OpenHands use-modal-focus，接 quickpick/dock add-panel；Radix 已有 trap 不动）+ Combobox Escape 优先级；dashboard i18n 按 locale 懒加载+in-flight 去重（cc-switch：入口 -99.5KB/-5.2%）；compaction 尾部严格预算（opencode ad8858de43）+ truncateToolOutput 代理对安全并审计修 9 处 core 回喂点；goal reply 截断自说明+metadata.resultTruncated（MiniApps ea4d29e）；telemetry warn-once outage（OAC exporter.go）；隐私反馈闭环（OpenHands Feedback：UUID distinct_id/process_person_profile=false/草稿保留；file/fetch/PostHog transport + 未配置诚实提示）。
+
+### 诚实边界（无消费面/需决策，勿重开）
+
+stream reasoning 累积（core stream 管线无在线消费者——启用流式执行时再借）；retired model fallback（与"显式配置绝不覆盖"冲突，需产品开关）；feedback 的 PostHog survey provider（宿主无 PostHog，默认 fetch/file）；**存照新增**：`appendHiddenReminders` 压缩配置仍无生产者（清理轮候选）。ZCode v4.0.0 对滚动权零变化；chat-demo 剩余项无上传/归档消费面。
