@@ -176,7 +176,9 @@ export function assembleGoalReply(
     body = truncateWithoutSplittingSurrogatePair(raw, limit)
     truncated = true
   }
-  if (body.length === 0) {
+  // Whitespace-only output is no answer either — normalizeReplyFingerprint
+  // already treats it as empty, so the delivered reply must not ship blanks.
+  if (body.trim().length === 0) {
     return { reply: NO_OUTPUT_REPLY, truncated, shownChars: 0, storedChars: stored }
   }
   const shown = body.length

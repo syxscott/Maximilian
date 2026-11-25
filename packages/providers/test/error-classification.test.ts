@@ -245,6 +245,32 @@ describe("openai-chat catch wiring — code / retryable / requestId on ProviderE
     })
   })
 
+  it("passes an already-classified ProviderError through the chat() catch unchanged", async () => {
+    // The stream() catch has always had this guard; chat() must not
+    // re-wrap. Re-wrapping would read `.status`/`.body` (ProviderError has
+    // `.statusCode`) and erase the explicit verdict below.
+    const p = provider()
+    injectThrowingClient(
+      p,
+      new ProviderError(
+        "t",
+        429,
+        "rate limited upstream",
+        undefined,
+        "RATE_LIMIT",
+        "tr-passthru",
+        true,
+      ),
+    )
+    await expect(p.chat(messages)).rejects.toMatchObject({
+      providerId: "t",
+      statusCode: 429,
+      code: "RATE_LIMIT",
+      requestId: "tr-passthru",
+      retryable: true,
+    })
+  })
+
   it("ProviderError.requestId mirrors the LlmFailure.requestId shape", () => {
     const err = new ProviderError("t", 429, "rate limited", undefined, "RATE_LIMIT", "tr-9", true)
     expect(err.requestId).toBe("tr-9")

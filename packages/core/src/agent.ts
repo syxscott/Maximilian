@@ -213,15 +213,15 @@ export abstract class Agent {
       systemContent = `${systemContent}\n${truncate(tail, DEFAULT_MAX_TEXT_LENGTH)}`
     }
 
-    const memoryText = this.memory
-      .map((m) => {
-        return `[${m.role}] ${truncate(m.content, DEFAULT_MAX_TEXT_LENGTH)}`
-      })
-      .join("\n")
-
     const messages: ChatMessage[] = [
       { role: "system", content: systemContent },
-      ...this.memory.map((m) => Object.freeze({ ...m })),
+      // Same per-message budget as the user message: without it a single
+      // oversized memory entry is replayed verbatim into every LLM call.
+      // `recall()` still returns the full entries; only the request copy is
+      // bounded.
+      ...this.memory.map((m) =>
+        Object.freeze({ ...m, content: truncate(m.content, DEFAULT_MAX_TEXT_LENGTH) }),
+      ),
     ]
 
     // Truncate the user message to prevent provider rejection.

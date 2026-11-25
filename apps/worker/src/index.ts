@@ -56,12 +56,15 @@ import {
   createQueue,
   createWorkspaceEventPublisher,
   acquireResourceLease,
+  claimWorkspaceRecovery,
+  releaseWorkspaceRecoveryClaim,
   CrashBudget,
   crashCategoryOfClassification,
   recoverStalledJobs,
   subscribeWorkspaceStop,
   type WorkspaceProcessor,
 } from "@max/queue"
+import type { Redis } from "ioredis"
 import { Gateway, createWebhookAdapter } from "@max/gateway"
 import { Commander, type ModelSelectorPort as CommanderModelSelectorPort } from "@max/commander"
 import { AutoResumeSuppressedError, bootstrapModelRouting, classifyError } from "@max/core"
@@ -859,19 +862,38 @@ async function main() {
             (r) => r.id === id && r.tenantId === row?.tenantId,
           )
           if (!live) return
-          // Skip when an execute job for this workspace is already queued,
-          // delayed or active — one recovery pass per stalled workspace.
-          const pending = await recoveryQueue.getJobs(["wait", "waiting", "delayed", "active"])
-          if (pending.some((j) => j.data?.workspaceId === id)) return
-          ws.status = "planning"
-          await store.saveWorkspace(ws, row?.tenantId ?? undefined)
-          await recoveryQueue.add("execute", {
-            workspaceId: id,
-            mode: "commander",
-            ...(row?.tenantId !== null && row?.tenantId !== undefined
-              ? { tenantId: row.tenantId }
-              : {}),
-          })
+          // Cross-process claim (MiniApps engine.mjs 28d4388 borrowing): the
+          // pending-job check below is only meaningful while THIS worker owns
+          // the claim. Without it two workers starting together can both see
+          // "no pending job" and both enqueue — the stalled workspace runs
+          // twice. The check must stay inside the claim so a worker that
+          // arrives after the winner released sees the winner's job.
+          let conn: Redis | undefined
+          try {
+            // BullMQ's RedisClient union is ioredis-compatible at runtime
+            // (the queue is constructed with an ioredis connection).
+            conn = (await recoveryQueue.client) as unknown as Redis
+          } catch {
+            conn = undefined // queue closed / Redis down — fail open below
+          }
+          if (conn !== undefined && !(await claimWorkspaceRecovery(conn, id))) return
+          try {
+            // Skip when an execute job for this workspace is already queued,
+            // delayed or active — one recovery pass per stalled workspace.
+            const pending = await recoveryQueue.getJobs(["wait", "waiting", "delayed", "active"])
+            if (pending.some((j) => j.data?.workspaceId === id)) return
+            ws.status = "planning"
+            await store.saveWorkspace(ws, row?.tenantId ?? undefined)
+            await recoveryQueue.add("execute", {
+              workspaceId: id,
+              mode: "commander",
+              ...(row?.tenantId !== null && row?.tenantId !== undefined
+                ? { tenantId: row.tenantId }
+                : {}),
+            })
+          } finally {
+            if (conn !== undefined) await releaseWorkspaceRecoveryClaim(conn, id)
+          }
         },
         holdWithReason: async (id, category) => {
           const stalled = await store.listStalledRunning()

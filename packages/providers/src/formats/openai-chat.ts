@@ -160,6 +160,11 @@ export class OpenAIChatProvider implements Provider {
             raw: response,
           }
         } catch (err) {
+          // An already-classified ProviderError carries its own verdict
+          // (the empty-choice throw below, a nested provider failure, …);
+          // re-wrapping would erase code/retryable/requestId through the
+          // generic heuristics. Mirrors the stream() catch below.
+          if (err instanceof ProviderError) throw err
           // Body-aware classification (MiniMax-MCP-JS api.ts + cli
           // mapApiErrorBase borrowing): vendor codes from the error body /
           // trailing message suffix drive the stable code + retryable

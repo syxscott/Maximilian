@@ -14,11 +14,15 @@
 import { describe, expect, it, vi } from "vitest"
 import type { Redis } from "ioredis"
 import {
+  claimWorkspaceRecovery,
   InMemoryWorkspaceStopLedger,
-  WORKSPACE_STOPPED_KEY_PREFIX as STOPPED_KEY_PREFIX,
+  RECOVERY_CLAIM_KEY_PREFIX,
+  releaseWorkspaceRecoveryClaim,
   RedisWorkspaceStopLedger,
   skipIfWorkspaceStopped,
+  workspaceRecoveryClaimKey,
   workspaceStoppedKey,
+  WORKSPACE_STOPPED_KEY_PREFIX as STOPPED_KEY_PREFIX,
 } from "../src/stop-ledger.js"
 import type { WorkspaceStopLedger } from "../src/stop-ledger.js"
 import {
@@ -64,6 +68,65 @@ describe("workspace stop ledger", () => {
     expect(conn.del).toHaveBeenCalledWith(workspaceStoppedKey("ws-redis"))
     ledger.close()
     expect(conn.disconnect).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── Crash-recovery enqueue claim ───────────────────────────────────────────
+
+/** Minimal Redis fake with SET NX + PX and DEL semantics. */
+function fakeNxRedis() {
+  const keys = new Map<string, string>()
+  return {
+    keys,
+    async set(key: string, value: string, ...args: string[]) {
+      // Yield so two concurrent callers genuinely interleave at the await.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (args.includes("NX") && keys.has(key)) return null
+      keys.set(key, value)
+      return "OK"
+    },
+    async del(key: string) {
+      return keys.delete(key) ? 1 : 0
+    },
+  }
+}
+
+describe("crash-recovery enqueue claim", () => {
+  it("namespaces the claim key per workspace", () => {
+    expect(RECOVERY_CLAIM_KEY_PREFIX).toBe("maximilian:recovery-claim:")
+    expect(workspaceRecoveryClaimKey("ws-1")).toBe("maximilian:recovery-claim:ws-1")
+  })
+
+  it("grants the claim to exactly one of two concurrent sweepers", async () => {
+    const conn = fakeNxRedis()
+    const results = await Promise.all([
+      claimWorkspaceRecovery(conn as unknown as Redis, "ws-1"),
+      claimWorkspaceRecovery(conn as unknown as Redis, "ws-1"),
+    ])
+    expect(results.filter((granted) => granted)).toHaveLength(1)
+    expect(conn.keys.has(workspaceRecoveryClaimKey("ws-1"))).toBe(true)
+  })
+
+  it("lets a later sweeper claim after the winner releases", async () => {
+    const conn = fakeNxRedis()
+    expect(await claimWorkspaceRecovery(conn as unknown as Redis, "ws-1")).toBe(true)
+    await releaseWorkspaceRecoveryClaim(conn as unknown as Redis, "ws-1")
+    expect(conn.keys.has(workspaceRecoveryClaimKey("ws-1"))).toBe(false)
+    expect(await claimWorkspaceRecovery(conn as unknown as Redis, "ws-1")).toBe(true)
+  })
+
+  it("fails open when Redis is unreachable (best-effort recovery)", async () => {
+    const broken = {
+      set: vi.fn(async () => {
+        throw new Error("ECONNREFUSED")
+      }),
+    }
+    expect(await claimWorkspaceRecovery(broken as unknown as Redis, "ws-1")).toBe(true)
+  })
+
+  it("refuses an empty workspace id", async () => {
+    const conn = fakeNxRedis()
+    expect(await claimWorkspaceRecovery(conn as unknown as Redis, "")).toBe(false)
   })
 })
 

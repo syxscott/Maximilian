@@ -122,6 +122,66 @@ export function createRedisWorkspaceStopLedger(
   )
 }
 
+// ── Crash-recovery enqueue claim ───────────────────────────────────────────
+//
+// The worker's startup sweep de-dupes recovery enqueues with
+// `getJobs([...])` before `add()`. That check is a read-then-write across
+// processes: two workers starting at once can both observe "no pending job",
+// both flip the stalled row to planning, and both add an execute job — the
+// workspace runs twice. A Redis `SET NX` claim serializes the
+// check-and-enqueue section; the pending-job re-check happens while the
+// claim is held, so the loser either waits (then sees the winner's job) or
+// is refused outright.
+
+/** Redis key prefix for the cross-process recovery claim. */
+export const RECOVERY_CLAIM_KEY_PREFIX = "maximilian:recovery-claim:"
+
+/** Canonical claim key for one workspace's crash-recovery enqueue. */
+export function workspaceRecoveryClaimKey(workspaceId: string): string {
+  return `${RECOVERY_CLAIM_KEY_PREFIX}${workspaceId}`
+}
+
+/**
+ * Try to claim the right to enqueue a recovery job for `workspaceId`.
+ * Returns true when the caller owns the claim (or the store is unreachable,
+ * in which case failing open preserves the previous best-effort behavior).
+ *
+ * The TTL is a crash safety valve: a worker that dies while holding the
+ * claim releases it for the next sweep instead of blocking the workspace
+ * forever.
+ */
+export async function claimWorkspaceRecovery(
+  conn: Pick<Redis, "set">,
+  workspaceId: string,
+  ttlMs = 60_000,
+): Promise<boolean> {
+  if (typeof workspaceId !== "string" || workspaceId.length === 0) return false
+  try {
+    const result = await conn.set(
+      workspaceRecoveryClaimKey(workspaceId),
+      String(Date.now()),
+      "PX",
+      ttlMs,
+      "NX",
+    )
+    return result === "OK"
+  } catch {
+    return true
+  }
+}
+
+/** Release a claim taken by {@link claimWorkspaceRecovery}. Best-effort. */
+export async function releaseWorkspaceRecoveryClaim(
+  conn: Pick<Redis, "del">,
+  workspaceId: string,
+): Promise<void> {
+  try {
+    await conn.del(workspaceRecoveryClaimKey(workspaceId))
+  } catch {
+    // The TTL clears the key even if this fails.
+  }
+}
+
 /** Minimal shape of a BullMQ job the guard needs. */
 export interface StopGuardJob {
   data: { workspaceId?: unknown }

@@ -342,6 +342,23 @@ describe("readServerSentEvents", () => {
     expect(events.map((e) => e.data)).toEqual(["one", "three"])
     expect(callbacks).toEqual([1])
   })
+
+  it("invokes the drop callback once per dropped event when several fall in one chunk", async () => {
+    // The contract is one callback per dropped frame with the running total;
+    // two oversized frames in the same chunk must yield [1, 2], not a single
+    // call carrying the total 2.
+    const wire = "data: " + "x".repeat(200) + "\n\ndata: " + "y".repeat(200) + "\n\ndata: ok\n\n"
+    const callbacks: number[] = []
+    const events: ServerSentEvent[] = []
+    for await (const event of readServerSentEvents(byteStream([ENC.encode(wire)]), undefined, {
+      maxPendingBytes: 50,
+      onOversizedEvent: (dropped) => callbacks.push(dropped),
+    })) {
+      events.push(event)
+    }
+    expect(events.map((e) => e.data)).toEqual(["ok"])
+    expect(callbacks).toEqual([1, 2])
+  })
 })
 
 /**

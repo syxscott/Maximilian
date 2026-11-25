@@ -43,7 +43,7 @@ async function freshLocales(activeLocale: string) {
   const [{ applyDashboardDictionaries, ensureLocaleLoaded }, { setLocale, getDictionary }] =
     await Promise.all([import("../src/locales/index"), import("@max/i18n")])
   setLocale(activeLocale)
-  return { applyDashboardDictionaries, ensureLocaleLoaded, getDictionary }
+  return { applyDashboardDictionaries, ensureLocaleLoaded, getDictionary, setLocale }
 }
 
 beforeEach(() => {
@@ -87,6 +87,27 @@ describe("dashboard locale lazy loading", () => {
     await ensureLocaleLoaded("zh-CN")
 
     expect(mergeCalls).toEqual([])
+  })
+
+  it("pulls the incoming locale's domains when the locale changes", async () => {
+    const { applyDashboardDictionaries, ensureLocaleLoaded, getDictionary, setLocale } =
+      await freshLocales("en-US")
+
+    applyDashboardDictionaries(getDictionary("zh-CN") ?? {}, getDictionary("en-US") ?? {})
+    // Join the bootstrap load so only en-US has been fetched so far.
+    await ensureLocaleLoaded("en-US")
+    expect(mergeCalls.map((call) => call.locale)).toEqual(["en-US"])
+    expect(getDictionary("zh-CN")?.["mentions.roles.title"]).toBeUndefined()
+
+    // A real switch only calls setLocale(); the lazy loader must react to it.
+    mergeCalls.length = 0
+    setLocale("zh-CN")
+
+    await vi.waitFor(() => {
+      expect(mergeCalls.map((call) => call.locale)).toEqual(["zh-CN"])
+    })
+    // The zh-CN domain chunks were fetched and handed to the merger.
+    expect(mergeCalls[0]?.overrides["mentions.roles.title"]).toBe("智能体角色")
   })
 
   it("resolves locales without domain files without touching their dictionary", async () => {

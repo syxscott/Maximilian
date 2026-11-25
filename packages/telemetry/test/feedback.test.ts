@@ -209,6 +209,40 @@ describe("FetchFeedbackTransport", () => {
     expect(delivery).toEqual({ ok: false, reason: "http-503" })
   })
 
+  it("times out an endpoint that accepts the socket but never answers", async () => {
+    let seenSignal: AbortSignal | undefined
+    const transport = new FetchFeedbackTransport({
+      endpoint: "https://relay.example/capture/",
+      timeoutMs: 20,
+      fetchImpl: (async (_url: string, init: RequestInit) => {
+        seenSignal = init.signal ?? undefined
+        return new Promise(() => {})
+      }) as unknown as typeof fetch,
+    })
+
+    const started = Date.now()
+    const delivery = await transport.deliver(buildFeedbackPayload({ message: "x", source: "t" }))
+    expect(delivery).toEqual({ ok: false, reason: "timeout" })
+    expect(Date.now() - started).toBeLessThan(500)
+    // A spec-compliant fetch is cancelled, not just abandoned.
+    expect(seenSignal?.aborted).toBe(true)
+  })
+
+  it("reports a timed-out body read as failure rather than a delivered relay", async () => {
+    const transport = new FetchFeedbackTransport({
+      endpoint: "https://relay.example/capture/",
+      timeoutMs: 20,
+      fetchImpl: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: () => new Promise(() => {}),
+        }) as unknown as Response) as unknown as typeof fetch,
+    })
+    const delivery = await transport.deliver(buildFeedbackPayload({ message: "x", source: "t" }))
+    expect(delivery).toEqual({ ok: false, reason: "timeout" })
+  })
+
   it("accepts a non-JSON 2xx relay and a network failure surfaces as failure", async () => {
     const nonJson = new FetchFeedbackTransport({
       endpoint: "https://relay.example/",

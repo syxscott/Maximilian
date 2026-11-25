@@ -230,7 +230,12 @@ export function aggregateUsageBreakdown(
   const buckets = new Map<string, BreakdownBucket>()
   for (const r of records) {
     if (!inRange(r, range)) continue
-    const key = groupBy === "session" ? r.taskId : r.agentRole
+    // A record without its group dimension (legacy/malformed row) still has
+    // to land in exactly one bucket: the rows must sum to the summary, and
+    // an undefined key would crash the `key.localeCompare` sort below with a
+    // 500. Keep it visible as a stable placeholder instead.
+    const rawKey = groupBy === "session" ? r.taskId : r.agentRole
+    const key = typeof rawKey === "string" && rawKey.length > 0 ? rawKey : "(unknown)"
     let bucket = buckets.get(key)
     if (!bucket) {
       bucket = {

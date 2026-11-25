@@ -141,6 +141,35 @@ describe("aggregateUsageBreakdown", () => {
     expect(rows.some((r) => r.key === "old")).toBe(false)
     expect(rows[0]!.key).toBe("session-b") // largest first
   })
+
+  it("buckets records whose group dimension is missing instead of throwing", () => {
+    // A legacy/malformed row can reach the aggregator without a taskId (or
+    // role). It must still land in exactly one bucket so the rows sum to the
+    // summary; previously the `key.localeCompare` sort raised a TypeError,
+    // which surfaced as a 500 from the route.
+    const missingTaskId = rec({
+      taskId: undefined as unknown as string,
+      timestamp: INSIDE,
+      tokenInput: 7,
+      tokenOutput: 3,
+    })
+    const summary = aggregateUsageSummary([missingTaskId], range, "today")
+    const rows = aggregateUsageBreakdown([missingTaskId], range, "session")
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.key).toBe("(unknown)")
+    expect(rows[0]!.totalRequests).toBe(summary.totalRequests)
+    expect(rows[0]!.realTotalTokens).toBe(summary.realTotalTokens)
+
+    const missingRole = rec({
+      agentRole: undefined as unknown as MetricRecord["agentRole"],
+      timestamp: INSIDE,
+      tokenInput: 7,
+      tokenOutput: 3,
+    })
+    const roleRows = aggregateUsageBreakdown([missingRole], range, "agentRole")
+    expect(roleRows).toHaveLength(1)
+    expect(roleRows[0]!.key).toBe("(unknown)")
+  })
 })
 
 describe("parseUsageGroupBy", () => {

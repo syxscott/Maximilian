@@ -156,6 +156,20 @@ describe("assembleGoalReply (MiniApps task-dispatcher borrowing)", () => {
     expect(assembleGoalReply({ output: undefined }).reply).toBe(NO_OUTPUT_REPLY)
   })
 
+  it("treats whitespace-only output as no output, keeping the truncation flag", () => {
+    for (const output of ["   ", "\n\t ", "\n\n"]) {
+      const out = assembleGoalReply({ output })
+      expect(out.reply).toBe(NO_OUTPUT_REPLY)
+      expect(out.shownChars).toBe(0)
+      expect(out.storedChars).toBe(output.length)
+      expect(out.truncated).toBe(false)
+    }
+    // A pre-flagged truncated record keeps its flag even with blank text.
+    const flagged = assembleGoalReply({ output: "  ", resultTruncated: true, storedChars: 500 })
+    expect(flagged.reply).toBe(NO_OUTPUT_REPLY)
+    expect(flagged.truncated).toBe(true)
+  })
+
   it("never ends the clipped body on half a surrogate pair", () => {
     // 3999 BMP chars + U+1F600: the 4000-unit cut lands between the halves.
     const raw = "x".repeat(GOAL_REPLY_MAX_CHARS - 1) + "😀"

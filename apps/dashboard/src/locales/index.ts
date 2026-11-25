@@ -22,7 +22,7 @@
  * once. The flatten/merge structure itself is unchanged — laziness only moves
  * *when* a domain file is read, never how its keys are registered.
  */
-import { getDictionary, getLocale, type Locale } from "@max/i18n"
+import { getDictionary, getLocale, subscribe, type Locale } from "@max/i18n"
 import { mergeAndRegister } from "@/lib/i18n-merge"
 
 type Json = Record<string, unknown>
@@ -86,6 +86,8 @@ const pendingCores = new Map<Locale, Record<string, string>>()
 const loadedLocales = new Set<Locale>()
 /** Per-locale fetch promises — concurrent callers share one request. */
 const inFlightLoads = new Map<Locale, Promise<void>>()
+/** Guards the one-shot locale-change subscription installed at bootstrap. */
+let switchSubscriptionInstalled = false
 
 async function fetchLocale(locale: Locale): Promise<void> {
   const loaders = loadersByLocale.get(locale)
@@ -148,4 +150,13 @@ export function applyDashboardDictionaries(
   pendingCores.set("zh-CN", zhCore ?? {})
   pendingCores.set("en-US", enCore ?? {})
   void ensureLocaleLoaded(getLocale())
+  // Locale switches (header toggle, settings buttons, "follow system") only
+  // call setLocale(); nothing else pulls the incoming locale's domain chunks.
+  // Without this subscription a switch renders raw feature keys until reload.
+  if (!switchSubscriptionInstalled) {
+    switchSubscriptionInstalled = true
+    subscribe(() => {
+      void ensureLocaleLoaded(getLocale())
+    })
+  }
 }

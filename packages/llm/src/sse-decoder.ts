@@ -335,8 +335,12 @@ export async function* readServerSentEvents(
   const decoder = new ServerSentEventDecoder({ maxPendingBytes: options?.maxPendingBytes })
   let dropped = 0
   const reportDrops = (): void => {
-    if (decoder.droppedOversizedEvents > dropped) {
-      dropped = decoder.droppedOversizedEvents
+    // One callback per dropped event, in drop order. Several oversized
+    // frames can fall inside the same chunk; coalescing them into a single
+    // call with the running total would violate the documented contract
+    // ("invoked once per dropped oversized event").
+    while (decoder.droppedOversizedEvents > dropped) {
+      dropped += 1
       options?.onOversizedEvent?.(dropped)
     }
   }
