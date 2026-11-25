@@ -170,10 +170,10 @@ describe("compactProactiveHistory (borrowing; summarizer optional)", () => {
     ]
     const out = await compactProactiveHistory(messages, {
       tokenLimit: 20,
-      // 1000 tokens per message: the preserve budget floors at 2000, so
-      // only the last two messages survive and the early ones are dropped
-      // behind the existing truncation boundary.
-      estimateTokens: (ms) => ms.length * 1000,
+      // 900 tokens per message (+1 separator): the preserve budget floors at
+      // 2000, so the last TWO messages survive (901+901 ≤ 2000) and the early
+      // ones are dropped behind the existing truncation boundary.
+      estimateTokens: (ms) => ms.length * 900,
     })
     // Truncation marks the boundary instead of per-turn summaries.
     expect(out.some((m) => m.content.includes(COMPACTION_SUMMARY_MARKER))).toBe(true)
@@ -306,9 +306,10 @@ describe("compactProactiveHistory forceFraction (overflow recovery wiring)", () 
     })
     const before = estimate(rejected)
     const after = estimate(out)
-    // The bulk is compacted toward the fraction; the floor is the
-    // DEFAULT_TAIL_TURNS=2 verbatim tail plus kept messages, so the honest
-    // guarantee is meaningful shrinkage, not exact halving.
+    // The bulk is compacted toward the fraction; the floor is the newest
+    // verbatim message (allowed to exceed the target on its own) plus kept
+    // user intents, so the honest guarantee is meaningful shrinkage, not
+    // exact halving.
     expect(after).toBeLessThan(before * 0.75)
     // Real user intents survive verbatim; tool-result user messages are
     // segment content and may be summarized away.

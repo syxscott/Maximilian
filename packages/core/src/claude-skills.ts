@@ -23,6 +23,7 @@ import { existsSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { loadSkillDir, type Skill } from "./skills.js"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
 /**
  * Default location of Claude Code skills.
@@ -127,8 +128,13 @@ function renderSkillBlock(skill: Skill): string {
   if (frontmatter.allowedTools && frontmatter.allowedTools.length > 0) {
     lines.push(`Allowed tools: ${frontmatter.allowedTools.join(", ")}`)
   }
-  // Include the first ~500 chars of the body as a preview
-  const preview = body.trim().split("\n").slice(0, 20).join("\n").slice(0, 500)
+  // Include the first ~500 chars of the body as a preview. Surrogate-pair
+  // safe (opencode text-boundary.ts borrowing): the prelude is injected into
+  // a prompt, so the cut must not strand half an astral character.
+  const preview = truncateWithoutSplittingSurrogatePair(
+    body.trim().split("\n").slice(0, 20).join("\n"),
+    500,
+  )
   if (preview) {
     lines.push("")
     lines.push("```")

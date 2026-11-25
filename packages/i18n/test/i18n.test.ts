@@ -148,6 +148,18 @@ describe("i18n — setLocale & persistence", () => {
     setLocale("en-US")
     expect(listener).toHaveBeenCalledTimes(2) // unsubscribed
   })
+
+  it("notifies subscribers when a dictionary is registered late", () => {
+    // Lazily loaded feature domains call registerLocale() after mount; the
+    // repaint is what replaces raw keys with translations.
+    const listener = vi.fn()
+    const unsub = subscribe(listener)
+    registerLocale("en-US", { "common.save": "Save" })
+    expect(listener).toHaveBeenCalledTimes(1)
+    unsub()
+    registerLocale("en-US", { "common.save": "Save again" })
+    expect(listener).toHaveBeenCalledTimes(1) // unsubscribed
+  })
 })
 
 describe("i18n — initLocale()", () => {

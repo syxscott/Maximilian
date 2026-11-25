@@ -11,11 +11,16 @@ import { describe, expect, it } from "vitest"
 import { AgentRuntime } from "../src/runtime.js"
 import { Agent } from "../src/agent.js"
 import {
+  GOAL_REPLY_MAX_CHARS,
+  NO_OUTPUT_REPLY,
+  RESULT_TRUNCATED_NOTICE,
   GoalFinalReplyMachine,
+  assembleGoalReply,
   canDriveGoalFinalReply,
   driveGoalFinalReply,
   normalizeReplyFingerprint,
 } from "../src/goal-final-reply.js"
+import { endsWithLoneHighSurrogate } from "../src/text-safe.js"
 import type { AgentContext } from "../src/agent.js"
 import type { Plan, Result, Task, Workspace } from "../src/types.js"
 
@@ -103,6 +108,63 @@ describe("normalizeReplyFingerprint", () => {
     expect(normalizeReplyFingerprint("   \n\r\n")).toBeUndefined()
     expect(normalizeReplyFingerprint(undefined)).toBeUndefined()
     expect(normalizeReplyFingerprint("a")).not.toBe(normalizeReplyFingerprint("b"))
+  })
+})
+
+describe("assembleGoalReply (MiniApps task-dispatcher borrowing)", () => {
+  it("keeps the error-first invariant", () => {
+    const out = assembleGoalReply({ error: new Error("boom"), output: "partial" })
+    expect(out.reply).toBe("Error: boom")
+    expect(out.truncated).toBe(false)
+    expect(out.reply).not.toContain(RESULT_TRUNCATED_NOTICE)
+  })
+
+  it("clips a 4000+ char output to the reply budget and says so", () => {
+    const long = "x".repeat(GOAL_REPLY_MAX_CHARS + 500)
+    const out = assembleGoalReply({ output: long })
+    expect(out.truncated).toBe(true)
+    expect(out.shownChars).toBe(GOAL_REPLY_MAX_CHARS)
+    expect(out.storedChars).toBe(long.length)
+    expect(out.reply).toContain(RESULT_TRUNCATED_NOTICE)
+    expect(out.reply).toContain(`showing ${GOAL_REPLY_MAX_CHARS} of ${long.length} chars`)
+    expect(out.reply.startsWith("x".repeat(100))).toBe(true)
+  })
+
+  it("flags an already-truncated record even when the shown text is short", () => {
+    const out = assembleGoalReply({
+      output: "short answer",
+      resultTruncated: true,
+      storedChars: 9_000,
+    })
+    expect(out.truncated).toBe(true)
+    expect(out.reply).toContain("short answer")
+    expect(out.reply).toContain(RESULT_TRUNCATED_NOTICE)
+    expect(out.reply).toContain("showing 12 of 9000 chars")
+  })
+
+  it("leaves an untruncated reply untouched", () => {
+    const within = "y".repeat(GOAL_REPLY_MAX_CHARS)
+    const out = assembleGoalReply({ output: within })
+    expect(out.truncated).toBe(false)
+    expect(out.reply).toBe(within)
+    expect(out.reply).not.toContain(RESULT_TRUNCATED_NOTICE)
+  })
+
+  it("states that there was no output instead of returning an empty string", () => {
+    expect(assembleGoalReply({}).reply).toBe(NO_OUTPUT_REPLY)
+    expect(assembleGoalReply({ output: "" }).reply).toBe(NO_OUTPUT_REPLY)
+    expect(assembleGoalReply({ output: undefined }).reply).toBe(NO_OUTPUT_REPLY)
+  })
+
+  it("never ends the clipped body on half a surrogate pair", () => {
+    // 3999 BMP chars + U+1F600: the 4000-unit cut lands between the halves.
+    const raw = "x".repeat(GOAL_REPLY_MAX_CHARS - 1) + "😀"
+    const out = assembleGoalReply({ output: raw })
+    expect(out.truncated).toBe(true)
+    const body = out.reply.slice(0, out.reply.indexOf("\n" + RESULT_TRUNCATED_NOTICE))
+    expect(body).toBe("x".repeat(GOAL_REPLY_MAX_CHARS - 1))
+    expect(endsWithLoneHighSurrogate(body)).toBe(false)
+    expect(endsWithLoneHighSurrogate(out.reply)).toBe(false)
   })
 })
 
@@ -215,6 +277,57 @@ describe("AgentRuntime goal final reply", () => {
     expect(runtime.resolveGoal("ws", "second answer")).toBe(true)
     expect(finalReplies).toHaveLength(2)
     expect(finalReplies[1].goalId).toBe("goal-2")
+  })
+
+  it("annotates an over-budget final reply and tags the source result", async () => {
+    const long = "z".repeat(GOAL_REPLY_MAX_CHARS + 250)
+    const { runtime } = makeRuntime(long)
+    const replies: Array<{
+      type: string
+      reply?: string
+      truncated?: boolean
+      shownChars?: number
+      storedChars?: number
+    }> = []
+    let doneWorkspace: Workspace | undefined
+    runtime.on((event) => {
+      if (event.type === "goal-final-reply") {
+        replies.push({
+          type: event.type,
+          reply: event.reply,
+          truncated: event.truncated,
+          shownChars: event.shownChars,
+          storedChars: event.storedChars,
+        })
+      } else if (event.type === "done") {
+        doneWorkspace = event.workspace
+      }
+    })
+
+    runtime.declareGoal("ws", "g-long")
+    await runtime.execute(makeWorkspace("ws"))
+
+    expect(replies).toHaveLength(1)
+    expect(replies[0]!.truncated).toBe(true)
+    expect(replies[0]!.shownChars).toBe(GOAL_REPLY_MAX_CHARS)
+    expect(replies[0]!.storedChars).toBe(long.length)
+    expect(replies[0]!.reply).toContain(RESULT_TRUNCATED_NOTICE)
+
+    // The done-event workspace carries the marker on the source Result so a
+    // dashboard card can render a truncated badge without re-deriving it.
+    const last = doneWorkspace!.results[doneWorkspace!.results.length - 1]!
+    expect(last.metadata?.resultTruncated).toBe(true)
+  })
+
+  it("does not annotate an untruncated final reply", async () => {
+    const { runtime } = makeRuntime("short answer")
+    const replies: Array<{ truncated?: boolean }> = []
+    runtime.on((event) => {
+      if (event.type === "goal-final-reply") replies.push({ truncated: event.truncated })
+    })
+    runtime.declareGoal("ws", "g-short")
+    await runtime.execute(makeWorkspace("ws"))
+    expect(replies).toEqual([{ truncated: undefined }])
   })
 
   it("manual resolveGoal works and re-declaring a working goal is a no-op", () => {

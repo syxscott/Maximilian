@@ -222,6 +222,9 @@ importers:
       '@max/llm':
         specifier: workspace:*
         version: link:../../packages/llm
+      '@max/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
       '@max/ui-react':
         specifier: workspace:*
         version: link:../../packages/ui-react

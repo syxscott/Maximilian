@@ -34,6 +34,7 @@ import { JobsDomainSection } from "./settings/sections"
 import { AutomationsDomain } from "./settings/automations-domain/AutomationsDomain"
 import { MemoryDomain } from "./settings/memory-domain/MemoryDomain"
 import { SkillsDomain } from "./settings/skills-domain/SkillsDomain"
+import { FeedbackSection } from "./settings/feedback-domain/FeedbackSection"
 import { useSettingsUiStore, useActiveSection } from "@/stores/settingsUiStore"
 import { useMemo } from "react"
 import { t } from "@max/i18n"
@@ -318,6 +319,11 @@ export function SettingsPanel({
         {/* Permissions */}
         <PermissionsMatrix />
       </div>
+
+      {/* Privacy-friendly in-product feedback (OpenHands submitPrivateFeedback
+          borrowing). Always visible at the bottom of the settings surface;
+          resolves its transport from the build-time endpoint config. */}
+      <FeedbackSection />
     </div>
   )
 }

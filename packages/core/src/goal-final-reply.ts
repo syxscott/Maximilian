@@ -23,6 +23,7 @@
  */
 
 import { createHash } from "node:crypto"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
 export type GoalFinalReplyState = "idle" | "working" | "final-reply" | "closed"
 
@@ -108,6 +109,81 @@ export function errorFirstReply(outcome: { error?: unknown; output?: string | un
     return `Error: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`
   }
   return outcome.output ?? ""
+}
+
+// ── Truncated-result self-description (MiniApps task-dispatcher borrowing) ──
+//
+// A batch result that carries only the first N chars reads as a complete
+// answer unless the cut says so; an absent output must not look like a bare
+// status code either. The delivered reply therefore appends an explicit
+// truncation notice whenever text was clipped, and the source Result can be
+// tagged via `Result.metadata.resultTruncated` for dashboard consumers.
+
+/** Char budget for one delivered final reply. */
+export const GOAL_REPLY_MAX_CHARS = 4_000
+
+/** Stable metadata key marking a result whose stored output was clipped. */
+export const RESULT_TRUNCATED_METADATA_KEY = "resultTruncated"
+
+/** Appended to a reply whose body did not fit the delivery budget. */
+export const RESULT_TRUNCATED_NOTICE = "[result truncated"
+
+/** Explicit wording when a terminal run left no output at all. */
+export const NO_OUTPUT_REPLY = "(no output recorded)"
+
+export interface GoalReplyOutcome {
+  error?: unknown
+  output?: string | undefined
+  /** Source record already flagged its stored output as truncated. */
+  resultTruncated?: boolean
+  /** Stored length when it differs from `output.length` (shown < stored). */
+  storedChars?: number
+}
+
+export interface GoalReplyAssembly {
+  reply: string
+  /** True when any clipping happened (budget cut or a pre-flagged record). */
+  truncated: boolean
+  /** Code units actually delivered before the notice. */
+  shownChars: number
+  /** Original stored code units the shown text came from. */
+  storedChars: number
+}
+
+/**
+ * Assemble the delivered final reply from a terminal outcome (borrowing;
+ * MiniApps task-dispatcher.mjs:202-210): error-first, then clip the output
+ * to `maxChars` with a surrogate-pair-safe cut, append a truncation notice
+ * when anything was dropped, and spell out "no output" instead of returning
+ * an empty string. Pure; persistence/event emission stays with the caller.
+ */
+export function assembleGoalReply(
+  outcome: GoalReplyOutcome,
+  maxChars: number = GOAL_REPLY_MAX_CHARS,
+): GoalReplyAssembly {
+  if (outcome.error !== undefined && outcome.error !== null && outcome.error !== "") {
+    const reply = `Error: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`
+    return { reply, truncated: false, shownChars: reply.length, storedChars: 0 }
+  }
+  const raw = outcome.output ?? ""
+  const stored = Math.max(raw.length, outcome.storedChars ?? raw.length)
+  const limit = Math.max(0, Math.floor(maxChars))
+  let body = raw
+  let truncated = outcome.resultTruncated === true || stored > raw.length
+  if (raw.length > limit) {
+    // Surrogate-pair safe (opencode text-boundary.ts borrowing): never end
+    // the delivered body on half an astral character.
+    body = truncateWithoutSplittingSurrogatePair(raw, limit)
+    truncated = true
+  }
+  if (body.length === 0) {
+    return { reply: NO_OUTPUT_REPLY, truncated, shownChars: 0, storedChars: stored }
+  }
+  const shown = body.length
+  const reply = truncated
+    ? `${body}\n${RESULT_TRUNCATED_NOTICE} — showing ${shown} of ${stored} chars]`
+    : body
+  return { reply, truncated, shownChars: shown, storedChars: stored }
 }
 
 /**

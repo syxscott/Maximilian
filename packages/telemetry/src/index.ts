@@ -58,3 +58,11 @@ export {
   opencodeSessionsLeakedTotal,
   metaCycleDuration,
 } from "./metrics.js"
+
+// Privacy-friendly in-product feedback (borrowing: OpenHands submitPrivateFeedback)
+export * from "./feedback/index.js"
+export {
+  FEEDBACK_PATH_ENV,
+  FileFeedbackTransport,
+  resolveFileFeedbackTransport,
+} from "./feedback/transports/file-transport.js"

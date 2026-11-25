@@ -17,6 +17,7 @@ import type { Provider } from "@max/providers"
 import type { ChatMessage } from "@max/providers"
 import type { SelfCritiqueResult } from "./runtime.js"
 import { detectFailures } from "./validation/failure-detector.js"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
 /**
  * Options for constructing a SelfCritique evaluator.
@@ -82,9 +83,12 @@ export class SelfCritique {
     lastOutput: string,
     historyTail: ChatMessage[],
   ): Promise<SelfCritiqueResult> {
+    // Surrogate-pair safe (opencode text-boundary.ts borrowing): the critique
+    // prompt is re-fed to an LLM, and a lone surrogate from a naive cut makes
+    // strict JSON parsers reject the whole transcript.
     const prompt = CRITIQUE_PROMPT.replace("{lastAction}", lastAction).replace(
       "{lastOutput}",
-      lastOutput.slice(0, 1000), // truncate to avoid token blow-up
+      truncateWithoutSplittingSurrogatePair(lastOutput, 1000), // bound token blow-up
     )
 
     const messages: ChatMessage[] = [...historyTail, { role: "user", content: prompt }]

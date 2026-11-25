@@ -20,12 +20,15 @@ import {
   type EvolutionTrace,
   type TelemetryConfig,
 } from "./types.js"
+import { classifyFailure, OutageTracker, defaultOutageSink, type OutageSink } from "./outage.js"
 
 /** Optional persistence store interface (satisfied by PgTelemetryStore). */
 export interface TelemetryPersistStore {
   saveExecutionTrace(trace: unknown): Promise<void>
   saveEvolutionTrace(trace: unknown): Promise<void>
 }
+
+type PersistKind = "execution" | "evolution"
 
 export class TelemetryCollector {
   private executionBuffer: ExecutionTrace[] = []
@@ -34,10 +37,18 @@ export class TelemetryCollector {
   private dbStore?: TelemetryPersistStore
   /** 串行化并发 JSONL 写入，防止行交错。错误被 catch 吞掉，不会污染后续写入。 */
   private writeQueue: Promise<void> = Promise.resolve()
+  /** Per-kind warn-once trackers so a disk outage logs once, then once on recovery. */
+  private readonly outages = new Map<PersistKind, OutageTracker>()
+  private readonly outageSink: OutageSink
 
-  constructor(config: Partial<TelemetryConfig> = {}, dbStore?: TelemetryPersistStore) {
+  constructor(
+    config: Partial<TelemetryConfig> = {},
+    dbStore?: TelemetryPersistStore,
+    outageSink: OutageSink = defaultOutageSink,
+  ) {
     this.config = TelemetryConfigSchema.parse(config)
     this.dbStore = dbStore
+    this.outageSink = outageSink
   }
 
   // ------------------------------------------------------------------
@@ -107,15 +118,22 @@ export class TelemetryCollector {
     }
   }
 
+  private outageTracker(kind: PersistKind): OutageTracker {
+    let tracker = this.outages.get(kind)
+    if (!tracker) {
+      tracker = new OutageTracker(`persist ${kind}`, this.outageSink)
+      this.outages.set(kind, tracker)
+    }
+    return tracker
+  }
+
   /**
    * Fire-and-forget JSONL persistence.
-   * Errors are caught and logged — a disk failure must never propagate
-   * to the caller or poison the write queue.
+   * Failures are caught and reported through a warn-once tracker — the raw
+   * error is classified then discarded, so a sustained disk fault cannot
+   * flood logs or leak filesystem details. Success clears the outage flag.
    */
-  private maybePersist(
-    kind: "execution" | "evolution",
-    trace: ExecutionTrace | EvolutionTrace,
-  ): void {
+  private maybePersist(kind: PersistKind, trace: ExecutionTrace | EvolutionTrace): void {
     if (!this.config.persistPath) return
 
     // Chain onto the write queue; catch prevents queue poisoning.
@@ -124,8 +142,9 @@ export class TelemetryCollector {
         const filePath = join(this.config.persistPath!, `${kind}s.jsonl`)
         await fs.mkdir(dirname(filePath), { recursive: true })
         await fs.appendFile(filePath, JSON.stringify(trace) + "\n", "utf-8")
+        this.outageTracker(kind).observe(undefined)
       } catch (err) {
-        console.error(`[TelemetryCollector] persist ${kind} failed:`, err)
+        this.outageTracker(kind).observe(classifyFailure(err))
       }
     })
   }

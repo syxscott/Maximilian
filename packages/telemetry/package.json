@@ -5,7 +5,9 @@
   "private": true,
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./feedback": "./src/feedback/index.ts",
+    "./feedback-file": "./src/feedback/transports/file-transport.ts"
   },
   "scripts": {
     "type-check": "tsc --noEmit",

@@ -31,8 +31,10 @@
  *     await a decision).
  */
 import { useCallback, useEffect, useMemo, useState } from "react"
+import type { KeyboardEvent as ReactKeyboardEvent } from "react"
 import { ListPlus, RotateCcw } from "lucide-react"
 import { t, useLocale } from "@max/i18n"
+import { useModalFocus } from "@max/ui-react"
 import type { RuntimeEvent, Workspace } from "@/api"
 import {
   type DockModel,
@@ -61,7 +63,7 @@ import { OutputPanel } from "@/components/OutputPanel"
 import { GoalSummaryCard, GoalTree } from "@/features/goals"
 import { DeliverablesPanel } from "@/features/deliverables"
 import { SessionSearchPanel } from "@/features/session-query"
-import { WORKSPACE_PANELS } from "@/features"
+import { WORKSPACE_PANELS, type WorkspacePanelSpec } from "@/features"
 
 /**
  * The panel registry and its FEATURE_DOMAINS projection moved to
@@ -89,6 +91,77 @@ export const useWorkspaceDockStore = createDockLayoutStore({
   storageKey: WORKSPACE_DOCK_STORAGE_KEY,
   createDefault: createWorkspaceDockModel,
 })
+
+interface AddPanelMenuProps {
+  closedPanels: readonly WorkspacePanelSpec[]
+  onPick: (panelId: string) => void
+  onClose: () => void
+}
+
+/**
+ * The "add panel" popover. A plain absolutely-positioned menu with no Radix
+ * primitive behind it, so it borrows the shared modal focus contract: focus
+ * moves to the first item on open, Tab cycles inside instead of escaping
+ * into the dock, and Escape (or picking an item) closes it and returns
+ * focus to the toggle.
+ */
+function AddPanelMenu({ closedPanels, onPick, onClose }: AddPanelMenuProps) {
+  const focus = useModalFocus<HTMLDivElement>()
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      onClose()
+      return
+    }
+    focus.onKeyDown(event)
+  }
+  return (
+    <div
+      ref={focus.rootRef}
+      role="menu"
+      tabIndex={-1}
+      data-testid="workspace-dock-add-menu"
+      onFocus={focus.onFocus}
+      onKeyDown={handleKeyDown}
+      className="absolute right-0 top-full z-20 mt-1 min-w-40 rounded-md border border-border bg-popover p-1 text-xs shadow-md"
+    >
+      {closedPanels.length === 0 ? (
+        <span className="block px-2 py-1 text-muted-foreground">
+          {t("layout.addPanelMenu.allDocked")}
+        </span>
+      ) : (
+        groupPanelsForMenu(closedPanels).map((group) => (
+          <div
+            key={group.section}
+            role="group"
+            aria-label={t(group.titleKey)}
+            data-testid={`workspace-dock-add-group-${group.section}`}
+          >
+            <div className="px-2 pb-0.5 pt-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              {t(group.titleKey)}
+            </div>
+            {group.panels.map((panel) => (
+              <button
+                key={panel.id}
+                type="button"
+                role="menuitem"
+                data-testid={`workspace-dock-add-${panel.id}`}
+                title={t(descriptionKeyFor(panel.titleKey), t(panel.titleKey))}
+                className="block w-full rounded px-2 py-1 text-left hover:bg-accent hover:text-accent-foreground"
+                onClick={() => {
+                  onPick(panel.id)
+                  onClose()
+                }}
+              >
+                {t(panel.titleKey)}
+              </button>
+            ))}
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
 
 export interface WorkspaceDockSidebarProps {
   workspace: Workspace | null
@@ -225,46 +298,11 @@ export function WorkspaceDockSidebar({
           {t("layout.addPanel")}
         </button>
         {menuOpen && (
-          <div
-            role="menu"
-            data-testid="workspace-dock-add-menu"
-            className="absolute right-0 top-full z-20 mt-1 min-w-40 rounded-md border border-border bg-popover p-1 text-xs shadow-md"
-          >
-            {closedPanels.length === 0 ? (
-              <span className="block px-2 py-1 text-muted-foreground">
-                {t("layout.addPanelMenu.allDocked")}
-              </span>
-            ) : (
-              groupPanelsForMenu(closedPanels).map((group) => (
-                <div
-                  key={group.section}
-                  role="group"
-                  aria-label={t(group.titleKey)}
-                  data-testid={`workspace-dock-add-group-${group.section}`}
-                >
-                  <div className="px-2 pb-0.5 pt-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                    {t(group.titleKey)}
-                  </div>
-                  {group.panels.map((panel) => (
-                    <button
-                      key={panel.id}
-                      type="button"
-                      role="menuitem"
-                      data-testid={`workspace-dock-add-${panel.id}`}
-                      title={t(descriptionKeyFor(panel.titleKey), t(panel.titleKey))}
-                      className="block w-full rounded px-2 py-1 text-left hover:bg-accent hover:text-accent-foreground"
-                      onClick={() => {
-                        openPanel(panel.id)
-                        setMenuOpen(false)
-                      }}
-                    >
-                      {t(panel.titleKey)}
-                    </button>
-                  ))}
-                </div>
-              ))
-            )}
-          </div>
+          <AddPanelMenu
+            closedPanels={closedPanels}
+            onPick={openPanel}
+            onClose={() => setMenuOpen(false)}
+          />
         )}
       </div>
 

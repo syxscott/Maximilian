@@ -91,6 +91,10 @@ export function getDictionary(locale: Locale): Dict | undefined {
 export function registerLocale(locale: Locale, dict: Dict, displayName?: string): void {
   dictionaries.set(locale, dict)
   if (displayName) displayNames.set(locale, displayName)
+  // Repaint subscribers so late registrations — e.g. lazily loaded dashboard
+  // domain dictionaries — replace raw keys immediately instead of waiting for
+  // the next unrelated locale change.
+  for (const listener of listeners) listener()
 }
 
 /** List every locale currently registered, in registration order. */
@@ -271,7 +275,6 @@ export function t(
       usedFallback = fallback
     } else {
       if (!warnedKeys.has(key)) {
-        // eslint-disable-next-line no-console
         console.warn(`[i18n] missing key "${key}" for locale "${currentLocale}"`)
         warnedKeys.add(key)
       }

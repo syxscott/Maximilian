@@ -19,6 +19,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react"
 import { useLocale, t } from "@max/i18n"
+import { useModalFocus } from "@max/ui-react"
 import { cn } from "@/lib/utils"
 import { flattenSections, groupBySection, rankQuickPick, type QuickPickItem } from "./model"
 
@@ -35,7 +36,15 @@ export interface QuickPickProps {
   className?: string
 }
 
-export function QuickPick({
+export function QuickPick(props: QuickPickProps) {
+  // Mount the surface only while open: the focus hook then reads the true
+  // opener (the composer control focused when the picker was raised) and
+  // its cleanup can hand focus back to it on close.
+  if (!props.open) return null
+  return <QuickPickDialog {...props} />
+}
+
+function QuickPickDialog({
   open,
   onOpenChange,
   items,
@@ -45,6 +54,7 @@ export function QuickPick({
   className,
 }: QuickPickProps) {
   useLocale()
+  const focus = useModalFocus<HTMLDivElement>()
   const [query, setQuery] = useState("")
   const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -77,8 +87,6 @@ export function QuickPick({
     )
     if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({ block: "nearest" })
   }, [highlighted])
-
-  if (!open) return null
 
   const selectHighlighted = () => {
     const entry = flat[highlighted]
@@ -113,9 +121,13 @@ export function QuickPick({
 
   return (
     <div
+      ref={focus.rootRef}
       role="dialog"
       aria-modal="false"
       aria-label={placeholder ?? t("quickpick.placeholder")}
+      tabIndex={-1}
+      onFocus={focus.onFocus}
+      onKeyDown={focus.onKeyDown}
       className={cn(
         "bg-popover text-popover-foreground rounded-md border shadow-md",
         "w-[420px] max-w-full p-2",

@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto"
 import type { Provider, ChatMessage } from "@max/providers"
 import type { AgentInstance, AgentManifest, Result, Task } from "./types.js"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -281,8 +282,14 @@ export abstract class Agent {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Truncates a string to at most `maxLen` characters, appending an ellipsis marker. */
+/**
+ * Truncates a string to at most `maxLen` characters, appending an ellipsis
+ * marker. Surrogate-pair safe (opencode text-boundary.ts borrowing): the
+ * budget is re-fed to an LLM call, so the cut must not strand half a
+ * character as a lone surrogate.
+ */
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str
-  return str.slice(0, Math.max(0, maxLen - 3)) + "..."
+  const body = truncateWithoutSplittingSurrogatePair(str, Math.max(0, maxLen - 3))
+  return body + "..."
 }

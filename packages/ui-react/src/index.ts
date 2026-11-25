@@ -250,3 +250,7 @@ export {
   type SessionGroupItem,
   type SessionGroupLabelKey,
 } from "./session-groups.js"
+
+// Overlay focus contracts (OpenHands modal borrowing)
+export { useModalFocus } from "./hooks/use-modal-focus.js"
+export { useComboboxEscapeGuard } from "./hooks/use-combobox-escape-guard.js"

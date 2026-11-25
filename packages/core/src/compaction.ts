@@ -12,12 +12,12 @@
 
 import type { Message } from "@max/llm"
 import type { ChatMessage } from "@max/providers"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
-// 借鉴 opencode - PRUNE_MINIMUM / PRUNE_PROTECT / TOOL_OUTPUT_MAX_CHARS / DEFAULT_TAIL_TURNS
+// 借鉴 opencode - PRUNE_MINIMUM / PRUNE_PROTECT / TOOL_OUTPUT_MAX_CHARS
 export const PRUNE_MINIMUM = 20_000
 export const PRUNE_PROTECT = 40_000
 export const TOOL_OUTPUT_MAX_CHARS = 2_000
-export const DEFAULT_TAIL_TURNS = 2
 export const MIN_PRESERVE_RECENT_TOKENS = 2_000
 export const MAX_PRESERVE_RECENT_TOKENS = 8_000
 
@@ -86,7 +86,8 @@ export function isOverflow(usage: TokenUsage, cfg: CompactionConfig): boolean {
 /**
  * 借鉴 opencode - compactMessages():
  *   1. 先把每条 tool message 输出截短到 TOOL_OUTPUT_MAX_CHARS
- *   2. 从尾部往前累加,保留最近 N tokens(DEFAULT_TAIL_TURNS 起步)
+ *   2. 从尾部往前累加,保留最近 N tokens;每条 +1 token 覆盖分隔符与取整
+ *      (opencode ad8858de43 borrowing),只允许最新一条超预算
  *   3. 头部插入 system 摘要,告诉 LLM "N 条早期消息被省略"
  */
 export function compactMessages(
@@ -105,15 +106,16 @@ export function compactMessages(
   // 借鉴 opencode - 先把每条 tool message 输出截短
   const truncated = messages.map((m) => truncateToolOutput(m, toolCap))
 
-  // 借鉴 opencode - 从尾部往前累加 token,直到达到 preserveRecent
+  // 借鉴 opencode ad8858de43 - oldestToDrop(): 从尾部往前累加,每条估算 +1
+  // token 覆盖消息分隔符与取整,保证回写的尾段不超过 preserveRecent。最新
+  // 一条即使单独超预算也保留(否则会出现"无最近上下文"的空尾),其余消息按
+  // 从旧到新的顺序丢弃,直到下一条放得下为止。
   const tail: Message[] = []
   let tailTokens = 0
   for (let i = truncated.length - 1; i >= 0; i--) {
     const m = truncated[i]!
-    const t = estimateTokens(m)
-    if (tailTokens + t > preserveRecent && tail.length >= DEFAULT_TAIL_TURNS) {
-      break
-    }
+    const t = estimateTokens(m) + 1
+    if (tail.length > 0 && tailTokens + t > preserveRecent) break
     tail.unshift(m)
     tailTokens += t
   }
@@ -180,12 +182,16 @@ function truncateToolOutput(m: Message, max: number): Message {
   if (m.role !== "tool") return m
   const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content)
   if (text.length <= max) return m
+  // Surrogate-pair safe (opencode text-boundary.ts borrowing): a cut through
+  // an astral character must drop the half instead of emitting a lone
+  // surrogate that strict JSON parsers reject in the whole transcript.
+  const shown = truncateWithoutSplittingSurrogatePair(text, max)
   return {
     ...m,
     content: [
       {
         type: "text" as const,
-        text: text.slice(0, max) + `\n\n[借鉴 opencode Compaction] 截断 ${text.length - max} 字符`,
+        text: shown + `\n\n[借鉴 opencode Compaction] 截断 ${text.length - shown.length} 字符`,
       },
     ],
   } as unknown as Message
@@ -380,31 +386,24 @@ export async function compactProactiveHistory(
     { ...cfg, preserveRecentTokens: target },
     (m) => options.estimateTokens([llmToChatMessage(m)]),
   )
-  // compactMessages returns [summary head] + preserved tail when (and only
-  // when) it dropped messages; otherwise the list passes through unchanged.
-  const hasHead = compactedLlm.length !== compactable.length
+  // compactMessages returns [summary head] + preserved tail when it dropped
+  // messages; otherwise the list passes through unchanged. The head counts
+  // as one slot, so the whole compacted stream fills the LAST
+  // `compacted.length` non-kept slots, ONE message per slot: the head lands
+  // on the first of those slots (the start of the dropped region) and the
+  // preserved tail keeps its recency after it.
   const compacted = compactedLlm.map(llmToChatMessage)
-  // Re-interleave in original order: kept messages pass through verbatim;
-  // the compacted stream fills the LAST `compacted.length` non-kept slots
-  // (preserving the tail's recency); earlier non-kept slots are the dropped
-  // region, and the summary head is emitted at its start.
   const out: ChatMessage[] = []
-  const nonKeptCount = messages.length - messages.filter(isKept).length
-  const skippedSlots = Math.max(0, nonKeptCount - compacted.length)
+  const nonKeptCount = messages.filter((m) => !isKept(m)).length
+  const firstFillSlot = Math.max(0, nonKeptCount - compacted.length)
   let compactedCursor = 0
-  let headEmitted = false
   let nonKeptSeen = 0
   for (const m of messages) {
     if (isKept(m)) {
       out.push(m)
       continue
     }
-    if (nonKeptSeen >= skippedSlots) {
-      if (!headEmitted && hasHead) {
-        out.push(compacted[0]!)
-        headEmitted = true
-        compactedCursor = 1
-      }
+    if (nonKeptSeen >= firstFillSlot) {
       out.push(compacted[compactedCursor]!)
       compactedCursor += 1
     }

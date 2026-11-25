@@ -31,6 +31,7 @@
  */
 
 import { scrubForModelContext, type SecretRedactor } from "./secret-scrub.js"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
 export type BashSettlementStatus = "completed" | "failed" | "cancelled"
 export type BashExitStatus = "known" | "unknown"
@@ -97,7 +98,13 @@ function truncateSnapshot(
   // Scrub the WHOLE text first, then cut — see secret-scrub.ts.
   const scrubbed = scrubForModelContext(text, vault)
   if (scrubbed.length <= maxChars) return { text: scrubbed, truncated: false }
-  return { text: scrubbed.slice(0, maxChars), truncated: true }
+  // Surrogate-pair safe (opencode text-boundary.ts borrowing): the snapshot
+  // is stored on the settlement record, so a naive cut could persist a lone
+  // surrogate that strict JSON consumers reject.
+  return {
+    text: truncateWithoutSplittingSurrogatePair(scrubbed, maxChars),
+    truncated: true,
+  }
 }
 
 /**

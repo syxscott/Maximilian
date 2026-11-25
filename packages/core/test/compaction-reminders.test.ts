@@ -26,7 +26,8 @@ const mk = (role: string, content: string): Message => ({ role, content }) as un
 
 const cfg: CompactionConfig = { contextWindow: 100_000, reservedOutput: 4_000 }
 
-/** 4 short messages compact into [summary head, 2-message tail]. */
+/** 4 short messages compact into [summary head, 1-message tail]: the budget is
+ *  10 tokens and each message costs 10+1, so only the newest fits. */
 const compactFour = (cfgOverrides?: Partial<CompactionConfig>): Message[] =>
   compactMessages(
     [mk("user", "q1"), mk("assistant", "a1"), mk("user", "q2"), mk("assistant", "a2")],
@@ -37,7 +38,7 @@ const compactFour = (cfgOverrides?: Partial<CompactionConfig>): Message[] =>
 describe("compaction boundary marker", () => {
   it("stamps every summary head with the stable marker", () => {
     const out = compactFour()
-    expect(out.length).toBe(3) // head + 2-message tail
+    expect(out.length).toBe(2) // head + newest-only tail (budget 10 < 2×11)
     expect(isCompactionBoundary(out[0]!)).toBe(true)
     expect(JSON.stringify(out[0]!.content)).toContain(COMPACTION_SUMMARY_MARKER)
   })
@@ -65,7 +66,7 @@ describe("compaction boundary marker", () => {
 describe("post-compaction hidden reminders (identity restore)", () => {
   it("appends hidden reminders as a trailing system message after compaction", () => {
     const out = compactFour({ appendHiddenReminders: [sessionIdentityReminder("s-1")] })
-    expect(out.length).toBe(4)
+    expect(out.length).toBe(3) // head + newest tail + reminder
     const last = out[out.length - 1]!
     expect(last.role).toBe("system")
     expect(JSON.stringify(last.content)).toContain("YOUR SESSION ID: s-1")
@@ -131,9 +132,10 @@ describe("forced compaction for overflow recovery", () => {
     expect(rejectedTokens).toBe(400)
     const out = forceCompactToFractionOfRequest(messages, cfg, estimate)
     const kept = isCompactionBoundary(out[0]!) ? out.slice(1) : out
-    // Half of 400 = 200-token budget for the preserved tail (bounded below
-    // only by the DEFAULT_TAIL_TURNS floor).
-    expect(estimateMessagesTokens(kept, estimate)).toBeLessThanOrEqual(220)
+    // Half of 400 = 200-token budget for the preserved tail. Each message
+    // costs estimate+1, so only the newest (101) fits and the tail stays
+    // within budget.
+    expect(estimateMessagesTokens(kept, estimate) + kept.length).toBeLessThanOrEqual(200)
     expect(kept.length).toBeLessThan(messages.length)
   })
 

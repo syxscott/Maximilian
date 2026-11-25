@@ -5,7 +5,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { TaskPrioritizer } from "../src/task-prioritizer.js"
-import type { Task } from "../src/types.js"
+import { endsWithLoneHighSurrogate } from "../src/text-safe.js"
+import type { Task, Result } from "../src/types.js"
 import type { Provider, ChatResponse } from "@max/providers"
 
 function mockProvider(response: unknown): Provider {
@@ -142,6 +143,39 @@ describe("TaskPrioritizer", () => {
 
       const callContent = chatSpy.mock.calls[0]![0]![0].content as string
       expect(callContent).toContain("Complex goal")
+    })
+
+    it("does not split a surrogate pair in the recent-results summary", async () => {
+      const chatSpy = vi.fn().mockResolvedValue({
+        content: JSON.stringify([{ taskId: "task-1", priority: "high" }]),
+        model: "mock-model",
+      } as ChatResponse)
+      const provider = {
+        id: "mock",
+        name: "Mock",
+        defaultModel: "mock-model",
+        chat: chatSpy,
+        stream: vi.fn(),
+        isConfigured: () => true,
+      } as unknown as Provider
+      const prioritizer = new TaskPrioritizer({ llm: provider })
+      // 149 BMP chars + U+1F600: the 150-unit cut lands between the halves.
+      const result = {
+        id: "r-1",
+        taskId: "prev",
+        agentRole: "frontend",
+        agentId: "a1",
+        output: "x".repeat(149) + "😀",
+        metadata: {},
+        createdAt: "",
+      } as Result
+      await prioritizer.reRank([makeTask("task-1")], {
+        recentResults: [result],
+        goal: "goal",
+      })
+      const prompt = chatSpy.mock.calls[0]![0]![0].content as string
+      expect(prompt).not.toContain("😀")
+      expect(endsWithLoneHighSurrogate(prompt)).toBe(false)
     })
   })
 })

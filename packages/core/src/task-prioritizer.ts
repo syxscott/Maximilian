@@ -16,6 +16,7 @@ import type { Provider } from "@max/providers"
 import type { ChatMessage } from "@max/providers"
 import type { Task, TaskPriority } from "./types.js"
 import type { Result } from "./types.js"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
 /**
  * Options for constructing a TaskPrioritizer.
@@ -43,9 +44,11 @@ function buildReRankPrompt(
     )
     .join("\n")
 
+  // Surrogate-pair safe (opencode text-boundary.ts borrowing): this summary
+  // is re-fed to the ranking LLM, so the cut must not strand half a character.
   const resultSummary = context.recentResults
     .slice(-5)
-    .map((r) => `[${r.agentRole}] ${r.output.slice(0, 150)}`)
+    .map((r) => `[${r.agentRole}] ${truncateWithoutSplittingSurrogatePair(r.output, 150)}`)
     .join("\n")
 
   return `You are a task prioritization agent. Given the overall goal and recent execution results,

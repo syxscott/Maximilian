@@ -1,5 +1,6 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { useComboboxEscapeGuard } from "../../hooks/use-combobox-escape-guard.js"
 import { cn } from "../../lib/utils.js"
 
 export interface DialogProps {
@@ -60,24 +61,37 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPrimitive.Content
-    ref={ref}
-    data-slot="dialog-content"
-    className={cn(className)}
-    onOpenAutoFocus={(e) => {
-      const target = e.currentTarget as HTMLElement | null
-      const autofocusEl = target?.querySelector("[autofocus]") as HTMLElement | null
-      if (autofocusEl) {
-        e.preventDefault()
-        autofocusEl.focus()
-      }
-    }}
-    {...props}
-  >
-    {children}
-  </DialogPrimitive.Content>
-))
+>(({ className, children, onEscapeKeyDown, ...props }, ref) => {
+  const consumeExpandedComboboxEscape = useComboboxEscapeGuard()
+  return (
+    <DialogPrimitive.Content
+      ref={ref}
+      data-slot="dialog-content"
+      className={cn(className)}
+      onOpenAutoFocus={(e) => {
+        const target = e.currentTarget as HTMLElement | null
+        const autofocusEl = target?.querySelector("[autofocus]") as HTMLElement | null
+        if (autofocusEl) {
+          e.preventDefault()
+          autofocusEl.focus()
+        }
+      }}
+      onEscapeKeyDown={(event) => {
+        // An expanded combobox/select consumes the first Escape itself;
+        // swallow that press so unsaved dialog input survives. See
+        // useComboboxEscapeGuard.
+        if (consumeExpandedComboboxEscape()) {
+          event.preventDefault()
+          return
+        }
+        onEscapeKeyDown?.(event)
+      }}
+      {...props}
+    >
+      {children}
+    </DialogPrimitive.Content>
+  )
+})
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 export const Dialog: React.FC<DialogProps> = ({

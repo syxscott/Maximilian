@@ -18,6 +18,7 @@ import {
   extractOutputSnapshot,
   settleBashExecution,
 } from "../src/bash-settlement.js"
+import { endsWithLoneHighSurrogate } from "../src/text-safe.js"
 import { Vault } from "../src/vault.js"
 
 // ── Settle rules ────────────────────────────────────────────────────────────
@@ -150,6 +151,15 @@ describe("extractOutputSnapshot", () => {
       truncated: false,
     })
     expect(extractOutputSnapshot("abcdefghij", 3)).toEqual({ text: "abc", truncated: true })
+  })
+
+  it("never truncates between the halves of a surrogate pair", () => {
+    // Budget 3 lands after "ab" + the high half of U+1F600; the high half
+    // must be dropped rather than persisted as a lone surrogate.
+    const snapshot = extractOutputSnapshot("ab😀cd", 3)
+    expect(snapshot.text).toBe("ab")
+    expect(snapshot.truncated).toBe(true)
+    expect(endsWithLoneHighSurrogate(snapshot.text)).toBe(false)
   })
 })
 

@@ -22,7 +22,8 @@ import { compactProactiveHistory } from "./compaction.js"
 import { isRefusedMetadata, annotateRefusalMarker } from "./refusal.js"
 import { defaultEnvSnapshotProvider } from "./context-anchor.js"
 import { abortSignalAfterChunks } from "./timeout-chunks.js"
-import { errorFirstReply } from "./goal-final-reply.js"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
+import { assembleGoalReply } from "./goal-final-reply.js"
 import * as toolExtensions from "./tool-extensions.js"
 import { createRunawayGuard } from "./tool-extensions.js"
 import { classifyTaskError } from "./failover-reason.js"
@@ -82,6 +83,7 @@ import type { SecretRedactor } from "./secret-scrub.js"
 import { redactResolvedProviderCredentials } from "./vault-bootstrap.js"
 import {
   GoalFinalReplyMachine,
+  RESULT_TRUNCATED_METADATA_KEY,
   normalizeReplyFingerprint,
   type GoalFinalReplyState,
 } from "./goal-final-reply.js"
@@ -330,6 +332,12 @@ export type RuntimeEvent =
       reply: string
       /** sha256 of the normalized reply — downstream dedup key. */
       fingerprint?: string
+      /** True when the delivered reply was clipped for the reply budget. */
+      truncated?: boolean
+      /** Code units delivered before the truncation notice. */
+      shownChars?: number
+      /** Original stored code units the reply was cut from. */
+      storedChars?: number
     }
 
 export type RuntimeListener = (event: RuntimeEvent) => void
@@ -2452,7 +2460,9 @@ export class AgentRuntime {
       kind: "action",
       round: roundRef.value,
       agent: task.agentRole,
-      input: { description: task.description.slice(0, 200) },
+      // Surrogate-pair safe (opencode text-boundary.ts borrowing): ledger
+      // entries are replayed/persisted downstream as content.
+      input: { description: truncateWithoutSplittingSurrogatePair(task.description, 200) },
       at: task.startedAt,
     }
     const afterAction = appendLedger(
@@ -2769,7 +2779,8 @@ export class AgentRuntime {
           if (this.selfCritique && lastActionRef.toolName) {
             const historyTail: ChatMessage[] = []
             const critiqueResult = await this.selfCritique.observe(
-              `tool=${lastActionRef.toolName} input=${JSON.stringify(lastActionRef.input).slice(0, 200)}`,
+              // Re-fed to the critique LLM — keep the cut surrogate-pair safe.
+              `tool=${lastActionRef.toolName} input=${truncateWithoutSplittingSurrogatePair(JSON.stringify(lastActionRef.input), 200)}`,
               final.output,
               historyTail,
             )
@@ -2836,7 +2847,9 @@ export class AgentRuntime {
             round: roundRef.value,
             agent: task.agentRole,
             ok: true,
-            output: final.output?.slice(0, 200),
+            output: final.output
+              ? truncateWithoutSplittingSurrogatePair(final.output, 200)
+              : undefined,
             at: new Date().toISOString(),
           }
           const afterObs = appendLedger(
@@ -2865,7 +2878,10 @@ export class AgentRuntime {
 
           // Update long-term memory on success.
           if (this.memoryStore) {
-            const snippet = final.output?.slice(0, 500) ?? ""
+            // Persisted into the long-term memory store — never a lone surrogate.
+            const snippet = final.output
+              ? truncateWithoutSplittingSurrogatePair(final.output, 500)
+              : ""
             await this.memoryStore
               .recordSuccess(
                 task.agentRole,
@@ -2939,7 +2955,11 @@ export class AgentRuntime {
       kind: "action",
       round,
       agent: task.agentRole,
-      input: { description: prompt.slice(0, 200), approval: true },
+      // Surrogate-pair safe: this ledger entry is persisted/replayed downstream.
+      input: {
+        description: truncateWithoutSplittingSurrogatePair(prompt, 200),
+        approval: true,
+      },
       at: task.startedAt ?? new Date().toISOString(),
     }
     const afterAction = appendLedger(
@@ -3065,7 +3085,8 @@ export class AgentRuntime {
       round,
       agent: task.agentRole,
       ok: true,
-      output: result.output.slice(0, 200),
+      // Surrogate-pair safe: persisted ledger content must stay well-formed.
+      output: truncateWithoutSplittingSurrogatePair(result.output, 200),
       at: new Date().toISOString(),
     }
     const afterObs = appendLedger(
@@ -3350,7 +3371,11 @@ export class AgentRuntime {
    * whether it was emitted. Any further resolve (duplicate terminal event,
    * re-executed workspace) is a rejected transition, not a duplicate event.
    */
-  resolveGoal(workspaceId: string, reply: string): boolean {
+  resolveGoal(
+    workspaceId: string,
+    reply: string,
+    meta?: { truncated?: boolean; shownChars?: number; storedChars?: number },
+  ): boolean {
     const machine = this.goalMachines.get(workspaceId)
     if (!machine) return false
     const drive = machine.dispatch("goal-reached")
@@ -3361,6 +3386,9 @@ export class AgentRuntime {
       goalId: machine.id ?? workspaceId,
       reply,
       fingerprint: normalizeReplyFingerprint(reply),
+      ...(meta?.truncated !== undefined ? { truncated: meta.truncated } : {}),
+      ...(meta?.shownChars !== undefined ? { shownChars: meta.shownChars } : {}),
+      ...(meta?.storedChars !== undefined ? { storedChars: meta.storedChars } : {}),
     })
     return true
   }
@@ -3395,9 +3423,31 @@ export class AgentRuntime {
   private autoResolveGoal(workspaceId: string, results: Result[], failure?: string): void {
     const machine = this.goalMachines.get(workspaceId)
     if (!machine || machine.state !== "working") return
+    const assembled = assembleGoalReply({ error: failure, output: lastOutputOf(results) })
+    // Tag the source result so consumers of the done event can render a
+    // "truncated" badge without re-deriving the reply budget. (The workspace
+    // row was already persisted before resolution; persistent readers should
+    // prefer the event fields or compare output length to GOAL_REPLY_MAX_CHARS.)
+    if (assembled.truncated && results.length > 0) {
+      const idx = results.length - 1
+      const last = results[idx]!
+      // Agent.submitResult freezes each Result, so tag a copy rather than
+      // mutating the frozen object; the done event then carries the marker.
+      results[idx] = {
+        ...last,
+        metadata: { ...(last.metadata ?? {}), [RESULT_TRUNCATED_METADATA_KEY]: true },
+      }
+    }
     this.resolveGoal(
       workspaceId,
-      errorFirstReply({ error: failure, output: lastOutputOf(results) }),
+      assembled.reply,
+      assembled.truncated
+        ? {
+            truncated: true,
+            shownChars: assembled.shownChars,
+            storedChars: assembled.storedChars,
+          }
+        : undefined,
     )
   }
 }

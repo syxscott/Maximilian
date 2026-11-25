@@ -1,5 +1,6 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { useComboboxEscapeGuard } from "@max/ui-react"
 import { cn } from "@/lib/utils"
 
 const Dialog = DialogPrimitive.Root
@@ -46,7 +47,15 @@ const DialogContent = React.forwardRef<
   }
 >(
   (
-    { className, children, zIndex = "base", variant = "default", overlayClassName, ...props },
+    {
+      className,
+      children,
+      zIndex = "base",
+      variant = "default",
+      overlayClassName,
+      onEscapeKeyDown,
+      ...props
+    },
     ref,
   ) => {
     const zIndexMap = {
@@ -55,6 +64,10 @@ const DialogContent = React.forwardRef<
       alert: "z-[60]",
       top: "z-[110]",
     }
+    // An expanded combobox/select consumes the first Escape itself; swallow
+    // that press (prevent Radix's dismissal) so unsaved dialog input survives
+    // and only the next Escape closes. See useComboboxEscapeGuard.
+    const consumeExpandedComboboxEscape = useComboboxEscapeGuard()
 
     const variantClass = {
       default:
@@ -72,6 +85,13 @@ const DialogContent = React.forwardRef<
           onInteractOutside={(e) => {
             // 防止点击遮罩层关闭对话框
             e.preventDefault()
+          }}
+          onEscapeKeyDown={(event) => {
+            if (consumeExpandedComboboxEscape()) {
+              event.preventDefault()
+              return
+            }
+            onEscapeKeyDown?.(event)
           }}
           {...props}
         >

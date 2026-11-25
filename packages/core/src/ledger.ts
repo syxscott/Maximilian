@@ -22,6 +22,7 @@
  */
 
 import { scrubForModelContext, type SecretRedactor } from "./secret-scrub.js"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
 export type LedgerEntry =
   | { kind: "plan"; round: number; summary: string; selectedAgent?: string; at: string }
@@ -91,7 +92,9 @@ export function renderLedger(ledger: Ledger, maxEntries = 20, vault?: SecretReda
         return `[fact] ${e.subject}: ${scrub(e.content)}`
       case "answer":
         // Scrub BEFORE the cap: cutting first would strand a secret's prefix.
-        return `[answer r${e.round}] ${scrub(e.content).slice(0, 200)}`
+        // Surrogate-pair safe (opencode text-boundary.ts borrowing): this
+        // rendered text is model-context, so never end it on half a character.
+        return `[answer r${e.round}] ${truncateWithoutSplittingSurrogatePair(scrub(e.content), 200)}`
     }
   })
   return lines.join("\n")

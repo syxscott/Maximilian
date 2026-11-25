@@ -1,0 +1,17 @@
+{
+  "feedback": {
+    "title": "Send feedback",
+    "description": "Tell us what is working, what is confusing, or what you want changed. This goes to the host's feedback channel, not an analytics service.",
+    "question": "What is on your mind?",
+    "messageLabel": "Your feedback",
+    "emailLabel": "Email",
+    "optional": "(optional)",
+    "privacy": "Submissions use a random per-message ID and never include your IP address or the page URL. An email is only included if you type one.",
+    "consentNote": "Feedback can be sent even when analytics consent is denied; it is not tied to analytics tracking.",
+    "send": "Send feedback",
+    "sending": "Sending…",
+    "success": "Thanks — your feedback was sent.",
+    "error": "Could not send feedback. Your draft is preserved; please try again.",
+    "unconfigured": "The feedback channel is not configured on this host, so submissions cannot be delivered. Contact the administrator."
+  }
+}

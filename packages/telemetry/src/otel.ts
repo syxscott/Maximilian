@@ -18,6 +18,7 @@ import { resourceFromAttributes } from "@opentelemetry/resources"
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions"
 import { context, trace, SpanStatusCode, type Span, type Tracer } from "@opentelemetry/api"
 import { getLogger } from "./logger.js"
+import { WarnOnceSpanExporter } from "./otelExporter.js"
 
 let _sdk: NodeSDK | undefined
 let _tracer: Tracer | undefined
@@ -45,9 +46,15 @@ export function initOtel(opts: OtelOptions): void {
     url: opts.otlpEndpoint ? `${opts.otlpEndpoint.replace(/\/$/, "")}/v1/traces` : undefined,
   })
 
+  // Warn once per export outage only when an endpoint is explicitly set.
+  // Without one the SDK keeps its default/local behaviour and stays silent,
+  // as before. The wrapper discards error bodies and reports only the
+  // outcome class (error / timeout / panic).
+  const traceExporter = opts.otlpEndpoint ? new WarnOnceSpanExporter(exporter) : exporter
+
   _sdk = new NodeSDK({
     resource,
-    traceExporter: exporter,
+    traceExporter,
     instrumentations: [
       getNodeAutoInstrumentations({
         "@opentelemetry/instrumentation-fs": { enabled: false },

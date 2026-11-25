@@ -17,6 +17,7 @@
  */
 
 import { communicationTokensTotal } from "@max/telemetry"
+import { truncateWithoutSplittingSurrogatePair } from "./text-safe.js"
 
 /** Rough char→token estimate for budget accounting (≈4 chars/token). */
 export function estimateTokens(chars: number): number {
@@ -84,9 +85,13 @@ export function renderHandoffBundle(
     // Keep the head of this entry and self-report the cut (swarms borrowing:
     // tell the model how much it did NOT see, so it can ask for more).
     const shown = Math.max(0, remaining - title.length - 80)
+    // Surrogate-pair safe (opencode text-boundary.ts borrowing): the bundle
+    // is re-fed to the receiving agent, so the cut must not strand half a
+    // character even though the notice already says the entry was shortened.
+    const head = truncateWithoutSplittingSurrogatePair(body, shown)
     parts.push(
-      `--- ${title} ---\n${body.slice(0, shown)}\n` +
-        `[… showing first ${shown} of ${body.length} chars — artifact truncated by handoff budget]`,
+      `--- ${title} ---\n${head}\n` +
+        `[… showing first ${head.length} of ${body.length} chars — artifact truncated by handoff budget]`,
     )
     used += remaining
     keptPartial = 1

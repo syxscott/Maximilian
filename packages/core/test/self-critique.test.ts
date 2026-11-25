@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { SelfCritique } from "../src/self-critique.js"
+import { endsWithLoneHighSurrogate } from "../src/text-safe.js"
 import type { Provider, ChatResponse } from "@max/providers"
 
 // Mock provider factory
@@ -71,6 +72,27 @@ describe("SelfCritique", () => {
       const critique = new SelfCritique({ llm: provider, threshold: 5 })
       const result = await critique.observe("foo", "bar", [])
       expect(result.score).toBe(4)
+    })
+
+    it("does not split a surrogate pair when bounding the output in the prompt", async () => {
+      const chatSpy = vi.fn().mockResolvedValue({
+        content: JSON.stringify({ useful: true, score: 8, reason: "ok", suggestions: [] }),
+        model: "mock-model",
+      } as ChatResponse)
+      const provider = {
+        id: "mock",
+        name: "Mock",
+        defaultModel: "mock-model",
+        chat: chatSpy,
+        stream: vi.fn(),
+        isConfigured: () => true,
+      } as unknown as Provider
+      const critique = new SelfCritique({ llm: provider })
+      // 999 BMP chars + U+1F600: the 1000-unit cut lands between the halves.
+      await critique.observe("act", "x".repeat(999) + "😀", [])
+      const prompt = chatSpy.mock.calls[0]![0]!.at(-1)!.content as string
+      expect(prompt).not.toContain("😀")
+      expect(endsWithLoneHighSurrogate(prompt)).toBe(false)
     })
   })
 

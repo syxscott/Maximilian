@@ -373,16 +373,23 @@ export type {
 // Goal final reply — exactly-one terminal reply per goal cycle
 // (minimax-code ChannelFinalReplyObserver / reply-fingerprint borrowing).
 export {
+  assembleGoalReply,
   canDriveGoalFinalReply,
   driveGoalFinalReply,
   errorFirstReply,
   normalizeReplyFingerprint,
   GoalFinalReplyMachine,
+  GOAL_REPLY_MAX_CHARS,
+  RESULT_TRUNCATED_METADATA_KEY,
+  RESULT_TRUNCATED_NOTICE,
+  NO_OUTPUT_REPLY,
 } from "./goal-final-reply.js"
 export type {
   GoalFinalReplyState,
   GoalFinalReplyEvent,
   GoalFinalReplyDrive,
+  GoalReplyOutcome,
+  GoalReplyAssembly,
 } from "./goal-final-reply.js"
 
 // Error taxonomy — closed execution-error classification + per-category
